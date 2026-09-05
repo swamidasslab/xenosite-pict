@@ -268,10 +268,13 @@ def poc_native(out: Path, backend: str) -> Path:
         ("naphthalene", "c1ccc2ccccc2c1"),
         ("anthracene", "c1ccc2cc3ccccc3cc2c1"),
         ("hexane", "CCCCCC"),
+        ("branched", "CC(C)CCCC"),
         ("phenol", "c1ccc(cc1)O"),
         ("aspirin", "CC(=O)Oc1ccccc1C(=O)O"),
         ("norbornane", "C1CC2CCC1C2"),
         ("chiral", "C[C@H](O)Cl"),
+        ("trans", r"F/C=C/F"),
+        ("cis", r"F/C=C\F"),
         ("pyrrole", "c1ccc[nH]1"),
     ]
     # Native grid
