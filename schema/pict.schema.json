@@ -1,0 +1,421 @@
+{
+  "$defs": {
+    "DiagramKind": {
+      "enum": [
+        "single",
+        "grid",
+        "network",
+        "reaction",
+        "html"
+      ],
+      "title": "DiagramKind",
+      "type": "string"
+    },
+    "DiagramSpec": {
+      "additionalProperties": false,
+      "description": "Multi-molecule composition options (ELK / grid / HTML).",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/DiagramKind",
+          "default": "single"
+        },
+        "columns": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Grid columns when kind=grid",
+          "title": "Columns"
+        },
+        "edges": {
+          "items": {
+            "$ref": "#/$defs/EdgeSpec"
+          },
+          "title": "Edges",
+          "type": "array"
+        },
+        "elk_options": {
+          "additionalProperties": true,
+          "description": "Pass-through ELK layout options (engine-specific support varies)",
+          "title": "Elk Options",
+          "type": "object"
+        },
+        "align": {
+          "default": false,
+          "description": "Optional chemical MCS alignment before diagram layout",
+          "title": "Align",
+          "type": "boolean"
+        }
+      },
+      "title": "DiagramSpec",
+      "type": "object"
+    },
+    "EdgeSpec": {
+      "additionalProperties": false,
+      "description": "Edge between molecule nodes in a network / reaction diagram.",
+      "properties": {
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "target": {
+          "title": "Target",
+          "type": "string"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Label"
+        }
+      },
+      "required": [
+        "source",
+        "target"
+      ],
+      "title": "EdgeSpec",
+      "type": "object"
+    },
+    "MarkKind": {
+      "enum": [
+        "atoms",
+        "bonds",
+        "substructure"
+      ],
+      "title": "MarkKind",
+      "type": "string"
+    },
+    "MarkSpec": {
+      "additionalProperties": false,
+      "description": "Publication-style annotation of atoms, bonds, or a substructure.",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/MarkKind",
+          "default": "atoms"
+        },
+        "atoms": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "0-based atom indices to mark",
+          "title": "Atoms"
+        },
+        "bonds": {
+          "anyOf": [
+            {
+              "items": {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ],
+                "type": "array"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "0-based atom-index pairs for bonds to mark",
+          "title": "Bonds"
+        },
+        "color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "CSS color for the mark",
+          "title": "Color"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Label"
+        }
+      },
+      "title": "MarkSpec",
+      "type": "object"
+    },
+    "MoleculeSpec": {
+      "additionalProperties": false,
+      "description": "One molecule in a depiction document.",
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Stable id for diagram edges/nodes",
+          "title": "Id"
+        },
+        "smiles": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "SMILES string",
+          "title": "Smiles"
+        },
+        "cxsmiles": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "ChemAxon extended SMILES (CXSMILES), including coords/labels when present",
+          "title": "Cxsmiles"
+        },
+        "esmiles": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "MolParser E-SMILES (SMILES<sep>EXTENSION); schema hook for Markush",
+          "title": "Esmiles"
+        },
+        "molfile": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional MDL molblock",
+          "title": "Molfile"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
+        },
+        "marks": {
+          "items": {
+            "$ref": "#/$defs/MarkSpec"
+          },
+          "title": "Marks",
+          "type": "array"
+        },
+        "shade": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ShadeSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "halo": {
+          "default": true,
+          "title": "Halo",
+          "type": "boolean"
+        },
+        "color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Bond/backbone color override",
+          "title": "Color"
+        }
+      },
+      "title": "MoleculeSpec",
+      "type": "object"
+    },
+    "ShadeSpec": {
+      "additionalProperties": false,
+      "description": "Continuous per-atom / per-bond scores for colormap shading.",
+      "properties": {
+        "atoms": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Per-atom scores (same length as atom count)",
+          "title": "Atoms"
+        },
+        "bonds": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Per-bond scores",
+          "title": "Bonds"
+        },
+        "colormap": {
+          "default": "xenosite",
+          "description": "Named colormap",
+          "title": "Colormap",
+          "type": "string"
+        },
+        "vmin": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Vmin"
+        },
+        "vmax": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Vmax"
+        }
+      },
+      "title": "ShadeSpec",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Declarative depiction document.\n\nEngine choice (`backend`) is runtime config on Pict/render \u2014 not part of this document.",
+  "properties": {
+    "molecules": {
+      "items": {
+        "$ref": "#/$defs/MoleculeSpec"
+      },
+      "minItems": 1,
+      "title": "Molecules",
+      "type": "array"
+    },
+    "diagram": {
+      "$ref": "#/$defs/DiagramSpec"
+    },
+    "width": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Preferred SVG width",
+      "title": "Width"
+    },
+    "height": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Preferred SVG height",
+      "title": "Height"
+    },
+    "meta": {
+      "additionalProperties": true,
+      "title": "Meta",
+      "type": "object"
+    }
+  },
+  "required": [
+    "molecules"
+  ],
+  "title": "PictSpec",
+  "type": "object"
+}

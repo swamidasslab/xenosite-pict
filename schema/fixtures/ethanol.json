@@ -1,0 +1,10 @@
+{
+  "molecules": [
+    {
+      "id": "etoh",
+      "smiles": "CCO",
+      "marks": [{ "atoms": [2], "color": "#c44" }]
+    }
+  ],
+  "diagram": { "kind": "single" }
+}

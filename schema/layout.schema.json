@@ -1,0 +1,175 @@
+{
+  "$defs": {
+    "AtomLayout": {
+      "additionalProperties": false,
+      "properties": {
+        "index": {
+          "title": "Index",
+          "type": "integer"
+        },
+        "element": {
+          "title": "Element",
+          "type": "string"
+        },
+        "x": {
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "title": "Y",
+          "type": "number"
+        },
+        "charge": {
+          "default": 0,
+          "title": "Charge",
+          "type": "integer"
+        },
+        "isotope": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Isotope"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Display label; None means suppress (e.g. carbon)",
+          "title": "Label"
+        }
+      },
+      "required": [
+        "index",
+        "element",
+        "x",
+        "y"
+      ],
+      "title": "AtomLayout",
+      "type": "object"
+    },
+    "BondLayout": {
+      "additionalProperties": false,
+      "properties": {
+        "index": {
+          "title": "Index",
+          "type": "integer"
+        },
+        "begin": {
+          "title": "Begin",
+          "type": "integer"
+        },
+        "end": {
+          "title": "End",
+          "type": "integer"
+        },
+        "order": {
+          "default": 1.0,
+          "title": "Order",
+          "type": "number"
+        },
+        "stereo": {
+          "anyOf": [
+            {
+              "enum": [
+                "up",
+                "down",
+                "either",
+                "none"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stereo"
+        }
+      },
+      "required": [
+        "index",
+        "begin",
+        "end"
+      ],
+      "title": "BondLayout",
+      "type": "object"
+    },
+    "MoleculeLayout": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
+        "atoms": {
+          "items": {
+            "$ref": "#/$defs/AtomLayout"
+          },
+          "title": "Atoms",
+          "type": "array"
+        },
+        "bonds": {
+          "items": {
+            "$ref": "#/$defs/BondLayout"
+          },
+          "title": "Bonds",
+          "type": "array"
+        },
+        "backend": {
+          "title": "Backend",
+          "type": "string"
+        },
+        "warnings": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "atoms",
+        "bonds",
+        "backend"
+      ],
+      "title": "MoleculeLayout",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One or more laid-out molecules ready for scene construction.",
+  "properties": {
+    "molecules": {
+      "items": {
+        "$ref": "#/$defs/MoleculeLayout"
+      },
+      "title": "Molecules",
+      "type": "array"
+    }
+  },
+  "required": [
+    "molecules"
+  ],
+  "title": "LayoutResult",
+  "type": "object"
+}

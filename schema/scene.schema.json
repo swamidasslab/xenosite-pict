@@ -1,0 +1,332 @@
+{
+  "$defs": {
+    "CirclePrim": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "circle",
+          "default": "circle",
+          "title": "Kind",
+          "type": "string"
+        },
+        "cx": {
+          "title": "Cx",
+          "type": "number"
+        },
+        "cy": {
+          "title": "Cy",
+          "type": "number"
+        },
+        "r": {
+          "title": "R",
+          "type": "number"
+        },
+        "fill": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fill"
+        },
+        "stroke": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stroke"
+        },
+        "stroke_width": {
+          "default": 1.0,
+          "title": "Stroke Width",
+          "type": "number"
+        },
+        "opacity": {
+          "default": 1.0,
+          "title": "Opacity",
+          "type": "number"
+        },
+        "cls": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cls"
+        }
+      },
+      "required": [
+        "cx",
+        "cy",
+        "r"
+      ],
+      "title": "CirclePrim",
+      "type": "object"
+    },
+    "Layer": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "enum": [
+            "shading",
+            "halo",
+            "bonds",
+            "labels",
+            "marks",
+            "overlay"
+          ],
+          "title": "Name",
+          "type": "string"
+        },
+        "primitives": {
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/PathPrim"
+              },
+              {
+                "$ref": "#/$defs/CirclePrim"
+              },
+              {
+                "$ref": "#/$defs/TextPrim"
+              }
+            ]
+          },
+          "title": "Primitives",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "Layer",
+      "type": "object"
+    },
+    "PathPrim": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "path",
+          "default": "path",
+          "title": "Kind",
+          "type": "string"
+        },
+        "d": {
+          "title": "D",
+          "type": "string"
+        },
+        "stroke": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": "#000",
+          "title": "Stroke"
+        },
+        "fill": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": "none",
+          "title": "Fill"
+        },
+        "stroke_width": {
+          "default": 1.5,
+          "title": "Stroke Width",
+          "type": "number"
+        },
+        "opacity": {
+          "default": 1.0,
+          "title": "Opacity",
+          "type": "number"
+        },
+        "cls": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cls"
+        }
+      },
+      "required": [
+        "d"
+      ],
+      "title": "PathPrim",
+      "type": "object"
+    },
+    "TextPrim": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "text",
+          "default": "text",
+          "title": "Kind",
+          "type": "string"
+        },
+        "x": {
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "title": "Y",
+          "type": "number"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "fill": {
+          "default": "#000",
+          "title": "Fill",
+          "type": "string"
+        },
+        "font_size": {
+          "default": 12.0,
+          "title": "Font Size",
+          "type": "number"
+        },
+        "font_family": {
+          "default": "Helvetica, Arial, sans-serif",
+          "title": "Font Family",
+          "type": "string"
+        },
+        "anchor": {
+          "default": "middle",
+          "enum": [
+            "start",
+            "middle",
+            "end"
+          ],
+          "title": "Anchor",
+          "type": "string"
+        },
+        "cls": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cls"
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "text"
+      ],
+      "title": "TextPrim",
+      "type": "object"
+    },
+    "Viewport": {
+      "additionalProperties": false,
+      "description": "A molecule viewport placed in a diagram (after ELK/grid).",
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
+        "x": {
+          "default": 0.0,
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "default": 0.0,
+          "title": "Y",
+          "type": "number"
+        },
+        "width": {
+          "title": "Width",
+          "type": "number"
+        },
+        "height": {
+          "title": "Height",
+          "type": "number"
+        },
+        "layers": {
+          "items": {
+            "$ref": "#/$defs/Layer"
+          },
+          "title": "Layers",
+          "type": "array"
+        }
+      },
+      "required": [
+        "width",
+        "height"
+      ],
+      "title": "Viewport",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Full drawable document before SVG/HTML serialization.",
+  "properties": {
+    "width": {
+      "title": "Width",
+      "type": "number"
+    },
+    "height": {
+      "title": "Height",
+      "type": "number"
+    },
+    "viewports": {
+      "items": {
+        "$ref": "#/$defs/Viewport"
+      },
+      "title": "Viewports",
+      "type": "array"
+    },
+    "meta": {
+      "additionalProperties": true,
+      "title": "Meta",
+      "type": "object"
+    }
+  },
+  "required": [
+    "width",
+    "height",
+    "viewports"
+  ],
+  "title": "Scene",
+  "type": "object"
+}
