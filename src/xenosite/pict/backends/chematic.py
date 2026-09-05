@@ -1,4 +1,9 @@
-"""Chematic layout backend (last-resort optional extra)."""
+"""Chematic backend — useful for chem perception; coords are last resort.
+
+Chematic (Rust) is a plausible small RDKit-like kernel for aromaticity / SSSR /
+stereo flags. Its 2D depiction quality is weak: use our drawer + better layout
+(Indigo/RDKit/native). See ``docs/layout-notes.md``.
+"""
 
 from __future__ import annotations
 
@@ -24,7 +29,8 @@ class ChematicBackend:
         warn_unsupported(
             self.name,
             "coordinate_quality",
-            "Chematic 2D coords are a last resort; prefer indigo, rdkit, or openbabel.",
+            "Chematic depict coords are weak; prefer indigo/rdkit for layout. "
+            "Chematic is more interesting as a perception kernel than a depictor.",
         )
         if mol.esmiles:
             warn_unsupported(self.name, "esmiles", "Using SMILES before <sep> only.")

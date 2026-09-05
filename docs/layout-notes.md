@@ -48,6 +48,12 @@ So Chematic is a plausible **default chem kernel** for perception while we own d
 
 Validate perception against RDKit on hard aromatics / stereo before promoting it; treat their `depict_*` path as throwaway.
 
+**If** we settle on Chematic for perception, implementing **our** depiction in
+**Rust** (crate next to Chematic, Python + WASM bindings) is the natural ship
+stack: one molecule graph, no FFI tax between perceive and draw, small browser
+bundle. Keep Python as the algorithm lab until skeleton → offsets → wedges and
+the native layout quality bar are demonstrated — then port, don’t invent twice.
+
 ### Transitional layout coords (scaffolding only)
 
 1. **Indigo** — current best coords while native matures (WASM for `js/` too).

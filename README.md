@@ -10,7 +10,7 @@ Scaffold in progress. Language-neutral JSON contracts (Pydantic → generated JS
 
 **Depiction:** Hard — follow CDK / RDKit / Indigo / CoordGen; don’t invent. Own SVG (skeleton → offsets → stereo). If **native** layout is *demonstrably* good enough on hard cases, multi-backend layout largely goes away (see `docs/layout-notes.md`).
 
-**Chem stack (likely):** Chematic (or similar) for **perception** (aromaticity, SSSR, stereo flags — small Rust package); **our** drawing. Chematic depict coords are not good enough — do not ship them as the picture.
+**Chem stack (likely):** Chematic (or similar) for **perception** (aromaticity, SSSR, stereo — small Rust); **our** drawing. Chematic depict coords are not good enough. If we settle there, shipping depiction as a **Rust** crate (Py + WASM) is the natural fit — prove the draw/layout model in Python first.
 
 **Layout coords (transitional):** Indigo → RDKit → Open Babel → Chematic-coords-last-resort → native stub.
 
