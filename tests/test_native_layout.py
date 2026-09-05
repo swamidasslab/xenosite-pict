@@ -134,3 +134,21 @@ def test_aspirin_parses_and_places_all_atoms():
     for b in lay.bonds:
         d = math.hypot(pos[b.end][0] - pos[b.begin][0], pos[b.end][1] - pos[b.begin][1])
         assert abs(d - 1.5) < 1e-6
+
+
+def test_heteroatom_labels_include_implicit_h():
+    lay = _native_layout("c1ccc[nH]1")
+    labels = {a.label for a in lay.atoms if a.label}
+    assert "NH" in labels
+    lay2 = _native_layout("CCO")
+    assert any(a.label == "OH" for a in lay2.atoms)
+
+
+def test_native_chiral_smiles_gets_wedge():
+    lay = _native_layout("C[C@H](O)Cl")
+    stereos = [b for b in lay.bonds if b.stereo in {"up", "down"}]
+    assert stereos, "expected at least one wedge from @ SMILES"
+    # Thin end at stereocenter (carbon index 1).
+    assert all(b.begin == 1 for b in stereos)
+    svg = render({"molecules": [{"smiles": "C[C@H](O)Cl"}]}, backend="native")
+    assert "bond-wedge" in svg

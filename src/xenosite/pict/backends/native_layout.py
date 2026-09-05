@@ -16,6 +16,7 @@ from collections import defaultdict, deque
 
 from xenosite.pict.backends.native_smiles import (
     ParsedMol,
+    atom_display_label,
     kekulize_aromatic_bonds,
     parse_organic_smiles,
 )
@@ -321,6 +322,77 @@ def _place_chains(mol: ParsedMol, coords: dict[int, tuple[float, float]]) -> Non
             coords[a.index] = (float(a.index) * _BOND_LEN, 0.0)
 
 
+def _degree_map(mol: ParsedMol) -> dict[int, int]:
+    deg: dict[int, int] = defaultdict(int)
+    for b in mol.bonds:
+        deg[b.begin] += 1
+        deg[b.end] += 1
+    return deg
+
+
+def _assign_tetrahedral_wedges(
+    mol: ParsedMol,
+    coords: dict[int, tuple[float, float]],
+    bonds: list[BondLayout],
+) -> None:
+    """Assign up/down wedges from OpenSMILES ``@``/``@@`` (lab-quality).
+
+    Guide: RDKit ``WedgeMolBonds`` — thin end at stereocenter (``begin``).
+    Parity: compute 2D CCW order of heavy neighbors; flip wedge sense so the
+    depicted configuration matches SMILES ``@`` (anticlockwise) / ``@@``
+    (clockwise) when looking from the first SMILES neighbor. Not full CIP —
+    enough to exercise the draw path on native coords.
+    """
+    adj: dict[int, list[int]] = defaultdict(list)
+    bond_by_pair: dict[frozenset[int], BondLayout] = {}
+    for b in bonds:
+        adj[b.begin].append(b.end)
+        adj[b.end].append(b.begin)
+        bond_by_pair[frozenset({b.begin, b.end})] = b
+
+    for atom in mol.atoms:
+        if atom.tetrahedral not in {"@", "@@"}:
+            continue
+        nbrs = list(adj[atom.index])
+        if len(nbrs) < 3:
+            continue
+        # Prefer wedging a terminal (or lowest-degree) substituent — RDKit-ish.
+        wedge_end = min(nbrs, key=lambda v: (len(adj[v]), v))
+        bl = bond_by_pair.get(frozenset({atom.index, wedge_end}))
+        if bl is None or bl.order >= 1.5:
+            continue
+        # Orient bond: begin = stereocenter.
+        bl.begin, bl.end = atom.index, wedge_end
+
+        cx, cy = coords[atom.index]
+        ordered = sorted(
+            nbrs,
+            key=lambda v: math.atan2(coords[v][1] - cy, coords[v][0] - cx),
+        )
+        # Signed area of triangle (n0,n1,n2) around center → 2D winding of neighbors.
+        def _ccw(a: int, b: int, c: int) -> float:
+            ax, ay = coords[a][0] - cx, coords[a][1] - cy
+            bx, by = coords[b][0] - cx, coords[b][1] - cy
+            dx, dy = coords[c][0] - cx, coords[c][1] - cy
+            # Project: sum of cross products in angular order.
+            return ax * by - ay * bx + bx * dy - by * dx + dx * ay - dy * ax
+
+        if len(ordered) >= 3:
+            winding = _ccw(ordered[0], ordered[1], ordered[2])
+        else:
+            winding = 1.0
+        # SMILES @ = anticlockwise from first neighbor; @@ = clockwise.
+        # With wedge-up meaning wedge_end above the paper, a positive 2D CCW
+        # winding of the other ligands matches @ when the wedged atom is
+        # treated as "in front". Flip if mismatch.
+        want_ccw = atom.tetrahedral == "@"
+        have_ccw = winding > 0
+        if want_ccw == have_ccw:
+            bl.stereo = "up"
+        else:
+            bl.stereo = "down"
+
+
 def layout_parsed(mol: ParsedMol, *, mol_id: str | None = None) -> MoleculeLayout:
     kekulize_aromatic_bonds(mol)
     stub = _placeholder_layout(mol)
@@ -329,6 +401,7 @@ def layout_parsed(mol: ParsedMol, *, mol_id: str | None = None) -> MoleculeLayou
     _place_ring_systems(rings, coords)
     _place_chains(mol, coords)
 
+    deg = _degree_map(mol)
     atoms = [
         AtomLayout(
             index=a.index,
@@ -336,7 +409,7 @@ def layout_parsed(mol: ParsedMol, *, mol_id: str | None = None) -> MoleculeLayou
             x=coords[a.index][0],
             y=coords[a.index][1],
             charge=a.charge,
-            label=None if a.element == "C" and a.charge == 0 else a.element,
+            label=atom_display_label(a, deg[a.index]),
         )
         for a in mol.atoms
     ]
@@ -344,10 +417,15 @@ def layout_parsed(mol: ParsedMol, *, mol_id: str | None = None) -> MoleculeLayou
         BondLayout(index=i, begin=b.begin, end=b.end, order=float(b.order))
         for i, b in enumerate(mol.bonds)
     ]
+    _assign_tetrahedral_wedges(mol, coords, bonds)
     warnings = list(mol.warnings)
     if rings and not all_rings_can_be_regular_polygons(rings):
         warnings.append(
             "bridged/cage ring system: native does not force all SSSR faces regular"
+        )
+    if any(a.tetrahedral for a in mol.atoms):
+        warnings.append(
+            "native tetrahedral wedges are SMILES-parity heuristics, not full CIP"
         )
     warnings.append(
         "native layout is experimental; indigo remains the transitional default"

@@ -35,8 +35,7 @@ _BRACKET = re.compile(
     r"\["
     r"(?P<iso>\d+)?"
     r"(?P<el>[A-Z][a-z]?|[a-z])"
-    r"(?P<arom_h>)?"  # placeholder kept for readability
-    r"(?:@+|@@)?"
+    r"(?P<stereo>@@|@)?"
     r"(?:H(?P<h>\d?))?"
     r"(?P<charge>(?:\+|-)(?:\d+)?)?"
     r"\]"
@@ -50,6 +49,10 @@ class ParsedAtom:
     aromatic: bool = False
     charge: int = 0
     hcount: int | None = None
+    # OpenSMILES tetrahedral: "@" anticlockwise, "@@" clockwise (from first neighbor).
+    tetrahedral: str | None = None
+    # Neighbor atom indices in SMILES encounter order (for stereo parity).
+    smiles_neighbors: list[int] = field(default_factory=list)
 
 
 @dataclass
@@ -81,8 +84,9 @@ def parse_organic_smiles(smiles: str) -> ParsedMol:
     """Parse a restricted organic SMILES into atoms/bonds.
 
     Supports: organic subset, brackets, ``-=#:``, branches ``()``, ring digits
-    ``1``–``9`` / ``%NN``, aromatic lowercase, ``.`` disconnects.
-    Ignores tetrahedral ``@`` / bond stereo ``/\\`` (topology only).
+    ``1``–``9`` / ``%NN``, aromatic lowercase, ``.`` disconnects, tetrahedral
+    ``@`` / ``@@`` (stored for native wedge assignment). Bond stereo ``/\\`` is
+    ignored for topology (E/Z is a layout concern).
     """
     s = smiles.split("|", 1)[0].strip()
     if not s:
@@ -160,6 +164,8 @@ def parse_organic_smiles(smiles: str) -> ParsedMol:
                 if arom and order == 1.0:
                     order = 1.5
                 add_bond(prev, other, order, arom)
+                mol.atoms[prev].smiles_neighbors.append(other)
+                mol.atoms[other].smiles_neighbors.append(prev)
                 bond_order, pending_arom = 1.0, False
             else:
                 rings[rnum] = (prev, bond_order, pending_arom)
@@ -179,6 +185,8 @@ def parse_organic_smiles(smiles: str) -> ParsedMol:
                 if arom and order == 1.0:
                     order = 1.5
                 add_bond(prev, other, order, arom)
+                mol.atoms[prev].smiles_neighbors.append(other)
+                mol.atoms[other].smiles_neighbors.append(prev)
                 bond_order, pending_arom = 1.0, False
             else:
                 rings[rnum] = (prev, bond_order, pending_arom)
@@ -196,14 +204,16 @@ def parse_organic_smiles(smiles: str) -> ParsedMol:
             charge = _parse_charge(m.group("charge"))
             h_raw = m.group("h")
             hcount = None
-            if m.group(0).find("H") >= 0:
+            if "H" in m.group(0):
                 hcount = int(h_raw) if h_raw else 1
+            stereo = m.group("stereo")
             atom = ParsedAtom(
                 index=len(mol.atoms),
                 element=element,
                 aromatic=aromatic,
                 charge=charge,
                 hcount=hcount,
+                tetrahedral=stereo,
             )
             mol.atoms.append(atom)
             i = m.end()
@@ -228,6 +238,8 @@ def parse_organic_smiles(smiles: str) -> ParsedMol:
             if arom and order == 1.0:
                 order = 1.5
             add_bond(prev, idx, order, arom)
+            mol.atoms[prev].smiles_neighbors.append(idx)
+            atom.smiles_neighbors.append(prev)
         prev = idx
         bond_order = 1.0
         pending_arom = False
@@ -236,7 +248,62 @@ def parse_organic_smiles(smiles: str) -> ParsedMol:
         mol.warnings.append(f"unclosed ring digits: {sorted(rings)}")
     if not mol.atoms:
         raise ValueError("no atoms parsed")
+    # Ring closures also count as SMILES neighbors (append when closed).
+    # Re-walk bonds to ensure smiles_neighbors matches graph degree; keep
+    # encounter order already recorded for chain/branch, then add any missing
+    # ring mates at the end (OpenSMILES ring-digit order is approximate here).
+    adj: dict[int, set[int]] = {a.index: set() for a in mol.atoms}
+    for b in mol.bonds:
+        adj[b.begin].add(b.end)
+        adj[b.end].add(b.begin)
+    for a in mol.atoms:
+        known = set(a.smiles_neighbors)
+        for other in sorted(adj[a.index] - known):
+            a.smiles_neighbors.append(other)
     return mol
+
+
+def implicit_h_count(atom: ParsedAtom, degree: int) -> int:
+    """Default implicit H from organic valence (depiction labels)."""
+    if atom.hcount is not None:
+        return max(0, atom.hcount)
+    # Rough organic valences; aromatic atoms already counted in degree.
+    valence = {
+        "B": 3,
+        "C": 4,
+        "N": 3,
+        "O": 2,
+        "P": 3,
+        "S": 2,
+        "F": 1,
+        "Cl": 1,
+        "Br": 1,
+        "I": 1,
+    }.get(atom.element)
+    if valence is None:
+        return 0
+    # Charge: [NH4+] → h explicit; for organic N+ reduce available.
+    v = valence - atom.charge
+    if atom.element == "N" and atom.charge == 0 and degree >= 3:
+        v = 3
+    return max(0, v - degree)
+
+
+def atom_display_label(atom: ParsedAtom, degree: int) -> str | None:
+    """RDKit-ish label: suppress carbon; show NH / OH when H present.
+
+    Charged / non-carbon heteroatoms always label. Carbon stays silent even with
+    bracket ``[C@H]`` — stereo is carried by wedges, not a CH badge.
+    """
+    if atom.element == "C" and atom.charge == 0:
+        return None
+    h = implicit_h_count(atom, degree)
+    label = atom.element
+    if h == 1:
+        label += "H"
+    elif h > 1:
+        label += f"H{h}"
+    return label
 
 
 def kekulize_aromatic_bonds(mol: ParsedMol) -> None:
