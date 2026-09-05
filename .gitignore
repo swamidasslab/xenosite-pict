@@ -15,3 +15,5 @@ __pycache__/
 *.svg.bak
 .venv/
 venv/
+artifacts/
+/opt/cursor/artifacts/

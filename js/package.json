@@ -8,7 +8,6 @@
   "scripts": {
     "check": "node --check src/index.js"
   },
-  "dependencies": {},
   "optionalDependencies": {
     "elkjs": "^0.9.3"
   }

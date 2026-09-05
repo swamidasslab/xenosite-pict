@@ -38,9 +38,22 @@ class RdkitBackend:
         if rw is None:
             raise ValueError("RDKit failed to parse molecule")
 
-        # Prefer embedded CX coords when present; otherwise compute 2D
+        # Prefer embedded CX coords when present; otherwise compute 2D.
+        # Prefer CoordGen + ring templates when available — RDKit's default
+        # Depictor embeds each SSSR as a regular polygon then stitches; cages
+        # need CoordGen/templates (see RDKit EmbeddedFrag / molecular_templates).
         if rw.GetNumConformers() == 0:
-            AllChem.Compute2DCoords(rw)
+            try:
+                from rdkit.Chem import rdDepictor
+
+                if rdDepictor.IsCoordGenSupportAvailable():
+                    rdDepictor.SetPreferCoordGen(True)
+                try:
+                    rdDepictor.Compute2DCoords(rw, useRingTemplates=True)
+                except TypeError:
+                    AllChem.Compute2DCoords(rw)
+            except Exception:
+                AllChem.Compute2DCoords(rw)
         conf = rw.GetConformer()
         atoms: list[AtomLayout] = []
         for a in rw.GetAtoms():
@@ -58,6 +71,11 @@ class RdkitBackend:
                     label=label,
                 )
             )
+        # Kekulé orders for depiction (aromatic doubles → 1.5 otherwise).
+        try:
+            Chem.Kekulize(rw)
+        except Exception:
+            pass
         bonds: list[BondLayout] = []
         for b in rw.GetBonds():
             bonds.append(

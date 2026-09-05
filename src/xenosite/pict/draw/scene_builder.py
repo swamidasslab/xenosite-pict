@@ -14,11 +14,14 @@ from xenosite.pict.contracts.scene import (
     TextPrim,
     Viewport,
 )
-from xenosite.pict.contracts.spec import MoleculeSpec, PictSpec
+from xenosite.pict.contracts.spec import MarkKind, MoleculeSpec, PictSpec
+from xenosite.pict.draw.plotdot import PlotDot
+from xenosite.pict.draw.rings import bond_interior_normals, find_sssr
 
 _LAYER_ORDER = ("shading", "halo", "bonds", "labels", "marks", "overlay")
 _SCALE = 28.0
 _PAD = 24.0
+_LABEL_GAP = 8.0
 
 
 def normalize_coords(
@@ -31,76 +34,228 @@ def normalize_coords(
     ys = [a.y for a in layout.atoms]
     min_x, max_x = min(xs), max(xs)
     min_y, max_y = min(ys), max(ys)
-    coords: list[tuple[float, float]] = []
-    for a in layout.atoms:
-        sx = (a.x - min_x) * _SCALE + _PAD
-        sy = (max_y - a.y) * _SCALE + _PAD
-        coords.append((sx, sy))
+    coords = [
+        ((a.x - min_x) * _SCALE + _PAD, (max_y - a.y) * _SCALE + _PAD) for a in layout.atoms
+    ]
     width = (max_x - min_x) * _SCALE + 2 * _PAD
     height = (max_y - min_y) * _SCALE + 2 * _PAD
     return coords, max(width, 2 * _PAD), max(height, 2 * _PAD)
 
 
-def _bond_paths(x1: float, y1: float, x2: float, y2: float, order: float) -> list[PathPrim]:
+def _shorten(
+    x1: float, y1: float, x2: float, y2: float, gap1: float, gap2: float
+) -> tuple[float, float, float, float]:
     dx, dy = x2 - x1, y2 - y1
     length = math.hypot(dx, dy) or 1.0
-    nx, ny = -dy / length, dx / length
-    offset = 3.0
-    if order >= 2.5:
-        offsets = (-offset, 0.0, offset)
-    elif order >= 1.5:
-        offsets = (-offset * 0.6, offset * 0.6)
-    else:
-        offsets = (0.0,)
-    out: list[PathPrim] = []
-    for o in offsets:
-        ox, oy = nx * o, ny * o
-        out.append(
-            PathPrim(
-                d=f"M {x1 + ox:.2f} {y1 + oy:.2f} L {x2 + ox:.2f} {y2 + oy:.2f}",
-                stroke="#111",
-                stroke_width=1.6,
-                cls="bond",
-            )
+    if gap1 + gap2 >= length:
+        mid_x, mid_y = (x1 + x2) / 2, (y1 + y2) / 2
+        return mid_x, mid_y, mid_x, mid_y
+    ux, uy = dx / length, dy / length
+    return x1 + ux * gap1, y1 + uy * gap1, x2 - ux * gap2, y2 - uy * gap2
+
+
+def _depict_order(order: float) -> float:
+    """Normalize engine bond orders for 2D depiction.
+
+    Indigo aromatic = 4; RDKit aromatic = 1.5. Prefer Kekulé from backends;
+    this is a safety net so aromatics never become triple lines.
+    """
+    if order >= 3.5:  # Indigo aromatic
+        return 1.0
+    if 1.4 <= order < 1.6:  # RDKit aromatic if not Kekulized
+        return 1.0
+    return order
+
+
+def _bond_key(a: int, b: int) -> tuple[int, int]:
+    return (a, b) if a < b else (b, a)
+
+
+def _ring_bond_normals(
+    layout: MoleculeLayout, coords: list[tuple[float, float]]
+) -> dict[tuple[int, int], tuple[float, float]]:
+    """Unit normals for ring bonds via SSSR centroids (see ``draw.rings``).
+
+    Layout backends (CDK RingPlacer / RDKit embedRing / Indigo layout) own
+    regular-polygon coordinates. The drawer only needs SSSR membership to put
+    Kekulé offsets toward ring interiors.
+    """
+    rings = find_sssr(layout)
+    if not rings:
+        return {}
+    coords_by_index = {a.index: coords[i] for i, a in enumerate(layout.atoms)}
+    return bond_interior_normals(rings, coords_by_index)
+
+
+def _bond_paths(
+    x1: float,
+    y1: float,
+    x2: float,
+    y2: float,
+    order: float,
+    interior: tuple[float, float] | None = None,
+) -> list[PathPrim]:
+    """Draw bonds; double/triple second lines prefer ring-interior and are shortened."""
+    dx, dy = x2 - x1, y2 - y1
+    length = math.hypot(dx, dy) or 1.0
+    lx, ly = -dy / length, dx / length  # left normal
+    order = _depict_order(order)
+    stroke = 1.55
+
+    def line(xa: float, ya: float, xb: float, yb: float) -> PathPrim:
+        return PathPrim(
+            d=f"M {xa:.2f} {ya:.2f} L {xb:.2f} {yb:.2f}",
+            stroke="#111",
+            stroke_width=stroke,
+            cls="bond",
         )
+
+    out: list[PathPrim] = [line(x1, y1, x2, y2)]
+    if order < 1.5:
+        return out
+
+    # Direction for offset line(s): ring interior when known, else left normal.
+    if interior is not None:
+        nx, ny = interior
+    else:
+        nx, ny = lx, ly
+
+    if order >= 2.5:
+        # Triple: short lines on both sides.
+        gap = min(4.0, length * 0.18)
+        sx1, sy1, sx2, sy2 = _shorten(x1, y1, x2, y2, gap, gap)
+        for side in (-1.0, 1.0):
+            ox, oy = nx * 2.6 * side, ny * 2.6 * side
+            out.append(line(sx1 + ox, sy1 + oy, sx2 + ox, sy2 + oy))
+        return out
+
+    # Double: one shortened companion toward interior.
+    offset = 2.4
+    gap = min(3.2, length * 0.16)
+    sx1, sy1, sx2, sy2 = _shorten(x1, y1, x2, y2, gap, gap)
+    out.append(line(sx1 + nx * offset, sy1 + ny * offset, sx2 + nx * offset, sy2 + ny * offset))
     return out
 
 
-def _shade_color(z: float, vmin: float, vmax: float) -> str:
-    if vmax <= vmin:
-        t = 0.5
+def _halo_path(x1: float, y1: float, x2: float, y2: float) -> PathPrim:
+    """Single centerline halo (not one per multi-bond stroke)."""
+    return PathPrim(
+        d=f"M {x1:.2f} {y1:.2f} L {x2:.2f} {y2:.2f}",
+        stroke="#fff",
+        stroke_width=5.5,
+        opacity=1.0,
+        cls="halo",
+    )
+
+
+def _normalize_shade_scores(zs: list[float], vmin: float, vmax: float) -> list[float]:
+    """Map shade values into roughly [-1, 1] without forcing zeros to ±1.
+
+    All-nonnegative scores (common for site-of-metabolism style) stay on the
+    positive half so 0 remains white. True diverging data keeps 0 fixed.
+    """
+    if vmin >= 0 and vmax > 0:
+        return [max(0.0, min(1.0, z / vmax)) for z in zs]
+    if vmax <= 0 and vmin < 0:
+        return [max(-1.0, min(0.0, z / abs(vmin))) for z in zs]
+    scale = max(abs(vmin), abs(vmax), 1e-9)
+    return [max(-1.0, min(1.0, z / scale)) for z in zs]
+
+
+def _shade_rgb(z: float) -> str:
+    """Diverging blue←white→red; soft near zero so mid scores stay pale."""
+    z = max(-1.0, min(1.0, z))
+    # Square keeps |z|<~0.4 nearly white (xenopict-ish soft ramp).
+    t = abs(z) ** 1.35
+    if z >= 0:
+        r, g, b = 255, int(255 - t * 210), int(255 - t * 210)
     else:
-        t = max(0.0, min(1.0, (z - vmin) / (vmax - vmin)))
-    r = int(255 - t * (255 - 70))
-    g = int(255 - t * (255 - 130))
-    b = int(255 - t * (255 - 180))
+        r, g, b = int(255 - t * 210), int(255 - t * 170), 255
     return f"rgb({r},{g},{b})"
+
+def _convex_hull(points: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    pts = sorted(set(points))
+    if len(pts) <= 2:
+        return pts
+
+    def cross(o: tuple[float, float], a: tuple[float, float], b: tuple[float, float]) -> float:
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+    lower: list[tuple[float, float]] = []
+    for p in pts:
+        while len(lower) >= 2 and cross(lower[-2], lower[-1], p) <= 0:
+            lower.pop()
+        lower.append(p)
+    upper: list[tuple[float, float]] = []
+    for p in reversed(pts):
+        while len(upper) >= 2 and cross(upper[-2], upper[-1], p) <= 0:
+            upper.pop()
+        upper.append(p)
+    return lower[:-1] + upper[:-1]
+
+
+def _hull_path(points: list[tuple[float, float]], pad: float = 10.0) -> str | None:
+    if not points:
+        return None
+    if len(points) == 1:
+        x, y = points[0]
+        r = pad
+        return (
+            f"M {x + r:.2f} {y:.2f} "
+            f"A {r:.2f} {r:.2f} 0 1 0 {x - r:.2f} {y:.2f} "
+            f"A {r:.2f} {r:.2f} 0 1 0 {x + r:.2f} {y:.2f}"
+        )
+    hull = _convex_hull(points)
+    if len(hull) == 2:
+        (x1, y1), (x2, y2) = hull
+        dx, dy = x2 - x1, y2 - y1
+        length = math.hypot(dx, dy) or 1.0
+        nx, ny = -dy / length * pad, dx / length * pad
+        return (
+            f"M {x1 + nx:.2f} {y1 + ny:.2f} L {x2 + nx:.2f} {y2 + ny:.2f} "
+            f"L {x2 - nx:.2f} {y2 - ny:.2f} L {x1 - nx:.2f} {y1 - ny:.2f} Z"
+        )
+    cx = sum(p[0] for p in hull) / len(hull)
+    cy = sum(p[1] for p in hull) / len(hull)
+    expanded = []
+    for x, y in hull:
+        dx, dy = x - cx, y - cy
+        length = math.hypot(dx, dy) or 1.0
+        expanded.append((x + dx / length * pad, y + dy / length * pad))
+    d = f"M {expanded[0][0]:.2f} {expanded[0][1]:.2f} "
+    d += " ".join(f"L {x:.2f} {y:.2f}" for x, y in expanded[1:])
+    return d + " Z"
 
 
 def molecule_to_viewport(layout: MoleculeLayout, mol_spec: MoleculeSpec) -> Viewport:
     coords, width, height = normalize_coords(layout)
     layers: dict[str, Layer] = {name: Layer(name=name) for name in _LAYER_ORDER}  # type: ignore[arg-type]
+    atom_pos = {a.index: i for i, a in enumerate(layout.atoms)}
+    ring_normals = _ring_bond_normals(layout, coords)
 
     if mol_spec.shade and mol_spec.shade.atoms and coords:
-        zs = mol_spec.shade.atoms
+        zs = list(mol_spec.shade.atoms)
         vmin = mol_spec.shade.vmin if mol_spec.shade.vmin is not None else min(zs)
         vmax = mol_spec.shade.vmax if mol_spec.shade.vmax is not None else max(zs)
-        for i, z in enumerate(zs):
-            if i >= len(coords):
-                break
-            x, y = coords[i]
+        norm = _normalize_shade_scores(zs, vmin, vmax)
+        base_r = _SCALE * 0.75
+        for radius_frac, color_z, (x, y) in PlotDot()(norm, coords[: len(norm)]):
+            if abs(color_z) < 0.05 and radius_frac < 0.35:
+                continue
+            if abs(color_z) < 0.02:
+                continue
             layers["shading"].primitives.append(
                 CirclePrim(
                     cx=x,
                     cy=y,
-                    r=_SCALE * 0.45,
-                    fill=_shade_color(z, vmin, vmax),
-                    opacity=0.85,
-                    cls=f"atom-{i} shade",
+                    r=base_r * radius_frac,
+                    fill=_shade_rgb(color_z),
+                    opacity=1.0,
+                    cls="shade",
                 )
             )
 
-    atom_pos = {a.index: i for i, a in enumerate(layout.atoms)}
+    labeled = {i for i, a in enumerate(layout.atoms) if a.label is not None or a.charge}
     bond_color = mol_spec.color or "#111"
     for bond in layout.bonds:
         i0, i1 = atom_pos.get(bond.begin), atom_pos.get(bond.end)
@@ -108,23 +263,16 @@ def molecule_to_viewport(layout: MoleculeLayout, mol_spec: MoleculeSpec) -> View
             continue
         x1, y1 = coords[i0]
         x2, y2 = coords[i1]
-        for p in _bond_paths(x1, y1, x2, y2, bond.order):
+        g1 = _LABEL_GAP if i0 in labeled else 0.0
+        g2 = _LABEL_GAP if i1 in labeled else 0.0
+        x1, y1, x2, y2 = _shorten(x1, y1, x2, y2, g1, g2)
+        if mol_spec.halo:
+            layers["halo"].primitives.append(_halo_path(x1, y1, x2, y2))
+        interior = ring_normals.get(_bond_key(bond.begin, bond.end))
+        for p in _bond_paths(x1, y1, x2, y2, bond.order, interior=interior):
             p.stroke = bond_color
             p.cls = f"bond-{bond.index} atom-{bond.begin} atom-{bond.end}"
             layers["bonds"].primitives.append(p)
-
-    if mol_spec.halo:
-        for prim in list(layers["bonds"].primitives):
-            if isinstance(prim, PathPrim):
-                layers["halo"].primitives.append(
-                    PathPrim(
-                        d=prim.d,
-                        stroke="#fff",
-                        stroke_width=prim.stroke_width + 4.0,
-                        opacity=0.85,
-                        cls="halo",
-                    )
-                )
 
     for i, atom in enumerate(layout.atoms):
         label = atom.label
@@ -140,7 +288,7 @@ def molecule_to_viewport(layout: MoleculeLayout, mol_spec: MoleculeSpec) -> View
             text = f"{label}{sign}" if mag == 1 else f"{label}{mag}{sign}"
         if mol_spec.halo:
             layers["halo"].primitives.append(
-                CirclePrim(cx=x, cy=y, r=9.0, fill="#fff", opacity=0.9, cls="label-halo")
+                CirclePrim(cx=x, cy=y, r=9.0, fill="#fff", opacity=1.0, cls="label-halo")
             )
         layers["labels"].primitives.append(
             TextPrim(x=x, y=y + 4, text=text, cls=f"atom-{atom.index} label")
@@ -148,6 +296,21 @@ def molecule_to_viewport(layout: MoleculeLayout, mol_spec: MoleculeSpec) -> View
 
     for mark in mol_spec.marks:
         color = mark.color or "#c44"
+        if mark.kind == MarkKind.substructure and mark.atoms:
+            pts = [coords[atom_pos[a]] for a in mark.atoms if a in atom_pos]
+            path = _hull_path(pts, pad=_SCALE * 0.4)
+            if path:
+                layers["marks"].primitives.append(
+                    PathPrim(
+                        d=path,
+                        stroke=color,
+                        fill=color,
+                        stroke_width=1.5,
+                        opacity=0.25,
+                        cls="substructure-mark",
+                    )
+                )
+            continue
         if mark.atoms:
             for ai in mark.atoms:
                 pos = atom_pos.get(ai)
@@ -162,7 +325,7 @@ def molecule_to_viewport(layout: MoleculeLayout, mol_spec: MoleculeSpec) -> View
                         fill="none",
                         stroke=color,
                         stroke_width=2.2,
-                        opacity=0.75,
+                        opacity=0.85,
                         cls=f"atom-{ai} mark",
                     )
                 )

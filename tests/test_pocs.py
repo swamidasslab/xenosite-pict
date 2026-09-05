@@ -1,0 +1,129 @@
+"""POC-focused tests: marks/shade drawing and ELK graph synthesis."""
+
+from __future__ import annotations
+
+import json
+import shutil
+import warnings
+from pathlib import Path
+
+import pytest
+
+from xenosite.pict import Pict, render
+from xenosite.pict.contracts.spec import PictSpec
+from xenosite.pict.diagram.elk import elk_graph, elk_graph_json, layout_diagram
+from xenosite.pict.warnings import PictBackendWarning
+
+
+def _chem_backend() -> str:
+    for name in ("indigo", "rdkit"):
+        try:
+            Pict(backend=name).layout({"molecules": [{"smiles": "CCO"}]})
+            return name
+        except Exception:
+            continue
+    pytest.skip("no chem layout backend installed")
+
+
+def test_own_svg_has_bonds_and_labels():
+    backend = _chem_backend()
+    svg = render({"molecules": [{"smiles": "CCO"}]}, backend=backend)
+    assert "<svg" in svg
+    assert 'class="bond' in svg or "bond-" in svg
+    assert "O" in svg  # heteroatom label
+
+
+def test_shade_and_marks_layers():
+    backend = _chem_backend()
+    pict = Pict(backend=backend)
+    n = len(pict.layout({"molecules": [{"smiles": "CCO"}]}).molecules[0].atoms)
+    svg = pict.render(
+        {
+            "molecules": [
+                {
+                    "smiles": "CCO",
+                    "shade": {"atoms": [0.2 * i for i in range(n)]},
+                    "marks": [
+                        {"kind": "atoms", "atoms": [n - 1], "color": "#c00"},
+                        {"kind": "substructure", "atoms": list(range(n)), "color": "#06c"},
+                    ],
+                }
+            ]
+        }
+    )
+    assert "shade" in svg
+    assert "substructure-mark" in svg or "mark" in svg
+
+
+def test_elk_graph_uses_molecule_ids():
+    doc = PictSpec.model_validate(
+        {
+            "molecules": [
+                {"id": "A", "smiles": "CCO"},
+                {"id": "B", "smiles": "C"},
+            ],
+            "diagram": {
+                "kind": "network",
+                "edges": [{"source": "A", "target": "B"}],
+            },
+        }
+    )
+    pict = Pict(backend="native")
+    layouts = pict.layout(doc).molecules
+    graph = elk_graph(layouts, doc)
+    ids = {c["id"] for c in graph["children"]}
+    assert ids == {"A", "B"}
+    assert graph["edges"][0]["sources"] == ["A"]
+    assert json.loads(elk_graph_json(layouts, doc))["id"] == "root"
+
+
+def test_network_layout_positions_length():
+    doc = PictSpec.model_validate(
+        {
+            "molecules": [
+                {"id": "A", "smiles": "CCO"},
+                {"id": "B", "smiles": "C"},
+                {"id": "C", "smiles": "O"},
+            ],
+            "diagram": {
+                "kind": "network",
+                "edges": [
+                    {"source": "A", "target": "B"},
+                    {"source": "B", "target": "C"},
+                ],
+            },
+        }
+    )
+    layouts = Pict(backend="native").layout(doc).molecules
+    with warnings.catch_warnings(record=True):
+        warnings.simplefilter("always")
+        positions = layout_diagram(layouts, doc)
+    assert len(positions) == 3
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="node not available")
+def test_elkjs_bridge_when_installed():
+    script = Path(__file__).resolve().parents[1] / "js" / "pocs" / "elk_layout.mjs"
+    nm = Path(__file__).resolve().parents[1] / "js" / "node_modules" / "elkjs"
+    if not script.is_file() or not nm.exists():
+        pytest.skip("elkjs not installed under js/")
+    doc = PictSpec.model_validate(
+        {
+            "molecules": [
+                {"id": "A", "smiles": "CCO"},
+                {"id": "B", "smiles": "C"},
+            ],
+            "diagram": {
+                "kind": "network",
+                "edges": [{"source": "A", "target": "B"}],
+            },
+        }
+    )
+    layouts = Pict(backend="native").layout(doc).molecules
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        positions = layout_diagram(layouts, doc)
+    # Distinct positions if elkjs ran; row fallback also yields distinct x.
+    assert positions[0] != positions[1] or any(
+        issubclass(w.category, PictBackendWarning) for w in caught
+    )

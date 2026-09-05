@@ -38,6 +38,11 @@ class IndigoBackend:
             imol = indigo.loadMolecule(smiles)
 
         imol.layout()
+        # Kekulé bond orders for depiction (Indigo aromatic order is 4).
+        try:
+            imol.dearomatize()
+        except Exception:
+            pass
         atoms: list[AtomLayout] = []
         for atom in imol.iterateAtoms():
             x, y, _z = atom.xyz()
