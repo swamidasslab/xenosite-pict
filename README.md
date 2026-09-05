@@ -8,13 +8,13 @@ Import path: `xenosite.pict`
 
 Scaffold in progress. Language-neutral JSON contracts (Pydantic → generated JSON Schema) with Python and `js/` engines.
 
-**Depiction:** Hard — follow CDK / RDKit / Indigo / CoordGen; don’t invent. Own SVG (skeleton → offsets → stereo). If **native** layout is *demonstrably* good enough on hard cases, multi-backend layout largely goes away (see `docs/layout-notes.md`).
+**Depiction:** Hard — follow CDK / RDKit / Indigo / CoordGen; don’t invent. Own SVG (skeleton → offsets → stereo). The product goal is a **native** depictor that is *demonstrably* good enough on a hard-case gallery.
 
 **Chem stack (likely):** Chematic (or similar) for **perception** (aromaticity, SSSR, stereo — small Rust); **our** drawing. Chematic depict coords are not good enough. If we settle there, shipping depiction as a **Rust** crate (Py + WASM) is the natural fit — prove the draw/layout model in Python first.
 
-**Layout coords (transitional):** Indigo → RDKit → Open Babel → Chematic-coords-last-resort → native stub.
+**Layout coords (transitional):** **Indigo only** while native matures. No multi-backend ladder (RDKit / Open Babel / Chematic-as-layout are out of the product path). Native stub remains for tests without Indigo.
 
-**Multi-molecule diagrams:** ELK (JAR + V8 in Python; elkjs on web) — bridge stubbed; grid/row fallback works now.
+**Multi-molecule diagrams:** ELK via **jsrun** (embedded V8 + vendored elkjs) — no Node required. Grid/row fallback if ELK fails.
 
 **Outputs:** SVG (default); HTML with embedded SVG for responsive pages.
 
@@ -36,10 +36,10 @@ Backend is runtime config (not in the JSON document). Unsupported options emit `
 
 ```bash
 uv sync
-# optional chem engines:
+# transitional layout engine:
 uv sync --extra indigo
-uv sync --extra rdkit
-uv sync --extra openbabel
+# optional perception kernel (not layout):
+uv sync --extra chematic
 ```
 
 Export JSON Schema (committed under `schema/`):

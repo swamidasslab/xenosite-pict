@@ -37,22 +37,26 @@ Captured while implementing own-SVG drawing, marks/shade, and ELK placement. The
    Node width/height come from normalized molecule bounds. Changing scale/padding changes ELK spacing.  
    → Either freeze draw scale as a contract constant or put `scale`/`padding` on PictSpec so layout and draw agree.
 
-9. **Python ELK path**  
-   Node+elkjs subprocess works for derisk. Production still wants JAR+V8 (or embedded) without requiring Node on every host.  
-   → Keep bridge as optional; do not put `engine: elkjs|jar` in PictSpec — runtime config like `backend`.
+9. **Python ELK path** — **done via jsrun**  
+   ELK runs through vendored elkjs inside **jsrun** (embedded V8). No Node on the
+   host. Prefer jsrun over `mini-racer`/`py-mini-racer` (elk fake-worker /
+   `Atomics.waitAsync` gaps). Grid/row remain fallbacks. Do not put
+   `engine: elkjs|jar` in PictSpec.
 
 ## Drawing / scene (trickle-back)
 
 10. **Native depictor vs multi-backend; Chematic for perception**  
     Depiction is hard — always review CDK / RDKit / Indigo / CoordGen before changing layout or draw code.  
-    **If** `native` layout+draw is *demonstrably* good enough on the hard-case gallery, multi-layout-backends shrink a lot. Chematic is a strong candidate for **perception** (aromaticity, SSSR, stereo flags — small Rust, RDKit-like) but **not** for publication coords (their depictions suck). Own the SVG.  
-    **If** we settle on Chematic for perception, a **Rust depiction crate** (Python + WASM) is the coherent ship stack — shared molecule graph, small browser bundle. Prove algorithms in the Python POC first; do not bake a permanent multi-engine ladder into PictSpec. See `docs/layout-notes.md`.
+    Product path: **native** layout+draw proven on the hard-case gallery; **Indigo only** as transitional layout. Chematic is a strong candidate for **perception** (aromaticity, SSSR, stereo flags — small Rust, RDKit-like) but **not** for publication coords (their depictions suck). Own the SVG.  
+    **If** we settle on Chematic for perception, a **Rust depiction crate** (Python + WASM) is the coherent ship stack — shared molecule graph, small browser bundle. Prove algorithms in the Python POC first; do not bake a multi-engine layout ladder into PictSpec. See `docs/layout-notes.md`.
 
 11. **Ring / chain / stereo algorithms are depictor-owned practice**  
     Regular polygons, 120° zig-zag chains, partner distribution, wedges/hashes belong in layout (native target, backends for now). The drawer: skeleton centerlines → offset doubles/triples → stereo wedges. Bridged/cage systems cannot have every SSSR face forced regular — `HARD_RING_CASES`. Do not add a PictSpec field that promises “all rings regular.”
 
-12. **Stereo wedges**  
-    `BondLayout.stereo` exists; own-SVG must draw solid/hashed wedges (RDKit thin-at-begin convention) before claiming publication quality.
+12. **Stereo wedges** — **done (drawing)**  
+    `BondLayout.stereo` + `draw.bonds` solid/hashed wedges / either wavy / crossed
+    doubles (RDKit thin-at-begin). Native layout still owes CIP-consistent wedge
+    *assignment*; backends already supply stereo for transitional coords.
 
 13. **Halo / label collision**  
     Bond shortening into heteroatom labels is a start; aromatic rings and overlapping shade dots need more policy.  

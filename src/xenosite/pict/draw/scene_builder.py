@@ -15,6 +15,7 @@ from xenosite.pict.contracts.scene import (
     Viewport,
 )
 from xenosite.pict.contracts.spec import MarkKind, MoleculeSpec, PictSpec
+from xenosite.pict.draw.bonds import bond_paths, bond_strokes, depict_order, shorten
 from xenosite.pict.draw.plotdot import PlotDot
 from xenosite.pict.draw.rings import bond_interior_normals, find_sssr
 
@@ -45,26 +46,11 @@ def normalize_coords(
 def _shorten(
     x1: float, y1: float, x2: float, y2: float, gap1: float, gap2: float
 ) -> tuple[float, float, float, float]:
-    dx, dy = x2 - x1, y2 - y1
-    length = math.hypot(dx, dy) or 1.0
-    if gap1 + gap2 >= length:
-        mid_x, mid_y = (x1 + x2) / 2, (y1 + y2) / 2
-        return mid_x, mid_y, mid_x, mid_y
-    ux, uy = dx / length, dy / length
-    return x1 + ux * gap1, y1 + uy * gap1, x2 - ux * gap2, y2 - uy * gap2
+    return shorten(x1, y1, x2, y2, gap1, gap2)
 
 
 def _depict_order(order: float) -> float:
-    """Normalize engine bond orders for 2D depiction.
-
-    Indigo aromatic = 4; RDKit aromatic = 1.5. Prefer Kekulé from backends;
-    this is a safety net so aromatics never become triple lines.
-    """
-    if order >= 3.5:  # Indigo aromatic
-        return 1.0
-    if 1.4 <= order < 1.6:  # RDKit aromatic if not Kekulized
-        return 1.0
-    return order
+    return depict_order(order)
 
 
 def _bond_key(a: int, b: int) -> tuple[int, int]:
@@ -94,47 +80,10 @@ def _bond_paths(
     y2: float,
     order: float,
     interior: tuple[float, float] | None = None,
+    stereo: str | None = None,
 ) -> list[PathPrim]:
-    """Draw bonds; double/triple second lines prefer ring-interior and are shortened."""
-    dx, dy = x2 - x1, y2 - y1
-    length = math.hypot(dx, dy) or 1.0
-    lx, ly = -dy / length, dx / length  # left normal
-    order = _depict_order(order)
-    stroke = 1.55
-
-    def line(xa: float, ya: float, xb: float, yb: float) -> PathPrim:
-        return PathPrim(
-            d=f"M {xa:.2f} {ya:.2f} L {xb:.2f} {yb:.2f}",
-            stroke="#111",
-            stroke_width=stroke,
-            cls="bond",
-        )
-
-    out: list[PathPrim] = [line(x1, y1, x2, y2)]
-    if order < 1.5:
-        return out
-
-    # Direction for offset line(s): ring interior when known, else left normal.
-    if interior is not None:
-        nx, ny = interior
-    else:
-        nx, ny = lx, ly
-
-    if order >= 2.5:
-        # Triple: short lines on both sides.
-        gap = min(4.0, length * 0.18)
-        sx1, sy1, sx2, sy2 = _shorten(x1, y1, x2, y2, gap, gap)
-        for side in (-1.0, 1.0):
-            ox, oy = nx * 2.6 * side, ny * 2.6 * side
-            out.append(line(sx1 + ox, sy1 + oy, sx2 + ox, sy2 + oy))
-        return out
-
-    # Double: one shortened companion toward interior.
-    offset = 2.4
-    gap = min(3.2, length * 0.16)
-    sx1, sy1, sx2, sy2 = _shorten(x1, y1, x2, y2, gap, gap)
-    out.append(line(sx1 + nx * offset, sy1 + ny * offset, sx2 + nx * offset, sy2 + ny * offset))
-    return out
+    """Skeleton centerline, then offsets, then stereo (see ``draw.bonds``)."""
+    return bond_paths(x1, y1, x2, y2, order, interior=interior, stereo=stereo)
 
 
 def _halo_path(x1: float, y1: float, x2: float, y2: float) -> PathPrim:
@@ -257,6 +206,10 @@ def molecule_to_viewport(layout: MoleculeLayout, mol_spec: MoleculeSpec) -> View
 
     labeled = {i for i, a in enumerate(layout.atoms) if a.label is not None or a.charge}
     bond_color = mol_spec.color or "#111"
+    # Quality depictors: all skeleton centerlines, then offsets, then stereo.
+    skeletons: list[PathPrim] = []
+    offsets: list[PathPrim] = []
+    stereos: list[PathPrim] = []
     for bond in layout.bonds:
         i0, i1 = atom_pos.get(bond.begin), atom_pos.get(bond.end)
         if i0 is None or i1 is None:
@@ -269,10 +222,27 @@ def molecule_to_viewport(layout: MoleculeLayout, mol_spec: MoleculeSpec) -> View
         if mol_spec.halo:
             layers["halo"].primitives.append(_halo_path(x1, y1, x2, y2))
         interior = ring_normals.get(_bond_key(bond.begin, bond.end))
-        for p in _bond_paths(x1, y1, x2, y2, bond.order, interior=interior):
+        strokes = bond_strokes(
+            x1, y1, x2, y2, bond.order, interior=interior, stereo=bond.stereo
+        )
+        tag = f"bond-{bond.index} atom-{bond.begin} atom-{bond.end}"
+        if strokes.skeleton is not None:
+            strokes.skeleton.stroke = bond_color
+            strokes.skeleton.cls = f"{tag} bond-skeleton"
+            skeletons.append(strokes.skeleton)
+        for p in strokes.offsets:
             p.stroke = bond_color
-            p.cls = f"bond-{bond.index} atom-{bond.begin} atom-{bond.end}"
-            layers["bonds"].primitives.append(p)
+            p.cls = f"{tag} bond-offset"
+            offsets.append(p)
+        for p in strokes.stereo:
+            p.stroke = bond_color
+            if p.fill and p.fill not in ("none", None):
+                p.fill = bond_color
+            p.cls = f"{tag} {p.cls or 'bond-stereo'}"
+            stereos.append(p)
+    layers["bonds"].primitives.extend(skeletons)
+    layers["bonds"].primitives.extend(offsets)
+    layers["bonds"].primitives.extend(stereos)
 
     for i, atom in enumerate(layout.atoms):
         label = atom.label

@@ -64,5 +64,5 @@ class NativeBackend:
             atoms=atoms,
             bonds=bonds,
             backend=self.name,
-            warnings=["native backend uses a toy layout; prefer indigo, rdkit, or openbabel"],
+            warnings=["native backend uses a toy layout; prefer indigo until native depiction is proven"],
         )

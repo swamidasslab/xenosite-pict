@@ -15,32 +15,23 @@ OutputFormat = Literal["svg", "html"]
 
 
 def _resolve_backend_name(requested: str | None) -> str:
+    """Default: Indigo when installed, else native stub.
+
+    Multi-engine preference ladders are intentionally gone — native depiction is
+    the product goal; Indigo is the one transitional layout engine.
+    """
     if requested:
         return requested.lower()
     for name in BACKEND_PREFERENCE:
         if name == "native":
             return "native"
-        try:
-            if name == "indigo":
+        if name == "indigo":
+            try:
                 import indigo  # noqa: F401
 
-                return name
-            if name == "rdkit":
-                import rdkit  # noqa: F401
-
-                return name
-            if name in {"openbabel", "pybel"}:
-                from openbabel import pybel  # noqa: F401
-
-                return "openbabel"
-            if name == "chematic":
-                import chematic  # noqa: F401
-
-                return name
-        except ImportError:
-            continue
-        except KeyError:
-            continue
+                return "indigo"
+            except ImportError:
+                continue
     return "native"
 
 

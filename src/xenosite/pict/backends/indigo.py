@@ -61,12 +61,23 @@ class IndigoBackend:
             )
         bonds: list[BondLayout] = []
         for bond in imol.iterateBonds():
+            # Indigo: UP=5, DOWN=6, EITHER=4; CIS/TRANS are double-bond stereo
+            # handled by layout geometry. Thin end of wedge is at source().
+            st = int(bond.bondStereo())
+            stereo = "none"
+            if st == indigo.UP:
+                stereo = "up"
+            elif st == indigo.DOWN:
+                stereo = "down"
+            elif st == indigo.EITHER:
+                stereo = "either"
             bonds.append(
                 BondLayout(
                     index=bond.index(),
                     begin=bond.source().index(),
                     end=bond.destination().index(),
                     order=float(bond.bondOrder()),
+                    stereo=stereo,
                 )
             )
         return MoleculeLayout(id=mol.id, atoms=atoms, bonds=bonds, backend=self.name)

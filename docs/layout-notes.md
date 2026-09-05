@@ -17,22 +17,24 @@ that as the guide:
 Hard cases (bridged cages, congested chains, stereo centers, macrocycles) are the
 test of quality — not benzene.
 
-## Strategic target: native depictor, proven — not five backends forever
+## Strategic target: native depictor, proven — Indigo only while getting there
 
 **If** an internal (`native`) layout + draw stack is *demonstrably* good enough,
-the need for multiple chem layout backends is greatly diminished.
+we do not need a multi-engine layout ladder.
 
 “Good enough” is **not** assumed. It must be shown on a growing hard-case gallery
 (rings, chains, stereo, collisions) side-by-side with Indigo / RDKit / CDK-quality
-references. Until that bar is cleared, optional engines remain scaffolding:
+*references* (read their sources; we do not ship them as layout backends).
+
+Until that bar is cleared:
 
 1. Learn algorithms from Indigo / RDKit / CoordGen / CDK (read their sources).
 2. Own the **drawing** path now (skeleton → offsets → wedges; our SVG).
 3. Grow **native layout** toward those algorithms (rings → chains → stereo placement).
-4. Retire the backend preference ladder once native wins the gallery on hard cases.
+4. Keep **one** transitional layout engine — **Indigo** — for real coords in POCs and
+   demos. No RDKit / Open Babel / Chematic layout backends in the product path.
 
-After that, chem libraries shrink to optional roles: SMILES/molfile **parse**,
-CXSMILES extras, or emergency fallback — not a permanent multi-engine product.
+After native wins the gallery, Indigo shrinks to optional parse/emergency fallback.
 
 ### Chematic for perception (not depiction)
 
@@ -44,7 +46,7 @@ Split the problem:
 | **2D coordinates** | Rings, chains, collisions, templates | Weak today — their depict coords suck; do not trust as publication layout |
 | **Drawing** | Skeleton → offsets → wedges → SVG | **Ours** — always |
 
-So Chematic is a plausible **default chem kernel** for perception while we own drawing and grow native (or Indigo/RDKit) layout. Using Chematic’s SVG/layout as the product surface would be a mistake.
+So Chematic is a plausible **default chem kernel** for perception while we own drawing and grow native layout (Indigo transitional). Using Chematic’s SVG/layout as the product surface would be a mistake.
 
 Validate perception against RDKit on hard aromatics / stereo before promoting it; treat their `depict_*` path as throwaway.
 
@@ -54,13 +56,12 @@ stack: one molecule graph, no FFI tax between perceive and draw, small browser
 bundle. Keep Python as the algorithm lab until skeleton → offsets → wedges and
 the native layout quality bar are demonstrated — then port, don’t invent twice.
 
-### Transitional layout coords (scaffolding only)
+### Transitional layout coords
 
-1. **Indigo** — current best coords while native matures (WASM for `js/` too).
-2. **RDKit** (+ CoordGen / ring templates) — strong reference and fallback.
-3. **Open Babel / pybel** — format breadth.
-4. **Chematic** — perception OK; **coords last resort only**.
-5. **native** — must grow from toy stub → proven depictor; that is the real goal.
+1. **Indigo** — the one transitional layout engine (WASM for `js/` too).
+2. **native** — must grow from toy stub → proven depictor; that is the real goal.
+
+RDKit / CoordGen / CDK remain **algorithm references**, not installed layout backends.
 
 ## Drawing model (own SVG)
 
@@ -144,9 +145,11 @@ Guide: RDKit MolDraw2D wedges + `WedgeMolBonds`; Indigo `UP`/`DOWN`/`EITHER`.
 - E/Z: primarily a **layout** problem (substituents placed correctly); drawing
   is ordinary double offsets unless “either”.
 
-`BondLayout.stereo` carries `up`/`down`/`either`/`none`. Backends should populate
-it; the drawer must render it before claiming publication quality. Native layout
-must assign wedges consistently with CIP/coords, not invent a new convention.
+`BondLayout.stereo` carries `up`/`down`/`either`/`none`. RDKit (`WedgeMolBonds`)
+and Indigo backends populate it; `draw.bonds` renders solid/hashed wedges, wavy
+either singles, and crossed either doubles (thin end at `begin` = stereocenter).
+Native layout must still assign wedges consistently with CIP/coords — drawing is
+done; stereo *placement* on native coords is not.
 
 ## Native quality bar (demonstration checklist)
 
@@ -160,13 +163,16 @@ coords for those molecules:
 - [ ] Stereo (`C[C@H](O)Cl`, E/Z alkenes) — correct wedge/hash and double geometry
 - [ ] Side-by-side gallery vs Indigo/RDKit on the same SMILES set
 
-Until that checklist is green, keep optional backends. After it is green, drop
-them from the default path.
+Until that checklist is green, keep **Indigo** as the transitional layout engine.
+After it is green, Indigo shrinks to optional parse/emergency fallback.
 
 ## ELK for multi-mol diagrams
 
 Metabolic networks / reaction schemes use **ELK** for viewport placement (not
-chemical MCS alignment). POC: `js/pocs/` + `diagram/elk.py`. Target: JAR+V8
-without Node on every host. Grid/row stay pure-Python.
+chemical MCS alignment). Python runs vendored elkjs inside **jsrun** (embedded
+V8) — no Node subprocess. (`mini-racer` / legacy `py-mini-racer` were tried;
+elk’s fake-worker path needs `Atomics.waitAsync` plumbing that jsrun already
+handles.) Grid/row stay pure-Python fallbacks. Browser `js/` can keep elkjs
+directly.
 
 See also `docs/pocs/` for derisk POCs and schema-alpha feedback.

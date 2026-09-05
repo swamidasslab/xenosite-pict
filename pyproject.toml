@@ -11,6 +11,7 @@ requires-python = ">=3.11"
 dependencies = [
   "pydantic>=2.7",
   "networkx>=3.2",
+  "jsrun>=0.1.0",
 ]
 classifiers = [
   "Development Status :: 3 - Alpha",
@@ -21,15 +22,13 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
+# Transitional 2D coords while native depiction matures. Only layout engine we keep.
 indigo = [
     "epam-indigo>=1.19",
 ]
-rdkit = [
-    "rdkit>=2023.9.1",
-]
-openbabel = ["openbabel-wheel>=3.1.1"]
+# Perception-only optional kernel (not a layout backend).
 chematic = ["chematic>=0.16"]
-all = ["xenosite-pict[indigo,rdkit,openbabel,chematic]"]
+all = ["xenosite-pict[indigo,chematic]"]
 
 [project.urls]
 Homepage = "https://github.com/swamidasslab/xenosite-pict"

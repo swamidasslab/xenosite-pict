@@ -40,13 +40,11 @@ def _out_dir() -> Path:
 
 
 def _pick_backend() -> str:
-    for name in ("indigo", "rdkit"):
-        try:
-            Pict(backend=name).layout({"molecules": [{"smiles": "C"}]})
-            return name
-        except Exception:
-            continue
-    return "native"
+    try:
+        Pict(backend="indigo").layout({"molecules": [{"smiles": "C"}]})
+        return "indigo"
+    except Exception:
+        return "native"
 
 
 def poc_svg(out: Path, backend: str) -> Path:

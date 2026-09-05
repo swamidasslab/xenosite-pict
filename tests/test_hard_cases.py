@@ -57,13 +57,11 @@ HARD_CASES: list[dict] = [
 
 
 def _chem_backend() -> str:
-    for name in ("indigo", "rdkit"):
-        try:
-            Pict(backend=name).layout({"molecules": [{"smiles": "CCO"}]})
-            return name
-        except Exception:
-            continue
-    pytest.skip("no chem layout backend installed")
+    try:
+        Pict(backend="indigo").layout({"molecules": [{"smiles": "CCO"}]})
+        return "indigo"
+    except Exception:
+        pytest.skip("indigo not installed")
 
 
 def _bond_stroke_counts(svg: str) -> Counter[str]:
