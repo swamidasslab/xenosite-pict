@@ -1,0 +1,15 @@
+{
+  "name": "@xenosite/pict",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "JS/WASM processor for xenosite.pict contracts (Indigo WASM + elkjs)",
+  "main": "src/index.js",
+  "scripts": {
+    "check": "node --check src/index.js"
+  },
+  "dependencies": {},
+  "optionalDependencies": {
+    "elkjs": "^0.9.3"
+  }
+}
