@@ -61,6 +61,8 @@ class ParsedBond:
     end: int
     order: float = 1.0
     aromatic: bool = False
+    # OpenSMILES directional bond ``/`` or ``\\`` (begin→end as written).
+    stereo: str | None = None
 
 
 @dataclass
@@ -85,8 +87,9 @@ def parse_organic_smiles(smiles: str) -> ParsedMol:
 
     Supports: organic subset, brackets, ``-=#:``, branches ``()``, ring digits
     ``1``–``9`` / ``%NN``, aromatic lowercase, ``.`` disconnects, tetrahedral
-    ``@`` / ``@@`` (stored for native wedge assignment). Bond stereo ``/\\`` is
-    ignored for topology (E/Z is a layout concern).
+    ``@`` / ``@@`` (stored for native wedge assignment). Bond stereo ``/`` /
+    ``\\`` is stored on the single bond (begin→end as written) for native E/Z
+    layout enforcement.
     """
     s = smiles.split("|", 1)[0].strip()
     if not s:
@@ -99,17 +102,22 @@ def parse_organic_smiles(smiles: str) -> ParsedMol:
     prev: int | None = None
     bond_order = 1.0
     pending_arom = False
+    pending_stereo: str | None = None
     rings: dict[int, tuple[int, float, bool]] = {}
     i = 0
     n = len(s)
 
-    def add_bond(a: int, b: int, order: float, aromatic: bool) -> None:
+    def add_bond(
+        a: int, b: int, order: float, aromatic: bool, stereo: str | None = None
+    ) -> None:
         if a == b:
             return
         for existing in mol.bonds:
             if {existing.begin, existing.end} == {a, b}:
                 return
-        mol.bonds.append(ParsedBond(begin=a, end=b, order=order, aromatic=aromatic))
+        mol.bonds.append(
+            ParsedBond(begin=a, end=b, order=order, aromatic=aromatic, stereo=stereo)
+        )
 
     while i < n:
         ch = s[i]
@@ -126,26 +134,33 @@ def parse_organic_smiles(smiles: str) -> ParsedMol:
             prev = None
             bond_order = 1.0
             pending_arom = False
+            pending_stereo = None
             i += 1
             continue
         if ch == "-":
             bond_order, pending_arom = 1.0, False
+            pending_stereo = None
             i += 1
             continue
         if ch == "=":
             bond_order, pending_arom = 2.0, False
+            pending_stereo = None
             i += 1
             continue
         if ch == "#":
             bond_order, pending_arom = 3.0, False
+            pending_stereo = None
             i += 1
             continue
         if ch == ":":
             bond_order, pending_arom = 1.5, True
+            pending_stereo = None
             i += 1
             continue
         if ch in "/\\":
-            # Bond stereo — ignore for topology.
+            # OpenSMILES directional single (E/Z). Applies to the next bond formed.
+            bond_order, pending_arom = 1.0, False
+            pending_stereo = ch
             i += 1
             continue
         if ch == "%":
@@ -163,13 +178,13 @@ def parse_organic_smiles(smiles: str) -> ParsedMol:
                 )
                 if arom and order == 1.0:
                     order = 1.5
-                add_bond(prev, other, order, arom)
+                add_bond(prev, other, order, arom, pending_stereo)
                 mol.atoms[prev].smiles_neighbors.append(other)
                 mol.atoms[other].smiles_neighbors.append(prev)
-                bond_order, pending_arom = 1.0, False
+                bond_order, pending_arom, pending_stereo = 1.0, False, None
             else:
                 rings[rnum] = (prev, bond_order, pending_arom)
-                bond_order, pending_arom = 1.0, False
+                bond_order, pending_arom, pending_stereo = 1.0, False, None
             continue
         if ch.isdigit():
             rnum = int(ch)
@@ -184,13 +199,13 @@ def parse_organic_smiles(smiles: str) -> ParsedMol:
                 )
                 if arom and order == 1.0:
                     order = 1.5
-                add_bond(prev, other, order, arom)
+                add_bond(prev, other, order, arom, pending_stereo)
                 mol.atoms[prev].smiles_neighbors.append(other)
                 mol.atoms[other].smiles_neighbors.append(prev)
-                bond_order, pending_arom = 1.0, False
+                bond_order, pending_arom, pending_stereo = 1.0, False, None
             else:
                 rings[rnum] = (prev, bond_order, pending_arom)
-                bond_order, pending_arom = 1.0, False
+                bond_order, pending_arom, pending_stereo = 1.0, False, None
             continue
 
         # Atom
@@ -237,12 +252,13 @@ def parse_organic_smiles(smiles: str) -> ParsedMol:
             arom = pending_arom or (mol.atoms[prev].aromatic and atom.aromatic)
             if arom and order == 1.0:
                 order = 1.5
-            add_bond(prev, idx, order, arom)
+            add_bond(prev, idx, order, arom, pending_stereo)
             mol.atoms[prev].smiles_neighbors.append(idx)
             atom.smiles_neighbors.append(prev)
         prev = idx
         bond_order = 1.0
         pending_arom = False
+        pending_stereo = None
 
     if rings:
         mol.warnings.append(f"unclosed ring digits: {sorted(rings)}")

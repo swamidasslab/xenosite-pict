@@ -15,6 +15,7 @@ import math
 from collections import defaultdict, deque
 
 from xenosite.pict.backends.native_smiles import (
+    ParsedBond,
     ParsedMol,
     atom_display_label,
     kekulize_aromatic_bonds,
@@ -282,11 +283,18 @@ def _distribute_partner_angles(
 
 
 def _place_chains(mol: ParsedMol, coords: dict[int, tuple[float, float]]) -> None:
-    """BFS from placed atoms; distribute partners into free angular wedges (CDK)."""
+    """BFS from placed atoms; distribute partners into free angular wedges (CDK).
+
+    Acyclic molecules: seed the **longest chain** as a 120° zig-zag first
+    (CDK ``AtomPlacer.placeLinearChain``), then grow branches from it.
+    """
     adj: dict[int, list[int]] = defaultdict(list)
     for b in mol.bonds:
         adj[b.begin].append(b.end)
         adj[b.end].append(b.begin)
+
+    if not coords:
+        _seed_longest_chain(mol, coords, adj)
 
     if not coords:
         coords[0] = (0.0, 0.0)
@@ -320,6 +328,193 @@ def _place_chains(mol: ParsedMol, coords: dict[int, tuple[float, float]]) -> Non
     for a in mol.atoms:
         if a.index not in coords:
             coords[a.index] = (float(a.index) * _BOND_LEN, 0.0)
+
+
+def _longest_path(adj: dict[int, list[int]], n_atoms: int) -> list[int]:
+    """Longest simple path in an undirected tree/graph (BFS diameter for trees).
+
+    For small molecules we BFS from every node; gallery sizes stay tiny.
+    """
+    if n_atoms == 0:
+        return []
+    if n_atoms == 1:
+        return [0]
+
+    def farthest(start: int) -> tuple[int, list[int]]:
+        prev: dict[int, int | None] = {start: None}
+        q = deque([start])
+        last = start
+        while q:
+            u = q.popleft()
+            last = u
+            for v in adj[u]:
+                if v not in prev:
+                    prev[v] = u
+                    q.append(v)
+        path = []
+        cur: int | None = last
+        while cur is not None:
+            path.append(cur)
+            cur = prev[cur]
+        path.reverse()
+        return last, path
+
+    # Two BFS (tree diameter). For graphs with cycles this is a good heuristic.
+    end1, _ = farthest(0)
+    end2, path = farthest(end1)
+    # Also try other starts if a longer path exists (cycles / disconnected).
+    best = path
+    for start in range(n_atoms):
+        _, p = farthest(start)
+        if len(p) > len(best):
+            best = p
+        elif len(p) == len(best) and p < best:
+            best = p  # deterministic tie-break
+    return best
+
+
+def _seed_longest_chain(
+    mol: ParsedMol,
+    coords: dict[int, tuple[float, float]],
+    adj: dict[int, list[int]],
+) -> None:
+    """Place the longest chain as a 120° zig-zag (CDK placeLinearChain)."""
+    path = _longest_path(adj, len(mol.atoms))
+    if len(path) < 2:
+        return
+    coords[path[0]] = (0.0, 0.0)
+    coords[path[1]] = (_BOND_LEN, 0.0)
+    # Alternate ±60° from the previous bond direction → 120° bond angles.
+    sign = 1.0
+    for i in range(2, len(path)):
+        ax, ay = coords[path[i - 2]]
+        bx, by = coords[path[i - 1]]
+        prev_ang = _angle(bx - ax, by - ay)
+        # Turn by 60° from collinear (= 120° bond angle at path[i-1]).
+        ang = prev_ang + sign * math.radians(60.0)
+        coords[path[i]] = (
+            bx + math.cos(ang) * _BOND_LEN,
+            by + math.sin(ang) * _BOND_LEN,
+        )
+        sign = -sign
+
+
+def _stereo_parity_from_db(bond: ParsedBond, db_atom: int) -> bool | None:
+    """True if substituent is on the '+' side looking out from the double-bond atom.
+
+    OpenSMILES: ``/`` from db→substituent is '+'; written substituent→db flips.
+    """
+    if bond.stereo not in {"/", "\\"}:
+        return None
+    if bond.begin == db_atom:
+        return bond.stereo == "/"
+    if bond.end == db_atom:
+        return bond.stereo == "\\"
+    return None
+
+
+def _connected_component(
+    start: int, blocked: set[int], adj: dict[int, list[int]]
+) -> set[int]:
+    """Atoms reachable from ``start`` without crossing ``blocked``."""
+    out = {start}
+    q = deque([start])
+    while q:
+        u = q.popleft()
+        for v in adj[u]:
+            if v in blocked or v in out:
+                continue
+            out.add(v)
+            q.append(v)
+    return out
+
+
+def _reflect_across_axis(
+    coords: dict[int, tuple[float, float]],
+    atoms: set[int],
+    ax: float,
+    ay: float,
+    bx: float,
+    by: float,
+) -> None:
+    """Reflect ``atoms`` across the line through (ax,ay)–(bx,by)."""
+    dx, dy = bx - ax, by - ay
+    length2 = dx * dx + dy * dy or 1.0
+    for i in atoms:
+        px, py = coords[i]
+        # Vector from A to P
+        vx, vy = px - ax, py - ay
+        proj = (vx * dx + vy * dy) / length2
+        fx, fy = ax + proj * dx, ay + proj * dy
+        coords[i] = (2 * fx - px, 2 * fy - py)
+
+
+def _enforce_ez_stereo(mol: ParsedMol, coords: dict[int, tuple[float, float]]) -> None:
+    """Flip one substituent side of a double bond to match OpenSMILES E/Z.
+
+    Guide: OpenSMILES ``/`` ``\\`` — same relative parity → opposite sides (trans);
+    opposite parity → same side (cis). Layout places freely first; this post-pass
+    mirrors the smaller substituent tree across the double-bond axis when needed.
+    """
+    adj: dict[int, list[int]] = defaultdict(list)
+    bonds_by_pair: dict[frozenset[int], ParsedBond] = {}
+    for b in mol.bonds:
+        adj[b.begin].append(b.end)
+        adj[b.end].append(b.begin)
+        bonds_by_pair[frozenset({b.begin, b.end})] = b
+
+    for db in mol.bonds:
+        if db.order < 1.5 or db.order >= 2.5:
+            continue
+        a, b = db.begin, db.end
+        # Find one stereo-marked substituent on each end (prefer heavy, non-H).
+        sub_a = sub_b = None
+        parity_a = parity_b = None
+        for nbr in adj[a]:
+            if nbr == b:
+                continue
+            pb = bonds_by_pair.get(frozenset({a, nbr}))
+            if pb is None:
+                continue
+            p = _stereo_parity_from_db(pb, a)
+            if p is not None:
+                sub_a, parity_a = nbr, p
+                break
+        for nbr in adj[b]:
+            if nbr == a:
+                continue
+            pb = bonds_by_pair.get(frozenset({b, nbr}))
+            if pb is None:
+                continue
+            p = _stereo_parity_from_db(pb, b)
+            if p is not None:
+                sub_b, parity_b = nbr, p
+                break
+        if sub_a is None or sub_b is None or parity_a is None or parity_b is None:
+            continue
+
+        # Same parity → cis (same side); different → trans (opposite sides).
+        want_same_side = parity_a == parity_b
+
+        ax, ay = coords[a]
+        bx, by = coords[b]
+        # Cross product sign: (sub-a) × (db vector) vs (sub-b) × (db vector).
+        dx, dy = bx - ax, by - ay
+        sax, say = coords[sub_a][0] - ax, coords[sub_a][1] - ay
+        sbx, sby = coords[sub_b][0] - bx, coords[sub_b][1] - by
+        cross_a = dx * say - dy * sax
+        cross_b = dx * sby - dy * sbx
+        if abs(cross_a) < 1e-9 or abs(cross_b) < 1e-9:
+            continue
+        have_same_side = (cross_a > 0) == (cross_b > 0)
+        if have_same_side == want_same_side:
+            continue
+
+        # Flip the smaller substituent tree across the double-bond axis.
+        comp_a = _connected_component(sub_a, {a, b}, adj)
+        comp_b = _connected_component(sub_b, {a, b}, adj)
+        flip = comp_b if len(comp_b) <= len(comp_a) else comp_a
+        _reflect_across_axis(coords, flip, ax, ay, bx, by)
 
 
 def _clash_score(
@@ -486,6 +681,8 @@ def layout_parsed(mol: ParsedMol, *, mol_id: str | None = None) -> MoleculeLayou
     _place_ring_systems(rings, coords)
     _place_chains(mol, coords)
     _mitigate_terminal_collisions(mol, coords)
+    # After collision flips — E/Z from OpenSMILES ``/`` ``\\`` must win.
+    _enforce_ez_stereo(mol, coords)
 
     deg = _degree_map(mol)
     atoms = [

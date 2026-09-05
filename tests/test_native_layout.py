@@ -167,3 +167,52 @@ def test_terminal_flip_reduces_clash_on_crowded_ring():
     )
     # Bond length is 1.5; non-bonded pairs should stay above ~0.85× that.
     assert min_nb > 1.2
+
+def _same_side_of_double(lay, a: int, b: int, sub_a: int, sub_b: int) -> bool:
+    pos = {x.index: (x.x, x.y) for x in lay.atoms}
+    ax, ay = pos[a]
+    bx, by = pos[b]
+    dx, dy = bx - ax, by - ay
+    sax, say = pos[sub_a][0] - ax, pos[sub_a][1] - ay
+    sbx, sby = pos[sub_b][0] - bx, pos[sub_b][1] - by
+    return (dx * say - dy * sax > 0) == (dx * sby - dy * sbx > 0)
+
+
+def test_ez_trans_from_smiles_slash():
+    """OpenSMILES F/C=C/F is trans (opposite sides)."""
+    lay = _native_layout("F/C=C/F")
+    assert _same_side_of_double(lay, 1, 2, 0, 3) is False
+
+
+def test_ez_cis_from_smiles_slash_backslash():
+    """OpenSMILES F/C=C\\F is cis (same side)."""
+    lay = _native_layout(r"F/C=C\F")
+    assert _same_side_of_double(lay, 1, 2, 0, 3) is True
+
+
+def test_longest_chain_seed_keeps_120_on_branched_alkane():
+    """Longest-chain seed (CDK placeLinearChain) still yields 120° on the spine."""
+    from collections import Counter
+
+    lay = _native_layout("CC(C)CCCC")
+    deg = Counter()
+    for b in lay.bonds:
+        deg[b.begin] += 1
+        deg[b.end] += 1
+    pos = {a.index: (a.x, a.y) for a in lay.atoms}
+    adj = {i: [] for i in pos}
+    for b in lay.bonds:
+        adj[b.begin].append(b.end)
+        adj[b.end].append(b.begin)
+    for i, d in deg.items():
+        if d != 2:
+            continue
+        n0, n1 = adj[i]
+        ax, ay = pos[n0]
+        bx, by = pos[i]
+        cx, cy = pos[n1]
+        v1 = (ax - bx, ay - by)
+        v2 = (cx - bx, cy - by)
+        cos = (v1[0] * v2[0] + v1[1] * v2[1]) / (math.hypot(*v1) * math.hypot(*v2))
+        ang = math.degrees(math.acos(max(-1.0, min(1.0, cos))))
+        assert abs(ang - 120.0) < 1e-6
