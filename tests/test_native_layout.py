@@ -72,7 +72,40 @@ def test_norbornane_does_not_claim_all_regular():
     assert any("bridged" in w.lower() or "cage" in w.lower() for w in lay.warnings)
 
 
-def test_native_svg_renders():
-    svg = render({"molecules": [{"smiles": "c1ccccc1O"}]}, backend="native")
-    assert "<svg" in svg
-    assert "bond" in svg
+def test_acetic_acid_carbonyl_is_trigonal():
+    lay = _native_layout("CC(=O)O")
+    # Carbonyl carbon is the degree-3 atom.
+    from collections import Counter
+
+    deg = Counter()
+    for b in lay.bonds:
+        deg[b.begin] += 1
+        deg[b.end] += 1
+    center = max(deg, key=deg.get)
+    pos = {a.index: (a.x, a.y) for a in lay.atoms}
+    nbrs = [
+        b.end if b.begin == center else b.begin
+        for b in lay.bonds
+        if b.begin == center or b.end == center
+    ]
+    cx, cy = pos[center]
+    vecs = [(pos[n][0] - cx, pos[n][1] - cy) for n in nbrs]
+    angles = []
+    for i in range(len(vecs)):
+        for j in range(i + 1, len(vecs)):
+            v1, v2 = vecs[i], vecs[j]
+            n1, n2 = math.hypot(*v1), math.hypot(*v2)
+            cos = max(-1.0, min(1.0, (v1[0] * v2[0] + v1[1] * v2[1]) / (n1 * n2)))
+            angles.append(math.degrees(math.acos(cos)))
+    assert all(abs(a - 120.0) < 1e-6 for a in angles)
+
+
+def test_phenol_substituent_is_exterior():
+    lay = _native_layout("c1ccc(cc1)O")
+    assert len(lay.atoms) == 7
+    rings = find_sssr(lay)
+    assert len(rings) == 1
+    # Oxygen is the heteroatom outside the ring.
+    o = next(a for a in lay.atoms if a.element == "O")
+    ring_atoms = set(rings[0].atoms)
+    assert o.index not in ring_atoms

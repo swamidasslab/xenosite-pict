@@ -183,7 +183,87 @@ def _place_ring_systems(
     return placed
 
 
+def _angle(dx: float, dy: float) -> float:
+    return math.atan2(dy, dx)
+
+
+def _norm_angle(a: float) -> float:
+    while a <= -math.pi:
+        a += 2 * math.pi
+    while a > math.pi:
+        a -= 2 * math.pi
+    return a
+
+
+def _distribute_partner_angles(
+    occupied: list[float], n_new: int, *, prefer: float = math.radians(120.0)
+) -> list[float]:
+    """Place ``n_new`` directions in the gaps between occupied neighbor angles.
+
+    Mirrors CDK ``AtomPlacer.distributePartners``: fill the largest free wedge(s)
+    with roughly ``prefer`` (120°) spacing when degree allows.
+    """
+    if n_new <= 0:
+        return []
+    if not occupied:
+        # No constraints — star from +x.
+        if n_new == 1:
+            return [0.0]
+        return [_norm_angle(2 * math.pi * i / n_new) for i in range(n_new)]
+
+    # One occupied neighbor: CDK chain / branch rule — place new bonds at
+    # ±prefer (120°) from the existing bond, NOT opposite (180° would be linear).
+    if len(occupied) == 1:
+        base = occupied[0]
+        if n_new == 1:
+            return [_norm_angle(base + prefer)]
+        # Symmetric for geminal substituents (e.g. carbonyl C with =O and -OH).
+        out = []
+        for i in range(n_new):
+            # Alternate +prefer, -prefer, then +2prefer, ...
+            sign = 1.0 if i % 2 == 0 else -1.0
+            mag = prefer * ((i // 2) + 1)
+            out.append(_norm_angle(base + sign * mag))
+        return out
+
+    occ = sorted(_norm_angle(a) for a in occupied)
+    # Build gaps (start_angle, gap_width) sweeping CCW.
+    gaps: list[tuple[float, float]] = []
+    for i, a0 in enumerate(occ):
+        a1 = occ[(i + 1) % len(occ)]
+        width = a1 - a0
+        if width <= 0:
+            width += 2 * math.pi
+        gaps.append((a0, width))
+    # Assign slots proportional to gap size (at least one into the largest).
+    gaps.sort(key=lambda g: g[1], reverse=True)
+    slots = [0] * len(gaps)
+    remaining = n_new
+    # Prefer putting partners into gaps that can fit ~120° wedges.
+    for i, (_start, width) in enumerate(gaps):
+        if remaining <= 0:
+            break
+        # How many prefer-spaced neighbors fit in this gap (leaving margins).
+        fit = max(1, int(width / prefer)) if width > prefer * 0.5 else 0
+        take = min(remaining, fit if fit else (1 if i == 0 else 0))
+        slots[i] = take
+        remaining -= take
+    if remaining > 0:
+        slots[0] += remaining
+
+    result: list[float] = []
+    for (start, width), count in zip(gaps, slots, strict=True):
+        if count <= 0:
+            continue
+        # Evenly space inside the gap, inset by half-step from edges.
+        step = width / (count + 1)
+        for k in range(1, count + 1):
+            result.append(_norm_angle(start + step * k))
+    return result
+
+
 def _place_chains(mol: ParsedMol, coords: dict[int, tuple[float, float]]) -> None:
+    """BFS from placed atoms; distribute partners into free angular wedges (CDK)."""
     adj: dict[int, list[int]] = defaultdict(list)
     for b in mol.bonds:
         adj[b.begin].append(b.end)
@@ -194,44 +274,29 @@ def _place_chains(mol: ParsedMol, coords: dict[int, tuple[float, float]]) -> Non
         if adj[0]:
             coords[adj[0][0]] = (_BOND_LEN, 0.0)
 
-    parent: dict[int, int | None] = {i: None for i in coords}
     queue = deque(sorted(coords.keys()))
-    turn = math.radians(60.0)  # 180°−120° deviation from straight
+    seen = set(coords.keys())
 
     while queue:
         u = queue.popleft()
         unplaced = [v for v in adj[u] if v not in coords]
         if not unplaced:
             continue
-        p = parent.get(u)
-        if p is not None and p in coords:
-            ux = coords[u][0] - coords[p][0]
-            uy = coords[u][1] - coords[p][1]
-        else:
-            placed_nbrs = [v for v in adj[u] if v in coords]
-            if placed_nbrs:
-                v0 = placed_nbrs[0]
-                ux = coords[u][0] - coords[v0][0]
-                uy = coords[u][1] - coords[v0][1]
-            else:
-                ux, uy = _BOND_LEN, 0.0
-        ulen = math.hypot(ux, uy) or 1.0
-        ux, uy = ux / ulen, uy / ulen
-
-        k = len(unplaced)
-        for i, v in enumerate(unplaced):
-            if k == 1:
-                sign = 1.0 if (u % 2 == 0) else -1.0
-                ang = sign * turn
-            else:
-                # Fan substituents across ±60° about the continuation.
-                ang = -turn + (2 * turn * i / max(k - 1, 1))
-            ca, sa = math.cos(ang), math.sin(ang)
-            dx = ux * ca - uy * sa
-            dy = ux * sa + uy * ca
-            coords[v] = (coords[u][0] + dx * _BOND_LEN, coords[u][1] + dy * _BOND_LEN)
-            parent[v] = u
-            queue.append(v)
+        ux, uy = coords[u]
+        occupied = [
+            _angle(coords[v][0] - ux, coords[v][1] - uy) for v in adj[u] if v in coords
+        ]
+        # Chain zig-zag bias: if exactly one occupied neighbor, prefer ±120° bond
+        # angle (CDK linear chain) by seeding a phantom occupied opposite so the
+        # free wedge favors the turn — handled naturally when occupied has 1 entry
+        # (gap is 360°, distributePartners places at prefer spacing).
+        angles = _distribute_partner_angles(occupied, len(unplaced))
+        # Stable pairing: sort unplaced by index for determinism.
+        for v, ang in zip(sorted(unplaced), angles, strict=False):
+            coords[v] = (ux + math.cos(ang) * _BOND_LEN, uy + math.sin(ang) * _BOND_LEN)
+            if v not in seen:
+                seen.add(v)
+                queue.append(v)
 
     for a in mol.atoms:
         if a.index not in coords:
