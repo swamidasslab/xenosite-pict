@@ -34,12 +34,26 @@ references. Until that bar is cleared, optional engines remain scaffolding:
 After that, chem libraries shrink to optional roles: SMILES/molfile **parse**,
 CXSMILES extras, or emergency fallback — not a permanent multi-engine product.
 
-Today’s preference order is transitional scaffolding, not the end state:
+### Chematic for perception (not depiction)
+
+Split the problem:
+
+| Layer | Job | Chematic? |
+| --- | --- | --- |
+| **Perception** | Parse, SSSR, aromaticity/Kekulé, stereo flags, valence | Strong candidate — Rust, small install, RDKit-like aromaticity (`chematic-perception`), no C++/conda |
+| **2D coordinates** | Rings, chains, collisions, templates | Weak today — their depict coords suck; do not trust as publication layout |
+| **Drawing** | Skeleton → offsets → wedges → SVG | **Ours** — always |
+
+So Chematic is a plausible **default chem kernel** for perception while we own drawing and grow native (or Indigo/RDKit) layout. Using Chematic’s SVG/layout as the product surface would be a mistake.
+
+Validate perception against RDKit on hard aromatics / stereo before promoting it; treat their `depict_*` path as throwaway.
+
+### Transitional layout coords (scaffolding only)
 
 1. **Indigo** — current best coords while native matures (WASM for `js/` too).
 2. **RDKit** (+ CoordGen / ring templates) — strong reference and fallback.
 3. **Open Babel / pybel** — format breadth.
-4. **Chematic** — last-resort coords.
+4. **Chematic** — perception OK; **coords last resort only**.
 5. **native** — must grow from toy stub → proven depictor; that is the real goal.
 
 ## Drawing model (own SVG)
