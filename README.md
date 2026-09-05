@@ -8,7 +8,9 @@ Import path: `xenosite.pict`
 
 Scaffold in progress. Language-neutral JSON contracts (Pydantic → generated JSON Schema) with Python and `js/` engines.
 
-**Layout backends:** Indigo (preferred) → RDKit → Open Babel/pybel → Chematic (last resort) → native stub.
+**Depiction:** Hard problem — follow CDK / RDKit / Indigo / CoordGen, don’t invent. Own the SVG draw path (skeleton → offsets → stereo). Optional chem engines supply coords while **native** layout matures; if native is *demonstrably* good enough on hard cases, multi-backend layout becomes largely unnecessary (see `docs/layout-notes.md`).
+
+**Layout (transitional):** Indigo → RDKit → Open Babel → Chematic → native stub.
 
 **Multi-molecule diagrams:** ELK (JAR + V8 in Python; elkjs on web) — bridge stubbed; grid/row fallback works now.
 

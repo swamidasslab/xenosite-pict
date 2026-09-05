@@ -43,17 +43,21 @@ Captured while implementing own-SVG drawing, marks/shade, and ELK placement. The
 
 ## Drawing / scene (trickle-back)
 
-10. **Ring layout is backend-owned (CDK/RDKit practice)**  
-    Regular polygons / fused stitching / bridged arcs belong to Indigo layout, RDKit+CoordGen, etc. The drawer uses SSSR only for Kekulé interior normals and optional aromatic circles. Bridged/cage systems (norbornane, cubane, …) cannot have every SSSR face forced regular — see `docs/layout-notes.md` and `HARD_RING_CASES`. Do not add a PictSpec field that promises “all rings regular.”
+10. **Native depictor vs multi-backend**  
+    Depiction is hard — always review CDK / RDKit / Indigo / CoordGen before changing layout or draw code.  
+    **If** `native` layout+draw is *demonstrably* good enough on the hard-case gallery (rings, chains, stereo, collisions) side-by-side with Indigo/RDKit, the need for multiple chem layout backends is greatly diminished. Until then, backends are scaffolding. Do not bake a permanent multi-engine preference ladder into PictSpec; `backend` stays runtime config. See `docs/layout-notes.md` “Native quality bar.”
 
-11. **Stereo wedges**  
-    `BondLayout.stereo` exists but own-SVG does not draw wedges yet. Needed before claiming publication quality.
+11. **Ring / chain / stereo algorithms are depictor-owned practice**  
+    Regular polygons, 120° zig-zag chains, partner distribution, wedges/hashes belong in layout (native target, backends for now). The drawer: skeleton centerlines → offset doubles/triples → stereo wedges. Bridged/cage systems cannot have every SSSR face forced regular — `HARD_RING_CASES`. Do not add a PictSpec field that promises “all rings regular.”
 
-12. **Halo / label collision**  
+12. **Stereo wedges**  
+    `BondLayout.stereo` exists; own-SVG must draw solid/hashed wedges (RDKit thin-at-begin convention) before claiming publication quality.
+
+13. **Halo / label collision**  
     Bond shortening into heteroatom labels is a start; aromatic rings and overlapping shade dots need more policy.  
     → Optional `MoleculeSpec.halo` already helps; consider `label_style` later.
 
-13. **HTML composition**  
+14. **HTML composition**  
     `diagram.kind: html` is a stub hook. Multi-SVG pages need a document model (sections, captions) beyond a flat viewport list.
 
 ## Explicitly deferred (do not expand schema yet)
