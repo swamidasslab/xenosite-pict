@@ -159,7 +159,7 @@ coords for those molecules:
 - [x] Simple + fused aromatics (benzene, naphthalene, anthracene, phenol) — regular faces
 - [x] Bridged/cage (norbornane) — no crash; no fake all-regular claim
 - [x] Chains (n-alkanes, carbonyl branches) — 120° zig-zag, distributePartners-style
-- [ ] Congested substituents — no catastrophic overlap (or documented refinement)
+- [~] Congested substituents — terminal collision flip across attachment (1,2,3-Me₃Ph); deeper branch flips still open
 - [~] Stereo (`C[C@H](O)Cl`) — wedges assigned from `@`/`@@` (parity heuristic; not CIP)
 - [x] Side-by-side gallery vs Indigo on the same SMILES set (`poc-e-*`)
 

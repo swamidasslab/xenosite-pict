@@ -322,6 +322,91 @@ def _place_chains(mol: ParsedMol, coords: dict[int, tuple[float, float]]) -> Non
             coords[a.index] = (float(a.index) * _BOND_LEN, 0.0)
 
 
+def _clash_score(
+    coords: dict[int, tuple[float, float]],
+    bonded: set[frozenset[int]],
+    *,
+    min_sep: float,
+) -> float:
+    """Sum of penetration depths for non-bonded pairs closer than ``min_sep``."""
+    ids = list(coords)
+    score = 0.0
+    for i, a in enumerate(ids):
+        ax, ay = coords[a]
+        for b in ids[i + 1 :]:
+            if frozenset({a, b}) in bonded:
+                continue
+            d = math.hypot(coords[b][0] - ax, coords[b][1] - ay)
+            if d < min_sep:
+                score += min_sep - d
+    return score
+
+
+def _mitigate_terminal_collisions(
+    mol: ParsedMol, coords: dict[int, tuple[float, float]]
+) -> None:
+    """Flip terminal substituents across their attachment bond if they clash.
+
+    Guide: RDKit depictor collision flips / CDK openAngles — try the alternate
+    side of the parent before accepting an overlap. Only moves degree-1 atoms
+    so ring geometry stays intact.
+    """
+    adj: dict[int, list[int]] = defaultdict(list)
+    bonded: set[frozenset[int]] = set()
+    for b in mol.bonds:
+        adj[b.begin].append(b.end)
+        adj[b.end].append(b.begin)
+        bonded.add(frozenset({b.begin, b.end}))
+
+    min_sep = _BOND_LEN * 0.85
+    terminals = [
+        a.index
+        for a in mol.atoms
+        if len(adj[a.index]) == 1 and a.index in coords
+    ]
+    for t in terminals:
+        parent = adj[t][0]
+        px, py = coords[parent]
+        # Alternate angle: reflect current terminal across each occupied
+        # parent→neighbor ray and keep the placement with lowest clash.
+        occupied = [
+            _angle(coords[v][0] - px, coords[v][1] - py)
+            for v in adj[parent]
+            if v != t and v in coords
+        ]
+        if not occupied:
+            continue
+        candidates = [coords[t]]
+        for occ in occupied:
+            # Reflect the parent→terminal angle across the occupied ray.
+            cur = _angle(coords[t][0] - px, coords[t][1] - py)
+            mirrored = _norm_angle(2 * occ - cur)
+            candidates.append(
+                (px + math.cos(mirrored) * _BOND_LEN, py + math.sin(mirrored) * _BOND_LEN)
+            )
+        # Also try ±120° from the mean occupied direction (exterior preference).
+        mean_occ = math.atan2(
+            sum(math.sin(a) for a in occupied) / len(occupied),
+            sum(math.cos(a) for a in occupied) / len(occupied),
+        )
+        for delta in (math.radians(120.0), -math.radians(120.0)):
+            ang = _norm_angle(mean_occ + delta)
+            candidates.append(
+                (px + math.cos(ang) * _BOND_LEN, py + math.sin(ang) * _BOND_LEN)
+            )
+
+        best = coords[t]
+        best_score = _clash_score(coords, bonded, min_sep=min_sep)
+        for cand in candidates[1:]:
+            trial = dict(coords)
+            trial[t] = cand
+            score = _clash_score(trial, bonded, min_sep=min_sep)
+            if score < best_score - 1e-9:
+                best_score = score
+                best = cand
+        coords[t] = best
+
+
 def _degree_map(mol: ParsedMol) -> dict[int, int]:
     deg: dict[int, int] = defaultdict(int)
     for b in mol.bonds:
@@ -400,6 +485,7 @@ def layout_parsed(mol: ParsedMol, *, mol_id: str | None = None) -> MoleculeLayou
     coords: dict[int, tuple[float, float]] = {}
     _place_ring_systems(rings, coords)
     _place_chains(mol, coords)
+    _mitigate_terminal_collisions(mol, coords)
 
     deg = _degree_map(mol)
     atoms = [

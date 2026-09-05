@@ -152,3 +152,18 @@ def test_native_chiral_smiles_gets_wedge():
     assert all(b.begin == 1 for b in stereos)
     svg = render({"molecules": [{"smiles": "C[C@H](O)Cl"}]}, backend="native")
     assert "bond-wedge" in svg
+
+
+def test_terminal_flip_reduces_clash_on_crowded_ring():
+    """1,2,3-trimethylbenzene: post-pass should keep non-bonded atoms apart."""
+    lay = _native_layout("Cc1c(C)c(C)ccc1")
+    pos = {a.index: (a.x, a.y) for a in lay.atoms}
+    bonded = {frozenset({b.begin, b.end}) for b in lay.bonds}
+    min_nb = min(
+        math.hypot(pos[i][0] - pos[j][0], pos[i][1] - pos[j][1])
+        for i in pos
+        for j in pos
+        if i < j and frozenset({i, j}) not in bonded
+    )
+    # Bond length is 1.5; non-bonded pairs should stay above ~0.85× that.
+    assert min_nb > 1.2
