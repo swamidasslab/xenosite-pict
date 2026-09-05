@@ -1,0 +1,68 @@
+[project]
+name = "xenosite-pict"
+version = "0.1.0"
+description = "Declarative, publication-quality small-molecule depiction for Python and the web"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [
+  { name = "S. Joshua Swamidass", email = "swamidass@gmail.com" },
+]
+requires-python = ">=3.11"
+dependencies = [
+  "pydantic>=2.7",
+  "networkx>=3.2",
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Topic :: Scientific/Engineering :: Chemistry",
+]
+
+[project.optional-dependencies]
+indigo = ["epam.indigo>=1.19"]
+rdkit = ["rdkit>=2023.9.1"]
+openbabel = ["openbabel-wheel>=3.1.1"]
+chematic = ["chematic>=0.16"]
+all = ["xenosite-pict[indigo,rdkit,openbabel,chematic]"]
+
+[project.urls]
+Homepage = "https://github.com/swamidasslab/xenosite-pict"
+Repository = "https://github.com/swamidasslab/xenosite-pict"
+
+[project.scripts]
+xenosite-pict-export-schema = "xenosite.pict.export_schema:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/xenosite"]
+
+[tool.hatch.build]
+include = [
+  "src/xenosite/**",
+  "schema/**",
+  "js/**",
+  "docs/**",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.0",
+  "ruff>=0.6",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = ["E501"]
