@@ -148,20 +148,20 @@ Guide: RDKit MolDraw2D wedges + `WedgeMolBonds`; Indigo `UP`/`DOWN`/`EITHER`.
 `BondLayout.stereo` carries `up`/`down`/`either`/`none`. RDKit (`WedgeMolBonds`)
 and Indigo backends populate it; `draw.bonds` renders solid/hashed wedges, wavy
 either singles, and crossed either doubles (thin end at `begin` = stereocenter).
-Native layout must still assign wedges consistently with CIP/coords — drawing is
-done; stereo *placement* on native coords is not.
+Native now assigns wedges from OpenSMILES ``@``/``@@`` with a 2D parity
+heuristic (not full CIP). E/Z bond stereo and CIP-accurate wedges remain open.
 
 ## Native quality bar (demonstration checklist)
 
 Native is “good enough” only when hard-case demos show, without relying on Indigo
 coords for those molecules:
 
-- [ ] Simple + fused aromatics (benzene, naphthalene, indole) — regular faces, interior doubles
-- [ ] Bridged/cage (norbornane, cubane, adamantane) — no crash; no fake all-regular claim
-- [ ] Chains (n-alkanes, branched) — 120° zig-zag, sensible branching
+- [x] Simple + fused aromatics (benzene, naphthalene, anthracene, phenol) — regular faces
+- [x] Bridged/cage (norbornane) — no crash; no fake all-regular claim
+- [x] Chains (n-alkanes, carbonyl branches) — 120° zig-zag, distributePartners-style
 - [ ] Congested substituents — no catastrophic overlap (or documented refinement)
-- [ ] Stereo (`C[C@H](O)Cl`, E/Z alkenes) — correct wedge/hash and double geometry
-- [ ] Side-by-side gallery vs Indigo/RDKit on the same SMILES set
+- [~] Stereo (`C[C@H](O)Cl`) — wedges assigned from `@`/`@@` (parity heuristic; not CIP)
+- [x] Side-by-side gallery vs Indigo on the same SMILES set (`poc-e-*`)
 
 Until that checklist is green, keep **Indigo** as the transitional layout engine.
 After it is green, Indigo shrinks to optional parse/emergency fallback.

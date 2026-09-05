@@ -266,10 +266,13 @@ def poc_native(out: Path, backend: str) -> Path:
     cases = [
         ("benzene", "c1ccccc1"),
         ("naphthalene", "c1ccc2ccccc2c1"),
+        ("anthracene", "c1ccc2cc3ccccc3cc2c1"),
         ("hexane", "CCCCCC"),
         ("phenol", "c1ccc(cc1)O"),
+        ("aspirin", "CC(=O)Oc1ccccc1C(=O)O"),
         ("norbornane", "C1CC2CCC1C2"),
-        ("ethanol", "CCO"),
+        ("chiral", "C[C@H](O)Cl"),
+        ("pyrrole", "c1ccc[nH]1"),
     ]
     # Native grid
     native_spec = {
