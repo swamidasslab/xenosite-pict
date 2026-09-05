@@ -109,3 +109,28 @@ def test_phenol_substituent_is_exterior():
     o = next(a for a in lay.atoms if a.element == "O")
     ring_atoms = set(rings[0].atoms)
     assert o.index not in ring_atoms
+
+
+def test_anthracene_fused_bonds_stay_regular():
+    """Flip must mirror across the shared edge, not world X (linear acene)."""
+    lay = _native_layout("c1ccc2c(c1)ccc3ccccc32")
+    rings = find_sssr(lay)
+    assert len(rings) == 3
+    assert all_rings_can_be_regular_polygons(rings)
+    pos = {a.index: (a.x, a.y) for a in lay.atoms}
+    bond_lens = [
+        math.hypot(pos[b.end][0] - pos[b.begin][0], pos[b.end][1] - pos[b.begin][1])
+        for b in lay.bonds
+    ]
+    assert max(bond_lens) - min(bond_lens) < 1e-6
+
+
+def test_aspirin_parses_and_places_all_atoms():
+    lay = _native_layout("CC(=O)Oc1ccccc1C(=O)O")
+    assert len(lay.atoms) == 13
+    assert len(lay.bonds) == 13
+    pos = {a.index: (a.x, a.y) for a in lay.atoms}
+    # Every bond roughly unit length for the native bond constant.
+    for b in lay.bonds:
+        d = math.hypot(pos[b.end][0] - pos[b.begin][0], pos[b.end][1] - pos[b.begin][1])
+        assert abs(d - 1.5) < 1e-6

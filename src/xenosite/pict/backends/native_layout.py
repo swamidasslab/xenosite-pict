@@ -99,13 +99,19 @@ def _place_fused_ring(
     scale = plen / ilen
     rot = math.atan2(pdy, pdx) - math.atan2(idy, idx)
     cos_r, sin_r = math.cos(rot), math.sin(rot)
+    # Edge length² for reflecting across the *shared bond* (not world X).
+    # Negating local Y after rotation only mirrors across world-horizontal and
+    # moves already-placed shared atoms — that broke anthracene fusion.
+    edge2 = pdx * pdx + pdy * pdy or 1.0
 
     def xform(x: float, y: float, *, flip: bool) -> tuple[float, float]:
         x0, y0 = x - iax, y - iay
         xr = scale * (x0 * cos_r - y0 * sin_r)
         yr = scale * (x0 * sin_r + y0 * cos_r)
         if flip:
-            yr = -yr
+            # Reflect offset (xr, yr) across shared-edge direction (CDK fuse side).
+            proj = (xr * pdx + yr * pdy) / edge2
+            xr, yr = 2.0 * proj * pdx - xr, 2.0 * proj * pdy - yr
         return pax + xr, pay + yr
 
     flip = False
@@ -137,7 +143,19 @@ def _place_ring_systems(
 
     for component in ring_system_components(rings):
         drawable = all_rings_can_be_regular_polygons(component)
-        ordered = sorted(component, key=lambda r: (-r.size, r.atoms))
+        # Seed the most-connected fused ring (CDK-ish), then larger faces.
+        comp_atoms = {r.atoms for r in component}
+        fuse_degree: dict[tuple[int, ...], int] = defaultdict(int)
+        for rel in relations:
+            if rel.kind != RingAttachment.FUSED:
+                continue
+            if rel.a.atoms in comp_atoms and rel.b.atoms in comp_atoms:
+                fuse_degree[rel.a.atoms] += 1
+                fuse_degree[rel.b.atoms] += 1
+        ordered = sorted(
+            component,
+            key=lambda r: (-fuse_degree[r.atoms], -r.size, r.atoms),
+        )
         seed = ordered[0]
         _seed_ring(seed, coords)
         placed.update(seed.atoms)
