@@ -14,7 +14,7 @@ Own pure-Python layout engine is deferred: Indigo’s layout alone is large (~17
 
 Metabolic networks, reaction schemes, and grids use **ELK** for viewport placement (not chemical MCS alignment).
 
-- Python: ship ELK JAR + drive via V8 (scaffold: stub; grid/row fallback active).
+- Python: ship ELK JAR + drive via V8 (scaffold: stub; grid/row fallback active). Packaging hook: `vendor/elk/` (`README.md`, `fetch_elk.sh`); optional `elk.jar` is not committed by default.
 - Web: elkjs.
 
 Chemical MCS alignment (xenopict-style) is a separate optional pass before diagram layout.

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import warnings
 from collections.abc import Sequence
+from pathlib import Path
 
 from xenosite.pict.contracts.layout import MoleculeLayout
 from xenosite.pict.contracts.spec import DiagramKind, PictSpec
@@ -12,6 +13,20 @@ from xenosite.pict.draw.scene_builder import normalize_coords
 from xenosite.pict.warnings import PictBackendWarning
 
 _GAP = 24.0
+
+# Packaging hook: vendor/elk/ holds README + fetch_elk.sh; JAR optional until V8 bridge lands.
+_VENDOR_ELK = Path(__file__).resolve().parents[4] / "vendor" / "elk"
+_ELK_JAR = _VENDOR_ELK / "elk.jar"
+
+
+def elk_vendor_dir() -> Path:
+    """Return the repo ``vendor/elk`` packaging directory."""
+    return _VENDOR_ELK
+
+
+def elk_jar_path() -> Path | None:
+    """Path to a vendored ELK JAR if present (not required for grid/row fallback)."""
+    return _ELK_JAR if _ELK_JAR.is_file() else None
 
 
 def _grid_positions(
@@ -55,9 +70,15 @@ def layout_diagram(
 
     kind = spec.diagram.kind
     if kind in {DiagramKind.network, DiagramKind.reaction}:
-        # ELK JAR+V8 / elkjs bridge not wired yet in this scaffold.
+        # ELK JAR+V8 / elkjs bridge not wired yet; see vendor/elk/ packaging hook.
+        jar = elk_jar_path()
+        detail = (
+            f"JAR present at {jar} but V8 bridge not wired;"
+            if jar
+            else "no vendored JAR yet (see vendor/elk/fetch_elk.sh);"
+        )
         warnings.warn(
-            "ELK bridge not available yet; using row layout for network/reaction diagrams.",
+            f"ELK bridge not available yet ({detail} using row layout).",
             PictBackendWarning,
             stacklevel=3,
         )

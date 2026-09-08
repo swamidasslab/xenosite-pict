@@ -3,8 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "JS/WASM processor for xenosite.pict contracts (Indigo WASM + elkjs)",
+  "description": "JS/TS WASM processor for xenosite.pict contracts (Indigo WASM + elkjs)",
   "main": "src/index.js",
+  "types": "src/types.ts",
   "scripts": {
     "check": "node --check src/index.js"
   },
