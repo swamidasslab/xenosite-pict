@@ -3,10 +3,26 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "JS/WASM processor for xenosite.pict contracts (Indigo WASM + elkjs)",
-  "main": "src/index.js",
+  "description": "TypeScript/WASM processor for xenosite.pict contracts (Indigo WASM + SVG scene)",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
   "scripts": {
-    "check": "node --check src/index.js"
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run check"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
   },
   "optionalDependencies": {
     "elkjs": "^0.9.3"

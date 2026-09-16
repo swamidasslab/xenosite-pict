@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
+from xenosite.pict.align import align_layouts
 from xenosite.pict.backends import BACKEND_PREFERENCE, get_backend
 from xenosite.pict.contracts.layout import LayoutResult, MoleculeLayout
 from xenosite.pict.contracts.spec import PictSpec
@@ -59,6 +60,7 @@ class Pict:
         doc = spec if isinstance(spec, PictSpec) else PictSpec.model_validate(spec)
         backend = get_backend(self.backend)
         layouts: list[MoleculeLayout] = [backend.layout(m) for m in doc.molecules]
+        layouts = align_layouts(layouts, enabled=doc.diagram.align)
         positions = layout_diagram(layouts, doc)
         scene = build_scene(layouts, doc.molecules, doc, positions=positions)
         out = format or self.format

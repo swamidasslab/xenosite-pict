@@ -1,11 +1,23 @@
-# JS processor
+# @xenosite/pict (JS / TypeScript)
 
-Browser/Node implementation of the same JSON contracts as Python (`../schema`).
+Browser and Node processor for the same JSON contracts as Python `xenosite.pict`.
 
-Planned stack:
+## Layout
 
-- **Mol layout:** Indigo WASM (preferred); RDKit MinimalLib optional/limited
-- **Diagram layout:** [elkjs](https://github.com/kieler/elkjs)
-- **Draw:** shared Scene → SVG rules (parity with Python)
+- **Primary:** Indigo WASM (`indigo-ketcher` / Indigo wasm) — stub in `src/layout/indigo-wasm.ts`
+- **Secondary (optional later):** `@rdkit/rdkit` MinimalLib
+- Drawing always happens here (`src/draw/svg.ts`), never by mutating engine SVG
 
-`render()` currently validates PictSpec shape only.
+## Shared schema
+
+JSON Schema is generated from Pydantic and committed under `../schema/` (`pict.schema.json`, etc.).
+
+## Scripts
+
+```bash
+npm install
+npm run check   # tsc --noEmit
+npm run build   # emit dist/
+```
+
+Python remains the working engine today; this package validates the shared API surface.
