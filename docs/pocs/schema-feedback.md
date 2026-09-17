@@ -29,9 +29,11 @@ Captured while implementing own-SVG drawing, marks/shade, and ELK placement. The
    We synthesize ELK JSON from molecules + `diagram.edges` + `elk_options`. That is enough for POC.  
    → Keep synthesizing; only expose raw ELK graph if callers need custom nodes (labels, ports, compounds).
 
-7. **Edge payload is underspecified for reactions**  
-   Metabolic/reaction diagrams need roles (substrate/product/enzyme), edge labels, and maybe arrowheads.  
-   → Extend `DiagramEdge` with optional `label`, `kind`/`role`, and styling hooks; scene overlay draws arrows after ELK places nodes.
+7. **Edge payload is underspecified for reactions** — **done (POC)**  
+   `EdgeSpec` now carries `label`, `role`, `arrow` (`forward` | `equilibrium` |
+   `open` | `line`), `color`, `stroke_width`, and `dashed`. Scene `overlays`
+   draw arrows between viewports after ELK/row placement; SVG supports
+   `stroke-dasharray`.
 
 8. **Viewport size must precede ELK**  
    Node width/height come from normalized molecule bounds. Changing scale/padding changes ELK spacing.  

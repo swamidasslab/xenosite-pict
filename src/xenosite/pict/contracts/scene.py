@@ -26,6 +26,7 @@ class PathPrim(StrictModel):
     fill: str | None = "none"
     stroke_width: float = 1.5
     opacity: float = 1.0
+    stroke_dasharray: str | None = None
     cls: str | None = None
 
 
@@ -78,4 +79,8 @@ class Scene(StrictModel):
     width: float
     height: float
     viewports: list[Viewport]
+    overlays: list[Primitive] = Field(
+        default_factory=list,
+        description="Document-space primitives (reaction/network arrows) drawn above viewports",
+    )
     meta: dict[str, Any] = Field(default_factory=dict)

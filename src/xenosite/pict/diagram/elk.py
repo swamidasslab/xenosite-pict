@@ -19,6 +19,7 @@ from xenosite.pict.draw.scene_builder import normalize_coords
 from xenosite.pict.warnings import PictBackendWarning
 
 _GAP = 24.0
+_REACTION_GAP = 56.0  # room for arrow shafts + edge labels between molecules
 _VENDOR = Path(__file__).resolve().parents[1] / "vendor" / "elkjs"
 
 _runtime_lock = threading.Lock()
@@ -154,14 +155,35 @@ def _grid_positions(
     return [(xs[c], ys[r]) for i in range(n) for r, c in [divmod(i, cols)]]
 
 
-def _row_positions(layouts: Sequence[MoleculeLayout]) -> list[tuple[float, float]]:
+def _row_positions(
+    layouts: Sequence[MoleculeLayout], *, gap: float = _GAP, center_y: bool = False
+) -> list[tuple[float, float]]:
+    sizes = [normalize_coords(L)[1:] for L in layouts]
+    max_h = max((h for _w, h in sizes), default=0.0)
     x = 0.0
     positions: list[tuple[float, float]] = []
-    for L in layouts:
-        w, _h = normalize_coords(L)[1:]
-        positions.append((x, 0.0))
-        x += w + _GAP
+    for w, h in sizes:
+        y = (max_h - h) * 0.5 if center_y else 0.0
+        positions.append((x, y))
+        x += w + gap
     return positions
+
+
+def _reaction_defaults(spec: PictSpec) -> dict[str, str]:
+    """Sensible ELK defaults for linear reaction schemes (caller options win)."""
+    if spec.diagram.kind != DiagramKind.reaction:
+        return {
+            "elk.algorithm": "layered",
+            "elk.direction": "RIGHT",
+            "elk.spacing.nodeNode": "40",
+        }
+    return {
+        "elk.algorithm": "layered",
+        "elk.direction": "RIGHT",
+        "elk.spacing.nodeNode": "64",
+        "elk.layered.spacing.nodeNodeBetweenLayers": "72",
+        "elk.edgeRouting": "ORTHOGONAL",
+    }
 
 
 def elk_graph(layouts: Sequence[MoleculeLayout], spec: PictSpec) -> dict:
@@ -176,9 +198,7 @@ def elk_graph(layouts: Sequence[MoleculeLayout], spec: PictSpec) -> dict:
     return {
         "id": "root",
         "layoutOptions": {
-            "elk.algorithm": "layered",
-            "elk.direction": "RIGHT",
-            "elk.spacing.nodeNode": "40",
+            **_reaction_defaults(spec),
             **spec.diagram.elk_options,
         },
         "children": nodes,
@@ -251,6 +271,8 @@ def layout_diagram(
             PictBackendWarning,
             stacklevel=3,
         )
+        if kind == DiagramKind.reaction:
+            return _row_positions(layouts, gap=_REACTION_GAP, center_y=True)
         return _row_positions(layouts)
 
     if kind == DiagramKind.grid:

@@ -5,7 +5,59 @@ from __future__ import annotations
 import html
 from xml.etree.ElementTree import Element, SubElement, tostring
 
-from xenosite.pict.contracts.scene import CirclePrim, PathPrim, Scene, TextPrim, Viewport
+from xenosite.pict.contracts.scene import (
+    CirclePrim,
+    PathPrim,
+    Primitive,
+    Scene,
+    TextPrim,
+    Viewport,
+)
+
+
+def _render_primitive(parent: Element, prim: Primitive) -> None:
+    if isinstance(prim, PathPrim):
+        attrs = {
+            "d": prim.d,
+            "fill": prim.fill or "none",
+            "stroke": prim.stroke or "none",
+            "stroke-width": str(prim.stroke_width),
+            "stroke-linecap": "round",
+            "stroke-linejoin": "round",
+            "opacity": str(prim.opacity),
+        }
+        if prim.stroke_dasharray:
+            attrs["stroke-dasharray"] = prim.stroke_dasharray
+        if prim.cls:
+            attrs["class"] = prim.cls
+        SubElement(parent, "path", attrs)
+    elif isinstance(prim, CirclePrim):
+        attrs = {
+            "cx": f"{prim.cx:.2f}",
+            "cy": f"{prim.cy:.2f}",
+            "r": f"{prim.r:.2f}",
+            "opacity": str(prim.opacity),
+            "fill": prim.fill or "none",
+        }
+        if prim.stroke:
+            attrs["stroke"] = prim.stroke
+            attrs["stroke-width"] = str(prim.stroke_width)
+        if prim.cls:
+            attrs["class"] = prim.cls
+        SubElement(parent, "circle", attrs)
+    elif isinstance(prim, TextPrim):
+        attrs = {
+            "x": f"{prim.x:.2f}",
+            "y": f"{prim.y:.2f}",
+            "fill": prim.fill,
+            "font-size": str(prim.font_size),
+            "font-family": prim.font_family,
+            "text-anchor": prim.anchor,
+        }
+        if prim.cls:
+            attrs["class"] = prim.cls
+        t = SubElement(parent, "text", attrs)
+        t.text = prim.text
 
 
 def _render_viewport(parent: Element, vp: Viewport) -> None:
@@ -17,46 +69,7 @@ def _render_viewport(parent: Element, vp: Viewport) -> None:
     for layer in vp.layers:
         lg = SubElement(g, "g", {"class": f"layer-{layer.name}", "id": layer.name})
         for prim in layer.primitives:
-            if isinstance(prim, PathPrim):
-                attrs = {
-                    "d": prim.d,
-                    "fill": prim.fill or "none",
-                    "stroke": prim.stroke or "none",
-                    "stroke-width": str(prim.stroke_width),
-                    "stroke-linecap": "round",
-                    "stroke-linejoin": "round",
-                    "opacity": str(prim.opacity),
-                }
-                if prim.cls:
-                    attrs["class"] = prim.cls
-                SubElement(lg, "path", attrs)
-            elif isinstance(prim, CirclePrim):
-                attrs = {
-                    "cx": f"{prim.cx:.2f}",
-                    "cy": f"{prim.cy:.2f}",
-                    "r": f"{prim.r:.2f}",
-                    "opacity": str(prim.opacity),
-                    "fill": prim.fill or "none",
-                }
-                if prim.stroke:
-                    attrs["stroke"] = prim.stroke
-                    attrs["stroke-width"] = str(prim.stroke_width)
-                if prim.cls:
-                    attrs["class"] = prim.cls
-                SubElement(lg, "circle", attrs)
-            elif isinstance(prim, TextPrim):
-                attrs = {
-                    "x": f"{prim.x:.2f}",
-                    "y": f"{prim.y:.2f}",
-                    "fill": prim.fill,
-                    "font-size": str(prim.font_size),
-                    "font-family": prim.font_family,
-                    "text-anchor": prim.anchor,
-                }
-                if prim.cls:
-                    attrs["class"] = prim.cls
-                t = SubElement(lg, "text", attrs)
-                t.text = prim.text
+            _render_primitive(lg, prim)
 
 
 def scene_to_svg(scene: Scene) -> str:
@@ -87,6 +100,10 @@ def scene_to_svg(scene: Scene) -> str:
     )
     for vp in scene.viewports:
         _render_viewport(root, vp)
+    if scene.overlays:
+        og = SubElement(root, "g", {"class": "pict-overlays", "id": "overlays"})
+        for prim in scene.overlays:
+            _render_primitive(og, prim)
     return '<?xml version="1.0" encoding="UTF-8"?>\n' + tostring(root, encoding="unicode")
 
 

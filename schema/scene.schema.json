@@ -162,6 +162,18 @@
           "title": "Opacity",
           "type": "number"
         },
+        "stroke_dasharray": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stroke Dasharray"
+        },
         "cls": {
           "anyOf": [
             {
@@ -314,6 +326,24 @@
         "$ref": "#/$defs/Viewport"
       },
       "title": "Viewports",
+      "type": "array"
+    },
+    "overlays": {
+      "description": "Document-space primitives (reaction/network arrows) drawn above viewports",
+      "items": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/PathPrim"
+          },
+          {
+            "$ref": "#/$defs/CirclePrim"
+          },
+          {
+            "$ref": "#/$defs/TextPrim"
+          }
+        ]
+      },
+      "title": "Overlays",
       "type": "array"
     },
     "meta": {

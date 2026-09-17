@@ -33,9 +33,23 @@ export interface ShadeSpec {
   vmax?: number;
 }
 
+export interface EdgeSpec {
+  source: string;
+  target: string;
+  label?: string;
+  /** Semantic role (enzyme, inhibits, …) — not drawn by default. */
+  role?: string;
+  /** Arrow head/shaft style. */
+  arrow?: "forward" | "equilibrium" | "open" | "line";
+  color?: string;
+  stroke_width?: number;
+  dashed?: boolean;
+}
+
 export interface DiagramSpec {
-  kind?: "row" | "grid" | "network" | "stack" | "single";
+  kind?: "single" | "grid" | "network" | "reaction" | "html";
   columns?: number;
+  edges?: EdgeSpec[];
   /** Chemical MCS alignment before diagram placement (Python pure-Python MCS). */
   align?: boolean;
   elk_options?: Record<string, unknown>;

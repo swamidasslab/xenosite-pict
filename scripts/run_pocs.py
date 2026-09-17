@@ -229,13 +229,32 @@ def poc_pipeline(out: Path, backend: str) -> Path:
             {"id": "sal", "smiles": "O=C(O)c1ccccc1O", "title": "salicylate"},
         ],
         "diagram": {
-            "kind": "network",
+            "kind": "reaction",
             "edges": [
-                {"source": "etoh", "target": "ach", "label": "ADH"},
-                {"source": "ach", "target": "acetate", "label": "ALDH"},
-                {"source": "asa2", "target": "sal", "label": "CES"},
+                {
+                    "source": "etoh",
+                    "target": "ach",
+                    "label": "ADH",
+                    "arrow": "forward",
+                    "role": "enzyme",
+                },
+                {
+                    "source": "ach",
+                    "target": "acetate",
+                    "label": "ALDH",
+                    "arrow": "forward",
+                    "role": "enzyme",
+                },
+                {
+                    "source": "asa2",
+                    "target": "sal",
+                    "label": "CES",
+                    "arrow": "forward",
+                    "color": "#064",
+                    "role": "enzyme",
+                },
             ],
-            "elk_options": {"elk.direction": "RIGHT", "elk.spacing.nodeNode": "48"},
+            "elk_options": {"elk.direction": "RIGHT"},
         },
     }
     path_svg = pict.render(pathway)

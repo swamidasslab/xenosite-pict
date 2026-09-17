@@ -83,12 +83,29 @@ class MoleculeSpec(StrictModel):
         return self
 
 
+class EdgeArrow(str, Enum):
+    """Arrow head / shaft style for diagram edges."""
+
+    forward = "forward"  # single →
+    equilibrium = "equilibrium"  # ⇌ stacked half-arrows
+    open = "open"  # ⇒ hollow head (retrosynthetic-style)
+    line = "line"  # connector without arrowhead
+
+
 class EdgeSpec(StrictModel):
     """Edge between molecule nodes in a network / reaction diagram."""
 
     source: str
     target: str
     label: str | None = None
+    role: str | None = Field(
+        default=None,
+        description="Optional semantic role (e.g. enzyme, inhibits) — not drawn by default",
+    )
+    arrow: EdgeArrow = EdgeArrow.forward
+    color: str | None = Field(default=None, description="Stroke/fill color for the arrow")
+    stroke_width: float | None = Field(default=None, description="Shaft stroke width")
+    dashed: bool = Field(default=False, description="Dashed shaft (e.g. hypothetical step)")
 
 
 class DiagramSpec(StrictModel):

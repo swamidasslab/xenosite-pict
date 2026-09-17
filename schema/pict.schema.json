@@ -55,6 +55,17 @@
       "title": "DiagramSpec",
       "type": "object"
     },
+    "EdgeArrow": {
+      "description": "Arrow head / shaft style for diagram edges.",
+      "enum": [
+        "forward",
+        "equilibrium",
+        "open",
+        "line"
+      ],
+      "title": "EdgeArrow",
+      "type": "string"
+    },
     "EdgeSpec": {
       "additionalProperties": false,
       "description": "Edge between molecule nodes in a network / reaction diagram.",
@@ -78,6 +89,55 @@
           ],
           "default": null,
           "title": "Label"
+        },
+        "role": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional semantic role (e.g. enzyme, inhibits) \u2014 not drawn by default",
+          "title": "Role"
+        },
+        "arrow": {
+          "$ref": "#/$defs/EdgeArrow",
+          "default": "forward"
+        },
+        "color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Stroke/fill color for the arrow",
+          "title": "Color"
+        },
+        "stroke_width": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Shaft stroke width",
+          "title": "Stroke Width"
+        },
+        "dashed": {
+          "default": false,
+          "description": "Dashed shaft (e.g. hypothetical step)",
+          "title": "Dashed",
+          "type": "boolean"
         }
       },
       "required": [

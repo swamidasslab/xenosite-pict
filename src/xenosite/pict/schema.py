@@ -9,6 +9,8 @@ from __future__ import annotations
 from xenosite.pict.contracts.spec import (
     DiagramKind,
     DiagramSpec,
+    EdgeArrow,
+    EdgeSpec,
     MarkKind,
     MarkSpec,
     MoleculeSpec,
@@ -19,6 +21,8 @@ from xenosite.pict.contracts.spec import (
 __all__ = [
     "DiagramKind",
     "DiagramSpec",
+    "EdgeArrow",
+    "EdgeSpec",
     "MarkKind",
     "MarkSpec",
     "MoleculeSpec",

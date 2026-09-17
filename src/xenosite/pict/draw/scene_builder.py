@@ -15,6 +15,7 @@ from xenosite.pict.contracts.scene import (
     Viewport,
 )
 from xenosite.pict.contracts.spec import MarkKind, MoleculeSpec, PictSpec
+from xenosite.pict.draw.arrows import diagram_overlays
 from xenosite.pict.draw.bonds import bond_paths, bond_strokes, depict_order, shorten
 from xenosite.pict.draw.plotdot import PlotDot
 from xenosite.pict.draw.rings import bond_interior_normals, find_sssr
@@ -395,8 +396,10 @@ def build_scene(
         max_r = max(max_r, px + vp.width)
         max_b = max(max_b, py + vp.height)
 
+    overlays = diagram_overlays(spec.diagram.edges, placed)
     return Scene(
         width=spec.width or max_r,
         height=spec.height or max_b,
         viewports=placed,
+        overlays=overlays,
     )

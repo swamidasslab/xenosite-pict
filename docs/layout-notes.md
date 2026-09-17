@@ -177,4 +177,9 @@ elk’s fake-worker path needs `Atomics.waitAsync` plumbing that jsrun already
 handles.) Grid/row stay pure-Python fallbacks. Browser `js/` can keep elkjs
 directly.
 
+`diagram.kind: reaction` widens ELK node spacing and falls back to a
+vertically-centered row with extra gap for arrow shafts. `EdgeSpec.arrow` /
+`dashed` / `color` drive document-space overlays drawn after placement
+(`draw/arrows.py` → `Scene.overlays`).
+
 See also `docs/pocs/` for derisk POCs and schema-alpha feedback.
