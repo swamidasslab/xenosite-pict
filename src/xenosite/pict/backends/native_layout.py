@@ -692,6 +692,7 @@ def layout_parsed(mol: ParsedMol, *, mol_id: str | None = None) -> MoleculeLayou
             x=coords[a.index][0],
             y=coords[a.index][1],
             charge=a.charge,
+            radical=a.radical,
             label=atom_display_label(a, deg[a.index]),
         )
         for a in mol.atoms

@@ -18,8 +18,14 @@ class AtomLayout(StrictModel):
     y: float
     charge: int = 0
     isotope: int | None = None
+    radical: int = Field(
+        default=0,
+        description="Unpaired electron count (0 = closed shell; 1 = doublet radical)",
+    )
     label: str | None = Field(
-        default=None, description="Display label; None means suppress (e.g. carbon)"
+        default=None,
+        description="Display label; None means suppress (e.g. carbon). "
+        "Stars / R-groups use '*' or a CXSMILES alias (e.g. R1).",
     )
 
 

@@ -12,7 +12,7 @@ from xenosite.pict.backends.base import register, warn_unsupported
 from xenosite.pict.backends.native_layout import layout_smiles
 from xenosite.pict.contracts.layout import MoleculeLayout
 from xenosite.pict.contracts.spec import MoleculeSpec
-from xenosite.pict.structure import structure_smiles
+from xenosite.pict.structure import cx_atom_labels, structure_smiles
 
 
 @register("native")
@@ -20,19 +20,29 @@ class NativeBackend:
     name = "native"
 
     def layout(self, mol: MoleculeSpec) -> MoleculeLayout:
+        raw = structure_smiles(mol) or ""
         if mol.cxsmiles:
             warn_unsupported(
                 self.name,
                 "cxsmiles",
-                "Native strips CXSMILES extensions after '|'.",
+                "Native uses topology from SMILES; CX atom aliases still applied to labels.",
             )
         if mol.esmiles:
             warn_unsupported(self.name, "esmiles", "Using SMILES portion only if present.")
         if mol.molfile:
             warn_unsupported(self.name, "molfile", "Ignored by native layout.")
 
-        raw = structure_smiles(mol) or ""
         smiles = raw.split("|", 1)[0].strip()
         if not smiles:
             raise ValueError("native backend requires smiles, cxsmiles, or esmiles")
-        return layout_smiles(smiles, mol_id=mol.id)
+        layout = layout_smiles(smiles, mol_id=mol.id)
+        aliases = cx_atom_labels(raw)
+        if not aliases:
+            return layout
+        atoms = []
+        for a in layout.atoms:
+            if a.index < len(aliases) and aliases[a.index]:
+                atoms.append(a.model_copy(update={"label": aliases[a.index]}))
+            else:
+                atoms.append(a)
+        return layout.model_copy(update={"atoms": atoms})

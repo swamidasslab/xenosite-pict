@@ -34,10 +34,10 @@ _ORGANIC = {
 _BRACKET = re.compile(
     r"\["
     r"(?P<iso>\d+)?"
-    r"(?P<el>[A-Z][a-z]?|[a-z])"
+    r"(?P<el>\*|[A-Z][a-z]?|[a-z])"
     r"(?P<stereo>@@|@)?"
     r"(?:H(?P<h>\d?))?"
-    r"(?P<charge>(?:\+|-)(?:\d+)?)?"
+    r"(?P<charge>(?:\d+[+\-]|[+\-]\d*|[+\-]+))?"
     r"\]"
 )
 
@@ -49,6 +49,7 @@ class ParsedAtom:
     aromatic: bool = False
     charge: int = 0
     hcount: int | None = None
+    radical: int = 0
     # OpenSMILES tetrahedral: "@" anticlockwise, "@@" clockwise (from first neighbor).
     tetrahedral: str | None = None
     # Neighbor atom indices in SMILES encounter order (for stereo parity).
@@ -75,11 +76,42 @@ class ParsedMol:
 def _parse_charge(raw: str | None) -> int:
     if not raw:
         return 0
-    if raw in {"+", "-"}:
-        return 1 if raw == "+" else -1
-    sign = 1 if raw[0] == "+" else -1
-    digits = raw[1:]
-    return sign * (int(digits) if digits else 1)
+    if raw in {"+", "++", "+++"}:
+        return len(raw)
+    if raw in {"-", "--", "---"}:
+        return -len(raw)
+    if raw[0] in "+-":
+        sign = 1 if raw[0] == "+" else -1
+        digits = raw[1:]
+        return sign * (int(digits) if digits else 1)
+    # OpenSMILES ``2+`` / ``2-``
+    if raw[-1] in "+-":
+        sign = 1 if raw[-1] == "+" else -1
+        return sign * int(raw[:-1])
+    return 0
+
+
+def _infer_radical(element: str, charge: int, degree: int, hcount: int | None) -> int:
+    """Unpaired electrons from bracket H underfill (e.g. ``[CH3]`` → 1)."""
+    if hcount is None:
+        return 0
+    valence = {
+        "B": 3,
+        "C": 4,
+        "N": 3,
+        "O": 2,
+        "P": 3,
+        "S": 2,
+        "F": 1,
+        "Cl": 1,
+        "Br": 1,
+        "I": 1,
+    }.get(element)
+    if valence is None:
+        return 0
+    # Ammonium-like N+: treat expected sites as 4.
+    expected = 4 if element == "N" and charge > 0 else valence - charge
+    return max(0, expected - degree - hcount)
 
 
 def parse_organic_smiles(smiles: str) -> ParsedMol:
@@ -214,14 +246,18 @@ def parse_organic_smiles(smiles: str) -> ParsedMol:
             if not m:
                 raise ValueError(f"bad bracket atom at {i}: {s[i:i+16]!r}")
             el_raw = m.group("el")
-            aromatic = el_raw.islower()
-            element = el_raw.upper() if len(el_raw) == 1 else el_raw[0].upper() + el_raw[1:]
+            aromatic = el_raw.islower() and el_raw != "*"
+            if el_raw == "*":
+                element = "*"
+            else:
+                element = el_raw.upper() if len(el_raw) == 1 else el_raw[0].upper() + el_raw[1:]
             charge = _parse_charge(m.group("charge"))
             h_raw = m.group("h")
             hcount = None
             if "H" in m.group(0):
                 hcount = int(h_raw) if h_raw else 1
             stereo = m.group("stereo")
+            iso_raw = m.group("iso")
             atom = ParsedAtom(
                 index=len(mol.atoms),
                 element=element,
@@ -232,19 +268,26 @@ def parse_organic_smiles(smiles: str) -> ParsedMol:
             )
             mol.atoms.append(atom)
             i = m.end()
+            _ = iso_raw  # isotope reserved for AtomLayout later
         else:
-            # Two-letter organic first
-            two = s[i : i + 2]
-            if two in _ORGANIC:
-                element, aromatic = _ORGANIC[two]
-                i += 2
-            elif ch in _ORGANIC:
-                element, aromatic = _ORGANIC[ch]
+            # Wildcard attachment point
+            if ch == "*":
+                atom = ParsedAtom(index=len(mol.atoms), element="*")
+                mol.atoms.append(atom)
                 i += 1
             else:
-                raise ValueError(f"unsupported SMILES token at {i}: {s[i:i+8]!r}")
-            atom = ParsedAtom(index=len(mol.atoms), element=element, aromatic=aromatic)
-            mol.atoms.append(atom)
+                # Two-letter organic first
+                two = s[i : i + 2]
+                if two in _ORGANIC:
+                    element, aromatic = _ORGANIC[two]
+                    i += 2
+                elif ch in _ORGANIC:
+                    element, aromatic = _ORGANIC[ch]
+                    i += 1
+                else:
+                    raise ValueError(f"unsupported SMILES token at {i}: {s[i:i+8]!r}")
+                atom = ParsedAtom(index=len(mol.atoms), element=element, aromatic=aromatic)
+                mol.atoms.append(atom)
 
         idx = atom.index
         if prev is not None:
@@ -276,6 +319,10 @@ def parse_organic_smiles(smiles: str) -> ParsedMol:
         known = set(a.smiles_neighbors)
         for other in sorted(adj[a.index] - known):
             a.smiles_neighbors.append(other)
+    # Infer radical electrons from bracket H underfill (portable; no chem engine).
+    for a in mol.atoms:
+        deg = len(adj[a.index])
+        a.radical = _infer_radical(a.element, a.charge, deg, a.hcount)
     return mol
 
 
@@ -283,6 +330,11 @@ def implicit_h_count(atom: ParsedAtom, degree: int) -> int:
     """Default implicit H from organic valence (depiction labels)."""
     if atom.hcount is not None:
         return max(0, atom.hcount)
+    # Charged atoms without explicit H: do not invent hydrogens for the label.
+    if atom.charge != 0:
+        return 0
+    if atom.radical:
+        return 0
     # Rough organic valences; aromatic atoms already counted in degree.
     valence = {
         "B": 3,
@@ -298,7 +350,6 @@ def implicit_h_count(atom: ParsedAtom, degree: int) -> int:
     }.get(atom.element)
     if valence is None:
         return 0
-    # Charge: [NH4+] → h explicit; for organic N+ reduce available.
     v = valence - atom.charge
     if atom.element == "N" and atom.charge == 0 and degree >= 3:
         v = 3
@@ -306,12 +357,14 @@ def implicit_h_count(atom: ParsedAtom, degree: int) -> int:
 
 
 def atom_display_label(atom: ParsedAtom, degree: int) -> str | None:
-    """RDKit-ish label: suppress carbon; show NH / OH when H present.
+    """RDKit-ish label: suppress plain carbon; always show stars / charge / radicals.
 
-    Charged / non-carbon heteroatoms always label. Carbon stays silent even with
-    bracket ``[C@H]`` — stereo is carried by wedges, not a CH badge.
+    Stars (``*``) always label. Charged / radical carbons show ``C``. Neutral
+    heteroatoms may include implicit H (``NH``, ``OH``).
     """
-    if atom.element == "C" and atom.charge == 0:
+    if atom.element == "*":
+        return "*"
+    if atom.element == "C" and atom.charge == 0 and atom.radical == 0:
         return None
     h = implicit_h_count(atom, degree)
     label = atom.element

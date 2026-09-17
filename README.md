@@ -14,7 +14,9 @@ Scaffold in progress. Language-neutral JSON contracts (Pydantic → generated JS
 
 **Layout coords (transitional):** **Indigo only** while native matures. No multi-backend ladder (RDKit / Open Babel / Chematic-as-layout are out of the product path). Native stub remains for tests without Indigo.
 
-**Multi-molecule diagrams:** ELK via **jsrun** (embedded V8 + vendored elkjs) — no Node required. Grid/row fallback if ELK fails.
+**Multi-molecule diagrams:** ELK via **jsrun** (embedded V8 + vendored elkjs) — no Node required. Grid/row fallback if ELK fails. Optional `diagram.align` runs a **pure-Python** connected-MCS + Kabsch frame alignment (no NetworkX).
+
+**Core deps stay slim:** `pydantic` + `jsrun` only (portable). Indigo / Chematic are extras.
 
 **Outputs:** SVG (default); HTML with embedded SVG for responsive pages.
 

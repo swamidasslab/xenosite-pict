@@ -204,7 +204,11 @@ def molecule_to_viewport(layout: MoleculeLayout, mol_spec: MoleculeSpec) -> View
                 )
             )
 
-    labeled = {i for i, a in enumerate(layout.atoms) if a.label is not None or a.charge}
+    labeled = {
+        i
+        for i, a in enumerate(layout.atoms)
+        if a.label is not None or a.charge or a.radical or a.element == "*"
+    }
     bond_color = mol_spec.color or "#111"
     # Quality depictors: all skeleton centerlines, then offsets, then stereo.
     skeletons: list[PathPrim] = []
@@ -246,15 +250,57 @@ def molecule_to_viewport(layout: MoleculeLayout, mol_spec: MoleculeSpec) -> View
 
     for i, atom in enumerate(layout.atoms):
         label = atom.label
-        if label is None and atom.charge:
-            label = atom.element
+        if label is None and (atom.charge or atom.radical or atom.element == "*"):
+            label = "*" if atom.element == "*" else atom.element
+        x, y = coords[i]
+        # Radical dots (RDKit/Indigo-style): sit beside the atom, outside the label.
+        if atom.radical > 0:
+            # Prefer a free angular wedge away from bonds.
+            nbr_angs = []
+            for bond in layout.bonds:
+                if bond.begin == atom.index or bond.end == atom.index:
+                    other = bond.end if bond.begin == atom.index else bond.begin
+                    oi = atom_pos.get(other)
+                    if oi is not None:
+                        nbr_angs.append(math.atan2(coords[oi][1] - y, coords[oi][0] - x))
+            if nbr_angs:
+                nbr_angs.sort()
+                # Largest gap midpoint.
+                best_mid, best_w = nbr_angs[0] + math.pi, 0.0
+                for j, a0 in enumerate(nbr_angs):
+                    a1 = nbr_angs[(j + 1) % len(nbr_angs)]
+                    w = a1 - a0
+                    if w <= 0:
+                        w += 2 * math.pi
+                    if w > best_w:
+                        best_w = w
+                        best_mid = a0 + w / 2
+                ang = best_mid
+            else:
+                ang = -math.pi / 2
+            dot_r = 1.6
+            base = 7.5 if label else 5.0
+            for k in range(min(atom.radical, 3)):
+                spread = (k - (min(atom.radical, 3) - 1) / 2) * 0.35
+                dang = ang + spread
+                layers["labels"].primitives.append(
+                    CirclePrim(
+                        cx=x + math.cos(dang) * base,
+                        cy=y + math.sin(dang) * base,
+                        r=dot_r,
+                        fill="#111",
+                        stroke="none",
+                        opacity=1.0,
+                        cls=f"atom-{atom.index} radical",
+                    )
+                )
         if not label:
             continue
-        x, y = coords[i]
         text = label
         if atom.charge:
-            sign = "+" if atom.charge > 0 else "-"
+            sign = "+" if atom.charge > 0 else "−"  # unicode minus for depiction
             mag = abs(atom.charge)
+            # Charge as a tight suffix (N+, O2−); avoid inventing NH for anions.
             text = f"{label}{sign}" if mag == 1 else f"{label}{mag}{sign}"
         if mol_spec.halo:
             layers["halo"].primitives.append(

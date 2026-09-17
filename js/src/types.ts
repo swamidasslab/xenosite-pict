@@ -34,15 +34,16 @@ export interface ShadeSpec {
 }
 
 export interface DiagramSpec {
-  kind?: "row" | "grid" | "network" | "stack";
+  kind?: "row" | "grid" | "network" | "stack" | "single";
   columns?: number;
+  /** Chemical MCS alignment before diagram placement (Python pure-Python MCS). */
+  align?: boolean;
   elk_options?: Record<string, unknown>;
 }
 
 export interface PictSpec {
   molecules: MoleculeSpec[];
   diagram?: DiagramSpec;
-  align?: boolean;
   width?: number;
   height?: number;
 }
@@ -54,6 +55,10 @@ export interface AtomLayout {
   x: number;
   y: number;
   charge?: number;
+  isotope?: number | null;
+  /** Unpaired electron count (radical dots). */
+  radical?: number;
+  /** Display label; stars / R-groups put the name here (e.g. R1). */
   label?: string | null;
 }
 

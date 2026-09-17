@@ -5,7 +5,27 @@ from __future__ import annotations
 from xenosite.pict.backends.base import register, warn_unsupported
 from xenosite.pict.contracts.layout import AtomLayout, BondLayout, MoleculeLayout
 from xenosite.pict.contracts.spec import MoleculeSpec
-from xenosite.pict.structure import structure_smiles
+from xenosite.pict.structure import cx_atom_labels, structure_smiles
+
+
+def _safe_call(fn, default=None):
+    try:
+        return fn()
+    except Exception:
+        return default
+
+
+def _is_star_symbol(el: str, *, is_pseudo: bool, is_rsite: bool) -> bool:
+    if is_pseudo or is_rsite:
+        return True
+    if el in {"*", "R"}:
+        return True
+    if el.startswith("_"):
+        return True
+    # CX aliases folded into the symbol: R1, R12, Ap, etc.
+    if el.startswith("R") and el[1:].isdigit():
+        return True
+    return False
 
 
 @register("indigo")
@@ -24,9 +44,10 @@ class IndigoBackend:
         indigo = Indigo()
         if mol.esmiles:
             warn_unsupported(self.name, "esmiles", "Using SMILES before <sep> only for now.")
+        cx_labels: list[str | None] = []
         if mol.cxsmiles:
-            # Indigo accepts many CXSMILES features; unsupported ones warn at runtime.
             imol = indigo.loadMolecule(mol.cxsmiles)
+            cx_labels = cx_atom_labels(mol.cxsmiles)
         elif mol.molfile:
             imol = indigo.loadMolecule(mol.molfile)
         else:
@@ -36,33 +57,63 @@ class IndigoBackend:
                     "indigo backend requires smiles, cxsmiles, esmiles, or molfile"
                 )
             imol = indigo.loadMolecule(smiles)
+            cx_labels = cx_atom_labels(smiles)
 
         imol.layout()
-        # Kekulé bond orders for depiction (Indigo aromatic order is 4).
         try:
             imol.dearomatize()
         except Exception:
             pass
+
         atoms: list[AtomLayout] = []
         for atom in imol.iterateAtoms():
             x, y, _z = atom.xyz()
             el = atom.symbol()
-            charge = atom.charge()
-            label = None if el == "C" and charge == 0 else el
+            charge = int(atom.charge())
+            isotope_raw = int(atom.isotope())
+            isotope = isotope_raw if isotope_raw else None
+            is_pseudo = bool(_safe_call(atom.isPseudoatom, False))
+            is_rsite = bool(_safe_call(atom.isRSite, False))
+            is_star = _is_star_symbol(el, is_pseudo=is_pseudo, is_rsite=is_rsite)
+
+            radical = 0
+            if not is_star:
+                radical = int(_safe_call(atom.radicalElectrons, 0) or 0)
+
+            idx = atom.index()
+            cx = cx_labels[idx] if idx < len(cx_labels) else None
+            name = _safe_call(atom.name, None)
+
+            if is_star:
+                # element is always '*' for attachment points; label carries the name.
+                label = cx or name
+                if not label:
+                    label = el if el not in {"*", "R"} else "*"
+                element = "*"
+            else:
+                element = el
+                if cx or name:
+                    label = cx or name
+                elif el == "C" and charge == 0 and radical == 0 and not isotope:
+                    label = None
+                else:
+                    label = el
+
             atoms.append(
                 AtomLayout(
-                    index=atom.index(),
-                    element=el,
+                    index=idx,
+                    element=element,
                     x=float(x),
                     y=float(y),
-                    charge=int(charge),
+                    charge=charge,
+                    isotope=isotope,
+                    radical=radical,
                     label=label,
                 )
             )
+
         bonds: list[BondLayout] = []
         for bond in imol.iterateBonds():
-            # Indigo: UP=5, DOWN=6, EITHER=4; CIS/TRANS are double-bond stereo
-            # handled by layout geometry. Thin end of wedge is at source().
             st = int(bond.bondStereo())
             stereo = "none"
             if st == indigo.UP:
