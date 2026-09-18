@@ -296,9 +296,9 @@ def molecule_to_viewport(layout: MoleculeLayout, mol_spec: MoleculeSpec) -> View
             p.cls = f"{tag} {p.cls or 'bond-stereo'}"
             stereos.append(p)
     painted = [*skeletons, *offsets, *stereos]
-    # xenopict halo: reuse bond strokes in white at 2× width (scale * 0.2),
-    # round caps, under the ink. One halo per stroke so double-bond offsets
-    # are knocked out too, not only the centerline.
+    # Halo reuses every bond stroke in white at 2× width, round caps, under
+    # the ink. One halo per stroke so double-bond offsets are knocked out
+    # too, not only the centerline.
     if mol_spec.halo:
         for p in painted:
             layers["halo"].primitives.append(

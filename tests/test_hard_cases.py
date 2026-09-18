@@ -24,6 +24,7 @@ from collections import Counter
 import pytest
 
 from xenosite.pict import Pict, render
+from xenosite.pict.draw.metrics import HALO_STROKE
 from xenosite.pict.draw.plotdot import PlotDot
 from xenosite.pict.draw.rings import (
     HARD_RING_CASES,
@@ -163,10 +164,9 @@ def test_svg_always_has_opaque_white_background():
 
 
 def test_halo_follows_each_bond_stroke():
-    """xenopict reuses every bond stroke as a white halo at 2× width.
+    """Every bond stroke is reused as a white halo at 2× width.
 
-    Not one halo per bond: Kekulé offsets get their own knockout, matching
-    ``<use href="#lines">`` with ``stroke-width: scale * 0.2``.
+    Not one halo per bond: Kekulé offsets get their own knockout.
     """
     backend = _chem_backend()
     svg = render({"molecules": [{"smiles": "c1ccccc1"}]}, backend=backend)
@@ -180,7 +180,7 @@ def test_halo_follows_each_bond_stroke():
     n_ink = len(re.findall(r"bond-skeleton|bond-offset|bond-wedge", svg))
     assert n_halo == n_ink
     assert n_halo > n_bonds  # offsets are haloed too
-    assert 'stroke-width="4.0"' in svg or 'stroke-width="4"' in svg
+    assert f'stroke-width="{HALO_STROKE}"' in svg
 
 
 def test_shade_zeros_do_not_paint_full_disks():

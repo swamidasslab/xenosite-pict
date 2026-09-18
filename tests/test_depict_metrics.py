@@ -18,8 +18,11 @@ from xenosite.pict.draw.bonds import (
 from xenosite.pict.draw.metrics import (
     BOND_PX,
     FONT_PX,
+    FONT_STEM_EM,
+    HALO_STROKE,
     OFFSET_FRAC,
     STROKE_FRAC,
+    STROKE_PX,
     WEDGE_WIDTH_FRAC,
     coord_scale,
     hash_count,
@@ -84,6 +87,17 @@ def test_stroke_is_fraction_of_bond():
     assert strokes.skeleton is not None
     assert strokes.skeleton.stroke_width == pytest.approx(STROKE_FRAC * BOND_PX, rel=0.02)
     assert strokes.skeleton.stroke_linecap == "round"
+
+
+def test_stroke_matches_label_stem():
+    """Default bond ink is the label face's vertical stem, not 0.10×bond."""
+    stem = FONT_STEM_EM * FONT_PX
+    assert STROKE_PX == pytest.approx(stem, abs=0.01)
+    assert STROKE_PX == pytest.approx(1.12, abs=0.001)
+    assert HALO_STROKE == pytest.approx(2 * STROKE_PX, abs=0.001)
+    strokes = bond_strokes(0, 0, BOND_PX, 0, 1.0)
+    assert strokes.skeleton is not None
+    assert strokes.skeleton.stroke_width == pytest.approx(stem, abs=0.01)
 
 
 def test_wedge_fat_end_width():

@@ -1,17 +1,18 @@
 """Depiction proportions.
 
-House style is **xenopict** (``drawer.py``): RDKit draws the molecule, then
-stroke width is forced to ``scale * 0.1`` with round caps, bond length
-``scale = 20``, halo lines ``scale * 0.2``, shade dots ``scale * 0.9``,
-atom-mark radius ``scale``, font left at RDKit ``baseFontSize = 0.6``.
+House style starts from **xenopict** (``drawer.py``): bond length
+``scale = 20``, shade dots ``scale * 0.9``, atom-mark radius ``scale``,
+font at RDKit ``baseFontSize = 0.6``. Xenopict then forces stroke width
+to ``scale * 0.1`` (2 px) and halo lines to ``scale * 0.2``. That stroke
+is almost twice the stem of the label face, so the default ink is the
+font stem instead, and the halo stays twice that ink.
 
 Geometry that xenopict does not override comes from the engines it sits on:
 
 - double/triple offset ``0.15 × bond`` (RDKit ``multipleBondOffset``;
   Indigo SVG measured ~0.167)
-- wedge fat-end ~``0.30 × bond`` so the triangle still reads against a
-  stroke that is already ``0.10 × bond`` (Indigo’s thin-stroke wedges
-  were ~0.17 and disappear under xenopict-weight lines)
+- wedge fat-end ~``0.30 × bond`` so the triangle still reads against the
+  bond stroke (Indigo’s thin-stroke wedges were ~0.17)
 
 ``coord_scale`` maps layout units onto ``BOND_PX`` so Indigo (bond ≈ 1)
 and native (bond = 1.5) depict at the same size.
@@ -26,10 +27,15 @@ from xenosite.pict.contracts.layout import MoleculeLayout
 # xenopict ``Xenopict.scale`` — RDKit ``fixedBondLength``.
 BOND_PX = 20.0
 
-STROKE_FRAC = 0.10  # xenopict: stroke-width = scale * 0.1
+FONT_FRAC = 0.60  # RDKit baseFontSize, inherited by xenopict
+# "Helvetica, Arial, sans-serif" resolves to Liberation Sans Regular.
+# Outline measurement of the vertical stem (H, I, and the straight stems
+# of P/F/B) is 0.0933 em. At FONT_PX that is 1.12 px; xenopict's 2 px
+# stroke was nearly twice the letters.
+FONT_STEM_EM = 0.0933
+STROKE_FRAC = round(FONT_STEM_EM * FONT_FRAC, 3)  # 0.056 → 1.12 px
 OFFSET_FRAC = 0.15  # RDKit multipleBondOffset (xenopict keeps this)
 WEDGE_WIDTH_FRAC = 0.30  # full width at fat end; > stroke so wedges read
-FONT_FRAC = 0.60  # RDKit baseFontSize, inherited by xenopict
 # xenopict ``reframe`` padding is 1.5× scale around atom centers. Ours
 # already includes label overflow in the box, so 1.0× is the same air.
 PAD_FRAC = 1.0
@@ -38,7 +44,7 @@ END_GAP_FRAC = 0.13  # ring doubles: keep the offset off adjacent bonds
 # trimmed where they meet neighboring singles, not by a fixed end gap.
 CHAIN_END_GAP_FRAC = 0.0
 HASH_PER_BOND = 8
-HALO_FRAC = 0.20  # xenopict mol_halo lines: scale * 0.2
+HALO_FRAC = 2 * STROKE_FRAC  # knockout stays twice the ink, as in xenopict
 SHADE_FRAC = 0.90  # xenopict shade(): scale * 0.9
 MARK_FRAC = 1.0  # xenopict mark_atoms radius = scale * mark_down_scale
 
