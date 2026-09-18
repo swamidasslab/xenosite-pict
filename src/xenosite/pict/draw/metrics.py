@@ -34,8 +34,8 @@ FONT_FRAC = 0.60  # RDKit baseFontSize, inherited by xenopict
 # already includes label overflow in the box, so 1.0× is the same air.
 PAD_FRAC = 1.0
 END_GAP_FRAC = 0.13  # ring doubles: keep the offset off adjacent bonds
-# Acyclic doubles match the skeleton. Rings keep END_GAP_FRAC so the
-# second line does not hit neighbors at the vertices.
+# Crossed (either) doubles still use this. Centered acyclic multiples are
+# trimmed where they meet neighboring singles, not by a fixed end gap.
 CHAIN_END_GAP_FRAC = 0.0
 HASH_PER_BOND = 8
 HALO_FRAC = 0.20  # xenopict mol_halo lines: scale * 0.2

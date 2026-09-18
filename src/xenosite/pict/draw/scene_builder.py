@@ -16,7 +16,14 @@ from xenosite.pict.contracts.scene import (
 )
 from xenosite.pict.contracts.spec import MarkKind, MoleculeSpec, PictSpec
 from xenosite.pict.draw.arrows import diagram_overlays
-from xenosite.pict.draw.bonds import bond_paths, bond_strokes, depict_order, shorten
+from xenosite.pict.draw.bonds import (
+    DrawnBond,
+    bond_paths,
+    bond_strokes,
+    depict_order,
+    join_centered_multibonds,
+    shorten,
+)
 from xenosite.pict.draw.metrics import (
     BOND_PX,
     FONT_PX,
@@ -230,10 +237,8 @@ def molecule_to_viewport(layout: MoleculeLayout, mol_spec: MoleculeSpec) -> View
 
     texts = [_display_text(a) for a in layout.atoms]
     bond_color = mol_spec.color or "#111"
-    # Quality depictors: all skeleton centerlines, then offsets, then stereo.
-    skeletons: list[PathPrim] = []
-    offsets: list[PathPrim] = []
-    stereos: list[PathPrim] = []
+    # Singles first, then centered or interior offsets, then stereo.
+    prepared: list[DrawnBond] = []
     for bond in layout.bonds:
         i0, i1 = atom_pos.get(bond.begin), atom_pos.get(bond.end)
         if i0 is None or i1 is None:
@@ -244,8 +249,36 @@ def molecule_to_viewport(layout: MoleculeLayout, mol_spec: MoleculeSpec) -> View
         g2 = label_clearance(texts[i1]) if texts[i1] else 0.0
         x1, y1, x2, y2 = _shorten(x1, y1, x2, y2, g1, g2)
         interior = ring_normals.get(_bond_key(bond.begin, bond.end))
+        prepared.append(
+            DrawnBond(
+                index=bond.index,
+                begin=bond.begin,
+                end=bond.end,
+                x1=x1,
+                y1=y1,
+                x2=x2,
+                y2=y2,
+                order=bond.order,
+                interior=interior,
+                stereo=bond.stereo,
+                begin_labeled=bool(texts[i0]),
+                end_labeled=bool(texts[i1]),
+            )
+        )
+    join_centered_multibonds(prepared)
+    skeletons: list[PathPrim] = []
+    offsets: list[PathPrim] = []
+    stereos: list[PathPrim] = []
+    for bond in prepared:
         strokes = bond_strokes(
-            x1, y1, x2, y2, bond.order, interior=interior, stereo=bond.stereo
+            bond.x1,
+            bond.y1,
+            bond.x2,
+            bond.y2,
+            bond.order,
+            interior=bond.interior,
+            stereo=bond.stereo,
+            trims=bond.trims,
         )
         tag = f"bond-{bond.index} atom-{bond.begin} atom-{bond.end}"
         if strokes.skeleton is not None:

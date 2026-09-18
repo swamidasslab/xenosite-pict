@@ -48,25 +48,27 @@ def _path_len(d: str) -> float:
 
 
 def test_double_offset_matches_rdkit_fraction():
-    """RDKit multipleBondOffset is 0.15 of the mean bond; Indigo ~0.167."""
+    """Separation of a centered double is still RDKit's 0.15 bond offset."""
     strokes = bond_strokes(0, 0, BOND_PX, 0, 2.0)
-    assert strokes.offsets
-    ys = _path_ys(strokes.offsets[0].d)
-    assert ys
-    off = abs(ys[0])
-    assert off == pytest.approx(OFFSET_FRAC * BOND_PX, rel=0.05)
+    assert len(strokes.offsets) == 2
+    ys = sorted(_path_ys(p.d)[0] for p in strokes.offsets)
+    assert ys[0] == pytest.approx(-ys[1], abs=0.05)
+    assert ys[1] - ys[0] == pytest.approx(OFFSET_FRAC * BOND_PX, rel=0.05)
+    assert (ys[0] + ys[1]) / 2 == pytest.approx(0.0, abs=0.05)
 
 
 def test_acyclic_double_offset_extends_past_ring_offset():
-    """Non-ring doubles match the skeleton; ring doubles stay short."""
+    """Centered chain lines run the bond; ring doubles stay short and inside."""
     chain = bond_strokes(0, 0, BOND_PX, 0, 2.0)
     ring = bond_strokes(0, 0, BOND_PX, 0, 2.0, interior=(0.0, -1.0))
-    assert chain.skeleton is not None and chain.offsets and ring.offsets
+    assert chain.skeleton is None and len(chain.offsets) == 2
+    assert ring.skeleton is not None and ring.offsets
     chain_len = _path_len(chain.offsets[0].d)
     ring_len = _path_len(ring.offsets[0].d)
-    skel_len = _path_len(chain.skeleton.d)
     assert chain_len > ring_len + 0.1 * BOND_PX
-    assert chain_len == pytest.approx(skel_len, abs=0.05)
+    assert chain_len == pytest.approx(BOND_PX, abs=0.05)
+    # Ring offset is on the interior side, not mirrored.
+    assert _path_ys(ring.offsets[0].d)[0] < 0
 
 
 def test_triple_offsets_are_symmetric():
