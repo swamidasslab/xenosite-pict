@@ -17,10 +17,17 @@ import math
 from dataclasses import dataclass, field
 
 from xenosite.pict.contracts.scene import PathPrim
+from xenosite.pict.draw.metrics import (
+    BOND_PX,
+    END_GAP_PX,
+    OFFSET_PX,
+    STROKE_PX,
+    WEDGE_HALF_PX,
+    hash_count,
+)
 
-_STROKE = 1.55
-_WEDGE_HALF = 3.2  # half-width at fat end (SVG units)
-_HASH_COUNT = 6
+_STROKE = STROKE_PX
+_WEDGE_HALF = WEDGE_HALF_PX
 
 
 def depict_order(order: float) -> float:
@@ -55,6 +62,7 @@ def _line(
         d=f"M {x1:.2f} {y1:.2f} L {x2:.2f} {y2:.2f}",
         stroke="#111",
         stroke_width=width,
+        stroke_linecap="round",
         cls=cls,
     )
 
@@ -94,20 +102,22 @@ def solid_wedge(
         d=f"M {x1:.2f} {y1:.2f} L {ax:.2f} {ay:.2f} L {bx:.2f} {by:.2f} Z",
         stroke="#111",
         fill="#111",
-        stroke_width=0.5,
+        stroke_width=0.6,
+        stroke_linecap="round",
         cls="bond bond-wedge-up",
     )
 
 
 def hashed_wedge(
-    x1: float, y1: float, x2: float, y2: float, *, half: float = _WEDGE_HALF, n: int = _HASH_COUNT
+    x1: float, y1: float, x2: float, y2: float, *, half: float = _WEDGE_HALF, n: int | None = None
 ) -> list[PathPrim]:
     """Hashed wedge; tip at (x1,y1) — RDKit BEGINDASH (MolDraw2D dashes)."""
     ux, uy, nx, ny, length = _unit(x1, y1, x2, y2)
     # Skip last dash at fat end so incident bonds don't hit a bar (RDKit oneLessDash).
+    count = n if n is not None else hash_count(length)
     paths: list[PathPrim] = []
-    for i in range(n):
-        t = (i + 1) / (n + 1)
+    for i in range(count):
+        t = (i + 1) / (count + 1)
         w = half * t
         cx = x1 + ux * length * t
         cy = y1 + uy * length * t
@@ -118,15 +128,17 @@ def hashed_wedge(
                 cx - nx * w,
                 cy - ny * w,
                 cls="bond bond-wedge-down",
-                width=1.2,
+                width=_STROKE,
             )
         )
     return paths
 
 
-def wavy_bond(x1: float, y1: float, x2: float, y2: float, *, amp: float = 2.0, waves: int = 4) -> PathPrim:
+def wavy_bond(x1: float, y1: float, x2: float, y2: float, *, amp: float | None = None, waves: int = 5) -> PathPrim:
     """Wiggly single for unspecified stereo (RDKit UNKNOWN / Indigo EITHER)."""
     ux, uy, nx, ny, length = _unit(x1, y1, x2, y2)
+    if amp is None:
+        amp = 0.055 * BOND_PX
     parts = [f"M {x1:.2f} {y1:.2f}"]
     steps = waves * 2
     for i in range(1, steps + 1):
@@ -139,6 +151,7 @@ def wavy_bond(x1: float, y1: float, x2: float, y2: float, *, amp: float = 2.0, w
         d=" ".join(parts),
         stroke="#111",
         stroke_width=_STROKE,
+        stroke_linecap="round",
         fill="none",
         cls="bond bond-either",
     )
@@ -150,8 +163,8 @@ def crossed_double(
     """Crossed double for unspecified E/Z (RDKit EITHERDOUBLE)."""
     ux, uy, lx, ly, length = _unit(x1, y1, x2, y2)
     nx, ny = interior if interior is not None else (lx, ly)
-    off = 2.4
-    gap = min(3.2, length * 0.16)
+    off = min(OFFSET_PX, length * 0.22)
+    gap = min(END_GAP_PX, length * 0.22)
     sx1, sy1, sx2, sy2 = shorten(x1, y1, x2, y2, gap, gap)
     # Two diagonals between the parallel offset positions.
     a1x, a1y = sx1 + nx * off, sy1 + ny * off
@@ -202,18 +215,17 @@ def bond_strokes(
         return BondStrokes(skeleton=skeleton)
 
     nx, ny = interior if interior is not None else (lx, ly)
+    off = min(OFFSET_PX, length * 0.22)
+    gap = min(END_GAP_PX, length * 0.22)
     offsets: list[PathPrim] = []
     if order >= 2.5:
-        gap = min(4.0, length * 0.18)
         sx1, sy1, sx2, sy2 = shorten(x1, y1, x2, y2, gap, gap)
         for side in (-1.0, 1.0):
-            ox, oy = nx * 2.6 * side, ny * 2.6 * side
+            ox, oy = nx * off * side, ny * off * side
             offsets.append(
                 _line(sx1 + ox, sy1 + oy, sx2 + ox, sy2 + oy, cls="bond bond-offset")
             )
     else:
-        off = 2.4
-        gap = min(3.2, length * 0.16)
         sx1, sy1, sx2, sy2 = shorten(x1, y1, x2, y2, gap, gap)
         offsets.append(
             _line(

@@ -22,7 +22,7 @@ def _render_primitive(parent: Element, prim: Primitive) -> None:
             "fill": prim.fill or "none",
             "stroke": prim.stroke or "none",
             "stroke-width": str(prim.stroke_width),
-            "stroke-linecap": "round",
+            "stroke-linecap": prim.stroke_linecap or "round",
             "stroke-linejoin": "round",
             "opacity": str(prim.opacity),
         }

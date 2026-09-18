@@ -15,6 +15,29 @@ def _safe_call(fn, default=None):
         return default
 
 
+def _element_label(
+    element: str,
+    hcount: int,
+    *,
+    charge: int,
+    radical: int,
+    isotope: int | None,
+) -> str | None:
+    """Indigo/RDKit terminal-hetero label: ``OH``, ``NH2``, ``NH4``; hide plain C.
+
+    Implicit H comes from Indigo ``countImplicitHydrogens`` (same source the
+    Indigo renderer uses for ``OH`` / ``NH2`` glyphs).
+    """
+    if element == "C" and charge == 0 and radical == 0 and not isotope:
+        return None
+    label = element
+    if hcount == 1:
+        label += "H"
+    elif hcount > 1:
+        label += f"H{hcount}"
+    return label
+
+
 def _is_star_symbol(el: str, *, is_pseudo: bool, is_rsite: bool) -> bool:
     if is_pseudo or is_rsite:
         return True
@@ -79,6 +102,12 @@ class IndigoBackend:
             radical = 0
             if not is_star:
                 radical = int(_safe_call(atom.radicalElectrons, 0) or 0)
+                # Indigo reports radicalElectrons=1 on closed-shell anions ([O-] → 1).
+                if charge < 0 and radical:
+                    radical = 0
+            hcount = 0
+            if not is_star:
+                hcount = int(_safe_call(atom.countImplicitHydrogens, 0) or 0)
 
             idx = atom.index()
             cx = cx_labels[idx] if idx < len(cx_labels) else None
@@ -94,10 +123,8 @@ class IndigoBackend:
                 element = el
                 if cx or name:
                     label = cx or name
-                elif el == "C" and charge == 0 and radical == 0 and not isotope:
-                    label = None
                 else:
-                    label = el
+                    label = _element_label(el, hcount, charge=charge, radical=radical, isotope=isotope)
 
             atoms.append(
                 AtomLayout(

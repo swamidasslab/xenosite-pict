@@ -17,31 +17,64 @@ from xenosite.pict.contracts.scene import (
 from xenosite.pict.contracts.spec import MarkKind, MoleculeSpec, PictSpec
 from xenosite.pict.draw.arrows import diagram_overlays
 from xenosite.pict.draw.bonds import bond_paths, bond_strokes, depict_order, shorten
+from xenosite.pict.draw.metrics import (
+    BOND_PX,
+    FONT_PX,
+    HALO_STROKE,
+    MARK_FRAC,
+    PAD_PX,
+    RADICAL_BASE,
+    RADICAL_BASE_BARE,
+    RADICAL_DOT_R,
+    SHADE_FRAC,
+    STROKE_PX,
+    coord_scale,
+    label_clearance,
+)
 from xenosite.pict.draw.plotdot import PlotDot
 from xenosite.pict.draw.rings import bond_interior_normals, find_sssr
 
 _LAYER_ORDER = ("shading", "halo", "bonds", "labels", "marks", "overlay")
-_SCALE = 28.0
-_PAD = 24.0
-_LABEL_GAP = 8.0
+_PAD = PAD_PX
 
 
 def normalize_coords(
     layout: MoleculeLayout,
 ) -> tuple[list[tuple[float, float]], float, float]:
-    """Return SVG coords (Y-flipped), width, height."""
+    """Return SVG coords (Y-flipped), width, height.
+
+    Scale so the mean layout bond draws at ``BOND_PX`` (Indigo bonds are ~1,
+    native bonds are 1.5 — both should depict the same size).
+    """
     if not layout.atoms:
         return [], _PAD * 2, _PAD * 2
+    scale = coord_scale(layout)
     xs = [a.x for a in layout.atoms]
     ys = [a.y for a in layout.atoms]
     min_x, max_x = min(xs), max(xs)
     min_y, max_y = min(ys), max(ys)
     coords = [
-        ((a.x - min_x) * _SCALE + _PAD, (max_y - a.y) * _SCALE + _PAD) for a in layout.atoms
+        ((a.x - min_x) * scale + _PAD, (max_y - a.y) * scale + _PAD) for a in layout.atoms
     ]
-    width = (max_x - min_x) * _SCALE + 2 * _PAD
-    height = (max_y - min_y) * _SCALE + 2 * _PAD
+    width = (max_x - min_x) * scale + 2 * _PAD
+    height = (max_y - min_y) * scale + 2 * _PAD
     return coords, max(width, 2 * _PAD), max(height, 2 * _PAD)
+
+
+def _display_text(atom) -> str | None:
+    """Label string actually painted (includes charge suffix)."""
+    label = atom.label
+    if label is None and (atom.charge or atom.radical or atom.element == "*"):
+        label = "*" if atom.element == "*" else atom.element
+    if not label:
+        return None
+    text = label
+    if atom.charge:
+        sign = "+" if atom.charge > 0 else "−"  # unicode minus for depiction
+        mag = abs(atom.charge)
+        # Charge as a tight suffix (NH4+, O−); H count already lives in the label.
+        text = f"{label}{sign}" if mag == 1 else f"{label}{mag}{sign}"
+    return text
 
 
 def _shorten(
@@ -85,17 +118,6 @@ def _bond_paths(
 ) -> list[PathPrim]:
     """Skeleton centerline, then offsets, then stereo (see ``draw.bonds``)."""
     return bond_paths(x1, y1, x2, y2, order, interior=interior, stereo=stereo)
-
-
-def _halo_path(x1: float, y1: float, x2: float, y2: float) -> PathPrim:
-    """Single centerline halo (not one per multi-bond stroke)."""
-    return PathPrim(
-        d=f"M {x1:.2f} {y1:.2f} L {x2:.2f} {y2:.2f}",
-        stroke="#fff",
-        stroke_width=5.5,
-        opacity=1.0,
-        cls="halo",
-    )
 
 
 def _normalize_shade_scores(zs: list[float], vmin: float, vmax: float) -> list[float]:
@@ -188,7 +210,8 @@ def molecule_to_viewport(layout: MoleculeLayout, mol_spec: MoleculeSpec) -> View
         vmin = mol_spec.shade.vmin if mol_spec.shade.vmin is not None else min(zs)
         vmax = mol_spec.shade.vmax if mol_spec.shade.vmax is not None else max(zs)
         norm = _normalize_shade_scores(zs, vmin, vmax)
-        base_r = _SCALE * 0.75
+        # xenopict shade() scales plot-dots by scale * 0.9
+        base_r = BOND_PX * SHADE_FRAC
         for radius_frac, color_z, (x, y) in PlotDot()(norm, coords[: len(norm)]):
             if abs(color_z) < 0.05 and radius_frac < 0.35:
                 continue
@@ -205,11 +228,7 @@ def molecule_to_viewport(layout: MoleculeLayout, mol_spec: MoleculeSpec) -> View
                 )
             )
 
-    labeled = {
-        i
-        for i, a in enumerate(layout.atoms)
-        if a.label is not None or a.charge or a.radical or a.element == "*"
-    }
+    texts = [_display_text(a) for a in layout.atoms]
     bond_color = mol_spec.color or "#111"
     # Quality depictors: all skeleton centerlines, then offsets, then stereo.
     skeletons: list[PathPrim] = []
@@ -221,11 +240,9 @@ def molecule_to_viewport(layout: MoleculeLayout, mol_spec: MoleculeSpec) -> View
             continue
         x1, y1 = coords[i0]
         x2, y2 = coords[i1]
-        g1 = _LABEL_GAP if i0 in labeled else 0.0
-        g2 = _LABEL_GAP if i1 in labeled else 0.0
+        g1 = label_clearance(texts[i0]) if texts[i0] else 0.0
+        g2 = label_clearance(texts[i1]) if texts[i1] else 0.0
         x1, y1, x2, y2 = _shorten(x1, y1, x2, y2, g1, g2)
-        if mol_spec.halo:
-            layers["halo"].primitives.append(_halo_path(x1, y1, x2, y2))
         interior = ring_normals.get(_bond_key(bond.begin, bond.end))
         strokes = bond_strokes(
             x1, y1, x2, y2, bond.order, interior=interior, stereo=bond.stereo
@@ -245,14 +262,28 @@ def molecule_to_viewport(layout: MoleculeLayout, mol_spec: MoleculeSpec) -> View
                 p.fill = bond_color
             p.cls = f"{tag} {p.cls or 'bond-stereo'}"
             stereos.append(p)
-    layers["bonds"].primitives.extend(skeletons)
-    layers["bonds"].primitives.extend(offsets)
-    layers["bonds"].primitives.extend(stereos)
+    painted = [*skeletons, *offsets, *stereos]
+    # xenopict halo: reuse bond strokes in white at 2× width (scale * 0.2),
+    # round caps, under the ink. One halo per stroke so double-bond offsets
+    # are knocked out too, not only the centerline.
+    if mol_spec.halo:
+        for p in painted:
+            layers["halo"].primitives.append(
+                p.model_copy(
+                    update={
+                        "stroke": "#fff",
+                        "fill": "#fff" if p.fill not in (None, "none") else "none",
+                        "stroke_width": max(HALO_STROKE, p.stroke_width * 2),
+                        "opacity": 1.0,
+                        "cls": "halo",
+                        "stroke_linecap": "round",
+                    }
+                )
+            )
+    layers["bonds"].primitives.extend(painted)
 
     for i, atom in enumerate(layout.atoms):
-        label = atom.label
-        if label is None and (atom.charge or atom.radical or atom.element == "*"):
-            label = "*" if atom.element == "*" else atom.element
+        label = texts[i]
         x, y = coords[i]
         # Radical dots (RDKit/Indigo-style): sit beside the atom, outside the label.
         if atom.radical > 0:
@@ -279,8 +310,8 @@ def molecule_to_viewport(layout: MoleculeLayout, mol_spec: MoleculeSpec) -> View
                 ang = best_mid
             else:
                 ang = -math.pi / 2
-            dot_r = 1.6
-            base = 7.5 if label else 5.0
+            dot_r = RADICAL_DOT_R
+            base = RADICAL_BASE if label else RADICAL_BASE_BARE
             for k in range(min(atom.radical, 3)):
                 spread = (k - (min(atom.radical, 3) - 1) / 2) * 0.35
                 dang = ang + spread
@@ -297,25 +328,32 @@ def molecule_to_viewport(layout: MoleculeLayout, mol_spec: MoleculeSpec) -> View
                 )
         if not label:
             continue
-        text = label
-        if atom.charge:
-            sign = "+" if atom.charge > 0 else "−"  # unicode minus for depiction
-            mag = abs(atom.charge)
-            # Charge as a tight suffix (N+, O2−); avoid inventing NH for anions.
-            text = f"{label}{sign}" if mag == 1 else f"{label}{mag}{sign}"
         if mol_spec.halo:
             layers["halo"].primitives.append(
-                CirclePrim(cx=x, cy=y, r=9.0, fill="#fff", opacity=1.0, cls="label-halo")
+                CirclePrim(
+                    cx=x,
+                    cy=y,
+                    r=max(FONT_PX * 0.62, label_clearance(label)),
+                    fill="#fff",
+                    opacity=1.0,
+                    cls="label-halo",
+                )
             )
         layers["labels"].primitives.append(
-            TextPrim(x=x, y=y + 4, text=text, cls=f"atom-{atom.index} label")
+            TextPrim(
+                x=x,
+                y=y + FONT_PX * 0.35,
+                text=label,
+                font_size=FONT_PX,
+                cls=f"atom-{atom.index} label",
+            )
         )
 
     for mark in mol_spec.marks:
         color = mark.color or "#c44"
         if mark.kind == MarkKind.substructure and mark.atoms:
             pts = [coords[atom_pos[a]] for a in mark.atoms if a in atom_pos]
-            path = _hull_path(pts, pad=_SCALE * 0.4)
+            path = _hull_path(pts, pad=BOND_PX * 0.45)
             if path:
                 layers["marks"].primitives.append(
                     PathPrim(
@@ -338,10 +376,10 @@ def molecule_to_viewport(layout: MoleculeLayout, mol_spec: MoleculeSpec) -> View
                     CirclePrim(
                         cx=x,
                         cy=y,
-                        r=_SCALE * 0.35,
+                        r=BOND_PX * MARK_FRAC,
                         fill="none",
                         stroke=color,
-                        stroke_width=2.2,
+                        stroke_width=STROKE_PX,
                         opacity=0.85,
                         cls=f"atom-{ai} mark",
                     )
@@ -357,7 +395,7 @@ def molecule_to_viewport(layout: MoleculeLayout, mol_spec: MoleculeSpec) -> View
                     PathPrim(
                         d=f"M {x1:.2f} {y1:.2f} L {x2:.2f} {y2:.2f}",
                         stroke=color,
-                        stroke_width=6.0,
+                        stroke_width=HALO_STROKE,
                         opacity=0.35,
                         cls=f"bond-mark atom-{a} atom-{b}",
                     )

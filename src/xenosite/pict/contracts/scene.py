@@ -27,6 +27,7 @@ class PathPrim(StrictModel):
     stroke_width: float = 1.5
     opacity: float = 1.0
     stroke_dasharray: str | None = None
+    stroke_linecap: Literal["butt", "round", "square"] | None = None
     cls: str | None = None
 
 

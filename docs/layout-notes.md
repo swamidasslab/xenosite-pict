@@ -145,6 +145,14 @@ Guide: RDKit MolDraw2D wedges + `WedgeMolBonds`; Indigo `UP`/`DOWN`/`EITHER`.
 - E/Z: primarily a **layout** problem (substituents placed correctly); drawing
   is ordinary double offsets unless “either”.
 
+Drawing proportions follow **xenopict** ``drawer.py`` (the house style): bond
+length 20 px, stroke ``0.10 × bond`` with round caps, halo ``0.20 × bond``
+on every stroke, shade dots ``0.90 × bond``, atom-mark radius one bond,
+font ``0.60 × bond`` (RDKit ``baseFontSize``, which xenopict does not
+override). Double-bond offset stays RDKit’s ``0.15``. See ``draw/metrics.py``.
+``normalize_coords`` scales each layout so the mean bond is that pixel
+length (Indigo bonds are 1.0; native bonds are 1.5).
+
 `BondLayout.stereo` carries `up`/`down`/`either`/`none`. RDKit (`WedgeMolBonds`)
 and Indigo backends populate it; `draw.bonds` renders solid/hashed wedges, wavy
 either singles, and crossed either doubles (thin end at `begin` = stereocenter).

@@ -162,7 +162,12 @@ def test_svg_always_has_opaque_white_background():
     assert "color-scheme:only light" in svg or "pict-background" in svg
 
 
-def test_halo_one_centerline_per_bond_not_per_stroke():
+def test_halo_follows_each_bond_stroke():
+    """xenopict reuses every bond stroke as a white halo at 2× width.
+
+    Not one halo per bond: Kekulé offsets get their own knockout, matching
+    ``<use href="#lines">`` with ``stroke-width: scale * 0.2``.
+    """
     backend = _chem_backend()
     svg = render({"molecules": [{"smiles": "c1ccccc1"}]}, backend=backend)
     n_bonds = len(
@@ -172,7 +177,10 @@ def test_halo_one_centerline_per_bond_not_per_stroke():
         .bonds
     )
     n_halo = len(re.findall(r'class="halo"', svg))
-    assert n_halo == n_bonds, f"halo={n_halo} bonds={n_bonds}"
+    n_ink = len(re.findall(r"bond-skeleton|bond-offset|bond-wedge", svg))
+    assert n_halo == n_ink
+    assert n_halo > n_bonds  # offsets are haloed too
+    assert 'stroke-width="4.0"' in svg or 'stroke-width="4"' in svg
 
 
 def test_shade_zeros_do_not_paint_full_disks():
