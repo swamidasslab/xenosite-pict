@@ -120,7 +120,11 @@ class DiagramSpec(StrictModel):
     )
     align: bool = Field(
         default=False,
-        description="Optional chemical MCS alignment before diagram layout",
+        description=(
+            "Align later molecules onto the first. RDKit fixes the matched atoms "
+            "and redraws the rest when it is installed; otherwise each molecule "
+            "is depicted on its own and rigidly rotated and translated onto the match."
+        ),
     )
 
 

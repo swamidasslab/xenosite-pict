@@ -50,7 +50,7 @@ export interface DiagramSpec {
   kind?: "single" | "grid" | "network" | "reaction" | "html";
   columns?: number;
   edges?: EdgeSpec[];
-  /** Chemical MCS alignment before diagram placement (Python pure-Python MCS). */
+  /** Align later molecules onto the first. RDKit template depiction when installed, else rigid rotate/translate. */
   align?: boolean;
   elk_options?: Record<string, unknown>;
 }

@@ -27,7 +27,9 @@ indigo = [
 ]
 # Perception-only optional kernel (not a layout backend).
 chematic = ["chematic>=0.16"]
-all = ["xenosite-pict[indigo,chematic]"]
+# Template alignment only — not a layout backend. Absent ⇒ rigid rotate/translate.
+rdkit = ["rdkit>=2024.3"]
+all = ["xenosite-pict[indigo,chematic,rdkit]"]
 
 [project.urls]
 Homepage = "https://github.com/swamidasslab/xenosite-pict"

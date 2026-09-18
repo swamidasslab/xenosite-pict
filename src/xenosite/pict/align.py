@@ -1,9 +1,18 @@
-"""Multi-molecule chemical alignment (pure Python — no NetworkX).
+"""Align later molecules onto the first molecule's coordinate frame.
 
-Aligns subsequent molecules onto the first via a **connected** common-subgraph
-grow + rigid 2D transform. Stdlib only (portable for WASM / slim installs).
+Two implementations share one interface (``Aligner``):
 
-ELK/grid still place viewports after this shared chemical frame is applied.
+* **Template** (RDKit, when installed): matched atoms are fixed on the
+  reference coordinates and the rest of the molecule is depicted around
+  them. This is the correct 2D alignment.
+* **Rigid** (always available): each molecule is depicted on its own, then
+  rotated and translated so the matched atoms overlap as well as a rigid
+  move allows. Indigo and native cannot do the template step.
+
+``align_layouts`` picks RDKit when it imports, and falls back to rigid if
+template depiction fails or RDKit is absent. This is not a layout backend
+and does not replace Indigo or native coordinate generation for the
+reference molecule.
 """
 
 from __future__ import annotations
@@ -11,8 +20,10 @@ from __future__ import annotations
 import math
 from collections import defaultdict
 from collections.abc import Sequence
+from typing import Protocol
 
 from xenosite.pict.contracts.layout import AtomLayout, MoleculeLayout
+from xenosite.pict.contracts.spec import MoleculeSpec
 
 
 def _element_key(el: str) -> str:
@@ -183,31 +194,132 @@ def _apply_transform(
     return out
 
 
+class Aligner(Protocol):
+    """Common alignment interface. Template when possible, else rigid."""
+
+    name: str
+    supports_template: bool
+
+    def map_atoms(
+        self, ref: MoleculeLayout, other: MoleculeLayout
+    ) -> dict[int, int] | None:
+        """Matched atoms as other index → reference index. None if too small."""
+
+    def rigid_align(
+        self,
+        ref: MoleculeLayout,
+        other: MoleculeLayout,
+        mapping: dict[int, int],
+    ) -> MoleculeLayout:
+        """Rotate/translate ``other`` onto ``ref`` using ``mapping``."""
+
+    def depict_on_template(
+        self,
+        ref: MoleculeLayout,
+        other: MoleculeLayout,
+        mapping: dict[int, int],
+        *,
+        smiles: str | None = None,
+    ) -> MoleculeLayout | None:
+        """Redraw ``other`` with mapped atoms fixed to ``ref``. None if unsupported."""
+
+
+def _with_warning(layout: MoleculeLayout, text: str) -> MoleculeLayout:
+    if text in layout.warnings:
+        return layout
+    return layout.model_copy(update={"warnings": [*layout.warnings, text]})
+
+
+class RigidAligner:
+    """Depict-then-superimpose. The fallback every backend can do."""
+
+    name = "rigid"
+    supports_template = False
+
+    def map_atoms(
+        self, ref: MoleculeLayout, other: MoleculeLayout
+    ) -> dict[int, int] | None:
+        return _mcs_mapping(ref, other)
+
+    def rigid_align(
+        self,
+        ref: MoleculeLayout,
+        other: MoleculeLayout,
+        mapping: dict[int, int],
+    ) -> MoleculeLayout:
+        by_index_ref = {a.index: a for a in ref.atoms}
+        by_index = {a.index: a for a in other.atoms}
+        oth_ids = [i for i in mapping if i in by_index and mapping[i] in by_index_ref]
+        if len(oth_ids) < 1:
+            return other
+        src = [(by_index[i].x, by_index[i].y) for i in oth_ids]
+        dst = [(by_index_ref[mapping[i]].x, by_index_ref[mapping[i]].y) for i in oth_ids]
+        cos_r, sin_r, tx, ty, det = _kabsch_2d(src, dst)
+        new_atoms = _apply_transform(other.atoms, cos_r, sin_r, tx, ty, det)
+        return other.model_copy(update={"atoms": new_atoms})
+
+    def depict_on_template(
+        self,
+        ref: MoleculeLayout,
+        other: MoleculeLayout,
+        mapping: dict[int, int],
+        *,
+        smiles: str | None = None,
+    ) -> MoleculeLayout | None:
+        return None
+
+
+def select_aligner() -> Aligner:
+    """RDKit template aligner when the package imports, otherwise rigid."""
+    try:
+        from xenosite.pict.align_rdkit import RdkitAligner, rdkit_available
+    except ImportError:
+        return RigidAligner()
+    if rdkit_available():
+        return RdkitAligner()
+    return RigidAligner()
+
+
+def align_to_reference(
+    ref: MoleculeLayout,
+    other: MoleculeLayout,
+    aligner: Aligner,
+    *,
+    smiles: str | None = None,
+) -> MoleculeLayout:
+    """Put ``other`` in ``ref``'s frame. Template first, rigid if that cannot."""
+    mapping = aligner.map_atoms(ref, other)
+    if not mapping:
+        return other
+    if aligner.supports_template:
+        templated = aligner.depict_on_template(ref, other, mapping, smiles=smiles)
+        if templated is not None:
+            return templated
+        snapped = aligner.rigid_align(ref, other, mapping)
+        return _with_warning(snapped, "alignment: rigid fallback after template failure")
+    return _with_warning(aligner.rigid_align(ref, other, mapping), "alignment: rigid transform")
+
+
 def align_layouts(
     layouts: Sequence[MoleculeLayout],
     *,
     enabled: bool = False,
+    aligner: Aligner | None = None,
+    specs: Sequence[MoleculeSpec] | None = None,
 ) -> list[MoleculeLayout]:
-    """Align molecules onto the first layout's frame when ``enabled``.
-
-    Pure Python connected-MCS + Kabsch — no NetworkX / chem engines.
-    """
+    """Align molecules onto the first layout's frame when ``enabled``."""
     if not enabled or len(layouts) < 2:
         return list(layouts)
 
+    chosen = aligner if aligner is not None else select_aligner()
+    smiles: list[str | None] = []
+    if specs is not None:
+        from xenosite.pict.structure import structure_smiles
+
+        smiles = [structure_smiles(spec) for spec in specs]
     ref = layouts[0]
-    by_index_ref = {a.index: a for a in ref.atoms}
     out: list[MoleculeLayout] = [ref]
-    for lay in layouts[1:]:
-        mapping = _mcs_mapping(ref, lay)
-        if not mapping:
-            out.append(lay)
-            continue
-        by_index = {a.index: a for a in lay.atoms}
-        oth_ids = list(mapping.keys())
-        src = [(by_index[i].x, by_index[i].y) for i in oth_ids]
-        dst = [(by_index_ref[mapping[i]].x, by_index_ref[mapping[i]].y) for i in oth_ids]
-        cos_r, sin_r, tx, ty, det = _kabsch_2d(src, dst)
-        new_atoms = _apply_transform(lay.atoms, cos_r, sin_r, tx, ty, det)
-        out.append(lay.model_copy(update={"atoms": new_atoms}))
+    for i, lay in enumerate(layouts[1:], start=1):
+        smi = smiles[i] if i < len(smiles) else None
+        out.append(align_to_reference(ref, lay, chosen, smiles=smi))
     return out

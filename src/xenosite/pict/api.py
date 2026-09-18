@@ -60,7 +60,7 @@ class Pict:
         doc = spec if isinstance(spec, PictSpec) else PictSpec.model_validate(spec)
         backend = get_backend(self.backend)
         layouts: list[MoleculeLayout] = [backend.layout(m) for m in doc.molecules]
-        layouts = align_layouts(layouts, enabled=doc.diagram.align)
+        layouts = align_layouts(layouts, enabled=doc.diagram.align, specs=doc.molecules)
         placement = layout_diagram_ex(layouts, doc)
         scene = build_scene(
             layouts,
@@ -79,7 +79,12 @@ class Pict:
     def layout(self, spec: PictSpec | dict[str, Any]) -> LayoutResult:
         doc = spec if isinstance(spec, PictSpec) else PictSpec.model_validate(spec)
         backend = get_backend(self.backend)
-        return LayoutResult(molecules=[backend.layout(m) for m in doc.molecules])
+        layouts = align_layouts(
+            [backend.layout(m) for m in doc.molecules],
+            enabled=doc.diagram.align,
+            specs=doc.molecules,
+        )
+        return LayoutResult(molecules=layouts)
 
 
 def render(

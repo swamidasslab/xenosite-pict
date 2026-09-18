@@ -2,7 +2,8 @@
 
 Transitional coords: **Indigo** only. Goal: **native** depictor proven on the
 hard-case gallery — then Indigo shrinks to optional parse/emergency fallback.
-No RDKit / Open Babel / Chematic layout backends; Chematic stays perception-only.
+No RDKit / Open Babel / Chematic **layout** backends; Chematic stays perception-only.
+RDKit is optional and used only for template alignment (``align.select_aligner``).
 """
 
 from __future__ import annotations
