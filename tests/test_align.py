@@ -213,3 +213,32 @@ def test_render_aligned_pair():
     )
     assert "<svg" in svg
     assert svg.count("<svg") == 1 or svg.count("pict-mol") >= 1
+
+
+def test_correspondence_is_not_the_first_embedding():
+    """A symmetric core has many embeddings. The first is a local choice.
+
+    These pairs are the same shape on the common subgraph, so the right
+    embedding has rigid RMSD ~ 0. The first substructure hit does not.
+    """
+    pairs = [
+        ("c1ccc(cc1)C(=O)O", "c1ccc(cc1)C(N)=O"),
+        ("COc1ccc(C)cc1", "Oc1ccc(OC)cc1"),
+        ("CC(C)Cc1ccc(cc1)C(C)C(=O)O", "CC(C)Cc1ccc(cc1)C(C)C"),
+    ]
+    aligners = [RigidAligner()]
+    if rdkit_available():
+        aligners.append(RdkitAligner())
+    for ref_smi, other_smi in pairs:
+        ref = _layout(ref_smi)
+        other = _layout(other_smi)
+        for aligner in aligners:
+            mapping = aligner.map_atoms(ref, other)
+            assert mapping is not None, (ref_smi, aligner.name)
+            aligned = aligner.rigid_align(ref, other, mapping)
+            err = _rmsd(ref, aligned, mapping)
+            assert err < 1e-3, (ref_smi, aligner.name, len(mapping), err)
+            if aligner.supports_template:
+                templated = aligner.depict_on_template(ref, other, mapping, smiles=other_smi)
+                assert templated is not None
+                assert _rmsd(ref, templated, mapping) < 1e-4

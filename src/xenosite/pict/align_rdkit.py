@@ -9,10 +9,77 @@ from __future__ import annotations
 
 import math
 
-from xenosite.pict.align import RigidAligner, _mcs_mapping, _with_warning
+from xenosite.pict.align import RigidAligner, _choose_mapping, _mcs_mapping, _with_warning
 from xenosite.pict.contracts.layout import BondLayout, MoleculeLayout
 
 _MIN_MAP = 3
+_PLACE_CAP = 8
+_ORDER_CAP = 24
+
+
+def _substruct_orders(mol, pattern) -> list[tuple[int, ...]]:
+    """Match orders, with at least one order for every place the pattern sits.
+
+    ``uniquify=True`` collapses a symmetric ring to a single arbitrary
+    rotation. ``uniquify=False`` is capped, and that cap can fill up on the
+    first place, so unique places are merged back in.
+    """
+    places = mol.GetSubstructMatches(pattern, uniquify=True, maxMatches=_PLACE_CAP)
+    orders = mol.GetSubstructMatches(
+        pattern, uniquify=False, maxMatches=_PLACE_CAP * _ORDER_CAP
+    )
+    grouped: dict[frozenset[int], list[tuple[int, ...]]] = {}
+    for match in list(orders) + list(places):
+        grouped.setdefault(frozenset(match), [])
+        bucket = grouped[frozenset(match)]
+        if match not in bucket:
+            bucket.append(match)
+    selected: list[tuple[int, ...]] = []
+    for i, bucket in enumerate(grouped.values()):
+        if i >= _PLACE_CAP:
+            break
+        selected.extend(bucket[:_ORDER_CAP])
+    return selected
+
+
+def _fmcs_mapping(ref: MoleculeLayout, other: MoleculeLayout) -> dict[int, int] | None:
+    from rdkit import Chem
+    from rdkit.Chem import rdFMCS
+
+    built_ref = layout_to_rdkit(ref)
+    built_other = layout_to_rdkit(other)
+    if built_ref is None or built_other is None:
+        return None
+    ref_mol, ref_to_rd = built_ref
+    other_mol, other_to_rd = built_other
+    rd_to_ref = {rd: lay for lay, rd in ref_to_rd.items()}
+    rd_to_other = {rd: lay for lay, rd in other_to_rd.items()}
+    try:
+        mcs = rdFMCS.FindMCS([ref_mol, other_mol], timeout=2)
+    except Exception:
+        return None
+    if getattr(mcs, "canceled", False) or mcs.numAtoms < _MIN_MAP:
+        return None
+    try:
+        pattern = Chem.MolFromSmarts(mcs.smartsString)
+    except Exception:
+        pattern = None
+    if pattern is None:
+        return None
+    ref_orders = _substruct_orders(ref_mol, pattern)
+    other_orders = _substruct_orders(other_mol, pattern)
+    mappings: list[dict[int, int]] = []
+    for ref_match in ref_orders:
+        for other_match in other_orders:
+            if len(ref_match) != len(other_match):
+                continue
+            mappings.append(
+                {
+                    rd_to_other[other_i]: rd_to_ref[ref_i]
+                    for ref_i, other_i in zip(ref_match, other_match, strict=True)
+                }
+            )
+    return _choose_mapping(ref, other, mappings, min_size=_MIN_MAP)
 
 
 def rdkit_available() -> bool:
@@ -93,40 +160,6 @@ def layout_to_rdkit(layout: MoleculeLayout):
     return mol, to_rd
 
 
-def _fmcs_mapping(ref: MoleculeLayout, other: MoleculeLayout) -> dict[int, int] | None:
-    from rdkit import Chem
-    from rdkit.Chem import rdFMCS
-
-    built_ref = layout_to_rdkit(ref)
-    built_other = layout_to_rdkit(other)
-    if built_ref is None or built_other is None:
-        return None
-    ref_mol, ref_to_rd = built_ref
-    other_mol, other_to_rd = built_other
-    rd_to_ref = {rd: lay for lay, rd in ref_to_rd.items()}
-    rd_to_other = {rd: lay for lay, rd in other_to_rd.items()}
-    try:
-        mcs = rdFMCS.FindMCS([ref_mol, other_mol], timeout=2)
-    except Exception:
-        return None
-    if getattr(mcs, "canceled", False) or mcs.numAtoms < _MIN_MAP:
-        return None
-    try:
-        pattern = Chem.MolFromSmarts(mcs.smartsString)
-    except Exception:
-        pattern = None
-    if pattern is None:
-        return None
-    ref_match = ref_mol.GetSubstructMatch(pattern)
-    other_match = other_mol.GetSubstructMatch(pattern)
-    if len(ref_match) < _MIN_MAP or len(ref_match) != len(other_match):
-        return None
-    return {
-        rd_to_other[other_i]: rd_to_ref[ref_i]
-        for ref_i, other_i in zip(ref_match, other_match, strict=True)
-    }
-
-
 def _plain_smiles(smiles: str | None) -> str | None:
     if not smiles:
         return None
@@ -204,11 +237,11 @@ class RdkitAligner(RigidAligner):
     def map_atoms(
         self, ref: MoleculeLayout, other: MoleculeLayout
     ) -> dict[int, int] | None:
-        rd_map = _fmcs_mapping(ref, other)
-        py_map = _mcs_mapping(ref, other)
-        if rd_map and (py_map is None or len(rd_map) >= len(py_map)):
-            return rd_map
-        return py_map
+        return _choose_mapping(
+            ref,
+            other,
+            [_fmcs_mapping(ref, other), _mcs_mapping(ref, other)],
+        )
 
     def depict_on_template(
         self,

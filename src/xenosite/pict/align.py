@@ -9,6 +9,11 @@ Two implementations share one interface (``Aligner``):
   rotated and translated so the matched atoms overlap as well as a rigid
   move allows. Indigo and native cannot do the template step.
 
+The atom correspondence is the largest common subgraph whose embedding
+has the lowest rigid RMSD. The first substructure hit is an arbitrary
+automorphism — a local choice on a symmetric ring — so every embedding
+is scored before anything is fixed.
+
 ``align_layouts`` picks RDKit when it imports, and falls back to rigid if
 template depiction fails or RDKit is absent. This is not a layout backend
 and does not replace Indigo or native coordinate generation for the
@@ -41,49 +46,186 @@ def _adj(layout: MoleculeLayout) -> dict[int, dict[int, float]]:
     return adj
 
 
-def _order_ok(a: float, b: float) -> bool:
+def _order_ok(a: float, b: float, *, ring: bool = False) -> bool:
     if abs(a - b) < 0.1:
         return True
-    return min(a, b) >= 1.4 and max(a, b) <= 2.1
+    lo, hi = (a, b) if a <= b else (b, a)
+    # Kekule single/double in a ring are the same aromatic bond. Requiring
+    # them to match freezes one ring rotation — a local correspondence.
+    if ring and lo >= 0.9 and hi <= 2.1:
+        return True
+    return lo >= 1.4 and hi <= 2.1
 
 
-def _grow_connected(
+def _ring_edges(adj: dict[int, dict[int, float]]) -> set[frozenset[int]]:
+    """Edges that still connect their endpoints after the edge is removed."""
+    edges: list[frozenset[int]] = []
+    seen: set[frozenset[int]] = set()
+    for a, nbrs in adj.items():
+        for b in nbrs:
+            edge = frozenset((a, b))
+            if len(edge) == 2 and edge not in seen:
+                seen.add(edge)
+                edges.append(edge)
+    ring: set[frozenset[int]] = set()
+    for edge in edges:
+        start, goal = tuple(edge)
+        stack = [start]
+        visited = {start}
+        while stack:
+            u = stack.pop()
+            if u == goal:
+                ring.add(edge)
+                break
+            for v in adj[u]:
+                if v in visited or frozenset((u, v)) == edge:
+                    continue
+                visited.add(v)
+                stack.append(v)
+    return ring
+
+
+def _mapping_rmsd(
+    ref: MoleculeLayout,
+    other: MoleculeLayout,
+    mapping: dict[int, int],
+) -> float:
+    """Kabsch RMSD of this correspondence, using the layouts' current coordinates."""
+    ref_at = {a.index: a for a in ref.atoms}
+    oth_at = {a.index: a for a in other.atoms}
+    pairs = [
+        (o, r) for o, r in mapping.items() if o in oth_at and r in ref_at
+    ]
+    if len(pairs) < 1:
+        return math.inf
+    src = [(oth_at[o].x, oth_at[o].y) for o, _r in pairs]
+    dst = [(ref_at[r].x, ref_at[r].y) for _o, r in pairs]
+    cos_r, sin_r, tx, ty, det = _kabsch_2d(src, dst)
+    err = 0.0
+    for (x, y), (u, v) in zip(src, dst, strict=True):
+        if det >= 0:
+            xx = cos_r * x - sin_r * y + tx
+            yy = sin_r * x + cos_r * y + ty
+        else:
+            xx = cos_r * x + sin_r * y + tx
+            yy = sin_r * x - cos_r * y + ty
+        err += (xx - u) ** 2 + (yy - v) ** 2
+    return math.sqrt(err / len(pairs))
+
+
+def _choose_mapping(
+    ref: MoleculeLayout,
+    other: MoleculeLayout,
+    mappings: Sequence[dict[int, int] | None],
+    *,
+    min_size: int = 3,
+) -> dict[int, int] | None:
+    """Largest correspondence, then the one with the lowest rigid RMSD.
+
+    The first maximum common subgraph hit is an arbitrary automorphism.
+    Symmetric rings make that a local choice: another embedding of the same
+    atoms can sit on the reference while the first one does not.
+    """
+    best: dict[int, int] | None = None
+    best_key: tuple[int, float] | None = None
+    for mapping in mappings:
+        if not mapping or len(mapping) < min_size:
+            continue
+        if len(set(mapping.values())) != len(mapping):
+            continue
+        key = (-len(mapping), _mapping_rmsd(ref, other, mapping))
+        if best_key is None or key < best_key:
+            best_key = key
+            best = mapping
+    return best
+
+
+_NODE_BUDGET = 8000
+_MAP_KEEP = 32
+
+
+def _bond_ok(
+    o: int,
+    on: int,
+    r: int,
+    rn: int,
+    oth_adj: dict[int, dict[int, float]],
+    ref_adj: dict[int, dict[int, float]],
+    ring_o: set[frozenset[int]],
+    ring_r: set[frozenset[int]],
+) -> bool:
+    if rn not in ref_adj[r] or on not in oth_adj[o]:
+        return False
+    ring = frozenset((o, on)) in ring_o and frozenset((r, rn)) in ring_r
+    return _order_ok(oth_adj[o][on], ref_adj[r][rn], ring=ring)
+
+
+def _maps_from_seed(
     seed_o: int,
     seed_r: int,
     oth_el: dict[int, str],
     ref_el: dict[int, str],
     oth_adj: dict[int, dict[int, float]],
     ref_adj: dict[int, dict[int, float]],
-) -> dict[int, int]:
-    """BFS grow a connected mapping from a seed pair (other→ref)."""
-    mapping = {seed_o: seed_r}
-    inv = {seed_r: seed_o}
-    queue = [(seed_o, seed_r)]
-    while queue:
-        o, r = queue.pop(0)
-        # Pair unmapped neighbors by element + bond order.
-        o_nbrs = [(n, ord_) for n, ord_ in oth_adj[o].items() if n not in mapping]
-        r_nbrs = [(n, ord_) for n, ord_ in ref_adj[r].items() if n not in inv]
-        # Greedy: match each other-neighbor to a unique compatible ref-neighbor.
-        used_r: set[int] = set()
-        for on, oo in sorted(o_nbrs, key=lambda t: (oth_el[t[0]], t[0])):
-            match = None
-            for rn, ro in sorted(r_nbrs, key=lambda t: (ref_el[t[0]], t[0])):
-                if rn in used_r:
-                    continue
-                if oth_el[on] != ref_el[rn]:
-                    continue
-                if not _order_ok(oo, ro):
-                    continue
-                match = rn
-                break
-            if match is None:
+    ring_o: set[frozenset[int]],
+    ring_r: set[frozenset[int]],
+    *,
+    node_budget: int,
+) -> tuple[list[dict[int, int]], int]:
+    """Maximal connected maps from one seed. Several, not the first branch."""
+    found: list[dict[int, int]] = []
+    best_size = 0
+    nodes = 0
+
+    def compatible(on: int, rn: int, mapping: dict[int, int]) -> bool:
+        if oth_el[on] != ref_el[rn]:
+            return False
+        for o2 in oth_adj[on]:
+            if o2 not in mapping:
                 continue
-            used_r.add(match)
-            mapping[on] = match
-            inv[match] = on
-            queue.append((on, match))
-    return mapping
+            if not _bond_ok(o2, on, mapping[o2], rn, oth_adj, ref_adj, ring_o, ring_r):
+                return False
+        return True
+
+    def rec(mapping: dict[int, int], inv: dict[int, int]) -> None:
+        nonlocal nodes, best_size
+        if nodes >= node_budget:
+            return
+        nodes += 1
+        growable: list[tuple[int, int, list[int]]] = []
+        for _o, _r in mapping.items():
+            for on in oth_adj[_o]:
+                if on in mapping:
+                    continue
+                cands = [
+                    rn
+                    for rn in ref_adj[_r]
+                    if rn not in inv and compatible(on, rn, mapping)
+                ]
+                if cands:
+                    growable.append((len(cands), on, cands))
+        if not growable:
+            size = len(mapping)
+            if size > best_size:
+                best_size = size
+                found.clear()
+                found.append(dict(mapping))
+            elif size == best_size and len(found) < _MAP_KEEP:
+                found.append(dict(mapping))
+            return
+        growable.sort(key=lambda item: (item[0], item[1]))
+        _n_cands, on, cands = growable[0]
+        for rn in sorted(cands):
+            mapping[on] = rn
+            inv[rn] = on
+            rec(mapping, inv)
+            del mapping[on]
+            del inv[rn]
+            if nodes >= node_budget:
+                return
+
+    rec({seed_o: seed_r}, {seed_r: seed_o})
+    return found, nodes
 
 
 def _mcs_mapping(
@@ -92,14 +234,18 @@ def _mcs_mapping(
     *,
     min_size: int = 3,
 ) -> dict[int, int] | None:
-    """Largest connected common subgraph mapping: other index → ref index."""
+    """Largest connected common subgraph, other index → ref index.
+
+    Ties are broken by rigid RMSD so a symmetric ring is not stuck on the
+    first seed that covers it.
+    """
     ref_el = {a.index: _element_key(a.element) for a in ref.atoms}
     oth_el = {a.index: _element_key(a.element) for a in other.atoms}
     ref_adj = _adj(ref)
     oth_adj = _adj(other)
+    ring_r = _ring_edges(ref_adj)
+    ring_o = _ring_edges(oth_adj)
 
-    best: dict[int, int] = {}
-    # Seed on matching element pairs; prefer heteroatoms / high degree.
     seeds: list[tuple[int, int]] = []
     for o, oe in oth_el.items():
         for r, re in ref_el.items():
@@ -114,16 +260,26 @@ def _mcs_mapping(
             p[1],
         )
     )
+    budget = _NODE_BUDGET
+    found: list[dict[int, int]] = []
     # Cap seed trials for portability on larger mols.
     for o, r in seeds[: max(24, len(oth_el) * 2)]:
-        mapping = _grow_connected(o, r, oth_el, ref_el, oth_adj, ref_adj)
-        if len(mapping) > len(best):
-            best = mapping
-        if len(best) >= min(len(ref_el), len(oth_el)):
+        if budget <= 0:
             break
-    if len(best) < min_size:
-        return None
-    return best
+        maps, used = _maps_from_seed(
+            o,
+            r,
+            oth_el,
+            ref_el,
+            oth_adj,
+            ref_adj,
+            ring_o,
+            ring_r,
+            node_budget=budget,
+        )
+        budget -= used
+        found.extend(maps)
+    return _choose_mapping(ref, other, found, min_size=min_size)
 
 
 def _kabsch_2d(
