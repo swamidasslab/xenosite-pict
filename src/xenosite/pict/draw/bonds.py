@@ -3,7 +3,8 @@
 Follows quality depictors (RDKit MolDraw2D, Indigo render, CDK):
 
 1. Every bond is a single **skeleton** centerline first (connected graph).
-2. Double/triple add shortened **offset** strokes (ring doubles toward interior).
+2. Double/triple add parallel **offsets**. Ring doubles are shortened toward
+   the interior; acyclic doubles run the same length as the skeleton.
 3. Tetrahedral stereo replaces the skeleton with solid/hashed wedges
    (thin end at stereocenter — RDKit ``BEGINWEDGE`` / ``BEGINDASH``).
 4. ``either`` → wavy single or crossed double.
@@ -19,6 +20,7 @@ from dataclasses import dataclass, field
 from xenosite.pict.contracts.scene import PathPrim
 from xenosite.pict.draw.metrics import (
     BOND_PX,
+    CHAIN_END_GAP_PX,
     END_GAP_PX,
     OFFSET_PX,
     STROKE_PX,
@@ -157,6 +159,16 @@ def wavy_bond(x1: float, y1: float, x2: float, y2: float, *, amp: float | None =
     )
 
 
+def _offset_gap(length: float, *, chain: bool) -> float:
+    """End inset for a parallel offset stroke.
+
+    Ring offsets stay short so they miss adjacent bonds. Acyclic doubles
+    run the full skeleton (Indigo: both carbonyl lines the same length).
+    """
+    px = CHAIN_END_GAP_PX if chain else END_GAP_PX
+    return min(px, length * 0.22)
+
+
 def crossed_double(
     x1: float, y1: float, x2: float, y2: float, interior: tuple[float, float] | None
 ) -> list[PathPrim]:
@@ -164,7 +176,7 @@ def crossed_double(
     ux, uy, lx, ly, length = _unit(x1, y1, x2, y2)
     nx, ny = interior if interior is not None else (lx, ly)
     off = min(OFFSET_PX, length * 0.22)
-    gap = min(END_GAP_PX, length * 0.22)
+    gap = _offset_gap(length, chain=interior is None)
     sx1, sy1, sx2, sy2 = shorten(x1, y1, x2, y2, gap, gap)
     # Two diagonals between the parallel offset positions.
     a1x, a1y = sx1 + nx * off, sy1 + ny * off
@@ -216,7 +228,8 @@ def bond_strokes(
 
     nx, ny = interior if interior is not None else (lx, ly)
     off = min(OFFSET_PX, length * 0.22)
-    gap = min(END_GAP_PX, length * 0.22)
+    # Triples keep the ring inset on both sides. Only acyclic doubles extend.
+    gap = _offset_gap(length, chain=interior is None and order < 2.5)
     offsets: list[PathPrim] = []
     if order >= 2.5:
         sx1, sy1, sx2, sy2 = shorten(x1, y1, x2, y2, gap, gap)

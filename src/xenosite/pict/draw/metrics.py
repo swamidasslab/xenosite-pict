@@ -33,7 +33,10 @@ FONT_FRAC = 0.60  # RDKit baseFontSize, inherited by xenopict
 # xenopict ``reframe`` padding is 1.5× scale around atom centers. Ours
 # already includes label overflow in the box, so 1.0× is the same air.
 PAD_FRAC = 1.0
-END_GAP_FRAC = 0.13
+END_GAP_FRAC = 0.13  # ring doubles: keep the offset off adjacent bonds
+# Acyclic doubles match the skeleton. Rings keep END_GAP_FRAC so the
+# second line does not hit neighbors at the vertices.
+CHAIN_END_GAP_FRAC = 0.0
 HASH_PER_BOND = 8
 HALO_FRAC = 0.20  # xenopict mol_halo lines: scale * 0.2
 SHADE_FRAC = 0.90  # xenopict shade(): scale * 0.9
@@ -45,6 +48,7 @@ WEDGE_HALF_PX = WEDGE_WIDTH_FRAC * BOND_PX * 0.5
 FONT_PX = FONT_FRAC * BOND_PX
 PAD_PX = PAD_FRAC * BOND_PX
 END_GAP_PX = END_GAP_FRAC * BOND_PX
+CHAIN_END_GAP_PX = CHAIN_END_GAP_FRAC * BOND_PX
 HALO_STROKE = HALO_FRAC * BOND_PX
 RADICAL_DOT_R = 0.08 * BOND_PX
 RADICAL_BASE = 0.55 * BOND_PX

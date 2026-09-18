@@ -39,6 +39,14 @@ def _path_ys(d: str) -> list[float]:
     return [float(y) for y in re.findall(r"[ML]\s+[-\d.]+\s+([-\d.]+)", d)]
 
 
+def _path_len(d: str) -> float:
+    pts = [(float(x), float(y)) for x, y in re.findall(r"[ML]\s+([-\d.]+)\s+([-\d.]+)", d)]
+    if len(pts) < 2:
+        return 0.0
+    (x1, y1), (x2, y2) = pts[0], pts[-1]
+    return math.hypot(x2 - x1, y2 - y1)
+
+
 def test_double_offset_matches_rdkit_fraction():
     """RDKit multipleBondOffset is 0.15 of the mean bond; Indigo ~0.167."""
     strokes = bond_strokes(0, 0, BOND_PX, 0, 2.0)
@@ -47,6 +55,18 @@ def test_double_offset_matches_rdkit_fraction():
     assert ys
     off = abs(ys[0])
     assert off == pytest.approx(OFFSET_FRAC * BOND_PX, rel=0.05)
+
+
+def test_acyclic_double_offset_extends_past_ring_offset():
+    """Non-ring doubles match the skeleton; ring doubles stay short."""
+    chain = bond_strokes(0, 0, BOND_PX, 0, 2.0)
+    ring = bond_strokes(0, 0, BOND_PX, 0, 2.0, interior=(0.0, -1.0))
+    assert chain.skeleton is not None and chain.offsets and ring.offsets
+    chain_len = _path_len(chain.offsets[0].d)
+    ring_len = _path_len(ring.offsets[0].d)
+    skel_len = _path_len(chain.skeleton.d)
+    assert chain_len > ring_len + 0.1 * BOND_PX
+    assert chain_len == pytest.approx(skel_len, abs=0.05)
 
 
 def test_triple_offsets_are_symmetric():

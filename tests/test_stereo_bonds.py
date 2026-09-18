@@ -23,8 +23,8 @@ def test_skeleton_then_offset_for_double():
     assert "bond-skeleton" in (strokes.skeleton.cls or "")
     assert len(strokes.offsets) == 1
     assert "bond-offset" in (strokes.offsets[0].cls or "")
-    # Offset endpoints are shortened (not full 0→20).
-    assert "0.00" not in strokes.offsets[0].d or "20.00" not in strokes.offsets[0].d
+    # Acyclic offset runs the full skeleton, not the ring inset.
+    assert "0.00" in strokes.offsets[0].d and "20.00" in strokes.offsets[0].d
 
 
 def test_triple_has_skeleton_and_two_offsets():
