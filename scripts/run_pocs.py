@@ -261,6 +261,48 @@ def poc_pipeline(out: Path, backend: str) -> Path:
     path_path = out / f"poc-d4-pathway-{backend}.svg"
     path_path.write_text(path_svg, encoding="utf-8")
 
+    # D5 — branched / cross-linked metabolic scheme (ELK orthogonal routes)
+    branched = {
+        "molecules": [
+            {"id": "etoh", "smiles": "CCO", "title": "ethanol"},
+            {"id": "ach", "smiles": "CC=O", "title": "acetaldehyde"},
+            {"id": "acetate", "smiles": "CC(=O)O", "title": "acetate"},
+            {"id": "phh", "smiles": "c1ccccc1", "title": "benzene"},
+            {"id": "phenol", "smiles": "c1ccccc1O", "title": "phenol"},
+            {"id": "catechol", "smiles": "c1ccc(O)c(O)c1", "title": "catechol"},
+            {"id": "asa", "smiles": "CC(=O)Oc1ccccc1C(=O)O", "title": "aspirin"},
+            {"id": "sal", "smiles": "O=C(O)c1ccccc1O", "title": "salicylate"},
+        ],
+        "diagram": {
+            "kind": "reaction",
+            "edges": [
+                {"source": "etoh", "target": "ach", "label": "ADH"},
+                {"source": "ach", "target": "acetate", "label": "ALDH"},
+                {"source": "phh", "target": "phenol", "label": "CYP2E1"},
+                {"source": "phenol", "target": "catechol", "label": "CYP"},
+                {
+                    "source": "ach",
+                    "target": "phenol",
+                    "label": "conj?",
+                    "dashed": True,
+                    "arrow": "line",
+                    "color": "#888",
+                },
+                {"source": "asa", "target": "sal", "label": "CES", "color": "#064"},
+                {
+                    "source": "sal",
+                    "target": "catechol",
+                    "label": "decarb",
+                    "arrow": "open",
+                    "color": "#a40",
+                },
+            ],
+        },
+    }
+    branch_svg = pict.render(branched)
+    branch_path = out / f"poc-d5-branched-{backend}.svg"
+    branch_path.write_text(branch_svg, encoding="utf-8")
+
     manifest = {
         "backend": backend,
         "artifacts": [
@@ -268,10 +310,12 @@ def poc_pipeline(out: Path, backend: str) -> Path:
             stereo_path.name,
             som_path.name,
             path_path.name,
+            branch_path.name,
         ],
         "notes": [
             "Indigo layout → own skeleton/offset/wedge SVG",
             "ELK pathway placement via jsrun+elkjs",
+            "Branched scheme uses ELK orthogonal edge routes → overlay arrows",
             "Shade/marks on aspirin as SoM-style annotation",
         ],
     }
@@ -411,6 +455,11 @@ def write_gallery(out: Path, backend: str, only: list[Path] | None = None) -> Pa
             "D4 — Pathway (ELK)",
             "Ethanol oxidation + aspirin hydrolysis pathway laid out by jsrun+elkjs.",
             out / f"poc-d4-pathway-{backend}.svg",
+        ),
+        (
+            "D5 — Branched scheme (ELK routes)",
+            "Forked metabolic network with orthogonal ELK edge routes and styled arrows.",
+            out / f"poc-d5-branched-{backend}.svg",
         ),
         (
             "E — Native depictor grid",

@@ -8,7 +8,7 @@ from xenosite.pict.align import align_layouts
 from xenosite.pict.backends import BACKEND_PREFERENCE, get_backend
 from xenosite.pict.contracts.layout import LayoutResult, MoleculeLayout
 from xenosite.pict.contracts.spec import PictSpec
-from xenosite.pict.diagram.elk import layout_diagram
+from xenosite.pict.diagram.elk import layout_diagram_ex
 from xenosite.pict.draw.scene_builder import build_scene
 from xenosite.pict.draw.svg import scene_to_html, scene_to_svg
 
@@ -61,8 +61,16 @@ class Pict:
         backend = get_backend(self.backend)
         layouts: list[MoleculeLayout] = [backend.layout(m) for m in doc.molecules]
         layouts = align_layouts(layouts, enabled=doc.diagram.align)
-        positions = layout_diagram(layouts, doc)
-        scene = build_scene(layouts, doc.molecules, doc, positions=positions)
+        placement = layout_diagram_ex(layouts, doc)
+        scene = build_scene(
+            layouts,
+            doc.molecules,
+            doc,
+            positions=placement.positions,
+            edge_paths=placement.edge_paths,
+            diagram_width=placement.width,
+            diagram_height=placement.height,
+        )
         out = format or self.format
         if out == "html":
             return scene_to_html(scene)

@@ -376,6 +376,10 @@ def build_scene(
     mol_specs: Sequence[MoleculeSpec],
     spec: PictSpec,
     positions: Sequence[tuple[float, float]] | None = None,
+    edge_paths: Sequence[Sequence[tuple[float, float]] | None] | None = None,
+    *,
+    diagram_width: float | None = None,
+    diagram_height: float | None = None,
 ) -> Scene:
     viewports = [
         molecule_to_viewport(layout, mol_spec)
@@ -396,10 +400,21 @@ def build_scene(
         max_r = max(max_r, px + vp.width)
         max_b = max(max_b, py + vp.height)
 
-    overlays = diagram_overlays(spec.diagram.edges, placed)
+    # Edge routes may extend slightly past node boxes (ELK root bounds).
+    if edge_paths:
+        for route in edge_paths:
+            if not route:
+                continue
+            for x, y in route:
+                max_r = max(max_r, x + 8.0)
+                max_b = max(max_b, y + 8.0)
+
+    overlays = diagram_overlays(spec.diagram.edges, placed, edge_paths=edge_paths)
+    width = spec.width or max(max_r, diagram_width or 0.0)
+    height = spec.height or max(max_b, diagram_height or 0.0)
     return Scene(
-        width=spec.width or max_r,
-        height=spec.height or max_b,
+        width=width,
+        height=height,
         viewports=placed,
         overlays=overlays,
     )

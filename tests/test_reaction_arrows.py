@@ -158,7 +158,9 @@ def test_reaction_elk_defaults_wider_spacing():
     graph = elk_graph(layouts, doc)
     opts = graph["layoutOptions"]
     assert opts["elk.direction"] == "RIGHT"
-    assert float(opts["elk.spacing.nodeNode"]) >= 64
+    assert opts["elk.edgeRouting"] == "ORTHOGONAL"
+    assert float(opts["elk.spacing.nodeNode"]) >= 56
+    assert float(opts["elk.layered.spacing.nodeNodeBetweenLayers"]) >= 80
 
 
 def test_diagram_overlays_skips_missing_ids():
@@ -174,7 +176,7 @@ def test_reaction_row_fallback_centers(monkeypatch):
     """When ELK fails, reaction fallback uses centered row with wider gap."""
     import xenosite.pict.diagram.elk as elk_mod
 
-    monkeypatch.setattr(elk_mod, "_elkjs_positions", lambda *a, **k: None)
+    monkeypatch.setattr(elk_mod, "_elkjs_placement", lambda *a, **k: None)
     doc = PictSpec.model_validate(
         {
             "molecules": [
@@ -202,3 +204,80 @@ def test_reaction_row_fallback_centers(monkeypatch):
     assert min(ys) >= 0.0
     xs = [p[0] for p in positions]
     assert xs[1] - xs[0] > 40  # reaction gap leaves room for arrows
+
+
+def test_branched_reaction_uses_elk_routes():
+    """Forked pathway: ELK places nodes in 2D and returns bend polylines."""
+    from xenosite.pict.diagram.elk import layout_diagram_ex
+
+    doc = PictSpec.model_validate(
+        {
+            "molecules": [
+                {"id": "A", "smiles": "CCO"},
+                {"id": "B", "smiles": "CC=O"},
+                {"id": "C", "smiles": "CC(=O)O"},
+                {"id": "D", "smiles": "c1ccccc1"},
+                {"id": "E", "smiles": "c1ccccc1O"},
+            ],
+            "diagram": {
+                "kind": "reaction",
+                "edges": [
+                    {"source": "A", "target": "B", "label": "ADH"},
+                    {"source": "B", "target": "C", "label": "ALDH"},
+                    {"source": "A", "target": "D", "label": "arom"},
+                    {"source": "D", "target": "E", "label": "CYP"},
+                    {
+                        "source": "B",
+                        "target": "E",
+                        "label": "side",
+                        "dashed": True,
+                        "color": "#a40",
+                    },
+                ],
+            },
+        }
+    )
+    layouts = Pict(backend="native").layout(doc).molecules
+    place = layout_diagram_ex(layouts, doc)
+    assert len(place.positions) == 5
+    # Not a single horizontal line — branches occupy distinct Y bands.
+    ys = [round(y, 0) for _x, y in place.positions]
+    assert len(set(ys)) >= 2
+    assert place.edge_paths
+    assert len(place.edge_paths) == 5
+    # At least one routed edge has an orthogonal bend (3+ points).
+    assert any(p is not None and len(p) >= 3 for p in place.edge_paths)
+
+    scene = build_scene(
+        layouts,
+        doc.molecules,
+        doc,
+        positions=place.positions,
+        edge_paths=place.edge_paths,
+        diagram_width=place.width,
+        diagram_height=place.height,
+    )
+    # Multi-segment path data (orthogonal route).
+    assert any(
+        isinstance(p, PathPrim) and p.d.count("L") >= 2 for p in scene.overlays
+    )
+    svg = render(doc, backend="native")
+    assert "pict-overlays" in svg
+    assert "ADH" in svg and "CYP" in svg and "side" in svg
+    assert "stroke-dasharray" in svg
+
+
+def test_polyline_route_drawn_with_bends():
+    a = Viewport(id="A", x=0, y=0, width=40, height=40)
+    b = Viewport(id="B", x=100, y=80, width=40, height=40)
+    route = [(40.0, 20.0), (70.0, 20.0), (70.0, 100.0), (100.0, 100.0)]
+    prims = edge_primitives(
+        EdgeSpec(source="A", target="B", label="bend"),
+        a,
+        b,
+        route=route,
+    )
+    paths = [p for p in prims if isinstance(p, PathPrim)]
+    shaft = next(p for p in paths if "head" not in (p.cls or ""))
+    assert shaft.d.count("L") >= 2
+    assert "bend" in " ".join(getattr(p, "text", "") or "" for p in prims)

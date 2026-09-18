@@ -11,6 +11,7 @@ import json
 import threading
 import warnings
 from collections.abc import Sequence
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from xenosite.pict.contracts.layout import MoleculeLayout
@@ -25,6 +26,16 @@ _VENDOR = Path(__file__).resolve().parents[1] / "vendor" / "elkjs"
 _runtime_lock = threading.Lock()
 _runtime = None  # jsrun.Runtime | None
 _elk_ready = False
+
+
+@dataclass
+class DiagramPlacement:
+    """Node positions plus optional ELK edge routes (document space)."""
+
+    positions: list[tuple[float, float]]
+    edge_paths: list[list[tuple[float, float]] | None] = field(default_factory=list)
+    width: float | None = None
+    height: float | None = None
 
 
 def _polyfills() -> str:
@@ -170,20 +181,31 @@ def _row_positions(
 
 
 def _reaction_defaults(spec: PictSpec) -> dict[str, str]:
-    """Sensible ELK defaults for linear reaction schemes (caller options win)."""
-    if spec.diagram.kind != DiagramKind.reaction:
-        return {
-            "elk.algorithm": "layered",
-            "elk.direction": "RIGHT",
-            "elk.spacing.nodeNode": "40",
-        }
-    return {
+    """ELK defaults for network / reaction diagrams (caller options win)."""
+    base = {
         "elk.algorithm": "layered",
         "elk.direction": "RIGHT",
-        "elk.spacing.nodeNode": "64",
-        "elk.layered.spacing.nodeNodeBetweenLayers": "72",
         "elk.edgeRouting": "ORTHOGONAL",
+        "elk.spacing.nodeNode": "40",
+        "elk.spacing.edgeEdge": "16",
+        "elk.spacing.edgeNode": "20",
+        "elk.layered.spacing.nodeNodeBetweenLayers": "48",
+        "elk.layered.spacing.edgeNodeBetweenLayers": "24",
+        "elk.layered.crossingMinimization.strategy": "LAYER_SWEEP",
+        "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
     }
+    if spec.diagram.kind == DiagramKind.reaction:
+        base.update(
+            {
+                "elk.spacing.nodeNode": "56",
+                "elk.layered.spacing.nodeNodeBetweenLayers": "80",
+                "elk.layered.spacing.edgeNodeBetweenLayers": "28",
+                "elk.spacing.edgeEdge": "20",
+                # Prefer spreading branches so metabolite sinks don't stack.
+                "elk.layered.crossingMinimization.forceNodeModelOrder": "false",
+            }
+        )
+    return base
 
 
 def elk_graph(layouts: Sequence[MoleculeLayout], spec: PictSpec) -> dict:
@@ -192,14 +214,19 @@ def elk_graph(layouts: Sequence[MoleculeLayout], spec: PictSpec) -> dict:
         w, h = normalize_coords(L)[1:]
         nodes.append({"id": L.id or f"m{i}", "width": w, "height": h})
     edges = [
-        {"id": f"e{i}", "sources": [e.source], "targets": [e.target]}
+        {
+            "id": f"e{i}",
+            "sources": [e.source],
+            "targets": [e.target],
+            # Labels reserved for our SVG overlay; ELK still spaces for routes.
+        }
         for i, e in enumerate(spec.diagram.edges)
     ]
     return {
         "id": "root",
         "layoutOptions": {
             **_reaction_defaults(spec),
-            **spec.diagram.elk_options,
+            **{str(k): str(v) for k, v in spec.diagram.elk_options.items()},
         },
         "children": nodes,
         "edges": edges,
@@ -230,10 +257,45 @@ async def _elk_layout_async(graph: dict) -> dict:
     return json.loads(result_json)
 
 
-def _elkjs_positions(
+def _section_points(section: dict) -> list[tuple[float, float]]:
+    """Flatten one ELK edge section into a polyline (start → bends → end)."""
+    start = section.get("startPoint") or {}
+    end = section.get("endPoint") or {}
+    pts: list[tuple[float, float]] = [
+        (float(start.get("x", 0.0)), float(start.get("y", 0.0)))
+    ]
+    for bp in section.get("bendPoints") or []:
+        pts.append((float(bp.get("x", 0.0)), float(bp.get("y", 0.0))))
+    pts.append((float(end.get("x", 0.0)), float(end.get("y", 0.0))))
+    # Drop consecutive duplicates (ELK sometimes emits zero-length stubs).
+    cleaned: list[tuple[float, float]] = []
+    for p in pts:
+        if not cleaned or abs(p[0] - cleaned[-1][0]) > 1e-6 or abs(p[1] - cleaned[-1][1]) > 1e-6:
+            cleaned.append(p)
+    return cleaned
+
+
+def _edge_path_from_elk(edge: dict) -> list[tuple[float, float]] | None:
+    sections = edge.get("sections") or []
+    if not sections:
+        return None
+    path: list[tuple[float, float]] = []
+    for sec in sections:
+        pts = _section_points(sec)
+        if not pts:
+            continue
+        if not path:
+            path.extend(pts)
+        else:
+            # Join sections; skip duplicated junction.
+            path.extend(pts[1:] if pts[0] == path[-1] else pts)
+    return path if len(path) >= 2 else None
+
+
+def _elkjs_placement(
     layouts: Sequence[MoleculeLayout], spec: PictSpec
-) -> list[tuple[float, float]] | None:
-    """Run elkjs inside jsrun when available."""
+) -> DiagramPlacement | None:
+    """Run elkjs inside jsrun when available; include edge bend routes."""
     graph = elk_graph(layouts, spec)
     try:
         laid = _run_async(_elk_layout_async(graph))
@@ -251,19 +313,33 @@ def _elkjs_positions(
         nid = L.id or f"m{i}"
         node = by_id.get(nid, {})
         positions.append((float(node.get("x", 0.0)), float(node.get("y", 0.0))))
-    return positions
+
+    by_edge = {e.get("id"): e for e in laid.get("edges", [])}
+    edge_paths: list[list[tuple[float, float]] | None] = []
+    for i, _e in enumerate(spec.diagram.edges):
+        raw = by_edge.get(f"e{i}")
+        edge_paths.append(_edge_path_from_elk(raw) if raw else None)
+
+    w = laid.get("width")
+    h = laid.get("height")
+    return DiagramPlacement(
+        positions=positions,
+        edge_paths=edge_paths,
+        width=float(w) if w is not None else None,
+        height=float(h) if h is not None else None,
+    )
 
 
-def layout_diagram(
+def layout_diagram_ex(
     layouts: Sequence[MoleculeLayout], spec: PictSpec
-) -> list[tuple[float, float]]:
-    """Return top-left positions for each molecule viewport."""
+) -> DiagramPlacement:
+    """Place molecule viewports; for network/reaction also return ELK edge routes."""
     if len(layouts) <= 1:
-        return [(0.0, 0.0)]
+        return DiagramPlacement(positions=[(0.0, 0.0)], edge_paths=[])
 
     kind = spec.diagram.kind
     if kind in {DiagramKind.network, DiagramKind.reaction}:
-        elk = _elkjs_positions(layouts, spec)
+        elk = _elkjs_placement(layouts, spec)
         if elk is not None:
             return elk
         warnings.warn(
@@ -272,11 +348,20 @@ def layout_diagram(
             stacklevel=3,
         )
         if kind == DiagramKind.reaction:
-            return _row_positions(layouts, gap=_REACTION_GAP, center_y=True)
-        return _row_positions(layouts)
+            pos = _row_positions(layouts, gap=_REACTION_GAP, center_y=True)
+        else:
+            pos = _row_positions(layouts)
+        return DiagramPlacement(positions=pos, edge_paths=[])
 
     if kind == DiagramKind.grid:
         cols = spec.diagram.columns or max(1, int(len(layouts) ** 0.5 + 0.5))
-        return _grid_positions(layouts, cols)
+        return DiagramPlacement(positions=_grid_positions(layouts, cols), edge_paths=[])
 
-    return _row_positions(layouts)
+    return DiagramPlacement(positions=_row_positions(layouts), edge_paths=[])
+
+
+def layout_diagram(
+    layouts: Sequence[MoleculeLayout], spec: PictSpec
+) -> list[tuple[float, float]]:
+    """Return top-left positions for each molecule viewport."""
+    return layout_diagram_ex(layouts, spec).positions
