@@ -200,6 +200,45 @@ def test_template_failure_uses_rigid_fallback(monkeypatch):
     assert _rmsd(ref, aligned, mapping) < _rmsd(ref, flipped, mapping)
 
 
+def test_outlier_does_not_dislodge_the_core():
+    """One atom off the reference is left out. The rest stay put.
+
+    Fitting that atom too would slide the whole scaffold.
+    """
+    ref = _layout("CCc1ccccc1")
+    other = _layout("CCc1ccccc1")
+    degree: dict[int, int] = {}
+    for bond in other.bonds:
+        degree[bond.begin] = degree.get(bond.begin, 0) + 1
+        degree[bond.end] = degree.get(bond.end, 0) + 1
+    leaf = next(
+        atom.index
+        for atom in other.atoms
+        if atom.element == "C" and degree.get(atom.index, 0) == 1
+    )
+    moved = other.model_copy(
+        update={
+            "atoms": [
+                atom.model_copy(update={"x": atom.x + 4.0, "y": atom.y - 3.0})
+                if atom.index == leaf
+                else atom
+                for atom in other.atoms
+            ]
+        }
+    )
+    aligner = RigidAligner()
+    whole = aligner.map_atoms(ref, other)
+    assert whole is not None and leaf in whole
+    kept = aligner.map_atoms(ref, moved)
+    assert kept is not None
+    assert leaf not in kept
+    assert len(kept) >= len(whole) - 1
+    assert _rmsd(ref, aligner.rigid_align(ref, moved, kept), kept) < 1e-3
+    # The same atoms plus the outlier do not sit on the reference.
+    dislodged = _rmsd(ref, aligner.rigid_align(ref, moved, whole), whole)
+    assert dislodged > 0.05
+
+
 def test_render_aligned_pair():
     svg = render(
         {

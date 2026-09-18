@@ -9,10 +9,12 @@ Two implementations share one interface (``Aligner``):
   rotated and translated so the matched atoms overlap as well as a rigid
   move allows. Indigo and native cannot do the template step.
 
-The atom correspondence is the largest common subgraph whose embedding
-has the lowest rigid RMSD. The first substructure hit is an arbitrary
-automorphism — a local choice on a symmetric ring — so every embedding
-is scored before anything is fixed.
+The correspondence we lock is the largest set of atoms that already sit on
+the reference (near-zero rigid error). One extra atom that does not fit is
+not worth dragging that set off the reference. The first substructure hit
+is an arbitrary automorphism, so every embedding is scored before anything
+is fixed. If nothing is near zero, the largest subgraph is still used so a
+template can redraw a different shape.
 
 ``align_layouts`` picks RDKit when it imports, and falls back to rigid if
 template depiction fails or RDKit is absent. This is not a layout backend
@@ -85,32 +87,90 @@ def _ring_edges(adj: dict[int, dict[int, float]]) -> set[frozenset[int]]:
     return ring
 
 
-def _mapping_rmsd(
+def _mean_bond_length(layout: MoleculeLayout) -> float:
+    by_index = {a.index: a for a in layout.atoms}
+    lengths: list[float] = []
+    for bond in layout.bonds:
+        a = by_index.get(bond.begin)
+        b = by_index.get(bond.end)
+        if a is None or b is None:
+            continue
+        lengths.append(math.hypot(a.x - b.x, a.y - b.y))
+    if not lengths:
+        return 1.0
+    mean = sum(lengths) / len(lengths)
+    return mean if mean > 1e-6 else 1.0
+
+
+def _atom_errors(
     ref: MoleculeLayout,
     other: MoleculeLayout,
     mapping: dict[int, int],
-) -> float:
-    """Kabsch RMSD of this correspondence, using the layouts' current coordinates."""
+) -> list[tuple[int, float]]:
+    """Per-atom error after the best rigid move. Pairs are ``(other_index, error)``."""
     ref_at = {a.index: a for a in ref.atoms}
     oth_at = {a.index: a for a in other.atoms}
-    pairs = [
-        (o, r) for o, r in mapping.items() if o in oth_at and r in ref_at
-    ]
-    if len(pairs) < 1:
-        return math.inf
+    pairs = [(o, r) for o, r in mapping.items() if o in oth_at and r in ref_at]
+    if not pairs:
+        return []
     src = [(oth_at[o].x, oth_at[o].y) for o, _r in pairs]
     dst = [(ref_at[r].x, ref_at[r].y) for _o, r in pairs]
     cos_r, sin_r, tx, ty, det = _kabsch_2d(src, dst)
-    err = 0.0
-    for (x, y), (u, v) in zip(src, dst, strict=True):
+    errors: list[tuple[int, float]] = []
+    for (o, _r), (x, y), (u, v) in zip(pairs, src, dst, strict=True):
         if det >= 0:
             xx = cos_r * x - sin_r * y + tx
             yy = sin_r * x + cos_r * y + ty
         else:
             xx = cos_r * x + sin_r * y + tx
             yy = sin_r * x - cos_r * y + ty
-        err += (xx - u) ** 2 + (yy - v) ** 2
-    return math.sqrt(err / len(pairs))
+        errors.append((o, math.hypot(xx - u, yy - v)))
+    return errors
+
+
+def _mapping_rmsd(
+    ref: MoleculeLayout,
+    other: MoleculeLayout,
+    mapping: dict[int, int],
+) -> float:
+    """Kabsch RMSD of this correspondence, using the layouts' current coordinates."""
+    errors = _atom_errors(ref, other, mapping)
+    if not errors:
+        return math.inf
+    return math.sqrt(sum(err * err for _o, err in errors) / len(errors))
+
+
+# An atom this far from its partner, in units of the reference bond, is not
+# "already there". Looser than depiction noise, tighter than a wrong match.
+_NEAR_ZERO_BOND_FRAC = 0.05
+
+
+def _near_zero_core(
+    ref: MoleculeLayout,
+    other: MoleculeLayout,
+    mapping: dict[int, int],
+    *,
+    min_size: int,
+) -> dict[int, int] | None:
+    """Drop atoms that spoil a rigid fit until the rest sit on the reference.
+
+    Kabsch on the whole map will slide every atom to buy one bad pair. That
+    pair is removed and the fit is redone. Returns None when no subset of
+    ``min_size`` is near zero (the shapes really differ).
+    """
+    tol = _NEAR_ZERO_BOND_FRAC * _mean_bond_length(ref)
+    current = dict(mapping)
+    while len(current) >= min_size:
+        errors = _atom_errors(ref, other, current)
+        if len(errors) < min_size:
+            return None
+        if max(err for _o, err in errors) <= tol:
+            return {o: current[o] for o, _err in errors}
+        if len(current) == min_size:
+            return None
+        worst = max(errors, key=lambda item: item[1])[0]
+        del current[worst]
+    return None
 
 
 def _choose_mapping(
@@ -120,24 +180,36 @@ def _choose_mapping(
     *,
     min_size: int = 3,
 ) -> dict[int, int] | None:
-    """Largest correspondence, then the one with the lowest rigid RMSD.
+    """Largest set of atoms with near-zero rigid error.
 
-    The first maximum common subgraph hit is an arbitrary automorphism.
-    Symmetric rings make that a local choice: another embedding of the same
-    atoms can sit on the reference while the first one does not.
+    A bigger subgraph is kept only when those extra atoms sit on the
+    reference too. One imperfect pair is dropped instead of dislodging the
+    rest. If no embedding is near zero, the largest subgraph (then lowest
+    RMSD) is returned so a template can still redraw it.
     """
-    best: dict[int, int] | None = None
-    best_key: tuple[int, float] | None = None
+    best_clean: dict[int, int] | None = None
+    best_clean_key: tuple[int, float] | None = None
+    best_raw: dict[int, int] | None = None
+    best_raw_key: tuple[int, float] | None = None
     for mapping in mappings:
         if not mapping or len(mapping) < min_size:
             continue
         if len(set(mapping.values())) != len(mapping):
             continue
-        key = (-len(mapping), _mapping_rmsd(ref, other, mapping))
-        if best_key is None or key < best_key:
-            best_key = key
-            best = mapping
-    return best
+        raw_key = (-len(mapping), _mapping_rmsd(ref, other, mapping))
+        if best_raw_key is None or raw_key < best_raw_key:
+            best_raw_key = raw_key
+            best_raw = mapping
+        clean = _near_zero_core(ref, other, mapping, min_size=min_size)
+        if clean is None:
+            continue
+        clean_key = (-len(clean), _mapping_rmsd(ref, other, clean))
+        if best_clean_key is None or clean_key < best_clean_key:
+            best_clean_key = clean_key
+            best_clean = clean
+    if best_clean is not None:
+        return best_clean
+    return best_raw
 
 
 _NODE_BUDGET = 8000
@@ -236,8 +308,8 @@ def _mcs_mapping(
 ) -> dict[int, int] | None:
     """Largest connected common subgraph, other index → ref index.
 
-    Ties are broken by rigid RMSD so a symmetric ring is not stuck on the
-    first seed that covers it.
+    The kept atoms are the largest near-zero rigid fit, not the first seed
+    that covers the graph.
     """
     ref_el = {a.index: _element_key(a.element) for a in ref.atoms}
     oth_el = {a.index: _element_key(a.element) for a in other.atoms}
