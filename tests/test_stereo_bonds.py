@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from xenosite.pict import Pict, render
@@ -43,6 +45,19 @@ def test_solid_wedge_tip_at_begin():
 def test_hashed_wedge_has_multiple_dashes():
     dashes = hashed_wedge(0, 0, 20, 0)
     assert len(dashes) >= 4
+
+
+def test_down_hash_is_wide_at_stereocenter():
+    """Away-bond: thick end on the stereocenter, thin end on the substituent."""
+    dashes = hashed_wedge(0, 0, 40, 0)
+    widths = []
+    centers = []
+    for dash in dashes:
+        nums = [float(n) for n in re.findall(r"[-+]?\d+\.\d+", dash.d)]
+        widths.append(abs(nums[1] - nums[3]))
+        centers.append((nums[0] + nums[2]) / 2)
+    assert centers[0] < centers[-1]
+    assert widths[0] > widths[-1] * 2
 
 
 def test_stereo_up_replaces_skeleton():

@@ -22,7 +22,7 @@ from collections import defaultdict
 from collections.abc import Sequence
 from typing import Protocol
 
-from xenosite.pict.contracts.layout import AtomLayout, MoleculeLayout
+from xenosite.pict.contracts.layout import AtomLayout, BondLayout, MoleculeLayout
 from xenosite.pict.contracts.spec import MoleculeSpec
 
 
@@ -226,6 +226,15 @@ class Aligner(Protocol):
         """Redraw ``other`` with mapped atoms fixed to ``ref``. None if unsupported."""
 
 
+def _invert_tetrahedral(bond: BondLayout) -> BondLayout:
+    """A reflection reverses the 2D order of substituents, so up and down swap."""
+    if bond.stereo == "up":
+        return bond.model_copy(update={"stereo": "down"})
+    if bond.stereo == "down":
+        return bond.model_copy(update={"stereo": "up"})
+    return bond
+
+
 def _with_warning(layout: MoleculeLayout, text: str) -> MoleculeLayout:
     if text in layout.warnings:
         return layout
@@ -258,7 +267,10 @@ class RigidAligner:
         dst = [(by_index_ref[mapping[i]].x, by_index_ref[mapping[i]].y) for i in oth_ids]
         cos_r, sin_r, tx, ty, det = _kabsch_2d(src, dst)
         new_atoms = _apply_transform(other.atoms, cos_r, sin_r, tx, ty, det)
-        return other.model_copy(update={"atoms": new_atoms})
+        bonds = other.bonds
+        if det < 0:
+            bonds = [_invert_tetrahedral(b) for b in other.bonds]
+        return other.model_copy(update={"atoms": new_atoms, "bonds": bonds})
 
     def depict_on_template(
         self,

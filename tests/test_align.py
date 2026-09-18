@@ -63,7 +63,6 @@ def test_rigid_align_moves_flipped_molecule():
     assert "alignment: rigid transform" in aligned[1].warnings
     mapping = RigidAligner().map_atoms(ref, aligned[1])
     assert mapping is not None
-    raw = _rmsd(ref, flipped, mapping)
     snapped = _rmsd(ref, aligned[1], mapping)
     assert snapped < 1e-6
 
@@ -77,6 +76,55 @@ def test_rigid_align_lands_the_oxygen():
     assert mapping is not None
     aligned = aligner.rigid_align(ref, other, mapping)
     assert _rmsd(ref, aligned, mapping) < 1e-6
+
+
+def test_reflection_keeps_smiles_chirality():
+    """A mirror inverts the drawing, so up and down swap and the SMILES tag still holds."""
+    pytest.importorskip("rdkit")
+    from rdkit import Chem
+    from rdkit.Geometry import Point3D
+
+    smiles = "C[C@H](O)Cl"
+    try:
+        original = Pict(backend="indigo").layout({"molecules": [{"smiles": smiles}]}).molecules[0]
+    except Exception:
+        original = Pict(backend="native").layout({"molecules": [{"smiles": smiles}]}).molecules[0]
+    mirror = original.model_copy(
+        update={"atoms": [a.model_copy(update={"y": -a.y}) for a in original.atoms]}
+    )
+    mapping = {a.index: a.index for a in original.atoms}
+    aligned = RigidAligner().rigid_align(mirror, original, mapping)
+    assert [(b.begin, b.end, b.stereo) for b in aligned.bonds] != [
+        (b.begin, b.end, b.stereo) for b in original.bonds
+    ]
+
+    em = Chem.EditableMol(Chem.Mol())
+    idx = {}
+    for atom in sorted(aligned.atoms, key=lambda a: a.index):
+        idx[atom.index] = em.AddAtom(Chem.Atom(atom.element))
+    for bond in aligned.bonds:
+        kind = Chem.BondType.DOUBLE if bond.order >= 1.5 else Chem.BondType.SINGLE
+        em.AddBond(idx[bond.begin], idx[bond.end], kind)
+    mol = em.GetMol()
+    Chem.SanitizeMol(mol)
+    conf = Chem.Conformer(mol.GetNumAtoms())
+    for atom in aligned.atoms:
+        conf.SetAtomPosition(idx[atom.index], Point3D(atom.x, atom.y, 0.0))
+    mol.AddConformer(conf)
+    for bond in aligned.bonds:
+        if bond.stereo not in {"up", "down"}:
+            continue
+        rb = mol.GetBondBetweenAtoms(idx[bond.begin], idx[bond.end])
+        assert rb.GetBeginAtomIdx() == idx[bond.begin]
+        rb.SetBondDir(Chem.BondDir.BEGINWEDGE if bond.stereo == "up" else Chem.BondDir.BEGINDASH)
+    Chem.AssignChiralTypesFromBondDirs(mol)
+    got = next(
+        a.GetChiralTag()
+        for a in mol.GetAtoms()
+        if a.GetChiralTag() != Chem.ChiralType.CHI_UNSPECIFIED
+    )
+    want = Chem.MolFromSmiles(smiles).GetAtomWithIdx(1).GetChiralTag()
+    assert got == want
 
 
 def test_select_aligner_prefers_rdkit_when_installed():

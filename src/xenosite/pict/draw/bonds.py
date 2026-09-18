@@ -5,8 +5,11 @@ Follows quality depictors (RDKit MolDraw2D, Indigo render, CDK):
 1. Every bond is a single **skeleton** centerline first (connected graph).
 2. Double/triple add parallel **offsets**. Ring doubles are shortened toward
    the interior; acyclic doubles run the same length as the skeleton.
-3. Tetrahedral stereo replaces the skeleton with solid/hashed wedges
-   (thin end at stereocenter — RDKit ``BEGINWEDGE`` / ``BEGINDASH``).
+3. Tetrahedral stereo replaces the skeleton with a solid or hashed wedge.
+   Solid (toward the viewer) is thin at the stereocenter and thick at the
+   substituent. Hashed (away) is thick at the stereocenter and thin at the
+   substituent, so the taper and the hashes say the same thing. ``begin`` is
+   always the stereocenter.
 4. ``either`` → wavy single or crossed double.
 
 Do not invent new conventions; match RDKit/Indigo geometry.
@@ -113,14 +116,19 @@ def solid_wedge(
 def hashed_wedge(
     x1: float, y1: float, x2: float, y2: float, *, half: float = _WEDGE_HALF, n: int | None = None
 ) -> list[PathPrim]:
-    """Hashed wedge; tip at (x1,y1) — RDKit BEGINDASH (MolDraw2D dashes)."""
+    """Hashed wedge for a bond going away from the viewer.
+
+    ``(x1, y1)`` is the stereocenter. Hashes are wide there and narrow at the
+    substituent: the dashes say "away", and a thick end on the stereocenter
+    says "away" too. (A thick end on the substituent would say "toward".)
+    """
     ux, uy, nx, ny, length = _unit(x1, y1, x2, y2)
-    # Skip last dash at fat end so incident bonds don't hit a bar (RDKit oneLessDash).
     count = n if n is not None else hash_count(length)
     paths: list[PathPrim] = []
     for i in range(count):
+        # Inset from both ends so a hash does not sit on the vertex.
         t = (i + 1) / (count + 1)
-        w = half * t
+        w = half * (1.0 - t)
         cx = x1 + ux * length * t
         cy = y1 + uy * length * t
         paths.append(
@@ -203,8 +211,8 @@ def bond_strokes(
     """Build skeleton / offset / stereo strokes for one bond.
 
     ``stereo``: ``up`` | ``down`` | ``either`` | ``none`` | ``None``.
-    Thin end of wedges is at ``(x1,y1)`` — callers must pass stereocenter first
-    (BondLayout.begin after backends set begin=stereocenter).
+    Thin end of a solid wedge, and the thick end of a hashed wedge, are at
+    ``(x1, y1)``. Callers pass the stereocenter first (``BondLayout.begin``).
     """
     order = depict_order(order)
     stereo = (stereo or "none").lower()

@@ -617,11 +617,9 @@ def _assign_tetrahedral_wedges(
 ) -> None:
     """Assign up/down wedges from OpenSMILES ``@``/``@@`` (lab-quality).
 
-    Guide: RDKit ``WedgeMolBonds`` — thin end at stereocenter (``begin``).
-    Parity: compute 2D CCW order of heavy neighbors; flip wedge sense so the
-    depicted configuration matches SMILES ``@`` (anticlockwise) / ``@@``
-    (clockwise) when looking from the first SMILES neighbor. Not full CIP —
-    enough to exercise the draw path on native coords.
+    Guide: solid wedge is thin at the stereocenter; hashed wedge is thick
+    there. ``begin`` is always the stereocenter. Parity matches SMILES
+    ``@`` / ``@@`` against the 2D neighbor order.
     """
     adj: dict[int, list[int]] = defaultdict(list)
     bond_by_pair: dict[frozenset[int], BondLayout] = {}
