@@ -150,9 +150,11 @@ def _kabsch_2d(
         syy += y0 * v0
 
     def rot_score(c: float, s: float) -> float:
-        return c * (sxx + syy) + s * (syx - sxy)
+        # Score of x' = c x - s y, y' = s x + c y. The sine term is
+        # (src_x * dst_y - src_y * dst_x), not the opposite.
+        return c * (sxx + syy) + s * (sxy - syx)
 
-    ang = math.atan2(syx - sxy, sxx + syy)
+    ang = math.atan2(sxy - syx, sxx + syy)
     c1, s1 = math.cos(ang), math.sin(ang)
     best_c, best_s, best_det = c1, s1, 1.0
     best_sc = rot_score(c1, s1)

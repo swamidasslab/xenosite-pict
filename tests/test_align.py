@@ -65,7 +65,18 @@ def test_rigid_align_moves_flipped_molecule():
     assert mapping is not None
     raw = _rmsd(ref, flipped, mapping)
     snapped = _rmsd(ref, aligned[1], mapping)
-    assert snapped < raw
+    assert snapped < 1e-6
+
+
+def test_rigid_align_lands_the_oxygen():
+    """The ring+O of anisole is the same shape as phenol, so rotation puts O on O."""
+    ref = _layout("c1ccc(cc1)O")
+    other = _layout("COc1ccccc1")
+    aligner = RigidAligner()
+    mapping = aligner.map_atoms(ref, other)
+    assert mapping is not None
+    aligned = aligner.rigid_align(ref, other, mapping)
+    assert _rmsd(ref, aligned, mapping) < 1e-6
 
 
 def test_select_aligner_prefers_rdkit_when_installed():
