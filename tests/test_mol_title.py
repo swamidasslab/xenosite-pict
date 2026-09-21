@@ -1,4 +1,4 @@
-"""Molecule title packing and collision-grid helpers."""
+"""Molecule label packing and collision-grid helpers."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import re
 import pytest
 
 from xenosite.pict import Pict, render
+from xenosite.pict.contracts.spec import LabelPos, MoleculeSpec
 from xenosite.pict.draw.collision import CollisionGrid
 from xenosite.pict.draw.metrics import (
     COLLISION_CELL_PX,
@@ -14,7 +15,7 @@ from xenosite.pict.draw.metrics import (
     TITLE_CLEARANCE_PX,
     TITLE_FONT_PX,
 )
-from xenosite.pict.draw.mol_title import pack_bottom_title, title_occupancy_box
+from xenosite.pict.draw.mol_title import pack_bottom_title, pack_label, title_occupancy_box
 from xenosite.pict.draw.scene_builder import viewport_size
 from xenosite.pict.draw.text_metrics import measure_text
 
@@ -41,6 +42,7 @@ def test_pack_bottom_title_is_center_bottom_with_clearance():
     )
     assert pack.text == "ethanol"
     assert pack.font_size == TITLE_FONT_PX
+    assert pack.pos is LabelPos.bottom
     assert pack.title_x == pytest.approx(pack.width * 0.5)
     typo = title_occupancy_box(pack)
     # Typo bottom sits TITLE_BOTTOM_PX above the viewport bottom.
@@ -50,13 +52,55 @@ def test_pack_bottom_title_is_center_bottom_with_clearance():
     assert typo[1] - mol_bottom == pytest.approx(TITLE_CLEARANCE_PX, abs=COLLISION_CELL_PX + 0.5)
 
 
-def test_title_pack_reserves_caption_band():
+def test_pack_top_label_sits_above_content():
+    grid = CollisionGrid(cell=COLLISION_CELL_PX)
+    grid.mark_box(10, 30, 70, 60)
+    pack = pack_label(
+        frame_width=80,
+        frame_height=80,
+        occupancy=grid,
+        text="top",
+        pos=LabelPos.top,
+    )
+    typo = title_occupancy_box(pack)
+    assert typo[1] == pytest.approx(TITLE_BOTTOM_PX, abs=0.5)
+    mol_top = 30 + pack.dy
+    assert mol_top - typo[3] == pytest.approx(TITLE_CLEARANCE_PX, abs=COLLISION_CELL_PX + 0.5)
+
+
+def test_pack_left_and_right_widen_frame():
+    grid = CollisionGrid(cell=COLLISION_CELL_PX)
+    grid.mark_box(20, 10, 60, 50)
+    left = pack_label(
+        frame_width=80,
+        frame_height=80,
+        occupancy=grid,
+        text="L",
+        pos="left",
+    )
+    right = pack_label(
+        frame_width=80,
+        frame_height=80,
+        occupancy=grid,
+        text="R",
+        pos="right",
+    )
+    assert left.width >= 80
+    assert right.width >= 80
+    assert left.x < 20 + left.dx
+    assert right.x > 60 + right.dx
+    # Content clears the label band by about TITLE_CLEARANCE_PX.
+    assert (20 + left.dx) - (left.x + measure_text("L", TITLE_FONT_PX).advance * 0.5) == pytest.approx(
+        TITLE_CLEARANCE_PX, abs=COLLISION_CELL_PX + 0.5
+    )
+
+
+def test_label_pack_reserves_caption_band():
     backend = "native"
     pict = Pict(backend=backend)
     bare = pict.layout({"molecules": [{"smiles": "CCO"}]}).molecules[0]
-    from xenosite.pict.contracts.spec import MoleculeSpec
 
-    mol = MoleculeSpec(smiles="CCO", title="ethanol")
+    mol = MoleculeSpec(smiles="CCO", label="ethanol")
     w1, h1 = viewport_size(bare, mol)
     metrics = measure_text("ethanol", TITLE_FONT_PX)
     # Packed height must fit ink clearance + title typo + bottom gap.
@@ -64,13 +108,20 @@ def test_title_pack_reserves_caption_band():
     assert w1 >= metrics.advance
 
 
-def test_render_emits_centered_mol_title():
+def test_title_alias_still_works():
+    mol = MoleculeSpec(smiles="CCO", title="ethanol")
+    assert mol.label is not None
+    assert mol.label.text == "ethanol"
+    assert mol.label.pos is LabelPos.bottom
+
+
+def test_render_emits_centered_mol_label():
     svg = render(
-        {"molecules": [{"smiles": "CCO", "title": "ethanol"}]},
+        {"molecules": [{"smiles": "CCO", "label": "ethanol"}]},
         backend="native",
     )
     m = re.search(
-        r'<text([^>]*)class="mol-title"([^>]*)>([^<]*)</text>',
+        r'<text([^>]*)class="mol-label"([^>]*)>([^<]*)</text>',
         svg,
     )
     assert m is not None
@@ -79,8 +130,28 @@ def test_render_emits_centered_mol_title():
     assert f'font-size="{TITLE_FONT_PX}"' in attrs or f"font-size=\"{TITLE_FONT_PX}" in attrs
     assert 'text-anchor="middle"' in attrs
     height = float(re.search(r'height="([0-9.]+)"', svg).group(1))
-    title_y = float(re.search(r'\by="([0-9.]+)"', attrs).group(1))
-    assert title_y > height * 0.5
+    label_y = float(re.search(r'\by="([0-9.]+)"', attrs).group(1))
+    assert label_y > height * 0.5
+
+
+def test_render_label_pos_top():
+    svg = render(
+        {
+            "molecules": [
+                {"smiles": "CCO", "label": {"text": "ethanol", "pos": "top"}}
+            ]
+        },
+        backend="native",
+    )
+    m = re.search(
+        r'<text([^>]*)class="mol-label"([^>]*)>([^<]*)</text>',
+        svg,
+    )
+    assert m is not None
+    attrs = m.group(1) + m.group(2)
+    height = float(re.search(r'height="([0-9.]+)"', svg).group(1))
+    label_y = float(re.search(r'\by="([0-9.]+)"', attrs).group(1))
+    assert label_y < height * 0.5
 
 
 def test_title_snug_is_shorter_than_naive_pad_stack():

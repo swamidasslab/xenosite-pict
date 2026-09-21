@@ -50,7 +50,7 @@ HALO_FRAC = 2 * STROKE_FRAC  # knockout stays twice the ink, as in xenopict
 # terminal-hetero depictions — enough for a dark-host knockout, not a wide
 # moat. Molecule captions reuse the same order of air above the title band.
 LABEL_GAP_FRAC = 0.05  # × bond → 1.0 px at BOND_PX=20
-# Molecule caption (MoleculeSpec.title): center-bottom band.
+# Molecule caption (MoleculeSpec.label): default center-bottom band.
 TITLE_FONT_FRAC = 0.50  # slightly smaller than atom labels (0.60)
 TITLE_BOTTOM_FRAC = 0.20  # typo-box bottom → viewport bottom
 TITLE_CLEARANCE_FRAC = 0.08  # mol ink → title typo top (a touch more than LABEL_GAP)

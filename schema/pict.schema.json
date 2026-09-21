@@ -304,17 +304,39 @@
           "description": "Optional MDL molblock",
           "title": "Molfile"
         },
-        "title": {
+        "label": {
           "anyOf": [
             {
               "type": "string"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "text": {
+                  "type": "string"
+                },
+                "pos": {
+                  "default": "bottom",
+                  "enum": [
+                    "bottom",
+                    "top",
+                    "left",
+                    "right"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "text"
+              ],
+              "type": "object"
             },
             {
               "type": "null"
             }
           ],
           "default": null,
-          "title": "Title"
+          "description": "Molecule caption. A bare string uses defaults (pos=bottom). A dict with only text is equivalent; other keys override defaults. Legacy field name `title` is accepted as an alias."
         },
         "marks": {
           "items": {
@@ -428,7 +450,7 @@
     }
   },
   "additionalProperties": false,
-  "description": "Declarative depiction document.\n\nEngine choice (`backend`) is runtime config on Pict/render \u2014 not part of this document.",
+  "description": "Declarative depiction document.\n\nEngine choice (`backend`) is runtime config on Pict/render \u2014 not part of this document.\nShorthand fields (e.g. molecule labels) are expanded at validation; the library\nthen works only on fully expanded models.",
   "properties": {
     "molecules": {
       "items": {

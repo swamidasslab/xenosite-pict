@@ -43,7 +43,7 @@ from xenosite.pict.draw.metrics import (
     coord_scale,
     label_clearance,
 )
-from xenosite.pict.draw.mol_title import pack_bottom_title
+from xenosite.pict.draw.mol_title import pack_label
 from xenosite.pict.draw.plotdot import PlotDot
 from xenosite.pict.draw.rings import bond_interior_normals, find_sssr
 from xenosite.pict.draw.text_metrics import label_baseline_offset, text_box
@@ -102,20 +102,29 @@ def _mol_occupancy(
     return grid
 
 
+def _label_text(mol_spec: MoleculeSpec | None) -> str | None:
+    if mol_spec is None or mol_spec.label is None:
+        return None
+    text = mol_spec.label.text.strip()
+    return text or None
+
+
 def viewport_size(
     layout: MoleculeLayout, mol_spec: MoleculeSpec | None = None
 ) -> tuple[float, float]:
-    """Viewport width/height including a bottom title when present."""
+    """Viewport width/height including a molecule label when present."""
     coords, width, height = normalize_coords(layout)
-    if mol_spec is None or not mol_spec.title:
+    text = _label_text(mol_spec)
+    if text is None or mol_spec is None or mol_spec.label is None:
         return width, height
     texts = [_display_text(a) for a in layout.atoms]
     occ = _mol_occupancy(layout, coords, texts)
-    pack = pack_bottom_title(
+    pack = pack_label(
         frame_width=width,
         frame_height=height,
         occupancy=occ,
-        title=mol_spec.title,
+        text=text,
+        pos=mol_spec.label.pos,
     )
     return pack.width, pack.height
 
@@ -262,18 +271,22 @@ def molecule_to_viewport(layout: MoleculeLayout, mol_spec: MoleculeSpec) -> View
     coords, width, height = normalize_coords(layout)
     layers: dict[str, Layer] = {name: Layer(name=name) for name in _LAYER_ORDER}  # type: ignore[arg-type]
     texts = [_display_text(a) for a in layout.atoms]
-    title_pack = None
-    if mol_spec.title and mol_spec.title.strip():
+    label_pack = None
+    label_text = _label_text(mol_spec)
+    if label_text is not None and mol_spec.label is not None:
         occ = _mol_occupancy(layout, coords, texts)
-        title_pack = pack_bottom_title(
+        label_pack = pack_label(
             frame_width=width,
             frame_height=height,
             occupancy=occ,
-            title=mol_spec.title,
+            text=label_text,
+            pos=mol_spec.label.pos,
         )
-        if title_pack.dy:
-            coords = [(x, y + title_pack.dy) for x, y in coords]
-        width, height = title_pack.width, title_pack.height
+        if label_pack.dx or label_pack.dy:
+            coords = [
+                (x + label_pack.dx, y + label_pack.dy) for x, y in coords
+            ]
+        width, height = label_pack.width, label_pack.height
 
     atom_pos = {a.index: i for i, a in enumerate(layout.atoms)}
     ring_normals = _ring_bond_normals(layout, coords)
@@ -504,15 +517,16 @@ def molecule_to_viewport(layout: MoleculeLayout, mol_spec: MoleculeSpec) -> View
                     )
                 )
 
-    if title_pack is not None and title_pack.text:
+    if label_pack is not None and label_pack.text:
         layers["overlay"].primitives.append(
             TextPrim(
-                x=title_pack.title_x,
-                y=title_pack.title_y,
-                text=title_pack.text,
-                font_size=title_pack.font_size,
+                x=label_pack.x,
+                y=label_pack.y,
+                text=label_pack.text,
+                font_size=label_pack.font_size,
                 fill="#222",
-                cls="mol-title",
+                anchor=label_pack.anchor,
+                cls="mol-label",
             )
         )
 

@@ -5,7 +5,20 @@ from __future__ import annotations
 from enum import Enum
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    WithJsonSchema,
+    model_validator,
+)
+
+from xenosite.pict.contracts.shorthand import (
+    LABEL_DEFAULTS,
+    expand_label,
+    expand_pict_input,
+)
 
 
 class StrictModel(BaseModel):
@@ -24,6 +37,69 @@ class MarkKind(str, Enum):
     atoms = "atoms"
     bonds = "bonds"
     substructure = "substructure"
+
+
+class LabelPos(str, Enum):
+    """Where a molecule caption sits relative to the drawing."""
+
+    bottom = "bottom"
+    top = "top"
+    left = "left"
+    right = "right"
+
+
+class LabelSpec(StrictModel):
+    """Expanded molecule caption.
+
+    Input shorthand (expanded at the API boundary):
+
+    - ``"ethanol"`` → defaults (``pos=bottom``)
+    - ``{"text": "ethanol"}`` → same
+    - ``{"text": "ethanol", "pos": "top"}`` → override position
+    """
+
+    text: str
+    pos: LabelPos = LabelPos.bottom
+
+
+def _coerce_label(value: Any) -> Any:
+    """String / partial dict → expanded LabelSpec-shaped dict; None stays None."""
+    if value is None or isinstance(value, LabelSpec):
+        return value
+    return expand_label(value)
+
+
+# JSON Schema documents the shorthand union; runtime type is always LabelSpec.
+_LABEL_JSON_SCHEMA = {
+    "anyOf": [
+        {"type": "string"},
+        {
+            "type": "object",
+            "properties": {
+                "text": {"type": "string"},
+                "pos": {
+                    "type": "string",
+                    "enum": ["bottom", "top", "left", "right"],
+                    "default": "bottom",
+                },
+            },
+            "required": ["text"],
+            "additionalProperties": False,
+        },
+        {"type": "null"},
+    ],
+    "description": (
+        "Molecule caption. A bare string uses defaults (pos=bottom). "
+        "A dict with only text is equivalent; other keys override defaults. "
+        "Legacy field name `title` is accepted as an alias."
+    ),
+}
+
+_LabelInput = Annotated[
+    LabelSpec | None,
+    BeforeValidator(_coerce_label),
+    WithJsonSchema(_LABEL_JSON_SCHEMA),
+]
 
 
 class MarkSpec(StrictModel):
@@ -68,11 +144,28 @@ class MoleculeSpec(StrictModel):
         description="MolParser E-SMILES (SMILES<sep>EXTENSION); schema hook for Markush",
     )
     molfile: str | None = Field(default=None, description="Optional MDL molblock")
-    title: str | None = None
+    label: _LabelInput = Field(
+        default=None,
+        description=(
+            "Molecule caption. A bare string uses defaults (pos=bottom). "
+            "A dict with only text is equivalent; other keys override defaults. "
+            "Legacy field name `title` is accepted as an alias."
+        ),
+    )
     marks: list[MarkSpec] = Field(default_factory=list)
     shade: ShadeSpec | None = None
     halo: bool = True
     color: str | None = Field(default=None, description="Bond/backbone color override")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _alias_title_to_label(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "title" in data:
+            data = dict(data)
+            if "label" not in data or data["label"] is None:
+                data["label"] = data["title"]
+            del data["title"]
+        return data
 
     @model_validator(mode="after")
     def require_structure(self) -> MoleculeSpec:
@@ -132,6 +225,8 @@ class PictSpec(StrictModel):
     """Declarative depiction document.
 
     Engine choice (`backend`) is runtime config on Pict/render — not part of this document.
+    Shorthand fields (e.g. molecule labels) are expanded at validation; the library
+    then works only on fully expanded models.
     """
 
     molecules: Annotated[list[MoleculeSpec], Field(min_length=1)]
@@ -139,3 +234,47 @@ class PictSpec(StrictModel):
     width: float | None = Field(default=None, description="Preferred SVG width")
     height: float | None = Field(default=None, description="Preferred SVG height")
     meta: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _expand_shorthand(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            return expand_pict_input(data)
+        return data
+
+
+def expand_pict(spec: PictSpec | dict[str, Any]) -> PictSpec:
+    """Validate and fully expand a PictSpec input."""
+    if isinstance(spec, PictSpec):
+        return spec
+    return PictSpec.model_validate(spec)
+
+
+def compress_pict(spec: PictSpec | dict[str, Any]) -> dict[str, Any]:
+    """Dump a PictSpec to JSON-shaped dict with shorthand compression."""
+    from xenosite.pict.contracts.shorthand import compress_pict_input
+
+    if isinstance(spec, PictSpec):
+        data = spec.model_dump(mode="json")
+    else:
+        data = dict(spec)
+    return compress_pict_input(data)
+
+
+# Re-export defaults for callers / schema docs.
+__all__ = [
+    "DiagramKind",
+    "DiagramSpec",
+    "EdgeArrow",
+    "EdgeSpec",
+    "LABEL_DEFAULTS",
+    "LabelPos",
+    "LabelSpec",
+    "MarkKind",
+    "MarkSpec",
+    "MoleculeSpec",
+    "PictSpec",
+    "ShadeSpec",
+    "compress_pict",
+    "expand_pict",
+]

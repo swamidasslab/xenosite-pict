@@ -5,6 +5,24 @@
 
 export type OutputFormat = "svg" | "html";
 
+/** Molecule caption position relative to the drawing. */
+export type LabelPos = "bottom" | "top" | "left" | "right";
+
+/**
+ * Molecule caption. Shorthand:
+ * - `"ethanol"` → defaults (`pos: "bottom"`)
+ * - `{ text: "ethanol" }` → same
+ * - `{ text: "ethanol", pos: "top" }` → override position
+ *
+ * Legacy `title` is accepted as an alias for `label`.
+ */
+export type LabelSpec =
+  | string
+  | {
+      text: string;
+      pos?: LabelPos;
+    };
+
 export interface MoleculeSpec {
   id?: string;
   smiles?: string;
@@ -12,7 +30,10 @@ export interface MoleculeSpec {
   /** MolParser E-SMILES (SMILES&lt;sep&gt;EXTENSION). */
   esmiles?: string;
   molfile?: string;
-  title?: string;
+  /** Molecule caption (string shorthand or expanded object). */
+  label?: LabelSpec | null;
+  /** @deprecated Use `label`. */
+  title?: LabelSpec | null;
   marks?: MarkSpec[];
   shade?: ShadeSpec;
   halo?: boolean;
