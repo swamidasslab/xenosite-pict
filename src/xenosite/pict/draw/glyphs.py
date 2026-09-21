@@ -8,6 +8,8 @@ faces (Regular / Bold / Italic / BoldItalic).
 
 from __future__ import annotations
 
+from functools import reduce
+
 from fontTools.pens.transformPen import TransformPen
 from shapely import affinity
 from shapely.geometry import MultiPolygon, Polygon
@@ -27,13 +29,12 @@ from xenosite.pict.draw.text_metrics import measure_styled
 
 
 def _contours_to_geom(pen: ContourPen) -> BaseGeometry | None:
-    """Build geometry from TrueType contours, nesting counters as holes.
+    """Build geometry from TrueType contours via XOR (even-odd fill).
 
-    Liberation Sans (like most TTFs) emits ``O`` as an outer contour plus an
-    inner counter contour — not a single polygon with ``interiors``. We nest
-    smaller contours inside larger ones so counters stay open.
+    Fonts emit counters (the hole in ``O``, ``A``, …) as separate contours.
+    ``symmetric_difference`` punches those holes — no area nesting heuristic.
     """
-    raw: list[Polygon] = []
+    raw: list[BaseGeometry] = []
     for contour in pen.contours:
         if len(contour) < 3:
             continue
@@ -42,36 +43,12 @@ def _contours_to_geom(pen: ContourPen) -> BaseGeometry | None:
             continue
         if not poly.is_valid:
             poly = poly.buffer(0)
-        if isinstance(poly, Polygon) and not poly.is_empty:
+        if not poly.is_empty:
             raw.append(poly)
     if not raw:
         return None
-    raw.sort(key=lambda p: p.area, reverse=True)
-    used = [False] * len(raw)
-    parts: list[Polygon] = []
-    for i, outer in enumerate(raw):
-        if used[i]:
-            continue
-        holes: list[object] = []
-        for j in range(i + 1, len(raw)):
-            if used[j]:
-                continue
-            inner = raw[j]
-            # Counter lies inside the outer filled region.
-            if outer.contains(inner.representative_point()):
-                holes.append(list(inner.exterior.coords))
-                used[j] = True
-        nested = Polygon(list(outer.exterior.coords), holes)
-        if not nested.is_valid:
-            nested = nested.buffer(0)
-        if isinstance(nested, Polygon) and not nested.is_empty:
-            parts.append(nested)
-        used[i] = True
-    if not parts:
-        return None
-    if len(parts) == 1:
-        return parts[0]
-    return unary_union(parts)
+    geom = reduce(lambda a, b: a.symmetric_difference(b), raw)
+    return None if geom.is_empty else geom
 
 
 def _outline_run_em(
