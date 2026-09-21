@@ -91,7 +91,9 @@ _LABEL_JSON_SCHEMA = {
     "description": (
         "Molecule caption. A bare string uses defaults (pos=bottom). "
         "A dict with only text is equivalent; other keys override defaults. "
-        "Legacy field name `title` is accepted as an alias."
+        "Legacy field name `title` is accepted as an alias. "
+        "Text supports light markup: TeX-like symbols (\\alpha → α) and "
+        "bold/italic via **…** / *…* or \\textbf{} / \\textit{}."
     ),
 }
 
@@ -149,7 +151,9 @@ class MoleculeSpec(StrictModel):
         description=(
             "Molecule caption. A bare string uses defaults (pos=bottom). "
             "A dict with only text is equivalent; other keys override defaults. "
-            "Legacy field name `title` is accepted as an alias."
+            "Legacy field name `title` is accepted as an alias. "
+            "Text supports light markup: TeX-like symbols (\\alpha → α) and "
+            "bold/italic via **…** / *…* or \\textbf{} / \\textit{}."
         ),
     )
     marks: list[MarkSpec] = Field(default_factory=list)

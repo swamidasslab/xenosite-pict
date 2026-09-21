@@ -336,7 +336,7 @@
             }
           ],
           "default": null,
-          "description": "Molecule caption. A bare string uses defaults (pos=bottom). A dict with only text is equivalent; other keys override defaults. Legacy field name `title` is accepted as an alias."
+          "description": "Molecule caption. A bare string uses defaults (pos=bottom). A dict with only text is equivalent; other keys override defaults. Legacy field name `title` is accepted as an alias. Text supports light markup: TeX-like symbols (\\alpha \u2192 \u03b1) and bold/italic via **\u2026** / *\u2026* or \\textbf{} / \\textit{}."
         },
         "marks": {
           "items": {

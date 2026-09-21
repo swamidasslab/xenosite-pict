@@ -14,6 +14,9 @@ export type LabelPos = "bottom" | "top" | "left" | "right";
  * - `{ text: "ethanol" }` → same
  * - `{ text: "ethanol", pos: "top" }` → override position
  *
+ * Text supports light markup (not full TeX): `\alpha` → α, `**bold**` /
+ * `*italic*` or `\textbf{}` / `\textit{}`. Optional `$…$` is stripped.
+ *
  * Legacy `title` is accepted as an alias for `label`.
  */
 export type LabelSpec =

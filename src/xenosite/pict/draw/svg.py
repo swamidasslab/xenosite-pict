@@ -13,6 +13,32 @@ from xenosite.pict.contracts.scene import (
     TextPrim,
     Viewport,
 )
+from xenosite.pict.draw.richtext import TextRun, parse_richtext
+
+
+def _append_text_runs(parent: Element, runs: list[TextRun]) -> None:
+    """Emit plain text and styled ``tspan`` children for rich runs."""
+    if not runs:
+        return
+    # Single unstyled run → keep simple text content (no tspan noise).
+    if len(runs) == 1 and not runs[0].bold and not runs[0].italic:
+        parent.text = runs[0].text
+        return
+    # Mixed styles: put leading plain in .text, rest as tspans (SVG convention).
+    first = True
+    for run in runs:
+        if first and not run.bold and not run.italic:
+            parent.text = run.text
+            first = False
+            continue
+        attrs: dict[str, str] = {}
+        if run.bold:
+            attrs["font-weight"] = "bold"
+        if run.italic:
+            attrs["font-style"] = "italic"
+        span = SubElement(parent, "tspan", attrs)
+        span.text = run.text
+        first = False
 
 
 def _render_primitive(parent: Element, prim: Primitive) -> None:
@@ -57,7 +83,7 @@ def _render_primitive(parent: Element, prim: Primitive) -> None:
         if prim.cls:
             attrs["class"] = prim.cls
         t = SubElement(parent, "text", attrs)
-        t.text = prim.text
+        _append_text_runs(t, parse_richtext(prim.text))
 
 
 def _render_viewport(parent: Element, vp: Viewport) -> None:

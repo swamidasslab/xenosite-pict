@@ -19,6 +19,7 @@ from xenosite.pict.draw.metrics import (
     TITLE_FONT_PX,
 )
 from xenosite.pict.draw.text_metrics import TextMetrics, measure_text, text_box
+from xenosite.pict.draw.richtext import plain_text
 
 Anchor = Literal["start", "middle", "end"]
 
@@ -375,7 +376,16 @@ def pack_label(
 ) -> LabelPack:
     """Place a molecule caption and snug the drawing toward it."""
     label_pos = LabelPos(pos) if not isinstance(pos, LabelPos) else pos
-    stripped = text.strip()
+    raw = text.strip()
+    if not raw:
+        return _empty_pack(
+            frame_width=frame_width,
+            frame_height=frame_height,
+            font_size=font_size,
+            pos=label_pos,
+        )
+    # Pack against symbol-expanded plain text; keep markup for SVG tspans.
+    stripped = plain_text(raw)
     if not stripped:
         return _empty_pack(
             frame_width=frame_width,
@@ -388,7 +398,7 @@ def pack_label(
         return _pack_bottom(
             frame_width=frame_width,
             occupancy=occupancy,
-            text=stripped,
+            text=raw,
             font_size=font_size,
             metrics=metrics,
         )
@@ -396,7 +406,7 @@ def pack_label(
         return _pack_top(
             frame_width=frame_width,
             occupancy=occupancy,
-            text=stripped,
+            text=raw,
             font_size=font_size,
             metrics=metrics,
         )
@@ -405,7 +415,7 @@ def pack_label(
             frame_width=frame_width,
             frame_height=frame_height,
             occupancy=occupancy,
-            text=stripped,
+            text=raw,
             font_size=font_size,
             metrics=metrics,
         )
@@ -414,7 +424,7 @@ def pack_label(
             frame_width=frame_width,
             frame_height=frame_height,
             occupancy=occupancy,
-            text=stripped,
+            text=raw,
             font_size=font_size,
             metrics=metrics,
         )
@@ -445,7 +455,7 @@ def label_occupancy_box(
 ) -> tuple[float, float, float, float]:
     """Typographic box for the packed label (for tests / debugging)."""
     box = text_box(
-        pack.text,
+        plain_text(pack.text),
         pack.x,
         pack.y,
         font_size=pack.font_size,
