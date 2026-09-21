@@ -17,7 +17,7 @@ from shapely.geometry import LineString, Polygon
 from shapely.ops import unary_union
 
 from xenosite.pict.draw.font_face import ContourPen, glyph_set_cmap_upem, ttfont
-from xenosite.pict.draw.metrics import FONT_PX, HALO_STROKE
+from xenosite.pict.draw.metrics import FONT_PX, LABEL_GAP_PX
 
 
 @dataclass(frozen=True)
@@ -145,10 +145,11 @@ class TextMetrics:
     def clearance(self, *, pad: float | None = None) -> float:
         """Isotropic bond inset for a middle-anchored label on the atom.
 
-        Half of the larger of advance and ink width, plus pad (default half of
-        ``HALO_STROKE`` so the stroke stops outside the white knockout).
+        Half of the larger of advance and ink width, plus ``LABEL_GAP_PX`` so
+        the stroke stops outside the white glyph halo (and leaves a readable
+        gap on light or dark host pages).
         """
-        margin = HALO_STROKE * 0.5 if pad is None else pad
+        margin = LABEL_GAP_PX if pad is None else pad
         half = 0.5 * self.advance
         if self.ink is not None:
             half = max(half, 0.5 * self.ink.width)

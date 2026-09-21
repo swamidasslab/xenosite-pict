@@ -45,6 +45,10 @@ END_GAP_FRAC = 0.13  # ring doubles: keep the offset off adjacent bonds
 CHAIN_END_GAP_FRAC = 0.0
 HASH_PER_BOND = 8
 HALO_FRAC = 2 * STROKE_FRAC  # knockout stays twice the ink, as in xenopict
+# Air between label ink and bond ends. Also the shapely buffer on the glyph
+# halo: enough white around letters to stay legible on a black host page, and
+# enough gap that bonds do not crowd the glyphs.
+LABEL_GAP_FRAC = 0.18  # × bond → 3.6 px at BOND_PX=20
 SHADE_FRAC = 0.90  # xenopict shade(): scale * 0.9
 MARK_FRAC = 1.0  # xenopict mark_atoms radius = scale * mark_down_scale
 
@@ -56,6 +60,7 @@ PAD_PX = PAD_FRAC * BOND_PX
 END_GAP_PX = END_GAP_FRAC * BOND_PX
 CHAIN_END_GAP_PX = CHAIN_END_GAP_FRAC * BOND_PX
 HALO_STROKE = HALO_FRAC * BOND_PX
+LABEL_GAP_PX = LABEL_GAP_FRAC * BOND_PX
 RADICAL_DOT_R = 0.08 * BOND_PX
 RADICAL_BASE = 0.55 * BOND_PX
 RADICAL_BASE_BARE = 0.35 * BOND_PX
@@ -80,8 +85,8 @@ def coord_scale(layout: MoleculeLayout) -> float:
 def label_clearance(text: str, font_px: float = FONT_PX) -> float:
     """Bond inset so the stroke stops before a centered label.
 
-    Uses the bundled face's real advance and ink width (plus half the halo
-    stroke so the line ends outside the white knockout).
+    Uses the bundled face's real advance and ink width, plus ``LABEL_GAP_PX``
+    so the line ends outside the white glyph halo.
     """
     from xenosite.pict.draw.text_metrics import measure_text
 

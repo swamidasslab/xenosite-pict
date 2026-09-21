@@ -19,7 +19,7 @@ from xenosite.pict.draw.font_face import (
     bundled_font_path,  # noqa: F401
     glyph_set_cmap_upem,
 )
-from xenosite.pict.draw.metrics import FONT_PX, HALO_STROKE
+from xenosite.pict.draw.metrics import FONT_PX, LABEL_GAP_PX
 from xenosite.pict.draw.text_metrics import measure_text
 
 
@@ -128,13 +128,14 @@ def label_halo_path_d(
 ) -> str | None:
     """SVG path for a white knockout grown around the label glyphs.
 
-    Buffer distance defaults to half of ``HALO_STROKE`` so the margin past
-    the ink matches a white stroke of width ``HALO_STROKE`` on the outline.
+    Required for legibility when the SVG sits on a dark host page. Buffer
+    defaults to ``LABEL_GAP_PX`` so the halo also separates bonds from the
+    letters (bonds themselves pull back by the same gap via clearance).
     """
     outline = label_outline(text, x, y, font_size=font_size, anchor=anchor)
     if outline is None or outline.is_empty:
         return None
-    dist = HALO_STROKE * 0.5 if buffer_px is None else buffer_px
+    dist = LABEL_GAP_PX if buffer_px is None else buffer_px
     grown = outline.buffer(dist, quad_segs=8)
     d = geom_to_svg_d(grown)
     return d or None

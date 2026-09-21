@@ -9,7 +9,7 @@ from xenosite.pict.draw.glyphs import geom_to_svg_d, label_halo_path_d, label_ou
 from xenosite.pict.draw.metrics import (
     FONT_PX,
     FONT_STEM_EM,
-    HALO_STROKE,
+    LABEL_GAP_PX,
     STROKE_PX,
     label_clearance,
 )
@@ -72,6 +72,8 @@ def test_label_clearance_uses_real_advance():
     m = measure_text("OH", FONT_PX)
     assert label_clearance("OH") == pytest.approx(m.clearance())
     assert label_clearance("COOH") > label_clearance("O")
+    # Gap past the ink is the shared label/bond air, not the tiny stem width.
+    assert m.clearance() - 0.5 * m.advance == pytest.approx(LABEL_GAP_PX)
 
 
 def test_stem_width_matches_default_stroke():
@@ -86,11 +88,13 @@ def test_label_baseline_centers_caps_on_atom():
     assert ink.cy == pytest.approx(0.0, abs=0.75)
 
 
-def test_halo_buffer_grows_past_outline():
+def test_halo_buffer_matches_label_gap():
     ink = label_outline("O", 10.0, 20.0)
     assert ink is not None
-    d = label_halo_path_d("O", 10.0, 20.0, buffer_px=HALO_STROKE * 0.5)
+    d = label_halo_path_d("O", 10.0, 20.0)
     assert d and "M" in d and "Z" in d
-    grown = ink.buffer(HALO_STROKE * 0.5)
+    grown = ink.buffer(LABEL_GAP_PX)
     assert grown.area > ink.area
     assert geom_to_svg_d(grown).count("L") > 8
+    # Default halo path uses LABEL_GAP_PX (same air as bond pullback).
+    assert label_halo_path_d("O", 10.0, 20.0, buffer_px=LABEL_GAP_PX) == d
