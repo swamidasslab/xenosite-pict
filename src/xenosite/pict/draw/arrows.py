@@ -97,12 +97,9 @@ def _shorten_polyline_end(
 
 
 def _path_d(pts: Sequence[tuple[float, float]]) -> str:
-    if not pts:
-        return ""
-    bits = [f"M {pts[0][0]:.2f} {pts[0][1]:.2f}"]
-    for x, y in pts[1:]:
-        bits.append(f"L {x:.2f} {y:.2f}")
-    return " ".join(bits)
+    from xenosite.pict.draw.paths import polyline_d
+
+    return polyline_d(pts)
 
 
 def _offset_polyline(
@@ -161,15 +158,10 @@ def _filled_head(
     size: float,
     cls: str,
 ) -> PathPrim:
-    px, py = _perp(ux, uy)
-    bx, by = tip_x - ux * size, tip_y - uy * size
-    half = size * 0.45
+    from xenosite.pict.draw.paths import filled_arrow_head_d
+
     return PathPrim(
-        d=(
-            f"M {tip_x:.2f} {tip_y:.2f} "
-            f"L {bx + px * half:.2f} {by + py * half:.2f} "
-            f"L {bx - px * half:.2f} {by - py * half:.2f} Z"
-        ),
+        d=filled_arrow_head_d(tip_x, tip_y, ux, uy, size=size),
         stroke=color,
         fill=color,
         stroke_width=1.0,

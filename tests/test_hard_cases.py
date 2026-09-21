@@ -34,14 +34,14 @@ from xenosite.pict.draw.rings import (
     ring_pair_relations,
     ring_system_is_overconstrained,
 )
-from xenosite.pict.draw.scene_builder import (
-    _bond_key,
-    _bond_paths,
+from xenosite.pict.draw.bonds import bond_paths
+from xenosite.pict.draw.drawable import (
     _normalize_shade_scores,
-    _ring_bond_normals,
     _shade_rgb,
     normalize_coords,
 )
+from xenosite.pict.draw.rings import bond_interior_normals, find_sssr
+
 
 HARD_CASES: list[dict] = [
     {"id": "benzene", "smiles": "c1ccccc1", "notes": "aromatic hexagon; Kekulize; doubles inside"},
@@ -133,16 +133,22 @@ def test_double_bond_offset_prefers_ring_interior():
     pict = Pict(backend=backend)
     layout = pict.layout({"molecules": [{"smiles": "c1ccccc1"}]}).molecules[0]
     coords, _, _ = normalize_coords(layout)
-    normals = _ring_bond_normals(layout, coords)
+    rings = find_sssr(layout)
+    coords_by_index = {a.index: coords[i] for i, a in enumerate(layout.atoms)}
+    normals = bond_interior_normals(rings, coords_by_index)
     assert normals, "expected ring normals for benzene"
 
     double = next(b for b in layout.bonds if b.order >= 1.5)
-    key = _bond_key(double.begin, double.end)
+    key = (
+        (double.begin, double.end)
+        if double.begin < double.end
+        else (double.end, double.begin)
+    )
     interior = normals[key]
     atom_pos = {a.index: i for i, a in enumerate(layout.atoms)}
     x1, y1 = coords[atom_pos[double.begin]]
     x2, y2 = coords[atom_pos[double.end]]
-    paths = _bond_paths(x1, y1, x2, y2, double.order, interior=interior)
+    paths = bond_paths(x1, y1, x2, y2, double.order, interior=interior)
     assert len(paths) == 2
 
     cx = sum(x for x, _ in coords) / len(coords)
