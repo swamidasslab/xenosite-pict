@@ -6,13 +6,13 @@ import warnings
 
 import pytest
 
-from xenosite.pict import Pict, render
-from xenosite.pict.contracts.scene import PathPrim, Viewport
-from xenosite.pict.contracts.spec import EdgeArrow, EdgeSpec, PictSpec
-from xenosite.pict.diagram.elk import elk_graph, layout_diagram
-from xenosite.pict.draw.arrows import diagram_overlays, edge_anchors, edge_primitives
-from xenosite.pict.draw.scene_builder import build_scene
-from xenosite.pict.warnings import PictBackendWarning
+from xpict import Pict, render
+from xpict.contracts.scene import PathPrim, Viewport
+from xpict.contracts.spec import EdgeArrow, EdgeSpec, PictSpec
+from xpict.diagram.elk import elk_graph, layout_diagram
+from xpict.draw.arrows import diagram_overlays, edge_anchors, edge_primitives
+from xpict.draw.scene_builder import build_scene
+from xpict.warnings import PictBackendWarning
 
 
 def test_edge_spec_arrow_fields():
@@ -109,7 +109,7 @@ def test_reaction_scheme_svg_draws_overlays():
     assert scene.overlays
     assert any(isinstance(p, PathPrim) and "edge" in (p.cls or "") for p in scene.overlays)
     svg = render(doc, backend="native")
-    assert 'class="pict-overlays"' in svg or "pict-overlays" in svg
+    assert 'class="xpict-overlays"' in svg or "xpict-overlays" in svg
     assert "ADH" in svg
     assert "ALDH" in svg
     assert "edge-0" in svg
@@ -174,7 +174,7 @@ def test_diagram_overlays_skips_missing_ids():
 
 def test_reaction_row_fallback_centers(monkeypatch):
     """When ELK fails, reaction fallback uses centered row with wider gap."""
-    import xenosite.pict.diagram.elk as elk_mod
+    import xpict.diagram.elk as elk_mod
 
     monkeypatch.setattr(elk_mod, "_elkjs_placement", lambda *a, **k: None)
     doc = PictSpec.model_validate(
@@ -208,7 +208,7 @@ def test_reaction_row_fallback_centers(monkeypatch):
 
 def test_branched_reaction_uses_elk_routes():
     """Forked pathway: ELK places nodes in 2D and returns bend polylines."""
-    from xenosite.pict.diagram.elk import layout_diagram_ex
+    from xpict.diagram.elk import layout_diagram_ex
 
     doc = PictSpec.model_validate(
         {

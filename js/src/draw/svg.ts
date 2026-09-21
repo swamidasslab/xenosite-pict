@@ -10,7 +10,7 @@ import type { MoleculeLayout } from "../types.js";
 export function layoutToSvgStub(layout: MoleculeLayout): string {
   const n = layout.atoms.length;
   return (
-    `<svg xmlns="http://www.w3.org/2000/svg" data-xenosite-pict="stub" ` +
+    `<svg xmlns="http://www.w3.org/2000/svg" data-xpict="stub" ` +
     `data-backend="${escapeXml(layout.backend)}" data-atoms="${n}">` +
     `<text x="8" y="20" font-size="12">SVG drawer stub (${n} atoms)</text>` +
     `</svg>`

@@ -1,5 +1,5 @@
 /**
- * JS/TS engine for xenosite.pict.
+ * JS/TS engine for xpict.
  *
  * Validates PictSpec-shaped objects; layout via Indigo WASM (stub);
  * SVG via shared scene rules (stub). Shared contracts: ``../schema/*.schema.json``.

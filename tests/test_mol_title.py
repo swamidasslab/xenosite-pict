@@ -6,18 +6,18 @@ import re
 
 import pytest
 
-from xenosite.pict import Pict, render
-from xenosite.pict.contracts.spec import LabelPos, MoleculeSpec
-from xenosite.pict.draw.collision import CollisionGrid
-from xenosite.pict.draw.metrics import (
+from xpict import Pict, render
+from xpict.contracts.spec import LabelPos, MoleculeSpec
+from xpict.draw.collision import CollisionGrid
+from xpict.draw.metrics import (
     COLLISION_CELL_PX,
     TITLE_BOTTOM_PX,
     TITLE_CLEARANCE_PX,
     TITLE_FONT_PX,
 )
-from xenosite.pict.draw.mol_title import pack_bottom_title, pack_label, title_occupancy_box
-from xenosite.pict.draw.scene_builder import viewport_size
-from xenosite.pict.draw.text_metrics import measure_text
+from xpict.draw.mol_title import pack_bottom_title, pack_label, title_occupancy_box
+from xpict.draw.scene_builder import viewport_size
+from xpict.draw.text_metrics import measure_text
 
 
 def test_collision_grid_marks_segment_and_box():

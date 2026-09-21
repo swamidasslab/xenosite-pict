@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from xenosite.pict import Pict, PictBackendWarning, PictSpec, render
-from xenosite.pict.export_schema import export_schemas
+from xpict import Pict, PictBackendWarning, PictSpec, render
+from xpict.export_schema import export_schemas
 
 
 def test_pictspec_accepts_smiles_and_cxsmiles():
@@ -25,7 +25,7 @@ def test_render_svg_native():
         warnings.simplefilter("always")
         svg = render({"molecules": [{"smiles": "CCO"}]}, backend="native")
     assert "<svg" in svg
-    assert "xenosite-pict" in svg or "pict-mol" in svg
+    assert "xpict" in svg or "xpict-mol" in svg
     # native may warn about toy layout
     assert any(issubclass(x.category, PictBackendWarning) or True for x in w) or True
 
@@ -46,13 +46,13 @@ def test_grid_two_mols():
         },
         backend="native",
     )
-    assert svg.count('class="pict-mol"') == 2
+    assert svg.count('class="xpict-mol"') == 2
 
 
 def test_export_schemas(tmp_path: Path):
     written = export_schemas(tmp_path)
-    assert "pict.schema.json" in written
-    data = json.loads(written["pict.schema.json"].read_text())
+    assert "xpict.schema.json" in written
+    data = json.loads(written["xpict.schema.json"].read_text())
     assert "properties" in data
     # cxsmiles present in molecule schema (defs or $defs)
     blob = json.dumps(data)

@@ -12,10 +12,10 @@ import sys
 import warnings
 from pathlib import Path
 
-from xenosite.pict import Pict, render
-from xenosite.pict.contracts.spec import PictSpec
-from xenosite.pict.diagram.elk import elk_graph, layout_diagram
-from xenosite.pict.warnings import PictBackendWarning
+from xpict import Pict, render
+from xpict.contracts.spec import PictSpec
+from xpict.diagram.elk import elk_graph, layout_diagram
+from xpict.warnings import PictBackendWarning
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT_DIRS = [
@@ -502,7 +502,7 @@ def write_gallery(out: Path, backend: str, only: list[Path] | None = None) -> Pa
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>xenosite.pict · derisk POC gallery</title>
+<title>xpict · derisk POC gallery</title>
 <style>
   :root {{
     color-scheme: light;
@@ -581,7 +581,7 @@ def write_gallery(out: Path, backend: str, only: list[Path] | None = None) -> Pa
 </head>
 <body>
 <main>
-  <h1>xenosite.pict derisk POCs</h1>
+  <h1>xpict derisk POCs</h1>
   <p class="lede">
     Visual canvas for the hard paths while the schema stays alpha.
     Regenerate with <code>uv run python scripts/run_pocs.py</code>.

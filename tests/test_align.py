@@ -6,9 +6,9 @@ import math
 
 import pytest
 
-from xenosite.pict import Pict, render
-from xenosite.pict.align import RigidAligner, align_layouts, align_to_reference, select_aligner
-from xenosite.pict.align_rdkit import RdkitAligner, rdkit_available
+from xpict import Pict, render
+from xpict.align import RigidAligner, align_layouts, align_to_reference, select_aligner
+from xpict.align_rdkit import RdkitAligner, rdkit_available
 
 
 def _backend() -> str:
@@ -251,7 +251,7 @@ def test_render_aligned_pair():
         backend=_backend(),
     )
     assert "<svg" in svg
-    assert svg.count("<svg") == 1 or svg.count("pict-mol") >= 1
+    assert svg.count("<svg") == 1 or svg.count("xpict-mol") >= 1
 
 
 def test_correspondence_is_not_the_first_embedding():

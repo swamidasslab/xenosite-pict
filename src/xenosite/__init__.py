@@ -1,1 +1,0 @@
-"""Xenosite namespace package."""

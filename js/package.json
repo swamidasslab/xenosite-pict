@@ -1,9 +1,9 @@
 {
-  "name": "@xenosite/pict",
+  "name": "@xenosite/xpict",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "TypeScript/WASM processor for xenosite.pict contracts (Indigo WASM + SVG scene)",
+  "description": "TypeScript/WASM processor for xpict contracts (Indigo WASM + SVG scene)",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {

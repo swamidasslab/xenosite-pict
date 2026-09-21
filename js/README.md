@@ -1,6 +1,6 @@
-# @xenosite/pict (JS / TypeScript)
+# @xenosite/xpict (JS / TypeScript)
 
-Browser and Node processor for the same JSON contracts as Python `xenosite.pict`.
+Browser and Node processor for the same JSON contracts as Python `xpict`.
 
 ## Layout
 
@@ -10,7 +10,7 @@ Browser and Node processor for the same JSON contracts as Python `xenosite.pict`
 
 ## Shared schema
 
-JSON Schema is generated from Pydantic and committed under `../schema/` (`pict.schema.json`, etc.).
+JSON Schema is generated from Pydantic and committed under `../schema/` (`xpict.schema.json`, etc.).
 
 ## Scripts
 

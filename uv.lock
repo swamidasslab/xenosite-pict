@@ -695,7 +695,7 @@ wheels = [
 ]
 
 [[package]]
-name = "xenosite-pict"
+name = "xpict"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
@@ -736,7 +736,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.7" },
     { name = "rdkit", marker = "extra == 'rdkit'", specifier = ">=2024.3" },
     { name = "shapely", specifier = ">=2.1.2" },
-    { name = "xenosite-pict", extras = ["indigo", "chematic", "rdkit"], marker = "extra == 'all'" },
+    { name = "xpict", extras = ["indigo", "chematic", "rdkit"], marker = "extra == 'all'" },
 ]
 provides-extras = ["indigo", "chematic", "rdkit", "all"]
 

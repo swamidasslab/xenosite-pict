@@ -23,10 +23,10 @@ from collections import Counter
 
 import pytest
 
-from xenosite.pict import Pict, render
-from xenosite.pict.draw.metrics import HALO_STROKE
-from xenosite.pict.draw.plotdot import PlotDot
-from xenosite.pict.draw.rings import (
+from xpict import Pict, render
+from xpict.draw.metrics import HALO_STROKE
+from xpict.draw.plotdot import PlotDot
+from xpict.draw.rings import (
     HARD_RING_CASES,
     RingAttachment,
     all_rings_can_be_regular_polygons,
@@ -34,13 +34,13 @@ from xenosite.pict.draw.rings import (
     ring_pair_relations,
     ring_system_is_overconstrained,
 )
-from xenosite.pict.draw.bonds import bond_paths
-from xenosite.pict.draw.drawable import (
+from xpict.draw.bonds import bond_paths
+from xpict.draw.drawable import (
     _normalize_shade_scores,
     _shade_rgb,
     normalize_coords,
 )
-from xenosite.pict.draw.rings import bond_interior_normals, find_sssr
+from xpict.draw.rings import bond_interior_normals, find_sssr
 
 
 HARD_CASES: list[dict] = [
@@ -246,7 +246,7 @@ def test_hard_case_renders_without_triple_bonds(case: dict):
     backend = _chem_backend()
     svg = render({"molecules": [{"smiles": case["smiles"]}]}, backend=backend)
     assert "<svg" in svg
-    assert "pict-mol" in svg
+    assert "xpict-mol" in svg
     counts = _bond_stroke_counts(svg)
     assert counts, f"{case['id']}: no bonds drawn"
     assert max(counts.values()) <= 2, f"{case['id']}: {counts}"

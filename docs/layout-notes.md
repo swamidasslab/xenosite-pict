@@ -104,7 +104,7 @@ Sources: `Depictor/EmbeddedFrag.cpp`, `DepictUtils.cpp` (`embedRing`).
 2. Fused systems: stitch by shared atoms.
 3. Hard systems: **ring templates** or **CoordGen**; on conflict, leave neighbors alone.
 
-### What *xenosite.pict* does now
+### What *xpict* does now
 
 | Stage | Owner | Role of SSSR |
 | --- | --- | --- |

@@ -7,10 +7,10 @@ import warnings
 
 import pytest
 
-from xenosite.pict import Pict, PictBackendWarning, render
-from xenosite.pict.align import align_layouts, _mcs_mapping
-from xenosite.pict.backends.native_smiles import parse_organic_smiles
-from xenosite.pict.structure import cx_atom_labels
+from xpict import Pict, PictBackendWarning, render
+from xpict.align import align_layouts, _mcs_mapping
+from xpict.backends.native_smiles import parse_organic_smiles
+from xpict.structure import cx_atom_labels
 
 
 def _backend() -> str:

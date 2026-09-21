@@ -1,13 +1,13 @@
 # Contracts
 
-Pydantic models in `xenosite.pict.contracts` are the **source of truth**. Build/export writes portable JSON Schema to `schema/`:
+Pydantic models in `xpict.contracts` are the **source of truth**. Build/export writes portable JSON Schema to `schema/`:
 
-- `pict.schema.json` — declarative input (`PictSpec`)
+- `xpict.schema.json` — declarative input (`PictSpec`)
 - `layout.schema.json` — backend layout result
 - `scene.schema.json` — drawable scene graph
 
 ```bash
-uv run xenosite-pict-export-schema
+uv run xpict-export-schema
 ```
 
 `js/` and any future engine should validate against these schemas. Engines are interchangeable implementations.

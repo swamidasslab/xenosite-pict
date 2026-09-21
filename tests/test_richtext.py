@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import re
 
-from xenosite.pict import render
-from xenosite.pict.draw.glyphs import compile_text_path_d, compile_text_shapes
-from xenosite.pict.draw.richtext import StyledText, TextRun, plain_text, parse_richtext
+from xpict import render
+from xpict.draw.glyphs import compile_text_path_d, compile_text_shapes
+from xpict.draw.richtext import StyledText, TextRun, plain_text, parse_richtext
 
 
 def test_greek_and_symbol_macros():

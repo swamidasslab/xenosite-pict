@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from xenosite.pict.contracts.shorthand import (
+from xpict.contracts.shorthand import (
     LABEL_DEFAULTS,
     compress_label,
     compress_pict_input,
@@ -13,7 +13,7 @@ from xenosite.pict.contracts.shorthand import (
     map_dicts,
     map_tree,
 )
-from xenosite.pict.contracts.spec import (
+from xpict.contracts.spec import (
     LabelPos,
     LabelSpec,
     PictSpec,

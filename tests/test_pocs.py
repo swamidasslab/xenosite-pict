@@ -9,10 +9,10 @@ from pathlib import Path
 
 import pytest
 
-from xenosite.pict import Pict, render
-from xenosite.pict.contracts.spec import PictSpec
-from xenosite.pict.diagram.elk import elk_graph, elk_graph_json, layout_diagram
-from xenosite.pict.warnings import PictBackendWarning
+from xpict import Pict, render
+from xpict.contracts.spec import PictSpec
+from xpict.diagram.elk import elk_graph, elk_graph_json, layout_diagram
+from xpict.warnings import PictBackendWarning
 
 
 def _chem_backend() -> str:

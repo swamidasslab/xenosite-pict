@@ -7,15 +7,15 @@ import re
 
 import pytest
 
-from xenosite.pict import Pict, render
-from xenosite.pict.draw.bonds import (
+from xpict import Pict, render
+from xpict.draw.bonds import (
     bond_strokes,
     crossed_double,
     hashed_wedge,
     solid_wedge,
     wavy_bond,
 )
-from xenosite.pict.draw.metrics import (
+from xpict.draw.metrics import (
     BOND_PX,
     FONT_PX,
     FONT_STEM_EM,
@@ -27,7 +27,7 @@ from xenosite.pict.draw.metrics import (
     coord_scale,
     hash_count,
 )
-from xenosite.pict.draw.scene_builder import normalize_coords
+from xpict.draw.scene_builder import normalize_coords
 
 
 def _backend() -> str:

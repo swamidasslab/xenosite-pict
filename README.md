@@ -1,8 +1,8 @@
-# xenosite-pict
+# xpict
 
 Declarative, publication-quality small-molecule depiction for Python and the web.
 
-Import path: `xenosite.pict`
+Import path: `xpict`
 
 ## Status
 
@@ -23,7 +23,7 @@ Scaffold in progress. Language-neutral JSON contracts (Pydantic → generated JS
 ## Quick start
 
 ```python
-from xenosite.pict import Pict, render
+from xpict import Pict, render
 
 svg = Pict(backend="indigo").render({"molecules": [{"smiles": "CCO"}]})
 # or
@@ -47,7 +47,7 @@ uv sync --extra chematic
 Export JSON Schema (committed under `schema/`):
 
 ```bash
-uv run xenosite-pict-export-schema
+uv run xpict-export-schema
 ```
 
 ## License

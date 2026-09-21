@@ -6,9 +6,9 @@ import math
 
 import pytest
 
-from xenosite.pict import Pict, render
-from xenosite.pict.backends.native_smiles import parse_organic_smiles
-from xenosite.pict.draw.rings import (
+from xpict import Pict, render
+from xpict.backends.native_smiles import parse_organic_smiles
+from xpict.draw.rings import (
     all_rings_can_be_regular_polygons,
     find_sssr,
 )

@@ -6,10 +6,10 @@ import re
 
 from shapely.geometry import Point
 
-from xenosite.pict import render
-from xenosite.pict.draw.glyphs import compile_text_shapes
-from xenosite.pict.draw.halo import halo_from_shapes, halo_path_d
-from xenosite.pict.draw.metrics import LABEL_GAP_PX
+from xpict import render
+from xpict.draw.glyphs import compile_text_shapes
+from xpict.draw.halo import halo_from_shapes, halo_path_d
+from xpict.draw.metrics import LABEL_GAP_PX
 
 
 def test_halo_preserves_o_counter():
@@ -36,9 +36,9 @@ def test_halo_global_off_emits_no_halo():
 
 
 def test_halo_layer_is_first_in_viewport():
-    from xenosite.pict import Pict
-    from xenosite.pict.contracts.spec import PictSpec
-    from xenosite.pict.draw.scene_builder import build_scene
+    from xpict import Pict
+    from xpict.contracts.spec import PictSpec
+    from xpict.draw.scene_builder import build_scene
 
     pict = Pict(backend="native")
     layouts = pict.layout({"molecules": [{"smiles": "CCO"}]}).molecules
@@ -51,7 +51,7 @@ def test_halo_layer_is_first_in_viewport():
 
 
 def test_legacy_molecule_halo_lifts_to_document():
-    from xenosite.pict.contracts.spec import PictSpec
+    from xpict.contracts.spec import PictSpec
 
     spec = PictSpec.model_validate(
         {"molecules": [{"smiles": "CCO", "halo": False}]}

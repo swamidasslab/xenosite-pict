@@ -7,16 +7,16 @@ import re
 
 import pytest
 
-from xenosite.pict import Pict, render
-from xenosite.pict.draw.bonds import (
+from xpict import Pict, render
+from xpict.draw.bonds import (
     DrawnBond,
     bond_strokes,
     hashed_wedge,
     join_centered_multibonds,
     solid_wedge,
 )
-from xenosite.pict.draw.metrics import OFFSET_PX
-from xenosite.pict.perception import chematic_available, perceive_smiles
+from xpict.draw.metrics import OFFSET_PX
+from xpict.perception import chematic_available, perceive_smiles
 
 
 def _backend() -> str:

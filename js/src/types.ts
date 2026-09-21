@@ -1,5 +1,5 @@
 /**
- * Shared PictSpec-shaped types (mirror schema/pict.schema.json).
+ * Shared PictSpec-shaped types (mirror schema/xpict.schema.json).
  * Generated schema remains the source of truth for validation.
  */
 

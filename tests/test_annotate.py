@@ -6,18 +6,18 @@ import re
 
 import pytest
 
-from xenosite.pict import render
-from xenosite.pict.contracts.spec import (
+from xpict import render
+from xpict.contracts.spec import (
     AnnotKind,
     AnnotationSpec,
     AnnotPrefer,
     MoleculeSpec,
     PictSpec,
 )
-from xenosite.pict.draw.annotate import draw_annotations
-from xenosite.pict.draw.collision import CollisionGrid
-from xenosite.pict.draw.metrics import COLLISION_CELL_PX
-from xenosite.pict.draw.scene_builder import build_scene, molecule_to_viewport
+from xpict.draw.annotate import draw_annotations
+from xpict.draw.collision import CollisionGrid
+from xpict.draw.metrics import COLLISION_CELL_PX
+from xpict.draw.scene_builder import build_scene, molecule_to_viewport
 
 
 def test_annotation_spec_requires_target():
@@ -110,7 +110,7 @@ def test_ring_callout_uses_centroid():
 
 
 def test_annotations_land_on_marks_layer():
-    from xenosite.pict import Pict
+    from xpict import Pict
 
     pict = Pict(backend="native")
     spec = PictSpec.model_validate(

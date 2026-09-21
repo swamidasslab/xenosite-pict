@@ -4,16 +4,16 @@ from __future__ import annotations
 
 import pytest
 
-from xenosite.pict.draw.font_face import bundled_font_path
-from xenosite.pict.draw.glyphs import geom_to_svg_d, label_halo_path_d, label_outline
-from xenosite.pict.draw.metrics import (
+from xpict.draw.font_face import bundled_font_path
+from xpict.draw.glyphs import geom_to_svg_d, label_halo_path_d, label_outline
+from xpict.draw.metrics import (
     FONT_PX,
     FONT_STEM_EM,
     LABEL_GAP_PX,
     STROKE_PX,
     label_clearance,
 )
-from xenosite.pict.draw.text_metrics import (
+from xpict.draw.text_metrics import (
     face_metrics,
     glyph_metrics,
     label_baseline_offset,
