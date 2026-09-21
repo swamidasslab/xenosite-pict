@@ -5,7 +5,8 @@ from __future__ import annotations
 import pytest
 
 from xpict import render
-from xpict.contracts.spec import MoleculeSpec, PictSpec, RingAttachmentSpec
+from xpict.contracts.nodes import PictSpec
+from xpict.contracts.spec import MoleculeSpec, RingAttachmentSpec
 from xpict.draw.markush import (
     apply_rgroup_texts,
     resolve_rgroups,

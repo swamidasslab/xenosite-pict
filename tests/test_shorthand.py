@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from xpict.contracts.nodes import PictSpec, compress_pict, expand_pict
+from xpict.contracts.spec import LabelPos, LabelSpec
 from xpict.contracts.shorthand import (
     LABEL_DEFAULTS,
     compress_label,
@@ -12,13 +14,6 @@ from xpict.contracts.shorthand import (
     expand_shorthand,
     map_dicts,
     map_tree,
-)
-from xpict.contracts.spec import (
-    LabelPos,
-    LabelSpec,
-    PictSpec,
-    compress_pict,
-    expand_pict,
 )
 
 
@@ -94,7 +89,9 @@ def test_pictspec_validates_to_expanded_label():
     assert doc2.molecules[0].label.pos is LabelPos.left
 
     compressed = compress_pict(doc)
-    assert compressed["molecules"][0]["label"] == "ethanol"
+    # Nested dump: single-mol legacy lifts to a mol root
+    assert compressed["type"] == "mol"
+    assert compressed["layout"]["label"] == "ethanol"
 
 
 def test_expand_label_none():

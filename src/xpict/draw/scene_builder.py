@@ -12,7 +12,7 @@ from xpict.contracts.scene import (
     TextPrim,
     Viewport,
 )
-from xpict.contracts.spec import MoleculeSpec, PictSpec
+from xpict.contracts.spec import LegacyPictSpec, MoleculeSpec
 from xpict.draw.arrows import diagram_overlays
 from xpict.draw.drawable import (
     display_text,
@@ -27,6 +27,13 @@ from xpict.draw.markush import apply_rgroup_texts
 from xpict.draw.metrics import HALO_STROKE, LABEL_GAP_PX, STROKE_PX
 from xpict.draw.mol_title import pack_label
 from xpict.draw.paths import ink_from_path_prim
+
+
+def _flat(spec: LegacyPictSpec | object) -> LegacyPictSpec:
+    to_legacy = getattr(spec, "to_legacy", None)
+    if callable(to_legacy):
+        return to_legacy()  # type: ignore[no-any-return]
+    return spec  # type: ignore[return-value]
 
 __all__ = [
     "build_scene",
@@ -78,13 +85,14 @@ def molecule_to_viewport(
 def build_scene(
     layouts: Sequence[MoleculeLayout],
     mol_specs: Sequence[MoleculeSpec],
-    spec: PictSpec,
+    spec: LegacyPictSpec | object,
     positions: Sequence[tuple[float, float]] | None = None,
     edge_paths: Sequence[Sequence[tuple[float, float]] | None] | None = None,
     *,
     diagram_width: float | None = None,
     diagram_height: float | None = None,
 ) -> Scene:
+    spec = _flat(spec)
     viewports = [
         molecule_to_viewport(layout, mol_spec, halo=spec.halo)
         for layout, mol_spec in zip(layouts, mol_specs, strict=True)

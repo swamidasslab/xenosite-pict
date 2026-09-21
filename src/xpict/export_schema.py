@@ -7,7 +7,7 @@ from pathlib import Path
 
 from xpict.contracts.layout import LayoutResult
 from xpict.contracts.scene import Scene
-from xpict.contracts.spec import PictSpec
+from xpict.contracts.nodes import PictSpec
 
 _REPO_SCHEMA = Path(__file__).resolve().parents[2] / "schema"
 

@@ -417,12 +417,11 @@ class DiagramSpec(StrictModel):
     )
 
 
-class PictSpec(StrictModel):
-    """Declarative depiction document.
+class LegacyPictSpec(StrictModel):
+    """Flat molecule-list document used by the draw / ELK pipeline.
 
-    Engine choice (`backend`) is runtime config on Pict/render — not part of this document.
-    Shorthand fields (e.g. molecule labels) are expanded at validation; the library
-    then works only on fully expanded models.
+    Prefer the nested :class:`~xpict.contracts.nodes.PictSpec` tree for authoring.
+    Legacy ``{molecules, diagram}`` JSON is still accepted and lifted automatically.
     """
 
     molecules: Annotated[list[MoleculeSpec], Field(min_length=1)]
@@ -447,22 +446,8 @@ class PictSpec(StrictModel):
         return data
 
 
-def expand_pict(spec: PictSpec | dict[str, Any]) -> PictSpec:
-    """Validate and fully expand a PictSpec input."""
-    if isinstance(spec, PictSpec):
-        return spec
-    return PictSpec.model_validate(spec)
-
-
-def compress_pict(spec: PictSpec | dict[str, Any]) -> dict[str, Any]:
-    """Dump a PictSpec to JSON-shaped dict with shorthand compression."""
-    from xpict.contracts.shorthand import compress_pict_input
-
-    if isinstance(spec, PictSpec):
-        data = spec.model_dump(mode="json")
-    else:
-        data = dict(spec)
-    return compress_pict_input(data)
+# Backward-compatible name for the flat document (render pipeline).
+PictSpecFlat = LegacyPictSpec
 
 
 # Re-export defaults for callers / schema docs.
@@ -477,13 +462,19 @@ __all__ = [
     "LABEL_DEFAULTS",
     "LabelPos",
     "LabelSpec",
+    "LegacyPictSpec",
     "MarkKind",
     "MarkSpec",
     "MoleculeSpec",
-    "PictSpec",
+    "PictSpecFlat",
     "RingAttachmentSpec",
     "RTableSpec",
     "ShadeSpec",
-    "compress_pict",
-    "expand_pict",
+    "StrictModel",
+    "_LabelInput",
+    "_RGroupsInput",
+    "_RTableInput",
+    "_coerce_label",
+    "_coerce_rgroups",
+    "_coerce_rtable",
 ]

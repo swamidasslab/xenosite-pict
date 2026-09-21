@@ -15,9 +15,17 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from xpict.contracts.layout import MoleculeLayout
-from xpict.contracts.spec import DiagramKind, MoleculeSpec, PictSpec
+from xpict.contracts.spec import DiagramKind, LegacyPictSpec, MoleculeSpec
 from xpict.draw.scene_builder import viewport_size
 from xpict.warnings import PictBackendWarning
+
+
+def _flat(spec: LegacyPictSpec | object) -> LegacyPictSpec:
+    """Accept nested PictSpec (has ``to_legacy``) or an already-flat document."""
+    to_legacy = getattr(spec, "to_legacy", None)
+    if callable(to_legacy):
+        return to_legacy()  # type: ignore[no-any-return]
+    return spec  # type: ignore[return-value]
 
 _GAP = 24.0
 _REACTION_GAP = 56.0  # room for arrow shafts + edge labels between molecules
@@ -29,7 +37,7 @@ _elk_ready = False
 
 
 def _viewport_sizes(
-    layouts: Sequence[MoleculeLayout], spec: PictSpec
+    layouts: Sequence[MoleculeLayout], spec: LegacyPictSpec
 ) -> list[tuple[float, float]]:
     sizes: list[tuple[float, float]] = []
     for i, layout in enumerate(layouts):
@@ -190,7 +198,7 @@ def _row_positions(
     return positions
 
 
-def _reaction_defaults(spec: PictSpec) -> dict[str, str]:
+def _reaction_defaults(spec: LegacyPictSpec) -> dict[str, str]:
     """ELK defaults for network / reaction diagrams (caller options win)."""
     base = {
         "elk.algorithm": "layered",
@@ -218,7 +226,8 @@ def _reaction_defaults(spec: PictSpec) -> dict[str, str]:
     return base
 
 
-def elk_graph(layouts: Sequence[MoleculeLayout], spec: PictSpec) -> dict:
+def elk_graph(layouts: Sequence[MoleculeLayout], spec: LegacyPictSpec | object) -> dict:
+    spec = _flat(spec)
     sizes = _viewport_sizes(layouts, spec)
     nodes = []
     for i, L in enumerate(layouts):
@@ -244,7 +253,7 @@ def elk_graph(layouts: Sequence[MoleculeLayout], spec: PictSpec) -> dict:
     }
 
 
-def elk_graph_json(layouts: Sequence[MoleculeLayout], spec: PictSpec) -> str:
+def elk_graph_json(layouts: Sequence[MoleculeLayout], spec: LegacyPictSpec) -> str:
     return json.dumps(elk_graph(layouts, spec), indent=2)
 
 
@@ -304,9 +313,10 @@ def _edge_path_from_elk(edge: dict) -> list[tuple[float, float]] | None:
 
 
 def _elkjs_placement(
-    layouts: Sequence[MoleculeLayout], spec: PictSpec
+    layouts: Sequence[MoleculeLayout], spec: LegacyPictSpec | object
 ) -> DiagramPlacement | None:
     """Run elkjs inside jsrun when available; include edge bend routes."""
+    spec = _flat(spec)
     graph = elk_graph(layouts, spec)
     try:
         laid = _run_async(_elk_layout_async(graph))
@@ -342,9 +352,10 @@ def _elkjs_placement(
 
 
 def layout_diagram_ex(
-    layouts: Sequence[MoleculeLayout], spec: PictSpec
+    layouts: Sequence[MoleculeLayout], spec: LegacyPictSpec | object
 ) -> DiagramPlacement:
     """Place molecule viewports; for network/reaction also return ELK edge routes."""
+    spec = _flat(spec)
     if len(layouts) <= 1:
         return DiagramPlacement(positions=[(0.0, 0.0)], edge_paths=[])
 
@@ -375,7 +386,7 @@ def layout_diagram_ex(
 
 
 def layout_diagram(
-    layouts: Sequence[MoleculeLayout], spec: PictSpec
+    layouts: Sequence[MoleculeLayout], spec: LegacyPictSpec | object
 ) -> list[tuple[float, float]]:
     """Return top-left positions for each molecule viewport."""
     return layout_diagram_ex(layouts, spec).positions

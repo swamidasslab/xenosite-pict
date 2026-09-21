@@ -7,7 +7,8 @@ from typing import Any, Literal
 from xpict.align import align_layouts
 from xpict.backends import BACKEND_PREFERENCE, get_backend
 from xpict.contracts.layout import LayoutResult, MoleculeLayout
-from xpict.contracts.spec import PictSpec
+from xpict.contracts.nodes import PictSpec, expand_pict
+from xpict.contracts.spec import LegacyPictSpec
 from xpict.diagram.elk import layout_diagram_ex
 from xpict.draw.scene_builder import build_scene
 from xpict.draw.svg import scene_to_html, scene_to_svg
@@ -36,6 +37,14 @@ def _resolve_backend_name(requested: str | None) -> str:
     return "native"
 
 
+def _to_legacy(spec: PictSpec | LegacyPictSpec | dict[str, Any]) -> LegacyPictSpec:
+    """Accept nested PictSpec, legacy flat doc, or JSON dict → flat render doc."""
+    if isinstance(spec, LegacyPictSpec):
+        return spec
+    tree = expand_pict(spec)
+    return tree.to_legacy()
+
+
 class Pict:
     """Configured depiction engine.
 
@@ -53,11 +62,11 @@ class Pict:
 
     def render(
         self,
-        spec: PictSpec | dict[str, Any],
+        spec: PictSpec | LegacyPictSpec | dict[str, Any],
         *,
         format: OutputFormat | None = None,
     ) -> str:
-        doc = spec if isinstance(spec, PictSpec) else PictSpec.model_validate(spec)
+        doc = _to_legacy(spec)
         backend = get_backend(self.backend)
         layouts: list[MoleculeLayout] = [backend.layout(m) for m in doc.molecules]
         layouts = align_layouts(layouts, enabled=doc.diagram.align, specs=doc.molecules)
@@ -76,8 +85,10 @@ class Pict:
             return scene_to_html(scene)
         return scene_to_svg(scene)
 
-    def layout(self, spec: PictSpec | dict[str, Any]) -> LayoutResult:
-        doc = spec if isinstance(spec, PictSpec) else PictSpec.model_validate(spec)
+    def layout(
+        self, spec: PictSpec | LegacyPictSpec | dict[str, Any]
+    ) -> LayoutResult:
+        doc = _to_legacy(spec)
         backend = get_backend(self.backend)
         layouts = align_layouts(
             [backend.layout(m) for m in doc.molecules],
@@ -88,7 +99,7 @@ class Pict:
 
 
 def render(
-    spec: PictSpec | dict[str, Any],
+    spec: PictSpec | LegacyPictSpec | dict[str, Any],
     *,
     backend: str | None = None,
     format: OutputFormat = "svg",

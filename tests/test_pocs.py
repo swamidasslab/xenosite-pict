@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from xpict import Pict, render
-from xpict.contracts.spec import PictSpec
+from xpict.contracts.nodes import PictSpec
 from xpict.diagram.elk import elk_graph, elk_graph_json, layout_diagram
 from xpict.warnings import PictBackendWarning
 
