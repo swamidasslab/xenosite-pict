@@ -1,8 +1,9 @@
-"""Lightweight label markup — TeX-like symbols + markdown/TeX emphasis.
+"""Lightweight label markup → Unicode text + bold/italic spans.
 
-Not a typesetting engine. Symbol macros expand to Unicode (Liberation Sans
-covers Greek and common scientific signs). Bold/italic become SVG
-``font-weight`` / ``font-style`` spans.
+Not a typesetting engine. Symbol macros expand to Unicode matched to the
+bundled Liberation Sans faces. Emphasis becomes span flags on those runs;
+:mod:`xenosite.pict.draw.glyphs` compiles the same spans to glyph shapes
+everywhere (atom labels, captions, edge labels).
 
 Symbols (examples)::
 
@@ -13,8 +14,7 @@ Emphasis::
     markdown:  **bold**   *italic*
     latex:     \\textbf{…}  \\textit{…}  \\mathbf{…}  \\mathit{…}  \\emph{…}
 
-Optional ``$…$`` delimiters are stripped (chem shorthand); content is still
-plain Unicode + spans, not math layout.
+Optional ``$…$`` delimiters are stripped (chem shorthand).
 """
 
 from __future__ import annotations
@@ -122,11 +122,37 @@ _STYLE_CMDS: dict[str, str] = {
 
 @dataclass(frozen=True)
 class TextRun:
-    """One style run of label text (already symbol-expanded)."""
+    """One span of Unicode text with face flags (font-aligned)."""
 
     text: str
     bold: bool = False
     italic: bool = False
+
+
+@dataclass(frozen=True)
+class StyledText:
+    """Unicode + bold/italic spans — intermediate between markup and shapes."""
+
+    runs: tuple[TextRun, ...]
+
+    @classmethod
+    def from_markup(cls, src: str) -> StyledText:
+        return cls(tuple(parse_richtext(src)))
+
+    @classmethod
+    def plain(cls, text: str) -> StyledText:
+        """Already-expanded Unicode with no style spans."""
+        if not text:
+            return cls(())
+        return cls((TextRun(text),))
+
+    @property
+    def text(self) -> str:
+        """Concatenated Unicode (styles discarded)."""
+        return "".join(run.text for run in self.runs)
+
+    def __bool__(self) -> bool:
+        return any(run.text for run in self.runs)
 
 
 def _read_braced(src: str, i: int) -> tuple[str, int] | None:
@@ -163,7 +189,7 @@ def _parse(
     bold: bool = False,
     italic: bool = False,
 ) -> list[TextRun]:
-    """Parse markup into styled runs; symbol macros expand to Unicode."""
+    """Parse markup into styled Unicode runs."""
     out: list[TextRun] = []
     i = 0
     n = len(src)
@@ -207,8 +233,8 @@ def _parse(
                 buf.append("\\")
                 i += 2
                 continue
-            # \command name — longest match against known symbols/styles so
-            # ``\Delta\DeltaG`` → ΔΔG (TeX would need a space or braces).
+            # \command — longest match against known symbols/styles so
+            # ``\Delta\DeltaG`` → ΔΔG.
             j = i + 1
             while j < n and src[j].isalpha():
                 j += 1
@@ -230,7 +256,6 @@ def _parse(
             if style is not None:
                 body_read = _read_braced(src, j)
                 if body_read is None:
-                    # No braces — leave literal.
                     buf.append("\\" + name)
                     i = j
                     continue
@@ -263,7 +288,7 @@ def _parse(
             i = j + 2
             continue
 
-        # Markdown *italic* (single asterisks)
+        # Markdown *italic*
         if ch == "*":
             flush()
             j = i + 1
@@ -296,29 +321,25 @@ def _parse(
 
 
 def parse_richtext(src: str) -> list[TextRun]:
-    """Parse label markup into style runs with symbols expanded."""
+    """Parse label markup into Unicode runs with bold/italic flags."""
     if not src:
         return []
     return _parse(src)
 
 
 def plain_text(src: str) -> str:
-    """Symbol-expanded plain string (styles discarded) — for metrics / packing."""
-    return "".join(run.text for run in parse_richtext(src))
+    """Symbol-expanded plain string (styles discarded) — for metrics helpers."""
+    return StyledText.from_markup(src).text
 
 
 def expand_symbols(src: str) -> str:
-    """Expand symbol macros only; leave emphasis markers intact.
-
-    Prefer :func:`plain_text` or :func:`parse_richtext` for normal use.
-    """
-    # Reuse parser then re-serialize without style — same as plain for symbols
-    # that appear outside style commands; for ``\\textbf{\\alpha}`` plain is α.
+    """Expand symbol macros; prefer :func:`plain_text` / :class:`StyledText`."""
     return plain_text(src)
 
 
 __all__ = [
     "TextRun",
+    "StyledText",
     "parse_richtext",
     "plain_text",
     "expand_symbols",

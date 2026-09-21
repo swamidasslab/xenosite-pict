@@ -1,9 +1,12 @@
-"""Lightweight rich-text markup for molecule / edge labels."""
+"""Lightweight rich-text markup → Unicode spans → glyph shapes."""
 
 from __future__ import annotations
 
+import re
+
 from xenosite.pict import render
-from xenosite.pict.draw.richtext import TextRun, plain_text, parse_richtext
+from xenosite.pict.draw.glyphs import compile_text_path_d, compile_text_shapes
+from xenosite.pict.draw.richtext import StyledText, TextRun, plain_text, parse_richtext
 
 
 def test_greek_and_symbol_macros():
@@ -15,44 +18,46 @@ def test_greek_and_symbol_macros():
     assert plain_text(r"A \pm B \rightarrow C") == "A ± B → C"
 
 
-def test_markdown_and_latex_emphasis():
-    runs = parse_richtext(r"**bold** and *italic*")
-    assert [(r.text, r.bold, r.italic) for r in runs] == [
-        ("bold", True, False),
-        (" and ", False, False),
-        ("italic", False, True),
-    ]
-    runs = parse_richtext(r"\textbf{\alpha} \textit{mode}")
-    assert runs[0] == TextRun("α", bold=True)
-    assert any(r.text == "mode" and r.italic and not r.bold for r in runs)
+def test_markup_yields_unicode_spans():
+    styled = StyledText.from_markup(r"**bold** and *italic*")
+    assert styled.runs == (
+        TextRun("bold", bold=True),
+        TextRun(" and "),
+        TextRun("italic", italic=True),
+    )
+    styled = StyledText.from_markup(r"\textbf{\alpha} \textit{mode}")
+    assert styled.runs[0] == TextRun("α", bold=True)
+    assert any(r.text == "mode" and r.italic for r in styled.runs)
 
 
-def test_nested_style_and_symbol():
-    runs = parse_richtext(r"\textbf{*β*-anomer}")
-    assert plain_text(r"\textbf{*β*-anomer}") == "β-anomer"
-    assert any(r.bold and r.italic and "β" in r.text for r in runs)
+def test_compile_shapes_shared_engine():
+    styled = StyledText.from_markup(r"$\alpha$-**EtOH**")
+    geom = compile_text_shapes(styled, 50.0, 40.0, font_size=12.0)
+    assert geom is not None and not geom.is_empty
+    d = compile_text_path_d(styled, 50.0, 40.0, font_size=12.0)
+    assert d and d.startswith("M ")
+    # Same engine accepts markup strings directly.
+    assert compile_text_path_d(r"\beta", 0.0, 0.0) is not None
 
 
-def test_svg_emits_tspans_for_styles():
+def test_svg_emits_glyph_paths_not_text():
     svg = render(
         {
             "molecules": [
-                {
-                    "smiles": "CCO",
-                    "label": r"$\alpha$-**ethanol**",
-                }
+                {"smiles": "CCO", "label": r"$\alpha$-**EtOH**"}
             ]
         },
         backend="native",
     )
-    assert "α" in svg
-    assert 'font-weight="bold"' in svg
-    assert "ethanol" in svg
+    assert "<text" not in svg
+    assert "<tspan" not in svg
+    m = re.search(r'<path[^>]*class="mol-label"[^>]*>', svg)
+    assert m is not None
+    assert 'data-text="α-EtOH"' in m.group(0)
     assert "\\alpha" not in svg
-    assert "**" not in svg
 
 
-def test_edge_label_markup():
+def test_edge_label_markup_as_shapes():
     svg = render(
         {
             "molecules": [
@@ -66,5 +71,6 @@ def test_edge_label_markup():
         },
         backend="native",
     )
-    assert "Δ" in svg
+    assert 'data-text="ΔE"' in svg or 'data-text="Δ E"' in svg
     assert "\\Delta" not in svg
+    assert "<tspan" not in svg

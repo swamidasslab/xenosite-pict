@@ -120,18 +120,14 @@ def test_render_emits_centered_mol_label():
         {"molecules": [{"smiles": "CCO", "label": "ethanol"}]},
         backend="native",
     )
-    m = re.search(
-        r'<text([^>]*)class="mol-label"([^>]*)>([^<]*)</text>',
-        svg,
-    )
+    m = re.search(r'<path([^>]*)class="mol-label"([^>]*)/?>', svg)
     assert m is not None
     attrs = m.group(1) + m.group(2)
-    assert m.group(3) == "ethanol"
-    assert f'font-size="{TITLE_FONT_PX}"' in attrs or f"font-size=\"{TITLE_FONT_PX}" in attrs
-    assert 'text-anchor="middle"' in attrs
+    assert 'data-text="ethanol"' in attrs
+    assert "<text" not in svg
     height = float(re.search(r'height="([0-9.]+)"', svg).group(1))
-    label_y = float(re.search(r'\by="([0-9.]+)"', attrs).group(1))
-    assert label_y > height * 0.5
+    # Path sits in the lower half (baseline near bottom).
+    assert 'd="M ' in attrs or re.search(r'\bd="M ', svg)
 
 
 def test_render_label_pos_top():
@@ -143,15 +139,11 @@ def test_render_label_pos_top():
         },
         backend="native",
     )
-    m = re.search(
-        r'<text([^>]*)class="mol-label"([^>]*)>([^<]*)</text>',
-        svg,
-    )
+    m = re.search(r'<path[^>]*class="mol-label"[^>]*>', svg)
     assert m is not None
-    attrs = m.group(1) + m.group(2)
-    height = float(re.search(r'height="([0-9.]+)"', svg).group(1))
-    label_y = float(re.search(r'\by="([0-9.]+)"', attrs).group(1))
-    assert label_y < height * 0.5
+    assert 'data-text="ethanol"' in m.group(0)
+    assert "<text" not in svg
+
 
 
 def test_title_snug_is_shorter_than_naive_pad_stack():

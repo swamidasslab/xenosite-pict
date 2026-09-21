@@ -1,8 +1,9 @@
-"""Label glyph outlines from the bundled Liberation Sans face.
+"""Compile Unicode + bold/italic spans to glyph shapes.
 
-Atom labels stay as SVG ``<text>`` for the ink. The white knockout under
-them is a **shapely buffer** of the same glyph outlines, serialized as a
-path so the halo does not depend on the viewer having the font.
+One engine for every label: atom ink, molecule captions, edge labels, and
+halos. Markup is parsed to :class:`~xenosite.pict.draw.richtext.StyledText`
+first; this module only sees font-aligned Unicode runs and Liberation Sans
+faces (Regular / Bold / Italic / BoldItalic).
 """
 
 from __future__ import annotations
@@ -13,28 +14,75 @@ from shapely.geometry import MultiPolygon, Polygon
 from shapely.geometry.base import BaseGeometry
 from shapely.ops import unary_union
 
-# Re-export for callers that imported from here.
 from xenosite.pict.draw.font_face import (
     ContourPen,
+    FaceStyle,
     bundled_font_path,  # noqa: F401
+    face_style,
     glyph_set_cmap_upem,
 )
-from xenosite.pict.draw.metrics import FONT_PX, LABEL_GAP_PX
-from xenosite.pict.draw.text_metrics import measure_text
+from xenosite.pict.draw.metrics import FONT_PX
+from xenosite.pict.draw.richtext import StyledText, TextRun, parse_richtext
+from xenosite.pict.draw.text_metrics import measure_styled
 
 
-def label_outline(
-    text: str,
-    x: float,
-    y: float,
-    *,
-    font_size: float = FONT_PX,
-    anchor: str = "middle",
-) -> BaseGeometry | None:
-    """Glyph fill geometry in SVG coords for ``text`` at baseline ``(x, y)``."""
-    if not text:
+def _contours_to_geom(pen: ContourPen) -> BaseGeometry | None:
+    """Build geometry from TrueType contours, nesting counters as holes.
+
+    Liberation Sans (like most TTFs) emits ``O`` as an outer contour plus an
+    inner counter contour — not a single polygon with ``interiors``. We nest
+    smaller contours inside larger ones so counters stay open.
+    """
+    raw: list[Polygon] = []
+    for contour in pen.contours:
+        if len(contour) < 3:
+            continue
+        poly = Polygon(contour)
+        if poly.is_empty:
+            continue
+        if not poly.is_valid:
+            poly = poly.buffer(0)
+        if isinstance(poly, Polygon) and not poly.is_empty:
+            raw.append(poly)
+    if not raw:
         return None
-    glyph_set, cmap, upem = glyph_set_cmap_upem()
+    raw.sort(key=lambda p: p.area, reverse=True)
+    used = [False] * len(raw)
+    parts: list[Polygon] = []
+    for i, outer in enumerate(raw):
+        if used[i]:
+            continue
+        holes: list[object] = []
+        for j in range(i + 1, len(raw)):
+            if used[j]:
+                continue
+            inner = raw[j]
+            # Counter lies inside the outer filled region.
+            if outer.contains(inner.representative_point()):
+                holes.append(list(inner.exterior.coords))
+                used[j] = True
+        nested = Polygon(list(outer.exterior.coords), holes)
+        if not nested.is_valid:
+            nested = nested.buffer(0)
+        if isinstance(nested, Polygon) and not nested.is_empty:
+            parts.append(nested)
+        used[i] = True
+    if not parts:
+        return None
+    if len(parts) == 1:
+        return parts[0]
+    return unary_union(parts)
+
+
+def _outline_run_em(
+    text: str,
+    *,
+    style: FaceStyle = "regular",
+) -> tuple[BaseGeometry | None, float]:
+    """Outline plain Unicode in font space (+Y up); return (geom, advance_em)."""
+    if not text:
+        return None, 0.0
+    glyph_set, cmap, upem = glyph_set_cmap_upem(style)
     pen = ContourPen(glyph_set)
     pen_x = 0.0
     for ch in text:
@@ -46,33 +94,57 @@ def label_outline(
         tpen = TransformPen(pen, (1.0, 0.0, 0.0, 1.0, pen_x, 0.0))
         glyph.draw(tpen)
         pen_x += float(glyph.width)
+    return _contours_to_geom(pen), pen_x
 
-    polys: list[Polygon] = []
-    for contour in pen.contours:
-        if len(contour) < 3:
-            continue
-        poly = Polygon(contour)
-        if poly.is_empty:
-            continue
-        if not poly.is_valid:
-            poly = poly.buffer(0)
-        if not poly.is_empty:
-            polys.append(poly)  # type: ignore[arg-type]
-    if not polys:
+
+def compile_text_shapes(
+    styled: StyledText | str,
+    x: float,
+    y: float,
+    *,
+    font_size: float = FONT_PX,
+    anchor: str = "middle",
+) -> BaseGeometry | None:
+    """Compile styled Unicode (or markup string) to SVG-space glyph geometry.
+
+    This is the shared shapes engine: captions, atom labels, edge labels, and
+    halos all go through here.
+    """
+    if isinstance(styled, str):
+        styled = StyledText.from_markup(styled)
+    if not styled:
         return None
 
-    geom: BaseGeometry = unary_union(polys)
-    scale = font_size / upem
-    # Font space: +Y up. SVG: +Y down. Flip about the baseline (y=0).
-    geom = affinity.scale(geom, xfact=scale, yfact=-scale, origin=(0.0, 0.0))
-    metrics = measure_text(text, font_size)
+    metrics = measure_styled(styled, font_size)
     if anchor == "middle":
-        ox = x - metrics.advance * 0.5
+        cursor = x - metrics.advance * 0.5
     elif anchor == "end":
-        ox = x - metrics.advance
+        cursor = x - metrics.advance
     else:
-        ox = x
-    return affinity.translate(geom, xoff=ox, yoff=y)
+        cursor = x
+
+    parts: list[BaseGeometry] = []
+    for run in styled.runs:
+        if not run.text:
+            continue
+        style = face_style(bold=run.bold, italic=run.italic)
+        geom_em, advance_em = _outline_run_em(run.text, style=style)
+        _gs, _cmap, upem = glyph_set_cmap_upem(style)
+        scale = font_size / upem
+        run_advance = advance_em * scale
+        if geom_em is not None and not geom_em.is_empty:
+            geom = affinity.scale(
+                geom_em, xfact=scale, yfact=-scale, origin=(0.0, 0.0)
+            )
+            geom = affinity.translate(geom, xoff=cursor, yoff=y)
+            parts.append(geom)
+        cursor += run_advance
+
+    if not parts:
+        return None
+    if len(parts) == 1:
+        return parts[0]
+    return unary_union(parts)
 
 
 def geom_to_svg_d(geom: BaseGeometry) -> str:
@@ -117,6 +189,77 @@ def geom_to_svg_d(geom: BaseGeometry) -> str:
     return " ".join(chunks)
 
 
+def compile_text_path_d(
+    styled: StyledText | str,
+    x: float,
+    y: float,
+    *,
+    font_size: float = FONT_PX,
+    anchor: str = "middle",
+) -> str | None:
+    """SVG path ``d`` for label ink compiled from styled Unicode / markup."""
+    outline = compile_text_shapes(
+        styled, x, y, font_size=font_size, anchor=anchor
+    )
+    if outline is None or outline.is_empty:
+        return None
+    d = geom_to_svg_d(outline)
+    return d or None
+
+
+def compile_text_halo_d(
+    styled: StyledText | str,
+    x: float,
+    y: float,
+    *,
+    font_size: float = FONT_PX,
+    anchor: str = "middle",
+    buffer_px: float | None = None,
+) -> str | None:
+    """White knockout for text — :func:`compile_text_shapes` then ``halo_from_shapes``."""
+    from xenosite.pict.draw.halo import halo_path_d
+
+    outline = compile_text_shapes(
+        styled, x, y, font_size=font_size, anchor=anchor
+    )
+    return halo_path_d(outline, buffer_px)
+
+
+def label_outline(
+    text: str,
+    x: float,
+    y: float,
+    *,
+    font_size: float = FONT_PX,
+    anchor: str = "middle",
+    bold: bool = False,
+    italic: bool = False,
+) -> BaseGeometry | None:
+    """Compile markup/plain text to glyph geometry (shared engine)."""
+    if bold or italic:
+        styled = StyledText(
+            tuple(
+                TextRun(run.text, bold=run.bold or bold, italic=run.italic or italic)
+                for run in parse_richtext(text)
+            )
+        )
+        return compile_text_shapes(
+            styled, x, y, font_size=font_size, anchor=anchor
+        )
+    return compile_text_shapes(text, x, y, font_size=font_size, anchor=anchor)
+
+
+def label_path_d(
+    text: str,
+    x: float,
+    y: float,
+    *,
+    font_size: float = FONT_PX,
+    anchor: str = "middle",
+) -> str | None:
+    return compile_text_path_d(text, x, y, font_size=font_size, anchor=anchor)
+
+
 def label_halo_path_d(
     text: str,
     x: float,
@@ -126,16 +269,28 @@ def label_halo_path_d(
     anchor: str = "middle",
     buffer_px: float | None = None,
 ) -> str | None:
-    """SVG path for a white knockout grown around the label glyphs.
+    return compile_text_halo_d(
+        text,
+        x,
+        y,
+        font_size=font_size,
+        anchor=anchor,
+        buffer_px=buffer_px,
+    )
 
-    Required for legibility when the SVG sits on a dark host page. Buffer
-    defaults to ``LABEL_GAP_PX`` so the halo also separates bonds from the
-    letters (bonds themselves pull back by the same gap via clearance).
-    """
-    outline = label_outline(text, x, y, font_size=font_size, anchor=anchor)
-    if outline is None or outline.is_empty:
-        return None
-    dist = LABEL_GAP_PX if buffer_px is None else buffer_px
-    grown = outline.buffer(dist, quad_segs=8)
-    d = geom_to_svg_d(grown)
-    return d or None
+
+def label_plain(text: str) -> str:
+    """Expanded Unicode for ``data-text`` attributes."""
+    return StyledText.from_markup(text).text
+
+
+__all__ = [
+    "compile_text_shapes",
+    "compile_text_path_d",
+    "compile_text_halo_d",
+    "geom_to_svg_d",
+    "label_outline",
+    "label_path_d",
+    "label_halo_path_d",
+    "label_plain",
+]

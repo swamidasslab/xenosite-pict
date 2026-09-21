@@ -39,7 +39,6 @@ export interface MoleculeSpec {
   title?: LabelSpec | null;
   marks?: MarkSpec[];
   shade?: ShadeSpec;
-  halo?: boolean;
   color?: string;
 }
 
@@ -84,6 +83,11 @@ export interface PictSpec {
   diagram?: DiagramSpec;
   width?: number;
   height?: number;
+  /**
+   * Global white knockout under all ink. On = everything; off = nothing.
+   * Halos sit on the bottom layer and never obscure drawn content.
+   */
+  halo?: boolean;
 }
 
 /** Backend-agnostic 2D layout (coords only — drawing stays in this package). */

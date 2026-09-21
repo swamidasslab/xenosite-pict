@@ -1,33 +1,54 @@
-"""Bundled Liberation Sans face — path, TTFont cache, outline pen."""
+"""Bundled Liberation Sans faces — path, TTFont cache, outline pen."""
 
 from __future__ import annotations
 
 from functools import lru_cache
 from importlib import resources
 from pathlib import Path
+from typing import Literal
 
 from fontTools.pens.basePen import BasePen
 from fontTools.ttLib import TTFont
 
 _FONT_PACKAGE = "xenosite.pict.data.fonts"
-_FONT_NAME = "LiberationSans-Regular.ttf"
 _BEZIER_STEPS = 8
 
+FaceStyle = Literal["regular", "bold", "italic", "bold_italic"]
 
-def bundled_font_path() -> Path:
-    """Filesystem path to the packaged Liberation Sans Regular TTF."""
+_FACE_FILES: dict[FaceStyle, str] = {
+    "regular": "LiberationSans-Regular.ttf",
+    "bold": "LiberationSans-Bold.ttf",
+    "italic": "LiberationSans-Italic.ttf",
+    "bold_italic": "LiberationSans-BoldItalic.ttf",
+}
+
+
+def face_style(*, bold: bool = False, italic: bool = False) -> FaceStyle:
+    if bold and italic:
+        return "bold_italic"
+    if bold:
+        return "bold"
+    if italic:
+        return "italic"
+    return "regular"
+
+
+def bundled_font_path(style: FaceStyle = "regular") -> Path:
+    """Filesystem path to a packaged Liberation Sans TTF."""
     root = resources.files(_FONT_PACKAGE)
-    return Path(str(root.joinpath(_FONT_NAME)))
+    return Path(str(root.joinpath(_FACE_FILES[style])))
 
 
-@lru_cache(maxsize=1)
-def ttfont() -> TTFont:
-    return TTFont(bundled_font_path())
+@lru_cache(maxsize=4)
+def ttfont(style: FaceStyle = "regular") -> TTFont:
+    return TTFont(bundled_font_path(style))
 
 
-@lru_cache(maxsize=1)
-def glyph_set_cmap_upem() -> tuple[object, dict[int, str], float]:
-    font = ttfont()
+@lru_cache(maxsize=4)
+def glyph_set_cmap_upem(
+    style: FaceStyle = "regular",
+) -> tuple[object, dict[int, str], float]:
+    font = ttfont(style)
     return font.getGlyphSet(), font.getBestCmap() or {}, float(font["head"].unitsPerEm)
 
 

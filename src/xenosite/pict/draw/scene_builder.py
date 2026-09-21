@@ -25,7 +25,14 @@ from xenosite.pict.draw.bonds import (
     shorten,
 )
 from xenosite.pict.draw.collision import CollisionGrid
-from xenosite.pict.draw.glyphs import label_halo_path_d
+from xenosite.pict.draw.glyphs import compile_text_shapes
+from xenosite.pict.draw.halo import (
+    capsule_shape,
+    circle_ring_shape,
+    disk_shape,
+    halo_path_d,
+    path_polyline_shape,
+)
 from xenosite.pict.draw.metrics import (
     BOND_PX,
     COLLISION_CELL_PX,
@@ -48,8 +55,62 @@ from xenosite.pict.draw.plotdot import PlotDot
 from xenosite.pict.draw.rings import bond_interior_normals, find_sssr
 from xenosite.pict.draw.text_metrics import label_baseline_offset, text_box
 
-_LAYER_ORDER = ("shading", "halo", "bonds", "labels", "marks", "overlay")
+_LAYER_ORDER = ("halo", "shading", "bonds", "labels", "marks", "overlay")
 _PAD = PAD_PX
+
+
+def _push_halo(
+    layers: dict[str, Layer],
+    ink,
+    *,
+    dist: float | None = None,
+    cls: str = "halo",
+) -> None:
+    """Append a white knockout derived from ``ink`` via :func:`halo_from_shapes`.
+
+    Halos are emitted only into the bottom ``halo`` layer so they never
+    obscure bonds, labels, marks, or overlays.
+    """
+    d = halo_path_d(ink, dist)
+    if not d:
+        return
+    layers["halo"].primitives.append(
+        PathPrim(
+            d=d,
+            stroke="none",
+            fill="#fff",
+            stroke_width=0.0,
+            opacity=1.0,
+            cls=cls,
+        )
+    )
+
+
+def _path_coords(d: str) -> list[tuple[float, float]]:
+    """Best-effort point list from an SVG path ``d`` (M/L/Z)."""
+    import re
+
+    nums = [float(x) for x in re.findall(r"[-+]?(?:\d+\.?\d*|\.\d+)", d)]
+    pts: list[tuple[float, float]] = []
+    for i in range(0, len(nums) - 1, 2):
+        pts.append((nums[i], nums[i + 1]))
+    return pts
+
+
+def _ink_from_stroke_path(p: PathPrim):
+    """Approximate a stroked/filled PathPrim as ink geometry for haloing."""
+    from shapely.geometry import Polygon
+
+    pts = _path_coords(p.d)
+    if not pts:
+        return None
+    if p.fill not in (None, "none") and len(pts) >= 3:
+        poly = Polygon(pts)
+        if not poly.is_valid:
+            poly = poly.buffer(0)
+        return None if poly.is_empty else poly
+    radius = max(p.stroke_width, STROKE_PX) * 0.5
+    return path_polyline_shape(pts, radius)
 
 
 def normalize_coords(
@@ -267,7 +328,12 @@ def _hull_path(points: list[tuple[float, float]], pad: float = 10.0) -> str | No
     return d + " Z"
 
 
-def molecule_to_viewport(layout: MoleculeLayout, mol_spec: MoleculeSpec) -> Viewport:
+def molecule_to_viewport(
+    layout: MoleculeLayout,
+    mol_spec: MoleculeSpec,
+    *,
+    halo: bool = True,
+) -> Viewport:
     coords, width, height = normalize_coords(layout)
     layers: dict[str, Layer] = {name: Layer(name=name) for name in _LAYER_ORDER}  # type: ignore[arg-type]
     texts = [_display_text(a) for a in layout.atoms]
@@ -374,31 +440,23 @@ def molecule_to_viewport(layout: MoleculeLayout, mol_spec: MoleculeSpec) -> View
             p.cls = f"{tag} {p.cls or 'bond-stereo'}"
             stereos.append(p)
     painted = [*skeletons, *offsets, *stereos]
-    # Halo reuses every bond stroke in white at 2× width, round caps, under
-    # the ink. One halo per stroke so double-bond offsets are knocked out
-    # too, not only the centerline.
-    if mol_spec.halo:
-        for p in painted:
-            layers["halo"].primitives.append(
-                p.model_copy(
-                    update={
-                        "stroke": "#fff",
-                        "fill": "#fff" if p.fill not in (None, "none") else "none",
-                        "stroke_width": max(HALO_STROKE, p.stroke_width * 2),
-                        "opacity": 1.0,
-                        "cls": "halo",
-                        "stroke_linecap": "round",
-                    }
-                )
-            )
     layers["bonds"].primitives.extend(painted)
+    # Halos from ink shapes — bottom layer only; never covers drawn content.
+    if halo:
+        for p in painted:
+            ink = _ink_from_stroke_path(p)
+            if ink is None:
+                continue
+            # Grow from stroke radius out to ~HALO_STROKE/2 overall.
+            ink_r = max(p.stroke_width, STROKE_PX) * 0.5
+            dist = max(LABEL_GAP_PX, 0.5 * HALO_STROKE - ink_r)
+            _push_halo(layers, ink, dist=dist, cls="halo")
 
     for i, atom in enumerate(layout.atoms):
         label = texts[i]
         x, y = coords[i]
         # Radical dots (RDKit/Indigo-style): sit beside the atom, outside the label.
         if atom.radical > 0:
-            # Prefer a free angular wedge away from bonds.
             nbr_angs = []
             for bond in layout.bonds:
                 if bond.begin == atom.index or bond.end == atom.index:
@@ -408,7 +466,6 @@ def molecule_to_viewport(layout: MoleculeLayout, mol_spec: MoleculeSpec) -> View
                         nbr_angs.append(math.atan2(coords[oi][1] - y, coords[oi][0] - x))
             if nbr_angs:
                 nbr_angs.sort()
-                # Largest gap midpoint.
                 best_mid, best_w = nbr_angs[0] + math.pi, 0.0
                 for j, a0 in enumerate(nbr_angs):
                     a1 = nbr_angs[(j + 1) % len(nbr_angs)]
@@ -426,10 +483,12 @@ def molecule_to_viewport(layout: MoleculeLayout, mol_spec: MoleculeSpec) -> View
             for k in range(min(atom.radical, 3)):
                 spread = (k - (min(atom.radical, 3) - 1) / 2) * 0.35
                 dang = ang + spread
+                cx = x + math.cos(dang) * base
+                cy = y + math.sin(dang) * base
                 layers["labels"].primitives.append(
                     CirclePrim(
-                        cx=x + math.cos(dang) * base,
-                        cy=y + math.sin(dang) * base,
+                        cx=cx,
+                        cy=cy,
                         r=dot_r,
                         fill="#111",
                         stroke="none",
@@ -437,24 +496,16 @@ def molecule_to_viewport(layout: MoleculeLayout, mol_spec: MoleculeSpec) -> View
                         cls=f"atom-{atom.index} radical",
                     )
                 )
+                if halo:
+                    _push_halo(
+                        layers,
+                        disk_shape(cx, cy, dot_r),
+                        dist=LABEL_GAP_PX,
+                        cls="halo radical-halo",
+                    )
         if not label:
             continue
         label_y = y + label_baseline_offset(FONT_PX)
-        if mol_spec.halo:
-            # Glyph outlines → shapely buffer → path. Portable knockout; no
-            # viewer font required for the halo (ink stays <text>).
-            d = label_halo_path_d(label, x, label_y, font_size=FONT_PX)
-            if d:
-                layers["halo"].primitives.append(
-                    PathPrim(
-                        d=d,
-                        stroke="none",
-                        fill="#fff",
-                        stroke_width=0.0,
-                        opacity=1.0,
-                        cls="halo label-halo",
-                    )
-                )
         layers["labels"].primitives.append(
             TextPrim(
                 x=x,
@@ -464,6 +515,9 @@ def molecule_to_viewport(layout: MoleculeLayout, mol_spec: MoleculeSpec) -> View
                 cls=f"atom-{atom.index} label",
             )
         )
+        if halo:
+            ink = compile_text_shapes(label, x, label_y, font_size=FONT_PX)
+            _push_halo(layers, ink, dist=LABEL_GAP_PX, cls="halo label-halo")
 
     for mark in mol_spec.marks:
         color = mark.color or "#c44"
@@ -481,6 +535,11 @@ def molecule_to_viewport(layout: MoleculeLayout, mol_spec: MoleculeSpec) -> View
                         cls="substructure-mark",
                     )
                 )
+                if halo:
+                    ink = _ink_from_stroke_path(
+                        PathPrim(d=path, fill=color, stroke=color, stroke_width=1.5)
+                    )
+                    _push_halo(layers, ink, dist=LABEL_GAP_PX, cls="halo mark-halo")
             continue
         if mark.atoms:
             for ai in mark.atoms:
@@ -488,11 +547,12 @@ def molecule_to_viewport(layout: MoleculeLayout, mol_spec: MoleculeSpec) -> View
                 if pos is None:
                     continue
                 x, y = coords[pos]
+                r = BOND_PX * MARK_FRAC
                 layers["marks"].primitives.append(
                     CirclePrim(
                         cx=x,
                         cy=y,
-                        r=BOND_PX * MARK_FRAC,
+                        r=r,
                         fill="none",
                         stroke=color,
                         stroke_width=STROKE_PX,
@@ -500,6 +560,13 @@ def molecule_to_viewport(layout: MoleculeLayout, mol_spec: MoleculeSpec) -> View
                         cls=f"atom-{ai} mark",
                     )
                 )
+                if halo:
+                    _push_halo(
+                        layers,
+                        circle_ring_shape(x, y, r, STROKE_PX),
+                        dist=LABEL_GAP_PX,
+                        cls="halo mark-halo",
+                    )
         if mark.bonds:
             for a, b in mark.bonds:
                 ia, ib = atom_pos.get(a), atom_pos.get(b)
@@ -516,6 +583,13 @@ def molecule_to_viewport(layout: MoleculeLayout, mol_spec: MoleculeSpec) -> View
                         cls=f"bond-mark atom-{a} atom-{b}",
                     )
                 )
+                if halo:
+                    _push_halo(
+                        layers,
+                        capsule_shape(x1, y1, x2, y2, 0.5 * HALO_STROKE),
+                        dist=LABEL_GAP_PX,
+                        cls="halo mark-halo",
+                    )
 
     if label_pack is not None and label_pack.text:
         layers["overlay"].primitives.append(
@@ -529,6 +603,15 @@ def molecule_to_viewport(layout: MoleculeLayout, mol_spec: MoleculeSpec) -> View
                 cls="mol-label",
             )
         )
+        if halo:
+            ink = compile_text_shapes(
+                label_pack.text,
+                label_pack.x,
+                label_pack.y,
+                font_size=label_pack.font_size,
+                anchor=label_pack.anchor,
+            )
+            _push_halo(layers, ink, dist=LABEL_GAP_PX, cls="halo label-halo")
 
     return Viewport(
         id=layout.id or mol_spec.id,
@@ -549,7 +632,7 @@ def build_scene(
     diagram_height: float | None = None,
 ) -> Scene:
     viewports = [
-        molecule_to_viewport(layout, mol_spec)
+        molecule_to_viewport(layout, mol_spec, halo=spec.halo)
         for layout, mol_spec in zip(layouts, mol_specs, strict=True)
     ]
     if positions is None:
@@ -577,11 +660,53 @@ def build_scene(
                 max_b = max(max_b, y + 8.0)
 
     overlays = diagram_overlays(spec.diagram.edges, placed, edge_paths=edge_paths)
+    if spec.halo:
+        overlays = _halo_overlay_ink(overlays) + overlays
+
     width = spec.width or max(max_r, diagram_width or 0.0)
     height = spec.height or max(max_b, diagram_height or 0.0)
-    return Scene(
-        width=width,
-        height=height,
-        viewports=placed,
-        overlays=overlays,
-    )
+    return Scene(width=width, height=height, viewports=placed, overlays=overlays)
+
+
+def _halo_overlay_ink(prims: Sequence) -> list[PathPrim]:
+    """Bottom-most knockouts for document overlays (edge shafts / labels)."""
+    out: list[PathPrim] = []
+    for prim in prims:
+        ink = None
+        cls = "halo"
+        if isinstance(prim, TextPrim):
+            ink = compile_text_shapes(
+                prim.text,
+                prim.x,
+                prim.y,
+                font_size=prim.font_size,
+                anchor=prim.anchor,
+            )
+            cls = "halo label-halo"
+            dist = LABEL_GAP_PX
+        elif isinstance(prim, PathPrim):
+            ink = _ink_from_stroke_path(prim)
+            ink_r = max(prim.stroke_width, STROKE_PX) * 0.5
+            dist = max(LABEL_GAP_PX, 0.5 * HALO_STROKE - ink_r)
+        elif isinstance(prim, CirclePrim):
+            if prim.fill not in (None, "none"):
+                ink = disk_shape(prim.cx, prim.cy, prim.r)
+            else:
+                ink = circle_ring_shape(prim.cx, prim.cy, prim.r, prim.stroke_width)
+            dist = LABEL_GAP_PX
+        else:
+            continue
+        d = halo_path_d(ink, dist)
+        if not d:
+            continue
+        out.append(
+            PathPrim(
+                d=d,
+                stroke="none",
+                fill="#fff",
+                stroke_width=0.0,
+                opacity=1.0,
+                cls=cls,
+            )
+        )
+    return out

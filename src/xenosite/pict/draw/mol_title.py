@@ -19,7 +19,7 @@ from xenosite.pict.draw.metrics import (
     TITLE_FONT_PX,
 )
 from xenosite.pict.draw.text_metrics import TextMetrics, measure_text, text_box
-from xenosite.pict.draw.richtext import plain_text
+
 
 Anchor = Literal["start", "middle", "end"]
 
@@ -384,16 +384,15 @@ def pack_label(
             font_size=font_size,
             pos=label_pos,
         )
-    # Pack against symbol-expanded plain text; keep markup for SVG tspans.
-    stripped = plain_text(raw)
-    if not stripped:
+    # measure_text expands markup and uses Bold/Italic advances when needed.
+    metrics = measure_text(raw, font_size)
+    if not metrics.text.strip():
         return _empty_pack(
             frame_width=frame_width,
             frame_height=frame_height,
             font_size=font_size,
             pos=label_pos,
         )
-    metrics = measure_text(stripped, font_size)
     if label_pos is LabelPos.bottom:
         return _pack_bottom(
             frame_width=frame_width,
@@ -455,7 +454,7 @@ def label_occupancy_box(
 ) -> tuple[float, float, float, float]:
     """Typographic box for the packed label (for tests / debugging)."""
     box = text_box(
-        plain_text(pack.text),
+        pack.text,
         pack.x,
         pack.y,
         font_size=pack.font_size,

@@ -163,11 +163,13 @@ def expand_pict_input(value: Any) -> Any:
 
     - ``molecules[*].title`` → ``label``
     - ``molecules[*].label`` string / partial dict → full defaults overlay
+    - legacy ``molecules[*].halo`` is lifted to document-level ``halo`` (global)
     """
     if not isinstance(value, Mapping):
         return value
     root = dict(value)
     mols = root.get("molecules")
+    lifted_halos: list[bool] = []
     if isinstance(mols, Sequence) and not isinstance(mols, (str, bytes)):
         expanded_mols: list[Any] = []
         for mol in mols:
@@ -175,10 +177,15 @@ def expand_pict_input(value: Any) -> Any:
                 expanded_mols.append(mol)
                 continue
             m = _alias_molecule_title(dict(mol))
+            if "halo" in m:
+                lifted_halos.append(bool(m.pop("halo")))
             if "label" in m:
                 m["label"] = expand_label(m["label"])
             expanded_mols.append(m)
         root["molecules"] = expanded_mols
+    # Halo is document-global: on for everything or off for nothing.
+    if "halo" not in root and lifted_halos:
+        root["halo"] = any(lifted_halos)
     return root
 
 

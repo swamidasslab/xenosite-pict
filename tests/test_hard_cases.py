@@ -169,7 +169,7 @@ def test_svg_background_is_clear_by_default():
 
 
 def test_halo_follows_each_bond_stroke():
-    """Every bond stroke is reused as a white halo at 2× width.
+    """Every bond stroke gets a halo derived via halo_from_shapes.
 
     Not one halo per bond: Kekulé offsets get their own knockout.
     """
@@ -185,11 +185,10 @@ def test_halo_follows_each_bond_stroke():
     n_ink = len(re.findall(r"bond-skeleton|bond-offset|bond-wedge", svg))
     assert n_halo == n_ink
     assert n_halo > n_bonds  # offsets are haloed too
-    assert f'stroke-width="{HALO_STROKE}"' in svg
 
 
 def test_halo_includes_buffered_label_glyphs():
-    """Label knockout is a buffered glyph outline path, not a circle or text stroke."""
+    """Label knockout is halo_from_shapes(glyph ink); counters stay open."""
     backend = _chem_backend()
     svg = render({"molecules": [{"smiles": "CCO"}]}, backend=backend)
     assert not re.search(r'<circle[^>]*label-halo', svg)
@@ -198,8 +197,14 @@ def test_halo_includes_buffered_label_glyphs():
     assert halo is not None
     assert 'fill="#fff"' in halo.group(0)
     assert 'stroke="none"' in halo.group(0)
-    assert re.search(r'<text[^>]*class="[^"]*\blabel\b[^"]*"[^>]*>OH</text>', svg)
-    # Outline path is longer than a trivial box.
+    # Atom label ink is a glyph path (shared shapes engine).
+    assert re.search(
+        r'<path[^>]*data-text="OH"[^>]*class="[^"]*\blabel\b',
+        svg,
+    ) or re.search(
+        r'<path[^>]*class="[^"]*\blabel\b[^"]*"[^>]*data-text="OH"',
+        svg,
+    )
     d = re.search(r'\bd="([^"]+)"', halo.group(0))
     assert d is not None and d.group(1).count("L") > 8
 

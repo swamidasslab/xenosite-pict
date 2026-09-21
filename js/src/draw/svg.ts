@@ -1,8 +1,8 @@
 /**
  * SVG drawer stub — same layered scene rules as Python ``draw/svg.py``.
  *
- * Layers (xenopict-inspired): shading → halo → bonds → labels → marks → overlay.
- * Layout backends must not supply SVG; only coords + topology.
+ * Layers: halo (bottom) → shading → bonds → labels → marks → overlay.
+ * Halos never obscure drawn ink.
  */
 
 import type { MoleculeLayout } from "../types.js";

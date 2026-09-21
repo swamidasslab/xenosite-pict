@@ -1,4 +1,9 @@
-"""Serialize Scene → SVG / HTML."""
+"""Serialize Scene → SVG / HTML.
+
+Text primitives are drawn as glyph **paths** (Liberation Sans outlines), not
+``<text>``/``<tspan>``. Markup (``\\alpha``, ``**bold**``, …) is expanded when
+outlining so bold/italic pick the matching bundled face.
+"""
 
 from __future__ import annotations
 
@@ -13,32 +18,8 @@ from xenosite.pict.contracts.scene import (
     TextPrim,
     Viewport,
 )
-from xenosite.pict.draw.richtext import TextRun, parse_richtext
-
-
-def _append_text_runs(parent: Element, runs: list[TextRun]) -> None:
-    """Emit plain text and styled ``tspan`` children for rich runs."""
-    if not runs:
-        return
-    # Single unstyled run → keep simple text content (no tspan noise).
-    if len(runs) == 1 and not runs[0].bold and not runs[0].italic:
-        parent.text = runs[0].text
-        return
-    # Mixed styles: put leading plain in .text, rest as tspans (SVG convention).
-    first = True
-    for run in runs:
-        if first and not run.bold and not run.italic:
-            parent.text = run.text
-            first = False
-            continue
-        attrs: dict[str, str] = {}
-        if run.bold:
-            attrs["font-weight"] = "bold"
-        if run.italic:
-            attrs["font-style"] = "italic"
-        span = SubElement(parent, "tspan", attrs)
-        span.text = run.text
-        first = False
+from xenosite.pict.draw.glyphs import compile_text_path_d
+from xenosite.pict.draw.richtext import StyledText
 
 
 def _render_primitive(parent: Element, prim: Primitive) -> None:
@@ -72,18 +53,27 @@ def _render_primitive(parent: Element, prim: Primitive) -> None:
             attrs["class"] = prim.cls
         SubElement(parent, "circle", attrs)
     elif isinstance(prim, TextPrim):
+        # Markup → StyledText (Unicode + spans) → glyph path shapes.
+        styled = StyledText.from_markup(prim.text)
+        d = compile_text_path_d(
+            styled,
+            prim.x,
+            prim.y,
+            font_size=prim.font_size,
+            anchor=prim.anchor,
+        )
+        if not d:
+            return
         attrs = {
-            "x": f"{prim.x:.2f}",
-            "y": f"{prim.y:.2f}",
+            "d": d,
             "fill": prim.fill,
-            "font-size": str(prim.font_size),
-            "font-family": prim.font_family,
-            "text-anchor": prim.anchor,
+            "stroke": "none",
+            "opacity": "1",
+            "data-text": styled.text,
         }
         if prim.cls:
             attrs["class"] = prim.cls
-        t = SubElement(parent, "text", attrs)
-        _append_text_runs(t, parse_richtext(prim.text))
+        SubElement(parent, "path", attrs)
 
 
 def _render_viewport(parent: Element, vp: Viewport) -> None:

@@ -158,7 +158,6 @@ class MoleculeSpec(StrictModel):
     )
     marks: list[MarkSpec] = Field(default_factory=list)
     shade: ShadeSpec | None = None
-    halo: bool = True
     color: str | None = Field(default=None, description="Bond/backbone color override")
 
     @model_validator(mode="before")
@@ -237,6 +236,14 @@ class PictSpec(StrictModel):
     diagram: DiagramSpec = Field(default_factory=DiagramSpec)
     width: float | None = Field(default=None, description="Preferred SVG width")
     height: float | None = Field(default=None, description="Preferred SVG height")
+    halo: bool = Field(
+        default=True,
+        description=(
+            "Global white knockout under all ink (bonds, labels, marks, captions, "
+            "edge labels). On = everything; off = nothing. Halos live on the "
+            "bottom layer so they never obscure drawn content."
+        ),
+    )
     meta: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="before")

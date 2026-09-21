@@ -356,11 +356,6 @@
           ],
           "default": null
         },
-        "halo": {
-          "default": true,
-          "title": "Halo",
-          "type": "boolean"
-        },
         "color": {
           "anyOf": [
             {
@@ -488,6 +483,12 @@
       "default": null,
       "description": "Preferred SVG height",
       "title": "Height"
+    },
+    "halo": {
+      "default": true,
+      "description": "Global white knockout under all ink (bonds, labels, marks, captions, edge labels). On = everything; off = nothing. Halos live on the bottom layer so they never obscure drawn content.",
+      "title": "Halo",
+      "type": "boolean"
     },
     "meta": {
       "additionalProperties": true,

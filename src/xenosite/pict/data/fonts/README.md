@@ -1,8 +1,12 @@
 # Bundled fonts
 
-- **LiberationSans-Regular.ttf** — SIL Open Font License 1.1 (see
-  `LICENSE-LiberationSans.txt`). Metric-compatible with Arial; good coverage
-  of Latin scientific symbols (° , µ , dashes, Greek used in labels).
+- **LiberationSans-Regular.ttf**
+- **LiberationSans-Bold.ttf**
+- **LiberationSans-Italic.ttf**
+- **LiberationSans-BoldItalic.ttf**
 
-Used at draw time to outline atom labels (fontTools) so the white halo can be
-a shapely buffer of the glyph geometry, independent of the viewer’s fonts.
+SIL Open Font License 1.1 (see `LICENSE-LiberationSans.txt`). Metric-compatible
+with Arial; good coverage of Latin scientific symbols and Greek used in labels.
+
+Drawn label ink is glyph outlines (fontTools → SVG paths). Bold/italic markup
+selects the matching face. Halos are shapely buffers of the same outlines.

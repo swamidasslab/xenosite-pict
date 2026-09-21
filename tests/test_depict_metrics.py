@@ -130,7 +130,8 @@ def test_indigo_and_native_bonds_same_pixel_length():
 
 def test_svg_uses_reference_font_and_butt_bonds():
     svg = render({"molecules": [{"smiles": "CC(=O)C"}]}, backend="native")
-    assert f'font-size="{FONT_PX}"' in svg or f"font-size=\"{FONT_PX}" in svg
+    # Labels are glyph paths from Liberation Sans (data-text carries the run).
+    assert "data-text=" in svg
     assert 'stroke-linecap="round"' in svg
     # Double-bond offset is visibly wider than the old 2.4 px stub.
     assert "bond-offset" in svg
