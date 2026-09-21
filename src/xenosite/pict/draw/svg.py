@@ -81,21 +81,6 @@ def scene_to_svg(scene: Scene) -> str:
             "height": str(scene.height),
             "viewBox": f"0 0 {scene.width} {scene.height}",
             "class": "xenosite-pict",
-            # Always light — molecules are drawn for a white page even in dark UI.
-            "style": "background-color:#ffffff;color-scheme:only light;",
-        },
-    )
-    # Opaque white canvas so transparent SVGs never pick up a dark host theme.
-    SubElement(
-        root,
-        "rect",
-        {
-            "x": "0",
-            "y": "0",
-            "width": str(scene.width),
-            "height": str(scene.height),
-            "fill": "#ffffff",
-            "class": "pict-background",
         },
     )
     for vp in scene.viewports:
@@ -121,7 +106,7 @@ def scene_to_html(scene: Scene, *, title: str | None = None) -> str:
 <style>
   body {{ margin: 0; font-family: system-ui, sans-serif; background: #fafafa; }}
   .pict-page {{ max-width: 100%; padding: 1rem; box-sizing: border-box; }}
-  .pict-page svg {{ max-width: 100%; height: auto; display: block; background: #fff; }}
+  .pict-page svg {{ max-width: 100%; height: auto; display: block; }}
 </style>
 </head>
 <body>

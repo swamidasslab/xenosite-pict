@@ -5,7 +5,7 @@ Each case encodes a concrete bug we hit while derisking:
 - Double-bond offsets on the outside of rings
 - Shade min/max remapping that turned zeros into full blue
 - Plot-dot disks for near-zero scores
-- Missing opaque white SVG background (dark-theme inversion)
+- Missing clear SVG background (host page shows through)
 - Halo duplicated per multi-bond stroke (hollow-tube look)
 
 Also encodes ring-layout hard cases from CDK/RDKit practice: bridged and
@@ -156,11 +156,16 @@ def test_double_bond_offset_prefers_ring_interior():
     )
 
 
-def test_svg_always_has_opaque_white_background():
+def test_svg_background_is_clear_by_default():
     backend = _chem_backend()
     svg = render({"molecules": [{"smiles": "c1ccccc1O"}]}, backend=backend)
-    assert re.search(r'fill="#fff(?:fff)?"', svg) or "pict-background" in svg
-    assert "color-scheme:only light" in svg or "pict-background" in svg
+    assert "pict-background" not in svg
+    assert "background-color:#ffffff" not in svg
+    assert "background-color:#fff" not in svg
+    # Root <svg> should not force an opaque canvas style.
+    root = re.search(r"<svg\b[^>]*>", svg)
+    assert root is not None
+    assert "background-color" not in root.group(0)
 
 
 def test_halo_follows_each_bond_stroke():

@@ -585,7 +585,7 @@ def write_gallery(out: Path, backend: str, only: list[Path] | None = None) -> Pa
   <p class="lede">
     Visual canvas for the hard paths while the schema stays alpha.
     Regenerate with <code>uv run python scripts/run_pocs.py</code>.
-    SVGs always carry an opaque white background so dark IDE themes do not invert bonds.
+    SVG backgrounds are clear by default so the host page shows through.
   </p>
   {"".join(sections)}
   <footer>Schema feedback: <code>docs/pocs/schema-feedback.md</code></footer>
