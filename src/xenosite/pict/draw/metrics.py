@@ -49,6 +49,11 @@ HALO_FRAC = 2 * STROKE_FRAC  # knockout stays twice the ink, as in xenopict
 # halo: enough white around letters to stay legible on a black host page, and
 # enough gap that bonds do not crowd the glyphs.
 LABEL_GAP_FRAC = 0.25  # × bond → 5 px at BOND_PX=20
+# Molecule caption (MoleculeSpec.title): center-bottom band.
+TITLE_FONT_FRAC = 0.50  # slightly smaller than atom labels (0.60)
+TITLE_BOTTOM_FRAC = 0.25  # typo-box bottom → viewport bottom
+TITLE_CLEARANCE_FRAC = LABEL_GAP_FRAC  # mol ink → title typo top
+COLLISION_CELL_PX = 4.0  # coarse occupancy stamp for title packing
 SHADE_FRAC = 0.90  # xenopict shade(): scale * 0.9
 MARK_FRAC = 1.0  # xenopict mark_atoms radius = scale * mark_down_scale
 
@@ -61,6 +66,9 @@ END_GAP_PX = END_GAP_FRAC * BOND_PX
 CHAIN_END_GAP_PX = CHAIN_END_GAP_FRAC * BOND_PX
 HALO_STROKE = HALO_FRAC * BOND_PX
 LABEL_GAP_PX = LABEL_GAP_FRAC * BOND_PX
+TITLE_FONT_PX = TITLE_FONT_FRAC * BOND_PX
+TITLE_BOTTOM_PX = TITLE_BOTTOM_FRAC * BOND_PX
+TITLE_CLEARANCE_PX = TITLE_CLEARANCE_FRAC * BOND_PX
 RADICAL_DOT_R = 0.08 * BOND_PX
 RADICAL_BASE = 0.55 * BOND_PX
 RADICAL_BASE_BARE = 0.35 * BOND_PX

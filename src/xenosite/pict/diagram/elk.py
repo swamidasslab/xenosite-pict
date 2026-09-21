@@ -15,8 +15,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from xenosite.pict.contracts.layout import MoleculeLayout
-from xenosite.pict.contracts.spec import DiagramKind, PictSpec
-from xenosite.pict.draw.scene_builder import normalize_coords
+from xenosite.pict.contracts.spec import DiagramKind, MoleculeSpec, PictSpec
+from xenosite.pict.draw.scene_builder import viewport_size
 from xenosite.pict.warnings import PictBackendWarning
 
 _GAP = 24.0
@@ -26,6 +26,16 @@ _VENDOR = Path(__file__).resolve().parents[1] / "vendor" / "elkjs"
 _runtime_lock = threading.Lock()
 _runtime = None  # jsrun.Runtime | None
 _elk_ready = False
+
+
+def _viewport_sizes(
+    layouts: Sequence[MoleculeLayout], spec: PictSpec
+) -> list[tuple[float, float]]:
+    sizes: list[tuple[float, float]] = []
+    for i, layout in enumerate(layouts):
+        mol: MoleculeSpec | None = spec.molecules[i] if i < len(spec.molecules) else None
+        sizes.append(viewport_size(layout, mol))
+    return sizes
 
 
 @dataclass
@@ -145,10 +155,11 @@ def _run_async(coro):
 
 
 def _grid_positions(
-    layouts: Sequence[MoleculeLayout], columns: int
+    layouts: Sequence[MoleculeLayout],
+    columns: int,
+    sizes: Sequence[tuple[float, float]],
 ) -> list[tuple[float, float]]:
     cols = max(1, columns)
-    sizes = [normalize_coords(L)[1:] for L in layouts]
     n = len(layouts)
     rows = (n + cols - 1) // cols
     col_w = [0.0] * cols
@@ -167,9 +178,8 @@ def _grid_positions(
 
 
 def _row_positions(
-    layouts: Sequence[MoleculeLayout], *, gap: float = _GAP, center_y: bool = False
+    sizes: Sequence[tuple[float, float]], *, gap: float = _GAP, center_y: bool = False
 ) -> list[tuple[float, float]]:
-    sizes = [normalize_coords(L)[1:] for L in layouts]
     max_h = max((h for _w, h in sizes), default=0.0)
     x = 0.0
     positions: list[tuple[float, float]] = []
@@ -209,9 +219,10 @@ def _reaction_defaults(spec: PictSpec) -> dict[str, str]:
 
 
 def elk_graph(layouts: Sequence[MoleculeLayout], spec: PictSpec) -> dict:
+    sizes = _viewport_sizes(layouts, spec)
     nodes = []
     for i, L in enumerate(layouts):
-        w, h = normalize_coords(L)[1:]
+        w, h = sizes[i]
         nodes.append({"id": L.id or f"m{i}", "width": w, "height": h})
     edges = [
         {
@@ -337,6 +348,7 @@ def layout_diagram_ex(
     if len(layouts) <= 1:
         return DiagramPlacement(positions=[(0.0, 0.0)], edge_paths=[])
 
+    sizes = _viewport_sizes(layouts, spec)
     kind = spec.diagram.kind
     if kind in {DiagramKind.network, DiagramKind.reaction}:
         elk = _elkjs_placement(layouts, spec)
@@ -348,16 +360,18 @@ def layout_diagram_ex(
             stacklevel=3,
         )
         if kind == DiagramKind.reaction:
-            pos = _row_positions(layouts, gap=_REACTION_GAP, center_y=True)
+            pos = _row_positions(sizes, gap=_REACTION_GAP, center_y=True)
         else:
-            pos = _row_positions(layouts)
+            pos = _row_positions(sizes)
         return DiagramPlacement(positions=pos, edge_paths=[])
 
     if kind == DiagramKind.grid:
         cols = spec.diagram.columns or max(1, int(len(layouts) ** 0.5 + 0.5))
-        return DiagramPlacement(positions=_grid_positions(layouts, cols), edge_paths=[])
+        return DiagramPlacement(
+            positions=_grid_positions(layouts, cols, sizes), edge_paths=[]
+        )
 
-    return DiagramPlacement(positions=_row_positions(layouts), edge_paths=[])
+    return DiagramPlacement(positions=_row_positions(sizes), edge_paths=[])
 
 
 def layout_diagram(

@@ -24,12 +24,16 @@ from xenosite.pict.draw.bonds import (
     join_centered_multibonds,
     shorten,
 )
+from xenosite.pict.draw.collision import CollisionGrid
 from xenosite.pict.draw.glyphs import label_halo_path_d
 from xenosite.pict.draw.metrics import (
     BOND_PX,
+    COLLISION_CELL_PX,
     FONT_PX,
     HALO_STROKE,
+    LABEL_GAP_PX,
     MARK_FRAC,
+    OFFSET_PX,
     PAD_PX,
     RADICAL_BASE,
     RADICAL_BASE_BARE,
@@ -39,9 +43,10 @@ from xenosite.pict.draw.metrics import (
     coord_scale,
     label_clearance,
 )
+from xenosite.pict.draw.mol_title import pack_bottom_title
 from xenosite.pict.draw.plotdot import PlotDot
 from xenosite.pict.draw.rings import bond_interior_normals, find_sssr
-from xenosite.pict.draw.text_metrics import label_baseline_offset
+from xenosite.pict.draw.text_metrics import label_baseline_offset, text_box
 
 _LAYER_ORDER = ("shading", "halo", "bonds", "labels", "marks", "overlay")
 _PAD = PAD_PX
@@ -68,6 +73,51 @@ def normalize_coords(
     width = (max_x - min_x) * scale + 2 * _PAD
     height = (max_y - min_y) * scale + 2 * _PAD
     return coords, max(width, 2 * _PAD), max(height, 2 * _PAD)
+
+
+def _mol_occupancy(
+    layout: MoleculeLayout,
+    coords: list[tuple[float, float]],
+    texts: list[str | None],
+) -> CollisionGrid:
+    """Coarse ink occupancy for title packing (bonds + atom labels)."""
+    grid = CollisionGrid(cell=COLLISION_CELL_PX)
+    atom_pos = {a.index: i for i, a in enumerate(layout.atoms)}
+    radius = STROKE_PX + 0.5 * OFFSET_PX
+    for bond in layout.bonds:
+        i0, i1 = atom_pos.get(bond.begin), atom_pos.get(bond.end)
+        if i0 is None or i1 is None:
+            continue
+        x1, y1 = coords[i0]
+        x2, y2 = coords[i1]
+        grid.mark_segment(x1, y1, x2, y2, radius=radius)
+    for i, text in enumerate(texts):
+        x, y = coords[i]
+        if text:
+            ly = y + label_baseline_offset(FONT_PX)
+            box = text_box(text, x, ly, font_size=FONT_PX, which="ink", pad=LABEL_GAP_PX * 0.25)
+            grid.mark_box(*box.as_tuple())
+        else:
+            grid.mark_circle(x, y, STROKE_PX)
+    return grid
+
+
+def viewport_size(
+    layout: MoleculeLayout, mol_spec: MoleculeSpec | None = None
+) -> tuple[float, float]:
+    """Viewport width/height including a bottom title when present."""
+    coords, width, height = normalize_coords(layout)
+    if mol_spec is None or not mol_spec.title:
+        return width, height
+    texts = [_display_text(a) for a in layout.atoms]
+    occ = _mol_occupancy(layout, coords, texts)
+    pack = pack_bottom_title(
+        frame_width=width,
+        frame_height=height,
+        occupancy=occ,
+        title=mol_spec.title,
+    )
+    return pack.width, pack.height
 
 
 def _display_text(atom) -> str | None:
@@ -211,6 +261,20 @@ def _hull_path(points: list[tuple[float, float]], pad: float = 10.0) -> str | No
 def molecule_to_viewport(layout: MoleculeLayout, mol_spec: MoleculeSpec) -> Viewport:
     coords, width, height = normalize_coords(layout)
     layers: dict[str, Layer] = {name: Layer(name=name) for name in _LAYER_ORDER}  # type: ignore[arg-type]
+    texts = [_display_text(a) for a in layout.atoms]
+    title_pack = None
+    if mol_spec.title and mol_spec.title.strip():
+        occ = _mol_occupancy(layout, coords, texts)
+        title_pack = pack_bottom_title(
+            frame_width=width,
+            frame_height=height,
+            occupancy=occ,
+            title=mol_spec.title,
+        )
+        if title_pack.dy:
+            coords = [(x, y + title_pack.dy) for x, y in coords]
+        width, height = title_pack.width, title_pack.height
+
     atom_pos = {a.index: i for i, a in enumerate(layout.atoms)}
     ring_normals = _ring_bond_normals(layout, coords)
 
@@ -237,7 +301,6 @@ def molecule_to_viewport(layout: MoleculeLayout, mol_spec: MoleculeSpec) -> View
                 )
             )
 
-    texts = [_display_text(a) for a in layout.atoms]
     bond_color = mol_spec.color or "#111"
     # Singles first, then centered or interior offsets, then stereo.
     prepared: list[DrawnBond] = []
@@ -440,6 +503,18 @@ def molecule_to_viewport(layout: MoleculeLayout, mol_spec: MoleculeSpec) -> View
                         cls=f"bond-mark atom-{a} atom-{b}",
                     )
                 )
+
+    if title_pack is not None and title_pack.text:
+        layers["overlay"].primitives.append(
+            TextPrim(
+                x=title_pack.title_x,
+                y=title_pack.title_y,
+                text=title_pack.text,
+                font_size=title_pack.font_size,
+                fill="#222",
+                cls="mol-title",
+            )
+        )
 
     return Viewport(
         id=layout.id or mol_spec.id,
