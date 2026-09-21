@@ -21,6 +21,8 @@ export type {
   MoleculeSpec,
   PictSpec,
   RenderOptions,
+  RingAttachmentSpec,
+  RTableSpec,
   ShadeSpec,
 } from "./types.js";
 

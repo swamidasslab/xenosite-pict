@@ -468,6 +468,91 @@
           "default": null,
           "description": "Molecule caption. A bare string uses defaults (pos=bottom). A dict with only text is equivalent; other keys override defaults. Legacy field name `title` is accepted as an alias. Text supports light markup: TeX-like symbols (\\alpha \u2192 \u03b1) and bold/italic via **\u2026** / *\u2026* or \\textbf{} / \\textit{}."
         },
+        "ids": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              }
+            ]
+          },
+          "description": "Molecule-scoped aliases: name \u2192 atom index or atom-index list. Must not collide with keys in ``rings``.",
+          "title": "Ids",
+          "type": "object"
+        },
+        "rings": {
+          "additionalProperties": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "description": "Named rings (human-readable): name \u2192 ordered atom indices. Used by ring_attachments and (later) annotation refs.",
+          "title": "Rings",
+          "type": "object"
+        },
+        "rgroups": {
+          "anyOf": [
+            {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Labels for ``*`` atoms (definite attachment sites). A list assigns labels in star appearance order (``null`` = bare *). A dict maps star ordinal (\"0\", \"1\", \u2026) \u2192 label.",
+          "title": "Rgroups"
+        },
+        "ring_attachments": {
+          "description": "Ring-centered attachments (uncertain site). Each entry needs a label; ``ring`` is a name from ``rings`` or an atom-index list.",
+          "items": {
+            "$ref": "#/$defs/RingAttachmentSpec"
+          },
+          "title": "Ring Attachments",
+          "type": "array"
+        },
+        "rtable": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RTableSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "R-group table. A bare row matrix is shorthand for ``{rows: \u2026}``. Drawing is optional / stubbed in early POC."
+        },
         "marks": {
           "items": {
             "$ref": "#/$defs/MarkSpec"
@@ -509,6 +594,78 @@
         }
       },
       "title": "MoleculeSpec",
+      "type": "object"
+    },
+    "RTableSpec": {
+      "additionalProperties": false,
+      "description": "R-group enumeration table paired with a Markush core.",
+      "properties": {
+        "groups": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Column headers. Default: first-seen rgroup / ring_attachment labels in declaration order.",
+          "title": "Groups"
+        },
+        "rows": {
+          "description": "Table body; each row matches groups length when groups set",
+          "items": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "title": "Rows",
+          "type": "array"
+        }
+      },
+      "title": "RTableSpec",
+      "type": "object"
+    },
+    "RingAttachmentSpec": {
+      "additionalProperties": false,
+      "description": "Uncertain / ring-centered substituent (Markush ``<r>``-style).\n\n``ring`` is a named ring (see :attr:`MoleculeSpec.rings`) or an explicit\natom-index list. ``label`` is required (duplicate labels across attachments\nare allowed).",
+      "properties": {
+        "ring": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "Ring name from MoleculeSpec.rings, or ordered atom indices",
+          "title": "Ring"
+        },
+        "label": {
+          "description": "Attachment caption (e.g. R, R\u00b9, X)",
+          "title": "Label",
+          "type": "string"
+        },
+        "prefer": {
+          "$ref": "#/$defs/AnnotPrefer",
+          "default": "auto",
+          "description": "Preferred label side; collision grid may pick another slot"
+        }
+      },
+      "required": [
+        "ring",
+        "label"
+      ],
+      "title": "RingAttachmentSpec",
       "type": "object"
     },
     "ShadeSpec": {

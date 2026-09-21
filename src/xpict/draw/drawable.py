@@ -26,6 +26,7 @@ from xpict.draw.halo import (
     circle_ring_shape,
     disk_shape,
 )
+from xpict.draw.markush import apply_rgroup_texts, ring_attachment_annotations
 from xpict.draw.metrics import (
     BOND_PX,
     COLLISION_CELL_PX,
@@ -531,6 +532,8 @@ def molecule_drawables(mol_spec: MoleculeSpec) -> list[Drawable]:
     out.append(AtomLabelsDrawable())
     for mark in mol_spec.marks:
         out.append(MarkDrawable(mark))
+    for ann in ring_attachment_annotations(mol_spec):
+        out.append(AnnotationDrawable(ann))
     for ann in mol_spec.annotations:
         out.append(AnnotationDrawable(ann))
     out.append(CaptionDrawable())
@@ -545,7 +548,9 @@ def paint_molecule(
 ) -> Viewport:
     """Build a molecule viewport by emitting drawables into shared layers."""
     coords, width, height = normalize_coords(layout)
-    texts = [display_text(a) for a in layout.atoms]
+    texts = apply_rgroup_texts(
+        layout, mol_spec, [display_text(a) for a in layout.atoms]
+    )
     label_pack = None
     label_text = None
     if mol_spec.label is not None:
@@ -584,7 +589,6 @@ def paint_molecule(
             annot_boxes.extend(drawn.boxes)
         ctx.emit(drawn)
     ctx.grow_to_boxes(annot_boxes)
-    # Caption may need molecule id from mol_spec
     vp = ctx.to_viewport()
     return vp.model_copy(update={"id": layout.id or mol_spec.id})
 

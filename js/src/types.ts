@@ -37,11 +37,41 @@ export interface MoleculeSpec {
   label?: LabelSpec | null;
   /** @deprecated Use `label`. */
   title?: LabelSpec | null;
+  /**
+   * Molecule-scoped aliases: name → atom index or atom list.
+   * Must not collide with `rings` keys.
+   */
+  ids?: Record<string, number | number[]>;
+  /** Named rings: name → ordered atom indices. */
+  rings?: Record<string, number[]>;
+  /**
+   * Labels for `*` atoms. List = star order (`null` = bare *);
+   * dict = star ordinal → label.
+   */
+  rgroups?: (string | null)[] | Record<string, string | null>;
+  /** Ring-centered attachments (uncertain site); label required. */
+  ring_attachments?: RingAttachmentSpec[];
+  /** R-group table (`rows` matrix or `{groups, rows}`). */
+  rtable?: string[][] | RTableSpec;
   marks?: MarkSpec[];
   /** Callouts, region shapes (box/oval/spline), and labels. */
   annotations?: AnnotationSpec[];
   shade?: ShadeSpec;
   color?: string;
+}
+
+/** Ring-centered Markush attachment (`<r>`-style). */
+export interface RingAttachmentSpec {
+  /** Ring name from `rings`, or ordered atom indices. */
+  ring: number[] | string;
+  label: string;
+  prefer?: AnnotPrefer;
+}
+
+/** R-group enumeration table. */
+export interface RTableSpec {
+  groups?: string[];
+  rows?: string[][];
 }
 
 export interface MarkSpec {

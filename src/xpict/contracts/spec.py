@@ -203,6 +203,69 @@ class ShadeSpec(StrictModel):
     vmax: float | None = None
 
 
+class RingAttachmentSpec(StrictModel):
+    """Uncertain / ring-centered substituent (Markush ``<r>``-style).
+
+    ``ring`` is a named ring (see :attr:`MoleculeSpec.rings`) or an explicit
+    atom-index list. ``label`` is required (duplicate labels across attachments
+    are allowed).
+    """
+
+    ring: list[int] | str = Field(
+        description="Ring name from MoleculeSpec.rings, or ordered atom indices"
+    )
+    label: str = Field(description="Attachment caption (e.g. R, R¹, X)")
+    prefer: AnnotPrefer = Field(
+        default=AnnotPrefer.auto,
+        description="Preferred label side; collision grid may pick another slot",
+    )
+
+
+class RTableSpec(StrictModel):
+    """R-group enumeration table paired with a Markush core."""
+
+    groups: list[str] | None = Field(
+        default=None,
+        description=(
+            "Column headers. Default: first-seen rgroup / ring_attachment labels "
+            "in declaration order."
+        ),
+    )
+    rows: list[list[str]] = Field(
+        default_factory=list,
+        description="Table body; each row matches groups length when groups set",
+    )
+
+
+def _coerce_rtable(value: Any) -> Any:
+    """Bare row matrix → ``{rows: …}``."""
+    if value is None or isinstance(value, RTableSpec):
+        return value
+    if isinstance(value, list):
+        return {"rows": value}
+    return value
+
+
+def _coerce_rgroups(value: Any) -> Any:
+    """Normalize dict keys to strings for JSON-stable star ordinals."""
+    if value is None or isinstance(value, list):
+        return value
+    if isinstance(value, dict):
+        return {str(k): v for k, v in value.items()}
+    return value
+
+
+_RGroupsInput = Annotated[
+    list[str | None] | dict[str, str | None] | None,
+    BeforeValidator(_coerce_rgroups),
+]
+
+_RTableInput = Annotated[
+    RTableSpec | None,
+    BeforeValidator(_coerce_rtable),
+]
+
+
 class MoleculeSpec(StrictModel):
     """One molecule in a depiction document."""
 
@@ -225,6 +288,42 @@ class MoleculeSpec(StrictModel):
             "Legacy field name `title` is accepted as an alias. "
             "Text supports light markup: TeX-like symbols (\\alpha → α) and "
             "bold/italic via **…** / *…* or \\textbf{} / \\textit{}."
+        ),
+    )
+    ids: dict[str, int | list[int]] = Field(
+        default_factory=dict,
+        description=(
+            "Molecule-scoped aliases: name → atom index or atom-index list. "
+            "Must not collide with keys in ``rings``."
+        ),
+    )
+    rings: dict[str, list[int]] = Field(
+        default_factory=dict,
+        description=(
+            "Named rings (human-readable): name → ordered atom indices. "
+            "Used by ring_attachments and (later) annotation refs."
+        ),
+    )
+    rgroups: _RGroupsInput = Field(
+        default=None,
+        description=(
+            "Labels for ``*`` atoms (definite attachment sites). "
+            "A list assigns labels in star appearance order (``null`` = bare *). "
+            "A dict maps star ordinal (\"0\", \"1\", …) → label."
+        ),
+    )
+    ring_attachments: list[RingAttachmentSpec] = Field(
+        default_factory=list,
+        description=(
+            "Ring-centered attachments (uncertain site). Each entry needs a "
+            "label; ``ring`` is a name from ``rings`` or an atom-index list."
+        ),
+    )
+    rtable: _RTableInput = Field(
+        default=None,
+        description=(
+            "R-group table. A bare row matrix is shorthand for ``{rows: …}``. "
+            "Drawing is optional / stubbed in early POC."
         ),
     )
     marks: list[MarkSpec] = Field(default_factory=list)
@@ -254,6 +353,22 @@ class MoleculeSpec(StrictModel):
             raise ValueError(
                 "MoleculeSpec requires smiles, cxsmiles, esmiles, or molfile"
             )
+        return self
+
+    @model_validator(mode="after")
+    def unique_mol_scope_names(self) -> MoleculeSpec:
+        overlap = set(self.ids) & set(self.rings)
+        if overlap:
+            raise ValueError(
+                f"MoleculeSpec ids/rings names must be unique in scope; "
+                f"duplicates: {sorted(overlap)}"
+            )
+        for ra in self.ring_attachments:
+            if isinstance(ra.ring, str) and ra.ring not in self.rings:
+                raise ValueError(
+                    f"ring_attachment label={ra.label!r} references unknown "
+                    f"ring {ra.ring!r}; declare it in rings"
+                )
         return self
 
 
@@ -366,6 +481,8 @@ __all__ = [
     "MarkSpec",
     "MoleculeSpec",
     "PictSpec",
+    "RingAttachmentSpec",
+    "RTableSpec",
     "ShadeSpec",
     "compress_pict",
     "expand_pict",

@@ -23,6 +23,7 @@ from xpict.draw.drawable import (
 from xpict.draw.drawn import halo_prims
 from xpict.draw.glyphs import compile_text_shapes
 from xpict.draw.halo import circle_ring_shape, disk_shape
+from xpict.draw.markush import apply_rgroup_texts
 from xpict.draw.metrics import HALO_STROKE, LABEL_GAP_PX, STROKE_PX
 from xpict.draw.mol_title import pack_label
 from xpict.draw.paths import ink_from_path_prim
@@ -50,7 +51,9 @@ def viewport_size(
     text = _label_text(mol_spec)
     if text is None or mol_spec is None or mol_spec.label is None:
         return width, height
-    texts = [display_text(a) for a in layout.atoms]
+    texts = apply_rgroup_texts(
+        layout, mol_spec, [display_text(a) for a in layout.atoms]
+    )
     occ = mol_occupancy(layout, coords, texts)
     pack = pack_label(
         frame_width=width,
