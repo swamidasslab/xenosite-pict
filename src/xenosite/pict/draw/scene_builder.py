@@ -24,6 +24,7 @@ from xenosite.pict.draw.bonds import (
     join_centered_multibonds,
     shorten,
 )
+from xenosite.pict.draw.glyphs import label_halo_path_d
 from xenosite.pict.draw.metrics import (
     BOND_PX,
     FONT_PX,
@@ -361,21 +362,26 @@ def molecule_to_viewport(layout: MoleculeLayout, mol_spec: MoleculeSpec) -> View
                 )
         if not label:
             continue
+        label_y = y + FONT_PX * 0.35
         if mol_spec.halo:
-            layers["halo"].primitives.append(
-                CirclePrim(
-                    cx=x,
-                    cy=y,
-                    r=max(FONT_PX * 0.62, label_clearance(label)),
-                    fill="#fff",
-                    opacity=1.0,
-                    cls="label-halo",
+            # Glyph outlines → shapely buffer → path. Portable knockout; no
+            # viewer font required for the halo (ink stays <text>).
+            d = label_halo_path_d(label, x, label_y, font_size=FONT_PX)
+            if d:
+                layers["halo"].primitives.append(
+                    PathPrim(
+                        d=d,
+                        stroke="none",
+                        fill="#fff",
+                        stroke_width=0.0,
+                        opacity=1.0,
+                        cls="halo label-halo",
+                    )
                 )
-            )
         layers["labels"].primitives.append(
             TextPrim(
                 x=x,
-                y=y + FONT_PX * 0.35,
+                y=label_y,
                 text=label,
                 font_size=FONT_PX,
                 cls=f"atom-{atom.index} label",

@@ -242,7 +242,7 @@
           "type": "number"
         },
         "font_family": {
-          "default": "Helvetica, Arial, sans-serif",
+          "default": "Liberation Sans, Helvetica, Arial, sans-serif",
           "title": "Font Family",
           "type": "string"
         },

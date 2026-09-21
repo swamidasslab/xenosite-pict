@@ -50,7 +50,7 @@ class TextPrim(StrictModel):
     text: str
     fill: str = "#000"
     font_size: float = 12.0
-    font_family: str = "Helvetica, Arial, sans-serif"
+    font_family: str = "Liberation Sans, Helvetica, Arial, sans-serif"
     anchor: Literal["start", "middle", "end"] = "middle"
     cls: str | None = None
 

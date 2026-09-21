@@ -62,7 +62,7 @@ def _chem_backend() -> str:
         Pict(backend="indigo").layout({"molecules": [{"smiles": "CCO"}]})
         return "indigo"
     except Exception:
-        pytest.skip("indigo not installed")
+        return "native"
 
 
 def _bond_stroke_counts(svg: str) -> Counter[str]:
@@ -176,11 +176,27 @@ def test_halo_follows_each_bond_stroke():
         .molecules[0]
         .bonds
     )
-    n_halo = len(re.findall(r'class="halo"', svg))
+    n_halo = len(re.findall(r"<path[^>]*class=\"halo\"", svg))
     n_ink = len(re.findall(r"bond-skeleton|bond-offset|bond-wedge", svg))
     assert n_halo == n_ink
     assert n_halo > n_bonds  # offsets are haloed too
     assert f'stroke-width="{HALO_STROKE}"' in svg
+
+
+def test_halo_includes_buffered_label_glyphs():
+    """Label knockout is a buffered glyph outline path, not a circle or text stroke."""
+    backend = _chem_backend()
+    svg = render({"molecules": [{"smiles": "CCO"}]}, backend=backend)
+    assert not re.search(r'<circle[^>]*label-halo', svg)
+    assert not re.search(r'<text[^>]*label-halo', svg)
+    halo = re.search(r'<path[^>]*class="halo label-halo"[^/]*/>', svg)
+    assert halo is not None
+    assert 'fill="#fff"' in halo.group(0)
+    assert 'stroke="none"' in halo.group(0)
+    assert re.search(r'<text[^>]*class="[^"]*\blabel\b[^"]*"[^>]*>OH</text>', svg)
+    # Outline path is longer than a trivial box.
+    d = re.search(r'\bd="([^"]+)"', halo.group(0))
+    assert d is not None and d.group(1).count("L") > 8
 
 
 def test_shade_zeros_do_not_paint_full_disks():
