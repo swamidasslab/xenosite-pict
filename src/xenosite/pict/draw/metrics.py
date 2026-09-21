@@ -48,7 +48,7 @@ HALO_FRAC = 2 * STROKE_FRAC  # knockout stays twice the ink, as in xenopict
 # Air between label ink and bond ends. Also the shapely buffer on the glyph
 # halo: enough white around letters to stay legible on a black host page, and
 # enough gap that bonds do not crowd the glyphs.
-LABEL_GAP_FRAC = 0.18  # × bond → 3.6 px at BOND_PX=20
+LABEL_GAP_FRAC = 0.25  # × bond → 5 px at BOND_PX=20
 SHADE_FRAC = 0.90  # xenopict shade(): scale * 0.9
 MARK_FRAC = 1.0  # xenopict mark_atoms radius = scale * mark_down_scale
 
