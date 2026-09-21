@@ -8,7 +8,8 @@ import pytest
 
 from xpict import Pict, render
 from xpict.contracts.scene import PathPrim, Viewport
-from xpict.contracts.spec import EdgeArrow, EdgeSpec, PictSpec
+from xpict.contracts.nodes import PictSpec
+from xpict.contracts.spec import EdgeArrow, EdgeSpec
 from xpict.diagram.elk import elk_graph, layout_diagram
 from xpict.draw.arrows import diagram_overlays, edge_anchors, edge_primitives
 from xpict.draw.scene_builder import build_scene

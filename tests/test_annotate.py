@@ -7,12 +7,12 @@ import re
 import pytest
 
 from xpict import render
+from xpict.contracts.nodes import PictSpec
 from xpict.contracts.spec import (
     AnnotKind,
     AnnotationSpec,
     AnnotPrefer,
     MoleculeSpec,
-    PictSpec,
 )
 from xpict.draw.annotate import draw_annotations
 from xpict.draw.collision import CollisionGrid
@@ -124,7 +124,7 @@ def test_annotations_land_on_marks_layer():
         }
     )
     layouts = pict.layout(spec).molecules
-    scene = build_scene(layouts, spec.molecules, spec)
+    scene = build_scene(layouts, spec.molecules, spec.to_legacy())
     marks = next(layer for layer in scene.viewports[0].layers if layer.name == "marks")
     assert any(
         getattr(p, "cls", None) and "annot" in (p.cls or "") for p in marks.primitives

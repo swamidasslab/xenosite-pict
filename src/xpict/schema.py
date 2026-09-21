@@ -1,31 +1,51 @@
-"""Pydantic document models (plan name ``schema.py``).
+"""Public re-exports of schema / contract types."""
 
-Canonical definitions live in ``xpict.contracts.spec``; this module
-re-exports them for the scaffold layout described in the project plan.
-"""
-
-from __future__ import annotations
-
-from xpict.contracts.spec import (
-    DiagramKind,
-    DiagramSpec,
-    EdgeArrow,
-    EdgeSpec,
-    MarkKind,
-    MarkSpec,
-    MoleculeSpec,
+from xpict.contracts.nodes import (
+    ArrowNode,
+    GridNode,
+    GroupNode,
+    ImageNode,
+    LayoutSpec,
+    MolNode,
+    NetworkNode,
+    Node,
     PictSpec,
-    ShadeSpec,
+    ReactionNode,
+    RefNode,
+    StackNode,
+    TableNode,
+    TextNode,
+    compress_pict,
+    expand_pict,
+)
+from xpict.contracts.spec import (
+    AnnotationSpec,
+    DiagramSpec,
+    EdgeSpec,
+    LegacyPictSpec,
+    MoleculeSpec,
 )
 
 __all__ = [
-    "DiagramKind",
+    "AnnotationSpec",
+    "ArrowNode",
     "DiagramSpec",
-    "EdgeArrow",
     "EdgeSpec",
-    "MarkKind",
-    "MarkSpec",
+    "GridNode",
+    "GroupNode",
+    "ImageNode",
+    "LayoutSpec",
+    "LegacyPictSpec",
+    "MolNode",
     "MoleculeSpec",
+    "NetworkNode",
+    "Node",
     "PictSpec",
-    "ShadeSpec",
+    "ReactionNode",
+    "RefNode",
+    "StackNode",
+    "TableNode",
+    "TextNode",
+    "compress_pict",
+    "expand_pict",
 ]

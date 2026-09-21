@@ -53,10 +53,11 @@ def test_export_schemas(tmp_path: Path):
     written = export_schemas(tmp_path)
     assert "xpict.schema.json" in written
     data = json.loads(written["xpict.schema.json"].read_text())
-    assert "properties" in data
-    # cxsmiles present in molecule schema (defs or $defs)
+    # Nested root is a discriminated union ($defs + oneOf / anyOf)
+    assert "$defs" in data or "properties" in data or "oneOf" in data or "anyOf" in data
     blob = json.dumps(data)
     assert "cxsmiles" in blob
+    assert '"mol"' in blob or "MolNode" in blob
 
 
 def test_unsupported_option_warns():

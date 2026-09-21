@@ -1,6 +1,26 @@
 """Contract package exports."""
 
 from xpict.contracts.layout import LayoutResult, MoleculeLayout
+from xpict.contracts.nodes import (
+    ArrowNode,
+    GridNode,
+    GroupNode,
+    ImageNode,
+    LayoutSpec,
+    MolNode,
+    NetworkNode,
+    Node,
+    PictSpec,
+    ReactionNode,
+    RefNode,
+    StackNode,
+    TableNode,
+    TextNode,
+    compress_pict,
+    expand_pict,
+    flatten_to_legacy,
+    lift_legacy,
+)
 from xpict.contracts.scene import Scene
 from xpict.contracts.shorthand import (
     LABEL_DEFAULTS,
@@ -16,19 +36,33 @@ from xpict.contracts.shorthand import (
 from xpict.contracts.spec import (
     LabelPos,
     LabelSpec,
-    PictSpec,
-    compress_pict,
-    expand_pict,
+    LegacyPictSpec,
+    MoleculeSpec,
 )
 
 __all__ = [
     "LABEL_DEFAULTS",
+    "ArrowNode",
+    "GridNode",
+    "GroupNode",
+    "ImageNode",
     "LabelPos",
     "LabelSpec",
     "LayoutResult",
+    "LayoutSpec",
+    "LegacyPictSpec",
+    "MolNode",
     "MoleculeLayout",
+    "MoleculeSpec",
+    "NetworkNode",
+    "Node",
     "PictSpec",
+    "ReactionNode",
+    "RefNode",
     "Scene",
+    "StackNode",
+    "TableNode",
+    "TextNode",
     "compress_label",
     "compress_pict",
     "compress_pict_input",
@@ -37,6 +71,8 @@ __all__ = [
     "expand_pict",
     "expand_pict_input",
     "expand_shorthand",
+    "flatten_to_legacy",
+    "lift_legacy",
     "map_dicts",
     "map_tree",
 ]

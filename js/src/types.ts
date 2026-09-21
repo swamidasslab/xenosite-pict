@@ -1,6 +1,9 @@
 /**
  * Shared PictSpec-shaped types (mirror schema/xpict.schema.json).
  * Generated schema remains the source of truth for validation.
+ *
+ * Canonical form is a nested node tree (`type` + `children` + `layout`).
+ * Legacy flat `{ molecules, diagram }` is still accepted by the Python API.
  */
 
 export type OutputFormat = "svg" | "html";
@@ -26,6 +29,125 @@ export type LabelSpec =
       pos?: LabelPos;
     };
 
+/** Hierarchical layout knobs on any node. */
+export interface LayoutSpec {
+  columns?: number;
+  direction?: "row" | "column";
+  gap?: number;
+  attach?: "below" | "above" | "left" | "right";
+  width?: number;
+  height?: number;
+  halo?: boolean;
+  align?: boolean;
+  elk_options?: Record<string, unknown>;
+  output?: "root" | "children" | "leaves" | "all";
+  label?: LabelSpec | null;
+  caption?: string;
+  above?: unknown[];
+  below?: unknown[];
+  edges?: EdgeSpec[];
+}
+
+export type NodeType =
+  | "mol"
+  | "arrow"
+  | "text"
+  | "image"
+  | "table"
+  | "ref"
+  | "annotation"
+  | "group"
+  | "grid"
+  | "stack"
+  | "reaction"
+  | "network";
+
+export interface NodeBase {
+  type: NodeType;
+  id?: string;
+  panel?: string;
+  layout?: LayoutSpec;
+  meta?: Record<string, unknown>;
+  children?: PictNode[];
+}
+
+export interface MolNode extends NodeBase {
+  type: "mol";
+  smiles?: string;
+  cxsmiles?: string;
+  esmiles?: string;
+  molfile?: string;
+  ids?: Record<string, number | number[]>;
+  rings?: Record<string, number[]>;
+  rgroups?: (string | null)[] | Record<string, string | null>;
+  ring_attachments?: RingAttachmentSpec[];
+  rtable?: string[][] | RTableSpec;
+  marks?: MarkSpec[];
+  annotations?: AnnotationSpec[];
+  shade?: ShadeSpec;
+  color?: string;
+}
+
+export interface ArrowNode extends NodeBase {
+  type: "arrow";
+  arrow?: "forward" | "equilibrium" | "open" | "line";
+  label?: string;
+  role?: string;
+  color?: string;
+  stroke_width?: number;
+  dashed?: boolean;
+}
+
+export interface TextNode extends NodeBase {
+  type: "text";
+  text: string;
+}
+
+export interface ImageNode extends NodeBase {
+  type: "image";
+  src: string;
+  alt?: string;
+}
+
+export interface TableNode extends NodeBase {
+  type: "table";
+  columns?: string[];
+  rows?: unknown[][];
+}
+
+export interface RefNode extends NodeBase {
+  type: "ref";
+  ref: string;
+}
+
+export interface AnnotationNode extends NodeBase {
+  type: "annotation";
+  kind?: AnnotKind;
+  atoms?: number[];
+  bonds?: [number, number][];
+  ring?: number[];
+  label?: string;
+  color?: string;
+  arrow?: boolean;
+  prefer?: AnnotPrefer;
+}
+
+export interface ContainerNode extends NodeBase {
+  type: "group" | "grid" | "stack" | "reaction" | "network";
+}
+
+/** Canonical nested figure document (root node). */
+export type PictNode =
+  | MolNode
+  | ArrowNode
+  | TextNode
+  | ImageNode
+  | TableNode
+  | RefNode
+  | AnnotationNode
+  | ContainerNode;
+
+/** @deprecated Flat molecule payload — use MolNode in nested trees. */
 export interface MoleculeSpec {
   id?: string;
   smiles?: string;
@@ -136,7 +258,8 @@ export interface DiagramSpec {
   elk_options?: Record<string, unknown>;
 }
 
-export interface PictSpec {
+/** Legacy flat document (`{ molecules, diagram }`). */
+export interface LegacyPictSpec {
   molecules: MoleculeSpec[];
   diagram?: DiagramSpec;
   width?: number;
@@ -147,6 +270,9 @@ export interface PictSpec {
    */
   halo?: boolean;
 }
+
+/** Nested node tree or legacy flat document. */
+export type PictSpec = PictNode | LegacyPictSpec;
 
 /** Backend-agnostic 2D layout (coords only — drawing stays in this package). */
 export interface AtomLayout {
@@ -179,6 +305,6 @@ export interface MoleculeLayout {
 }
 
 export interface RenderOptions {
-  backend?: string;
   format?: OutputFormat;
+  backend?: string;
 }

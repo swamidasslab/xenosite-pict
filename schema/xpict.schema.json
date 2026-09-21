@@ -23,6 +23,207 @@
       "title": "AnnotPrefer",
       "type": "string"
     },
+    "AnnotationNode": {
+      "additionalProperties": false,
+      "description": "Annotation as a nested object (alternative to mol.annotations list).",
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional stable id for refs/edges",
+          "title": "Id"
+        },
+        "panel": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Subfigure tag drawn as (a), (b), \u2026",
+          "title": "Panel"
+        },
+        "layout": {
+          "$ref": "#/$defs/LayoutSpec"
+        },
+        "meta": {
+          "additionalProperties": true,
+          "title": "Meta",
+          "type": "object"
+        },
+        "type": {
+          "const": "annotation",
+          "default": "annotation",
+          "title": "Type",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/AnnotKind",
+          "default": "callout"
+        },
+        "atoms": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Atoms"
+        },
+        "bonds": {
+          "anyOf": [
+            {
+              "items": {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ],
+                "type": "array"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bonds"
+        },
+        "ring": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ring"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Label"
+        },
+        "color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Color"
+        },
+        "arrow": {
+          "default": true,
+          "title": "Arrow",
+          "type": "boolean"
+        },
+        "prefer": {
+          "$ref": "#/$defs/AnnotPrefer",
+          "default": "auto"
+        },
+        "children": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "annotation": "#/$defs/AnnotationNode",
+                "arrow": "#/$defs/ArrowNode",
+                "grid": "#/$defs/GridNode",
+                "group": "#/$defs/GroupNode",
+                "image": "#/$defs/ImageNode",
+                "mol": "#/$defs/MolNode",
+                "network": "#/$defs/NetworkNode",
+                "reaction": "#/$defs/ReactionNode",
+                "ref": "#/$defs/RefNode",
+                "stack": "#/$defs/StackNode",
+                "table": "#/$defs/TableNode",
+                "text": "#/$defs/TextNode"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/MolNode"
+              },
+              {
+                "$ref": "#/$defs/ArrowNode"
+              },
+              {
+                "$ref": "#/$defs/TextNode"
+              },
+              {
+                "$ref": "#/$defs/ImageNode"
+              },
+              {
+                "$ref": "#/$defs/TableNode"
+              },
+              {
+                "$ref": "#/$defs/RefNode"
+              },
+              {
+                "$ref": "#/$defs/AnnotationNode"
+              },
+              {
+                "$ref": "#/$defs/GroupNode"
+              },
+              {
+                "$ref": "#/$defs/GridNode"
+              },
+              {
+                "$ref": "#/$defs/StackNode"
+              },
+              {
+                "$ref": "#/$defs/ReactionNode"
+              },
+              {
+                "$ref": "#/$defs/NetworkNode"
+              }
+            ]
+          },
+          "title": "Children",
+          "type": "array"
+        }
+      },
+      "title": "AnnotationNode",
+      "type": "object"
+    },
     "AnnotationSpec": {
       "additionalProperties": false,
       "description": "Molecule annotation with collision-aware label placement.\n\nTargets (use one):\n\n- ``atoms`` \u2014 one atom (callout) or a set (region)\n- ``bonds`` \u2014 bond endpoints as ``[begin, end]`` pairs\n- ``ring`` \u2014 atom indices of a ring (callout at ring center)\n\nKinds:\n\n- ``callout`` \u2014 indicator arrow and/or text next to the target\n- ``box`` / ``oval`` / ``spline`` \u2014 region outline around ``atoms``",
@@ -130,59 +331,171 @@
       "title": "AnnotationSpec",
       "type": "object"
     },
-    "DiagramKind": {
-      "enum": [
-        "single",
-        "grid",
-        "network",
-        "reaction",
-        "html"
-      ],
-      "title": "DiagramKind",
-      "type": "string"
-    },
-    "DiagramSpec": {
+    "ArrowNode": {
       "additionalProperties": false,
-      "description": "Multi-molecule composition options (ELK / grid / HTML).",
+      "description": "Reaction / diagram arrow between siblings (or via layout.edges).",
       "properties": {
-        "kind": {
-          "$ref": "#/$defs/DiagramKind",
-          "default": "single"
-        },
-        "columns": {
+        "id": {
           "anyOf": [
             {
-              "type": "integer"
+              "type": "string"
             },
             {
               "type": "null"
             }
           ],
           "default": null,
-          "description": "Grid columns when kind=grid",
-          "title": "Columns"
+          "description": "Optional stable id for refs/edges",
+          "title": "Id"
         },
-        "edges": {
-          "items": {
-            "$ref": "#/$defs/EdgeSpec"
-          },
-          "title": "Edges",
-          "type": "array"
+        "panel": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Subfigure tag drawn as (a), (b), \u2026",
+          "title": "Panel"
         },
-        "elk_options": {
+        "layout": {
+          "$ref": "#/$defs/LayoutSpec"
+        },
+        "meta": {
           "additionalProperties": true,
-          "description": "Pass-through ELK layout options (engine-specific support varies)",
-          "title": "Elk Options",
+          "title": "Meta",
           "type": "object"
         },
-        "align": {
+        "type": {
+          "const": "arrow",
+          "default": "arrow",
+          "title": "Type",
+          "type": "string"
+        },
+        "arrow": {
+          "$ref": "#/$defs/EdgeArrow",
+          "default": "forward"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Legacy single edge label; prefer layout.above",
+          "title": "Label"
+        },
+        "role": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Role"
+        },
+        "color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Color"
+        },
+        "stroke_width": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stroke Width"
+        },
+        "dashed": {
           "default": false,
-          "description": "Align later molecules onto the first. RDKit fixes the matched atoms and redraws the rest when it is installed; otherwise each molecule is depicted on its own and rigidly rotated and translated onto the match.",
-          "title": "Align",
+          "title": "Dashed",
           "type": "boolean"
+        },
+        "children": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "annotation": "#/$defs/AnnotationNode",
+                "arrow": "#/$defs/ArrowNode",
+                "grid": "#/$defs/GridNode",
+                "group": "#/$defs/GroupNode",
+                "image": "#/$defs/ImageNode",
+                "mol": "#/$defs/MolNode",
+                "network": "#/$defs/NetworkNode",
+                "reaction": "#/$defs/ReactionNode",
+                "ref": "#/$defs/RefNode",
+                "stack": "#/$defs/StackNode",
+                "table": "#/$defs/TableNode",
+                "text": "#/$defs/TextNode"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/MolNode"
+              },
+              {
+                "$ref": "#/$defs/ArrowNode"
+              },
+              {
+                "$ref": "#/$defs/TextNode"
+              },
+              {
+                "$ref": "#/$defs/ImageNode"
+              },
+              {
+                "$ref": "#/$defs/TableNode"
+              },
+              {
+                "$ref": "#/$defs/RefNode"
+              },
+              {
+                "$ref": "#/$defs/AnnotationNode"
+              },
+              {
+                "$ref": "#/$defs/GroupNode"
+              },
+              {
+                "$ref": "#/$defs/GridNode"
+              },
+              {
+                "$ref": "#/$defs/StackNode"
+              },
+              {
+                "$ref": "#/$defs/ReactionNode"
+              },
+              {
+                "$ref": "#/$defs/NetworkNode"
+              }
+            ]
+          },
+          "title": "Children",
+          "type": "array"
         }
       },
-      "title": "DiagramSpec",
+      "title": "ArrowNode",
       "type": "object"
     },
     "EdgeArrow": {
@@ -277,6 +590,546 @@
       "title": "EdgeSpec",
       "type": "object"
     },
+    "GridNode": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional stable id for refs/edges",
+          "title": "Id"
+        },
+        "panel": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Subfigure tag drawn as (a), (b), \u2026",
+          "title": "Panel"
+        },
+        "layout": {
+          "$ref": "#/$defs/LayoutSpec"
+        },
+        "meta": {
+          "additionalProperties": true,
+          "title": "Meta",
+          "type": "object"
+        },
+        "type": {
+          "const": "grid",
+          "default": "grid",
+          "title": "Type",
+          "type": "string"
+        },
+        "children": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "annotation": "#/$defs/AnnotationNode",
+                "arrow": "#/$defs/ArrowNode",
+                "grid": "#/$defs/GridNode",
+                "group": "#/$defs/GroupNode",
+                "image": "#/$defs/ImageNode",
+                "mol": "#/$defs/MolNode",
+                "network": "#/$defs/NetworkNode",
+                "reaction": "#/$defs/ReactionNode",
+                "ref": "#/$defs/RefNode",
+                "stack": "#/$defs/StackNode",
+                "table": "#/$defs/TableNode",
+                "text": "#/$defs/TextNode"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/MolNode"
+              },
+              {
+                "$ref": "#/$defs/ArrowNode"
+              },
+              {
+                "$ref": "#/$defs/TextNode"
+              },
+              {
+                "$ref": "#/$defs/ImageNode"
+              },
+              {
+                "$ref": "#/$defs/TableNode"
+              },
+              {
+                "$ref": "#/$defs/RefNode"
+              },
+              {
+                "$ref": "#/$defs/AnnotationNode"
+              },
+              {
+                "$ref": "#/$defs/GroupNode"
+              },
+              {
+                "$ref": "#/$defs/GridNode"
+              },
+              {
+                "$ref": "#/$defs/StackNode"
+              },
+              {
+                "$ref": "#/$defs/ReactionNode"
+              },
+              {
+                "$ref": "#/$defs/NetworkNode"
+              }
+            ]
+          },
+          "title": "Children",
+          "type": "array"
+        }
+      },
+      "title": "GridNode",
+      "type": "object"
+    },
+    "GroupNode": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional stable id for refs/edges",
+          "title": "Id"
+        },
+        "panel": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Subfigure tag drawn as (a), (b), \u2026",
+          "title": "Panel"
+        },
+        "layout": {
+          "$ref": "#/$defs/LayoutSpec"
+        },
+        "meta": {
+          "additionalProperties": true,
+          "title": "Meta",
+          "type": "object"
+        },
+        "type": {
+          "const": "group",
+          "default": "group",
+          "title": "Type",
+          "type": "string"
+        },
+        "children": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "annotation": "#/$defs/AnnotationNode",
+                "arrow": "#/$defs/ArrowNode",
+                "grid": "#/$defs/GridNode",
+                "group": "#/$defs/GroupNode",
+                "image": "#/$defs/ImageNode",
+                "mol": "#/$defs/MolNode",
+                "network": "#/$defs/NetworkNode",
+                "reaction": "#/$defs/ReactionNode",
+                "ref": "#/$defs/RefNode",
+                "stack": "#/$defs/StackNode",
+                "table": "#/$defs/TableNode",
+                "text": "#/$defs/TextNode"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/MolNode"
+              },
+              {
+                "$ref": "#/$defs/ArrowNode"
+              },
+              {
+                "$ref": "#/$defs/TextNode"
+              },
+              {
+                "$ref": "#/$defs/ImageNode"
+              },
+              {
+                "$ref": "#/$defs/TableNode"
+              },
+              {
+                "$ref": "#/$defs/RefNode"
+              },
+              {
+                "$ref": "#/$defs/AnnotationNode"
+              },
+              {
+                "$ref": "#/$defs/GroupNode"
+              },
+              {
+                "$ref": "#/$defs/GridNode"
+              },
+              {
+                "$ref": "#/$defs/StackNode"
+              },
+              {
+                "$ref": "#/$defs/ReactionNode"
+              },
+              {
+                "$ref": "#/$defs/NetworkNode"
+              }
+            ]
+          },
+          "title": "Children",
+          "type": "array"
+        }
+      },
+      "title": "GroupNode",
+      "type": "object"
+    },
+    "ImageNode": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional stable id for refs/edges",
+          "title": "Id"
+        },
+        "panel": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Subfigure tag drawn as (a), (b), \u2026",
+          "title": "Panel"
+        },
+        "layout": {
+          "$ref": "#/$defs/LayoutSpec"
+        },
+        "meta": {
+          "additionalProperties": true,
+          "title": "Meta",
+          "type": "object"
+        },
+        "type": {
+          "const": "image",
+          "default": "image",
+          "title": "Type",
+          "type": "string"
+        },
+        "src": {
+          "title": "Src",
+          "type": "string"
+        },
+        "alt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Alt"
+        },
+        "children": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "annotation": "#/$defs/AnnotationNode",
+                "arrow": "#/$defs/ArrowNode",
+                "grid": "#/$defs/GridNode",
+                "group": "#/$defs/GroupNode",
+                "image": "#/$defs/ImageNode",
+                "mol": "#/$defs/MolNode",
+                "network": "#/$defs/NetworkNode",
+                "reaction": "#/$defs/ReactionNode",
+                "ref": "#/$defs/RefNode",
+                "stack": "#/$defs/StackNode",
+                "table": "#/$defs/TableNode",
+                "text": "#/$defs/TextNode"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/MolNode"
+              },
+              {
+                "$ref": "#/$defs/ArrowNode"
+              },
+              {
+                "$ref": "#/$defs/TextNode"
+              },
+              {
+                "$ref": "#/$defs/ImageNode"
+              },
+              {
+                "$ref": "#/$defs/TableNode"
+              },
+              {
+                "$ref": "#/$defs/RefNode"
+              },
+              {
+                "$ref": "#/$defs/AnnotationNode"
+              },
+              {
+                "$ref": "#/$defs/GroupNode"
+              },
+              {
+                "$ref": "#/$defs/GridNode"
+              },
+              {
+                "$ref": "#/$defs/StackNode"
+              },
+              {
+                "$ref": "#/$defs/ReactionNode"
+              },
+              {
+                "$ref": "#/$defs/NetworkNode"
+              }
+            ]
+          },
+          "title": "Children",
+          "type": "array"
+        }
+      },
+      "required": [
+        "src"
+      ],
+      "title": "ImageNode",
+      "type": "object"
+    },
+    "LayoutSpec": {
+      "additionalProperties": false,
+      "description": "How this node places itself and/or its children.",
+      "properties": {
+        "columns": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Grid columns",
+          "title": "Columns"
+        },
+        "direction": {
+          "anyOf": [
+            {
+              "enum": [
+                "row",
+                "column"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Stack / reaction flow direction",
+          "title": "Direction"
+        },
+        "gap": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Spacing between children",
+          "title": "Gap"
+        },
+        "attach": {
+          "anyOf": [
+            {
+              "enum": [
+                "below",
+                "above",
+                "left",
+                "right"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Where a nested child attaches relative to its parent",
+          "title": "Attach"
+        },
+        "width": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Width"
+        },
+        "height": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Height"
+        },
+        "halo": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "White knockout under ink; typically set on the root",
+          "title": "Halo"
+        },
+        "align": {
+          "default": false,
+          "description": "Align later molecules onto the first (legacy diagram.align)",
+          "title": "Align",
+          "type": "boolean"
+        },
+        "elk_options": {
+          "additionalProperties": true,
+          "title": "Elk Options",
+          "type": "object"
+        },
+        "output": {
+          "default": "root",
+          "description": "Render projection: whole tree vs explode children/leaves",
+          "enum": [
+            "root",
+            "children",
+            "leaves",
+            "all"
+          ],
+          "title": "Output",
+          "type": "string"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "text": {
+                  "type": "string"
+                },
+                "pos": {
+                  "default": "bottom",
+                  "enum": [
+                    "bottom",
+                    "top",
+                    "left",
+                    "right"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "text"
+              ],
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Molecule caption (string shorthand or LabelSpec)"
+        },
+        "caption": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Image / panel caption",
+          "title": "Caption"
+        },
+        "above": {
+          "description": "Arrow / edge content above the shaft (text or nodes)",
+          "items": {},
+          "title": "Above",
+          "type": "array"
+        },
+        "below": {
+          "description": "Arrow / edge content below the shaft (text or nodes)",
+          "items": {},
+          "title": "Below",
+          "type": "array"
+        },
+        "edges": {
+          "description": "Explicit edges when children are not a linear reaction walk",
+          "items": {
+            "$ref": "#/$defs/EdgeSpec"
+          },
+          "title": "Edges",
+          "type": "array"
+        }
+      },
+      "title": "LayoutSpec",
+      "type": "object"
+    },
     "MarkKind": {
       "enum": [
         "atoms",
@@ -365,9 +1218,9 @@
       "title": "MarkSpec",
       "type": "object"
     },
-    "MoleculeSpec": {
+    "MolNode": {
       "additionalProperties": false,
-      "description": "One molecule in a depiction document.",
+      "description": "Molecule object (chemistry payload + optional nested annotations/tables).",
       "properties": {
         "id": {
           "anyOf": [
@@ -379,8 +1232,35 @@
             }
           ],
           "default": null,
-          "description": "Stable id for diagram edges/nodes",
+          "description": "Optional stable id for refs/edges",
           "title": "Id"
+        },
+        "panel": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Subfigure tag drawn as (a), (b), \u2026",
+          "title": "Panel"
+        },
+        "layout": {
+          "$ref": "#/$defs/LayoutSpec"
+        },
+        "meta": {
+          "additionalProperties": true,
+          "title": "Meta",
+          "type": "object"
+        },
+        "type": {
+          "const": "mol",
+          "default": "mol",
+          "title": "Type",
+          "type": "string"
         },
         "smiles": {
           "anyOf": [
@@ -392,7 +1272,6 @@
             }
           ],
           "default": null,
-          "description": "SMILES string",
           "title": "Smiles"
         },
         "cxsmiles": {
@@ -405,7 +1284,6 @@
             }
           ],
           "default": null,
-          "description": "ChemAxon extended SMILES (CXSMILES), including coords/labels when present",
           "title": "Cxsmiles"
         },
         "esmiles": {
@@ -418,7 +1296,6 @@
             }
           ],
           "default": null,
-          "description": "MolParser E-SMILES (SMILES<sep>EXTENSION); schema hook for Markush",
           "title": "Esmiles"
         },
         "molfile": {
@@ -431,42 +1308,7 @@
             }
           ],
           "default": null,
-          "description": "Optional MDL molblock",
           "title": "Molfile"
-        },
-        "label": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "additionalProperties": false,
-              "properties": {
-                "text": {
-                  "type": "string"
-                },
-                "pos": {
-                  "default": "bottom",
-                  "enum": [
-                    "bottom",
-                    "top",
-                    "left",
-                    "right"
-                  ],
-                  "type": "string"
-                }
-              },
-              "required": [
-                "text"
-              ],
-              "type": "object"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Molecule caption. A bare string uses defaults (pos=bottom). A dict with only text is equivalent; other keys override defaults. Legacy field name `title` is accepted as an alias. Text supports light markup: TeX-like symbols (\\alpha \u2192 \u03b1) and bold/italic via **\u2026** / *\u2026* or \\textbf{} / \\textit{}."
         },
         "ids": {
           "additionalProperties": {
@@ -482,7 +1324,6 @@
               }
             ]
           },
-          "description": "Molecule-scoped aliases: name \u2192 atom index or atom-index list. Must not collide with keys in ``rings``.",
           "title": "Ids",
           "type": "object"
         },
@@ -493,7 +1334,6 @@
             },
             "type": "array"
           },
-          "description": "Named rings (human-readable): name \u2192 ordered atom indices. Used by ring_attachments and (later) annotation refs.",
           "title": "Rings",
           "type": "object"
         },
@@ -530,11 +1370,9 @@
             }
           ],
           "default": null,
-          "description": "Labels for ``*`` atoms (definite attachment sites). A list assigns labels in star appearance order (``null`` = bare *). A dict maps star ordinal (\"0\", \"1\", \u2026) \u2192 label.",
           "title": "Rgroups"
         },
         "ring_attachments": {
-          "description": "Ring-centered attachments (uncertain site). Each entry needs a label; ``ring`` is a name from ``rings`` or an atom-index list.",
           "items": {
             "$ref": "#/$defs/RingAttachmentSpec"
           },
@@ -550,8 +1388,7 @@
               "type": "null"
             }
           ],
-          "default": null,
-          "description": "R-group table. A bare row matrix is shorthand for ``{rows: \u2026}``. Drawing is optional / stubbed in early POC."
+          "default": null
         },
         "marks": {
           "items": {
@@ -561,7 +1398,6 @@
           "type": "array"
         },
         "annotations": {
-          "description": "Callouts, region shapes (box/oval/spline), and labels. Placement uses the molecule collision grid.",
           "items": {
             "$ref": "#/$defs/AnnotationSpec"
           },
@@ -589,11 +1425,179 @@
             }
           ],
           "default": null,
-          "description": "Bond/backbone color override",
           "title": "Color"
+        },
+        "children": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "annotation": "#/$defs/AnnotationNode",
+                "arrow": "#/$defs/ArrowNode",
+                "grid": "#/$defs/GridNode",
+                "group": "#/$defs/GroupNode",
+                "image": "#/$defs/ImageNode",
+                "mol": "#/$defs/MolNode",
+                "network": "#/$defs/NetworkNode",
+                "reaction": "#/$defs/ReactionNode",
+                "ref": "#/$defs/RefNode",
+                "stack": "#/$defs/StackNode",
+                "table": "#/$defs/TableNode",
+                "text": "#/$defs/TextNode"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/MolNode"
+              },
+              {
+                "$ref": "#/$defs/ArrowNode"
+              },
+              {
+                "$ref": "#/$defs/TextNode"
+              },
+              {
+                "$ref": "#/$defs/ImageNode"
+              },
+              {
+                "$ref": "#/$defs/TableNode"
+              },
+              {
+                "$ref": "#/$defs/RefNode"
+              },
+              {
+                "$ref": "#/$defs/AnnotationNode"
+              },
+              {
+                "$ref": "#/$defs/GroupNode"
+              },
+              {
+                "$ref": "#/$defs/GridNode"
+              },
+              {
+                "$ref": "#/$defs/StackNode"
+              },
+              {
+                "$ref": "#/$defs/ReactionNode"
+              },
+              {
+                "$ref": "#/$defs/NetworkNode"
+              }
+            ]
+          },
+          "title": "Children",
+          "type": "array"
         }
       },
-      "title": "MoleculeSpec",
+      "title": "MolNode",
+      "type": "object"
+    },
+    "NetworkNode": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional stable id for refs/edges",
+          "title": "Id"
+        },
+        "panel": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Subfigure tag drawn as (a), (b), \u2026",
+          "title": "Panel"
+        },
+        "layout": {
+          "$ref": "#/$defs/LayoutSpec"
+        },
+        "meta": {
+          "additionalProperties": true,
+          "title": "Meta",
+          "type": "object"
+        },
+        "type": {
+          "const": "network",
+          "default": "network",
+          "title": "Type",
+          "type": "string"
+        },
+        "children": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "annotation": "#/$defs/AnnotationNode",
+                "arrow": "#/$defs/ArrowNode",
+                "grid": "#/$defs/GridNode",
+                "group": "#/$defs/GroupNode",
+                "image": "#/$defs/ImageNode",
+                "mol": "#/$defs/MolNode",
+                "network": "#/$defs/NetworkNode",
+                "reaction": "#/$defs/ReactionNode",
+                "ref": "#/$defs/RefNode",
+                "stack": "#/$defs/StackNode",
+                "table": "#/$defs/TableNode",
+                "text": "#/$defs/TextNode"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/MolNode"
+              },
+              {
+                "$ref": "#/$defs/ArrowNode"
+              },
+              {
+                "$ref": "#/$defs/TextNode"
+              },
+              {
+                "$ref": "#/$defs/ImageNode"
+              },
+              {
+                "$ref": "#/$defs/TableNode"
+              },
+              {
+                "$ref": "#/$defs/RefNode"
+              },
+              {
+                "$ref": "#/$defs/AnnotationNode"
+              },
+              {
+                "$ref": "#/$defs/GroupNode"
+              },
+              {
+                "$ref": "#/$defs/GridNode"
+              },
+              {
+                "$ref": "#/$defs/StackNode"
+              },
+              {
+                "$ref": "#/$defs/ReactionNode"
+              },
+              {
+                "$ref": "#/$defs/NetworkNode"
+              }
+            ]
+          },
+          "title": "Children",
+          "type": "array"
+        }
+      },
+      "title": "NetworkNode",
       "type": "object"
     },
     "RTableSpec": {
@@ -629,6 +1633,230 @@
         }
       },
       "title": "RTableSpec",
+      "type": "object"
+    },
+    "ReactionNode": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional stable id for refs/edges",
+          "title": "Id"
+        },
+        "panel": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Subfigure tag drawn as (a), (b), \u2026",
+          "title": "Panel"
+        },
+        "layout": {
+          "$ref": "#/$defs/LayoutSpec"
+        },
+        "meta": {
+          "additionalProperties": true,
+          "title": "Meta",
+          "type": "object"
+        },
+        "type": {
+          "const": "reaction",
+          "default": "reaction",
+          "title": "Type",
+          "type": "string"
+        },
+        "children": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "annotation": "#/$defs/AnnotationNode",
+                "arrow": "#/$defs/ArrowNode",
+                "grid": "#/$defs/GridNode",
+                "group": "#/$defs/GroupNode",
+                "image": "#/$defs/ImageNode",
+                "mol": "#/$defs/MolNode",
+                "network": "#/$defs/NetworkNode",
+                "reaction": "#/$defs/ReactionNode",
+                "ref": "#/$defs/RefNode",
+                "stack": "#/$defs/StackNode",
+                "table": "#/$defs/TableNode",
+                "text": "#/$defs/TextNode"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/MolNode"
+              },
+              {
+                "$ref": "#/$defs/ArrowNode"
+              },
+              {
+                "$ref": "#/$defs/TextNode"
+              },
+              {
+                "$ref": "#/$defs/ImageNode"
+              },
+              {
+                "$ref": "#/$defs/TableNode"
+              },
+              {
+                "$ref": "#/$defs/RefNode"
+              },
+              {
+                "$ref": "#/$defs/AnnotationNode"
+              },
+              {
+                "$ref": "#/$defs/GroupNode"
+              },
+              {
+                "$ref": "#/$defs/GridNode"
+              },
+              {
+                "$ref": "#/$defs/StackNode"
+              },
+              {
+                "$ref": "#/$defs/ReactionNode"
+              },
+              {
+                "$ref": "#/$defs/NetworkNode"
+              }
+            ]
+          },
+          "title": "Children",
+          "type": "array"
+        }
+      },
+      "title": "ReactionNode",
+      "type": "object"
+    },
+    "RefNode": {
+      "additionalProperties": false,
+      "description": "Reference to another node by id (sharing).",
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional stable id for refs/edges",
+          "title": "Id"
+        },
+        "panel": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Subfigure tag drawn as (a), (b), \u2026",
+          "title": "Panel"
+        },
+        "layout": {
+          "$ref": "#/$defs/LayoutSpec"
+        },
+        "meta": {
+          "additionalProperties": true,
+          "title": "Meta",
+          "type": "object"
+        },
+        "type": {
+          "const": "ref",
+          "default": "ref",
+          "title": "Type",
+          "type": "string"
+        },
+        "ref": {
+          "title": "Ref",
+          "type": "string"
+        },
+        "children": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "annotation": "#/$defs/AnnotationNode",
+                "arrow": "#/$defs/ArrowNode",
+                "grid": "#/$defs/GridNode",
+                "group": "#/$defs/GroupNode",
+                "image": "#/$defs/ImageNode",
+                "mol": "#/$defs/MolNode",
+                "network": "#/$defs/NetworkNode",
+                "reaction": "#/$defs/ReactionNode",
+                "ref": "#/$defs/RefNode",
+                "stack": "#/$defs/StackNode",
+                "table": "#/$defs/TableNode",
+                "text": "#/$defs/TextNode"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/MolNode"
+              },
+              {
+                "$ref": "#/$defs/ArrowNode"
+              },
+              {
+                "$ref": "#/$defs/TextNode"
+              },
+              {
+                "$ref": "#/$defs/ImageNode"
+              },
+              {
+                "$ref": "#/$defs/TableNode"
+              },
+              {
+                "$ref": "#/$defs/RefNode"
+              },
+              {
+                "$ref": "#/$defs/AnnotationNode"
+              },
+              {
+                "$ref": "#/$defs/GroupNode"
+              },
+              {
+                "$ref": "#/$defs/GridNode"
+              },
+              {
+                "$ref": "#/$defs/StackNode"
+              },
+              {
+                "$ref": "#/$defs/ReactionNode"
+              },
+              {
+                "$ref": "#/$defs/NetworkNode"
+              }
+            ]
+          },
+          "title": "Children",
+          "type": "array"
+        }
+      },
+      "required": [
+        "ref"
+      ],
+      "title": "RefNode",
       "type": "object"
     },
     "RingAttachmentSpec": {
@@ -737,63 +1965,418 @@
       },
       "title": "ShadeSpec",
       "type": "object"
-    }
-  },
-  "additionalProperties": false,
-  "description": "Declarative depiction document.\n\nEngine choice (`backend`) is runtime config on Pict/render \u2014 not part of this document.\nShorthand fields (e.g. molecule labels) are expanded at validation; the library\nthen works only on fully expanded models.",
-  "properties": {
-    "molecules": {
-      "items": {
-        "$ref": "#/$defs/MoleculeSpec"
+    },
+    "StackNode": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional stable id for refs/edges",
+          "title": "Id"
+        },
+        "panel": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Subfigure tag drawn as (a), (b), \u2026",
+          "title": "Panel"
+        },
+        "layout": {
+          "$ref": "#/$defs/LayoutSpec"
+        },
+        "meta": {
+          "additionalProperties": true,
+          "title": "Meta",
+          "type": "object"
+        },
+        "type": {
+          "const": "stack",
+          "default": "stack",
+          "title": "Type",
+          "type": "string"
+        },
+        "children": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "annotation": "#/$defs/AnnotationNode",
+                "arrow": "#/$defs/ArrowNode",
+                "grid": "#/$defs/GridNode",
+                "group": "#/$defs/GroupNode",
+                "image": "#/$defs/ImageNode",
+                "mol": "#/$defs/MolNode",
+                "network": "#/$defs/NetworkNode",
+                "reaction": "#/$defs/ReactionNode",
+                "ref": "#/$defs/RefNode",
+                "stack": "#/$defs/StackNode",
+                "table": "#/$defs/TableNode",
+                "text": "#/$defs/TextNode"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/MolNode"
+              },
+              {
+                "$ref": "#/$defs/ArrowNode"
+              },
+              {
+                "$ref": "#/$defs/TextNode"
+              },
+              {
+                "$ref": "#/$defs/ImageNode"
+              },
+              {
+                "$ref": "#/$defs/TableNode"
+              },
+              {
+                "$ref": "#/$defs/RefNode"
+              },
+              {
+                "$ref": "#/$defs/AnnotationNode"
+              },
+              {
+                "$ref": "#/$defs/GroupNode"
+              },
+              {
+                "$ref": "#/$defs/GridNode"
+              },
+              {
+                "$ref": "#/$defs/StackNode"
+              },
+              {
+                "$ref": "#/$defs/ReactionNode"
+              },
+              {
+                "$ref": "#/$defs/NetworkNode"
+              }
+            ]
+          },
+          "title": "Children",
+          "type": "array"
+        }
       },
-      "minItems": 1,
-      "title": "Molecules",
-      "type": "array"
+      "title": "StackNode",
+      "type": "object"
     },
-    "diagram": {
-      "$ref": "#/$defs/DiagramSpec"
-    },
-    "width": {
-      "anyOf": [
-        {
-          "type": "number"
+    "TableNode": {
+      "additionalProperties": false,
+      "description": "Tabular panel; cells may be strings or nested nodes (e.g. mol).",
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional stable id for refs/edges",
+          "title": "Id"
         },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "description": "Preferred SVG width",
-      "title": "Width"
-    },
-    "height": {
-      "anyOf": [
-        {
-          "type": "number"
+        "panel": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Subfigure tag drawn as (a), (b), \u2026",
+          "title": "Panel"
         },
-        {
-          "type": "null"
+        "layout": {
+          "$ref": "#/$defs/LayoutSpec"
+        },
+        "meta": {
+          "additionalProperties": true,
+          "title": "Meta",
+          "type": "object"
+        },
+        "type": {
+          "const": "table",
+          "default": "table",
+          "title": "Type",
+          "type": "string"
+        },
+        "columns": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Columns"
+        },
+        "rows": {
+          "items": {
+            "items": {},
+            "type": "array"
+          },
+          "title": "Rows",
+          "type": "array"
+        },
+        "children": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "annotation": "#/$defs/AnnotationNode",
+                "arrow": "#/$defs/ArrowNode",
+                "grid": "#/$defs/GridNode",
+                "group": "#/$defs/GroupNode",
+                "image": "#/$defs/ImageNode",
+                "mol": "#/$defs/MolNode",
+                "network": "#/$defs/NetworkNode",
+                "reaction": "#/$defs/ReactionNode",
+                "ref": "#/$defs/RefNode",
+                "stack": "#/$defs/StackNode",
+                "table": "#/$defs/TableNode",
+                "text": "#/$defs/TextNode"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/MolNode"
+              },
+              {
+                "$ref": "#/$defs/ArrowNode"
+              },
+              {
+                "$ref": "#/$defs/TextNode"
+              },
+              {
+                "$ref": "#/$defs/ImageNode"
+              },
+              {
+                "$ref": "#/$defs/TableNode"
+              },
+              {
+                "$ref": "#/$defs/RefNode"
+              },
+              {
+                "$ref": "#/$defs/AnnotationNode"
+              },
+              {
+                "$ref": "#/$defs/GroupNode"
+              },
+              {
+                "$ref": "#/$defs/GridNode"
+              },
+              {
+                "$ref": "#/$defs/StackNode"
+              },
+              {
+                "$ref": "#/$defs/ReactionNode"
+              },
+              {
+                "$ref": "#/$defs/NetworkNode"
+              }
+            ]
+          },
+          "title": "Children",
+          "type": "array"
         }
+      },
+      "title": "TableNode",
+      "type": "object"
+    },
+    "TextNode": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional stable id for refs/edges",
+          "title": "Id"
+        },
+        "panel": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Subfigure tag drawn as (a), (b), \u2026",
+          "title": "Panel"
+        },
+        "layout": {
+          "$ref": "#/$defs/LayoutSpec"
+        },
+        "meta": {
+          "additionalProperties": true,
+          "title": "Meta",
+          "type": "object"
+        },
+        "type": {
+          "const": "text",
+          "default": "text",
+          "title": "Type",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "children": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "annotation": "#/$defs/AnnotationNode",
+                "arrow": "#/$defs/ArrowNode",
+                "grid": "#/$defs/GridNode",
+                "group": "#/$defs/GroupNode",
+                "image": "#/$defs/ImageNode",
+                "mol": "#/$defs/MolNode",
+                "network": "#/$defs/NetworkNode",
+                "reaction": "#/$defs/ReactionNode",
+                "ref": "#/$defs/RefNode",
+                "stack": "#/$defs/StackNode",
+                "table": "#/$defs/TableNode",
+                "text": "#/$defs/TextNode"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/MolNode"
+              },
+              {
+                "$ref": "#/$defs/ArrowNode"
+              },
+              {
+                "$ref": "#/$defs/TextNode"
+              },
+              {
+                "$ref": "#/$defs/ImageNode"
+              },
+              {
+                "$ref": "#/$defs/TableNode"
+              },
+              {
+                "$ref": "#/$defs/RefNode"
+              },
+              {
+                "$ref": "#/$defs/AnnotationNode"
+              },
+              {
+                "$ref": "#/$defs/GroupNode"
+              },
+              {
+                "$ref": "#/$defs/GridNode"
+              },
+              {
+                "$ref": "#/$defs/StackNode"
+              },
+              {
+                "$ref": "#/$defs/ReactionNode"
+              },
+              {
+                "$ref": "#/$defs/NetworkNode"
+              }
+            ]
+          },
+          "title": "Children",
+          "type": "array"
+        }
+      },
+      "required": [
+        "text"
       ],
-      "default": null,
-      "description": "Preferred SVG height",
-      "title": "Height"
-    },
-    "halo": {
-      "default": true,
-      "description": "Global white knockout under all ink (bonds, labels, marks, captions, edge labels). On = everything; off = nothing. Halos live on the bottom layer so they never obscure drawn content.",
-      "title": "Halo",
-      "type": "boolean"
-    },
-    "meta": {
-      "additionalProperties": true,
-      "title": "Meta",
+      "title": "TextNode",
       "type": "object"
     }
   },
-  "required": [
-    "molecules"
+  "description": "Canonical depiction document: one nested node tree.\n\nAlso accepts legacy flat ``{molecules, diagram, \u2026}``, which is lifted to a\nnested root on validation. Use :meth:`to_legacy` for the render pipeline.",
+  "discriminator": {
+    "mapping": {
+      "annotation": "#/$defs/AnnotationNode",
+      "arrow": "#/$defs/ArrowNode",
+      "grid": "#/$defs/GridNode",
+      "group": "#/$defs/GroupNode",
+      "image": "#/$defs/ImageNode",
+      "mol": "#/$defs/MolNode",
+      "network": "#/$defs/NetworkNode",
+      "reaction": "#/$defs/ReactionNode",
+      "ref": "#/$defs/RefNode",
+      "stack": "#/$defs/StackNode",
+      "table": "#/$defs/TableNode",
+      "text": "#/$defs/TextNode"
+    },
+    "propertyName": "type"
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/MolNode"
+    },
+    {
+      "$ref": "#/$defs/ArrowNode"
+    },
+    {
+      "$ref": "#/$defs/TextNode"
+    },
+    {
+      "$ref": "#/$defs/ImageNode"
+    },
+    {
+      "$ref": "#/$defs/TableNode"
+    },
+    {
+      "$ref": "#/$defs/RefNode"
+    },
+    {
+      "$ref": "#/$defs/AnnotationNode"
+    },
+    {
+      "$ref": "#/$defs/GroupNode"
+    },
+    {
+      "$ref": "#/$defs/GridNode"
+    },
+    {
+      "$ref": "#/$defs/StackNode"
+    },
+    {
+      "$ref": "#/$defs/ReactionNode"
+    },
+    {
+      "$ref": "#/$defs/NetworkNode"
+    }
   ],
-  "title": "PictSpec",
-  "type": "object"
+  "title": "PictSpec"
 }
