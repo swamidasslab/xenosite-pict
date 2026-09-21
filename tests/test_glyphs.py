@@ -76,6 +76,12 @@ def test_label_clearance_uses_real_advance():
     assert m.clearance() - 0.5 * m.advance == pytest.approx(LABEL_GAP_PX)
 
 
+def test_label_gap_matches_rdkit_order():
+    """Bond/label air is ~1 px at BOND_PX=20 (RDKit measured ~0.9–1.0)."""
+    assert LABEL_GAP_PX == pytest.approx(1.0, abs=0.05)
+    assert LABEL_GAP_PX < 0.1 * FONT_PX * 2  # well under the old 5 px moat
+
+
 def test_stem_width_matches_default_stroke():
     assert stem_width(FONT_PX) == pytest.approx(STROKE_PX, rel=0.05)
 

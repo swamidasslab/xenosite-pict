@@ -45,14 +45,15 @@ END_GAP_FRAC = 0.13  # ring doubles: keep the offset off adjacent bonds
 CHAIN_END_GAP_FRAC = 0.0
 HASH_PER_BOND = 8
 HALO_FRAC = 2 * STROKE_FRAC  # knockout stays twice the ink, as in xenopict
-# Air between label ink and bond ends. Also the shapely buffer on the glyph
-# halo: enough white around letters to stay legible on a black host page, and
-# enough gap that bonds do not crowd the glyphs.
-LABEL_GAP_FRAC = 0.25  # × bond → 5 px at BOND_PX=20
+# Air between label ink and bond ends, and the shapely buffer on the glyph
+# halo. Tuned against RDKit MolDraw2D (~0.9–1.0 px at bond≈20) and Indigo
+# terminal-hetero depictions — enough for a dark-host knockout, not a wide
+# moat. Molecule captions reuse the same order of air above the title band.
+LABEL_GAP_FRAC = 0.05  # × bond → 1.0 px at BOND_PX=20
 # Molecule caption (MoleculeSpec.title): center-bottom band.
 TITLE_FONT_FRAC = 0.50  # slightly smaller than atom labels (0.60)
-TITLE_BOTTOM_FRAC = 0.25  # typo-box bottom → viewport bottom
-TITLE_CLEARANCE_FRAC = LABEL_GAP_FRAC  # mol ink → title typo top
+TITLE_BOTTOM_FRAC = 0.20  # typo-box bottom → viewport bottom
+TITLE_CLEARANCE_FRAC = 0.08  # mol ink → title typo top (a touch more than LABEL_GAP)
 COLLISION_CELL_PX = 4.0  # coarse occupancy stamp for title packing
 SHADE_FRAC = 0.90  # xenopict shade(): scale * 0.9
 MARK_FRAC = 1.0  # xenopict mark_atoms radius = scale * mark_down_scale

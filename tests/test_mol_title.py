@@ -15,7 +15,7 @@ from xenosite.pict.draw.metrics import (
     TITLE_FONT_PX,
 )
 from xenosite.pict.draw.mol_title import pack_bottom_title, title_occupancy_box
-from xenosite.pict.draw.scene_builder import normalize_coords, viewport_size
+from xenosite.pict.draw.scene_builder import viewport_size
 from xenosite.pict.draw.text_metrics import measure_text
 
 
@@ -50,17 +50,18 @@ def test_pack_bottom_title_is_center_bottom_with_clearance():
     assert typo[1] - mol_bottom == pytest.approx(TITLE_CLEARANCE_PX, abs=COLLISION_CELL_PX + 0.5)
 
 
-def test_title_makes_viewport_taller_than_bare_mol():
+def test_title_pack_reserves_caption_band():
     backend = "native"
     pict = Pict(backend=backend)
     bare = pict.layout({"molecules": [{"smiles": "CCO"}]}).molecules[0]
     from xenosite.pict.contracts.spec import MoleculeSpec
 
     mol = MoleculeSpec(smiles="CCO", title="ethanol")
-    w0, h0 = normalize_coords(bare)[1:]
     w1, h1 = viewport_size(bare, mol)
-    assert h1 > h0
-    assert w1 >= w0
+    metrics = measure_text("ethanol", TITLE_FONT_PX)
+    # Packed height must fit ink clearance + title typo + bottom gap.
+    assert h1 >= TITLE_CLEARANCE_PX + metrics.typo.height + TITLE_BOTTOM_PX
+    assert w1 >= metrics.advance
 
 
 def test_render_emits_centered_mol_title():
