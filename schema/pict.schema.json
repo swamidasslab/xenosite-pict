@@ -1,5 +1,135 @@
 {
   "$defs": {
+    "AnnotKind": {
+      "description": "How an annotation is drawn.",
+      "enum": [
+        "callout",
+        "box",
+        "oval",
+        "spline"
+      ],
+      "title": "AnnotKind",
+      "type": "string"
+    },
+    "AnnotPrefer": {
+      "description": "Preferred callout placement; collision grid may pick another free slot.",
+      "enum": [
+        "auto",
+        "left",
+        "right",
+        "top",
+        "bottom"
+      ],
+      "title": "AnnotPrefer",
+      "type": "string"
+    },
+    "AnnotationSpec": {
+      "additionalProperties": false,
+      "description": "Molecule annotation with collision-aware label placement.\n\nTargets (use one):\n\n- ``atoms`` \u2014 one atom (callout) or a set (region)\n- ``bonds`` \u2014 bond endpoints as ``[begin, end]`` pairs\n- ``ring`` \u2014 atom indices of a ring (callout at ring center)\n\nKinds:\n\n- ``callout`` \u2014 indicator arrow and/or text next to the target\n- ``box`` / ``oval`` / ``spline`` \u2014 region outline around ``atoms``",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/AnnotKind",
+          "default": "callout"
+        },
+        "atoms": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "0-based atom indices (target or region)",
+          "title": "Atoms"
+        },
+        "bonds": {
+          "anyOf": [
+            {
+              "items": {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ],
+                "type": "array"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "0-based atom-index pairs",
+          "title": "Bonds"
+        },
+        "ring": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Ordered atom indices of a ring (callout at centroid)",
+          "title": "Ring"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Annotation caption (supports light TeX/markdown markup)",
+          "title": "Label"
+        },
+        "color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Stroke/fill color",
+          "title": "Color"
+        },
+        "arrow": {
+          "default": true,
+          "description": "Draw indicator arrow for callout annotations",
+          "title": "Arrow",
+          "type": "boolean"
+        },
+        "prefer": {
+          "$ref": "#/$defs/AnnotPrefer",
+          "default": "auto",
+          "description": "Preferred callout/label side; grid may choose another free slot"
+        }
+      },
+      "title": "AnnotationSpec",
+      "type": "object"
+    },
     "DiagramKind": {
       "enum": [
         "single",
@@ -158,7 +288,7 @@
     },
     "MarkSpec": {
       "additionalProperties": false,
-      "description": "Publication-style annotation of atoms, bonds, or a substructure.",
+      "description": "Legacy publication-style mark (circles / bond strokes / hull).\n\nPrefer :class:`AnnotationSpec` for callouts, region shapes, and labels.",
       "properties": {
         "kind": {
           "$ref": "#/$defs/MarkKind",
@@ -343,6 +473,14 @@
             "$ref": "#/$defs/MarkSpec"
           },
           "title": "Marks",
+          "type": "array"
+        },
+        "annotations": {
+          "description": "Callouts, region shapes (box/oval/spline), and labels. Placement uses the molecule collision grid.",
+          "items": {
+            "$ref": "#/$defs/AnnotationSpec"
+          },
+          "title": "Annotations",
           "type": "array"
         },
         "shade": {

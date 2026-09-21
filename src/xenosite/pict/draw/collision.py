@@ -122,3 +122,64 @@ class CollisionGrid:
                 if (ix, iy) in self.cells:
                     return True
         return False
+
+    def find_slot(
+        self,
+        anchor_x: float,
+        anchor_y: float,
+        width: float,
+        height: float,
+        *,
+        prefer: str = "auto",
+        gap: float = 8.0,
+        distances: list[float] | None = None,
+        pad: float = 0.0,
+    ) -> tuple[float, float, str]:
+        """Return ``(center_x, center_y, side)`` for a free axis-aligned box.
+
+        Tries the preferred side first (or right/left/top/bottom for
+        ``auto``), then other sides, at increasing distances. Falls back to
+        the preferred side at the first distance when every slot is taken.
+        """
+        sides = _side_order(prefer)
+        dists = distances or [gap, gap * 1.5, gap * 2.2, gap * 3.2]
+        for dist in dists:
+            for side in sides:
+                cx, cy = _slot_center(anchor_x, anchor_y, width, height, side, dist)
+                xmin, ymin = cx - width * 0.5, cy - height * 0.5
+                xmax, ymax = cx + width * 0.5, cy + height * 0.5
+                if not self.overlaps_box(xmin, ymin, xmax, ymax, pad=pad):
+                    return cx, cy, side
+        # Crowded — place on the first preferred side anyway.
+        side = sides[0]
+        cx, cy = _slot_center(anchor_x, anchor_y, width, height, side, dists[0])
+        return cx, cy, side
+
+
+_SIDE_CYCLE = ("right", "left", "top", "bottom")
+
+
+def _side_order(prefer: str) -> list[str]:
+    key = (prefer or "auto").lower()
+    if key in ("", "auto"):
+        return list(_SIDE_CYCLE)
+    if key not in _SIDE_CYCLE:
+        return list(_SIDE_CYCLE)
+    return [key, *[s for s in _SIDE_CYCLE if s != key]]
+
+
+def _slot_center(
+    ax: float,
+    ay: float,
+    width: float,
+    height: float,
+    side: str,
+    dist: float,
+) -> tuple[float, float]:
+    if side == "right":
+        return ax + dist + width * 0.5, ay
+    if side == "left":
+        return ax - dist - width * 0.5, ay
+    if side == "top":
+        return ax, ay - dist - height * 0.5
+    return ax, ay + dist + height * 0.5

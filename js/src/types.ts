@@ -38,6 +38,8 @@ export interface MoleculeSpec {
   /** @deprecated Use `label`. */
   title?: LabelSpec | null;
   marks?: MarkSpec[];
+  /** Callouts, region shapes (box/oval/spline), and labels. */
+  annotations?: AnnotationSpec[];
   shade?: ShadeSpec;
   color?: string;
 }
@@ -48,6 +50,32 @@ export interface MarkSpec {
   bonds?: [number, number][];
   color?: string;
   label?: string;
+}
+
+/** How an annotation is drawn. */
+export type AnnotKind = "callout" | "box" | "oval" | "spline";
+
+/** Preferred callout side; collision grid may pick another free slot. */
+export type AnnotPrefer = "auto" | "left" | "right" | "top" | "bottom";
+
+/**
+ * Molecule annotation with collision-aware label placement.
+ *
+ * Targets (use one): `atoms`, `bonds`, or `ring`.
+ * Kinds: `callout` (arrow/text) or region `box` / `oval` / `spline`.
+ */
+export interface AnnotationSpec {
+  kind?: AnnotKind;
+  atoms?: number[];
+  bonds?: [number, number][];
+  /** Ordered atom indices of a ring (callout at centroid). */
+  ring?: number[];
+  /** Caption (supports light TeX/markdown markup). */
+  label?: string;
+  color?: string;
+  /** Draw indicator arrow for callout annotations. */
+  arrow?: boolean;
+  prefer?: AnnotPrefer;
 }
 
 export interface ShadeSpec {

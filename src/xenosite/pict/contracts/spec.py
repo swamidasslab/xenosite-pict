@@ -39,6 +39,25 @@ class MarkKind(str, Enum):
     substructure = "substructure"
 
 
+class AnnotKind(str, Enum):
+    """How an annotation is drawn."""
+
+    callout = "callout"  # indicator arrow and/or text next to a target
+    box = "box"  # axis-aligned box around atoms
+    oval = "oval"  # ellipse around atoms
+    spline = "spline"  # smooth closed loop around atoms
+
+
+class AnnotPrefer(str, Enum):
+    """Preferred callout placement; collision grid may pick another free slot."""
+
+    auto = "auto"
+    left = "left"
+    right = "right"
+    top = "top"
+    bottom = "bottom"
+
+
 class LabelPos(str, Enum):
     """Where a molecule caption sits relative to the drawing."""
 
@@ -105,7 +124,10 @@ _LabelInput = Annotated[
 
 
 class MarkSpec(StrictModel):
-    """Publication-style annotation of atoms, bonds, or a substructure."""
+    """Legacy publication-style mark (circles / bond strokes / hull).
+
+    Prefer :class:`AnnotationSpec` for callouts, region shapes, and labels.
+    """
 
     kind: MarkKind = MarkKind.atoms
     atoms: list[int] | None = Field(
@@ -116,6 +138,55 @@ class MarkSpec(StrictModel):
     )
     color: str | None = Field(default=None, description="CSS color for the mark")
     label: str | None = None
+
+
+class AnnotationSpec(StrictModel):
+    """Molecule annotation with collision-aware label placement.
+
+    Targets (use one):
+
+    - ``atoms`` — one atom (callout) or a set (region)
+    - ``bonds`` — bond endpoints as ``[begin, end]`` pairs
+    - ``ring`` — atom indices of a ring (callout at ring center)
+
+    Kinds:
+
+    - ``callout`` — indicator arrow and/or text next to the target
+    - ``box`` / ``oval`` / ``spline`` — region outline around ``atoms``
+    """
+
+    kind: AnnotKind = AnnotKind.callout
+    atoms: list[int] | None = Field(
+        default=None, description="0-based atom indices (target or region)"
+    )
+    bonds: list[tuple[int, int]] | None = Field(
+        default=None, description="0-based atom-index pairs"
+    )
+    ring: list[int] | None = Field(
+        default=None,
+        description="Ordered atom indices of a ring (callout at centroid)",
+    )
+    label: str | None = Field(
+        default=None,
+        description="Annotation caption (supports light TeX/markdown markup)",
+    )
+    color: str | None = Field(default=None, description="Stroke/fill color")
+    arrow: bool = Field(
+        default=True, description="Draw indicator arrow for callout annotations"
+    )
+    prefer: AnnotPrefer = Field(
+        default=AnnotPrefer.auto,
+        description="Preferred callout/label side; grid may choose another free slot",
+    )
+
+    @model_validator(mode="after")
+    def require_target(self) -> AnnotationSpec:
+        if not any([self.atoms, self.bonds, self.ring]):
+            raise ValueError("AnnotationSpec needs atoms, bonds, or ring")
+        if self.kind in (AnnotKind.box, AnnotKind.oval, AnnotKind.spline):
+            if not self.atoms or len(self.atoms) < 1:
+                raise ValueError(f"{self.kind.value} annotation needs atoms")
+        return self
 
 
 class ShadeSpec(StrictModel):
@@ -157,6 +228,13 @@ class MoleculeSpec(StrictModel):
         ),
     )
     marks: list[MarkSpec] = Field(default_factory=list)
+    annotations: list[AnnotationSpec] = Field(
+        default_factory=list,
+        description=(
+            "Callouts, region shapes (box/oval/spline), and labels. "
+            "Placement uses the molecule collision grid."
+        ),
+    )
     shade: ShadeSpec | None = None
     color: str | None = Field(default=None, description="Bond/backbone color override")
 
@@ -274,6 +352,9 @@ def compress_pict(spec: PictSpec | dict[str, Any]) -> dict[str, Any]:
 
 # Re-export defaults for callers / schema docs.
 __all__ = [
+    "AnnotKind",
+    "AnnotPrefer",
+    "AnnotationSpec",
     "DiagramKind",
     "DiagramSpec",
     "EdgeArrow",

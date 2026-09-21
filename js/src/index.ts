@@ -10,6 +10,9 @@ import { layoutWithIndigoWasm } from "./layout/indigo-wasm.js";
 import type { PictSpec, RenderOptions } from "./types.js";
 
 export type {
+  AnnotationSpec,
+  AnnotKind,
+  AnnotPrefer,
   AtomLayout,
   BondLayout,
   DiagramSpec,

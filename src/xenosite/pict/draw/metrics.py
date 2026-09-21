@@ -57,6 +57,12 @@ TITLE_CLEARANCE_FRAC = 0.08  # mol ink → title typo top (a touch more than LAB
 COLLISION_CELL_PX = 4.0  # coarse occupancy stamp for title packing
 SHADE_FRAC = 0.90  # xenopict shade(): scale * 0.9
 MARK_FRAC = 1.0  # xenopict mark_atoms radius = scale * mark_down_scale
+# Annotation callouts / region outlines (box, oval, spline).
+ANNOT_PAD_FRAC = 0.45  # region outline stand-off from atom centers
+ANNOT_GAP_FRAC = 0.40  # callout label air past the target
+ANNOT_FONT_FRAC = 0.50  # same order as molecule captions
+ANNOT_ARROW_FRAC = 0.30  # filled arrowhead length
+ANNOT_STROKE_FRAC = STROKE_FRAC * 1.25
 
 STROKE_PX = STROKE_FRAC * BOND_PX
 OFFSET_PX = OFFSET_FRAC * BOND_PX
@@ -73,6 +79,11 @@ TITLE_CLEARANCE_PX = TITLE_CLEARANCE_FRAC * BOND_PX
 RADICAL_DOT_R = 0.08 * BOND_PX
 RADICAL_BASE = 0.55 * BOND_PX
 RADICAL_BASE_BARE = 0.35 * BOND_PX
+ANNOT_PAD_PX = ANNOT_PAD_FRAC * BOND_PX
+ANNOT_GAP_PX = ANNOT_GAP_FRAC * BOND_PX
+ANNOT_FONT_PX = ANNOT_FONT_FRAC * BOND_PX
+ANNOT_ARROW_PX = ANNOT_ARROW_FRAC * BOND_PX
+ANNOT_STROKE_PX = ANNOT_STROKE_FRAC * BOND_PX
 
 
 def coord_scale(layout: MoleculeLayout) -> float:

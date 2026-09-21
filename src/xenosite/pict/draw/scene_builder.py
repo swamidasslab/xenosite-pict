@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Sequence
+from dataclasses import replace
 
 from xenosite.pict.contracts.layout import MoleculeLayout
 from xenosite.pict.contracts.scene import (
@@ -15,6 +16,7 @@ from xenosite.pict.contracts.scene import (
     Viewport,
 )
 from xenosite.pict.contracts.spec import MarkKind, MoleculeSpec, PictSpec
+from xenosite.pict.draw.annotate import draw_annotations
 from xenosite.pict.draw.arrows import diagram_overlays
 from xenosite.pict.draw.bonds import (
     DrawnBond,
@@ -328,6 +330,67 @@ def _hull_path(points: list[tuple[float, float]], pad: float = 10.0) -> str | No
     return d + " Z"
 
 
+def _shift_path_d(d: str, dx: float, dy: float) -> str:
+    """Translate M/L coordinates in a simple path ``d`` (A radii untouched)."""
+    import re
+
+    # Match number pairs after M/L; leave A radii/flags alone by only
+    # shifting coordinates that appear as sequential float pairs in M/L spans.
+    # For our paths (M/L/Z and elliptical arcs from oval), shift every
+    # coordinate pair that is an absolute point. Arc endpoints are the last
+    # pair of each A command — handle via token walk.
+    tokens = re.findall(r"[MLZA]|[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?", d)
+    out: list[str] = []
+    i = 0
+    cmd = "M"
+    while i < len(tokens):
+        t = tokens[i]
+        if t in "MLZA":
+            cmd = t
+            out.append(t)
+            i += 1
+            continue
+        if cmd in ("M", "L"):
+            x = float(t)
+            y = float(tokens[i + 1])
+            out.append(f"{x + dx:.2f}")
+            out.append(f"{y + dy:.2f}")
+            i += 2
+            continue
+        if cmd == "A":
+            # A rx ry xrot large sweep x y  — shift only the endpoint.
+            nums = [float(tokens[j]) for j in range(i, i + 7)]
+            nums[5] += dx
+            nums[6] += dy
+            out.extend(f"{n:.2f}" if j >= 5 else f"{n:g}" for j, n in enumerate(nums))
+            i += 7
+            continue
+        if cmd == "Z":
+            i += 1
+            continue
+        out.append(t)
+        i += 1
+    return " ".join(out)
+
+
+def _shift_layers(layers: dict[str, Layer], dx: float, dy: float) -> None:
+    """Translate every primitive in ``layers`` by ``(dx, dy)``."""
+    if abs(dx) < 1e-12 and abs(dy) < 1e-12:
+        return
+    for layer in layers.values():
+        shifted: list = []
+        for p in layer.primitives:
+            if isinstance(p, PathPrim):
+                shifted.append(p.model_copy(update={"d": _shift_path_d(p.d, dx, dy)}))
+            elif isinstance(p, CirclePrim):
+                shifted.append(p.model_copy(update={"cx": p.cx + dx, "cy": p.cy + dy}))
+            elif isinstance(p, TextPrim):
+                shifted.append(p.model_copy(update={"x": p.x + dx, "y": p.y + dy}))
+            else:
+                shifted.append(p)
+        layer.primitives = shifted
+
+
 def molecule_to_viewport(
     layout: MoleculeLayout,
     mol_spec: MoleculeSpec,
@@ -590,6 +653,41 @@ def molecule_to_viewport(
                         dist=LABEL_GAP_PX,
                         cls="halo mark-halo",
                     )
+
+    if mol_spec.annotations:
+        # Place callouts / regions against the molecule occupancy grid.
+        annot_grid = _mol_occupancy(layout, coords, texts)
+        drawn = draw_annotations(
+            mol_spec.annotations,
+            atom_pos=atom_pos,
+            coords=coords,
+            grid=annot_grid,
+        )
+        layers["marks"].primitives.extend(drawn.primitives)
+        if halo:
+            for ink in drawn.ink:
+                _push_halo(layers, ink, dist=LABEL_GAP_PX, cls="halo annot-halo")
+        # Grow the viewport when annotations spill past the frame.
+        if drawn.boxes:
+            min_x = min(b[0] for b in drawn.boxes)
+            min_y = min(b[1] for b in drawn.boxes)
+            max_x = max(b[2] for b in drawn.boxes)
+            max_y = max(b[3] for b in drawn.boxes)
+            pad = PAD_PX * 0.25
+            dx = max(0.0, pad - min_x)
+            dy = max(0.0, pad - min_y)
+            if dx or dy:
+                _shift_layers(layers, dx, dy)
+                if label_pack is not None:
+                    label_pack = replace(
+                        label_pack, x=label_pack.x + dx, y=label_pack.y + dy
+                    )
+                width += dx
+                height += dy
+                max_x += dx
+                max_y += dy
+            width = max(width, max_x + pad)
+            height = max(height, max_y + pad)
 
     if label_pack is not None and label_pack.text:
         layers["overlay"].primitives.append(
