@@ -7,105 +7,20 @@ path so the halo does not depend on the viewer having the font.
 
 from __future__ import annotations
 
-from functools import lru_cache
-from importlib import resources
-from pathlib import Path
-
-from fontTools.pens.basePen import BasePen
 from fontTools.pens.transformPen import TransformPen
-from fontTools.ttLib import TTFont
+from shapely import affinity
 from shapely.geometry import MultiPolygon, Polygon
 from shapely.geometry.base import BaseGeometry
 from shapely.ops import unary_union
 
+# Re-export for callers that imported from here.
+from xenosite.pict.draw.font_face import (
+    ContourPen,
+    bundled_font_path,  # noqa: F401
+    glyph_set_cmap_upem,
+)
 from xenosite.pict.draw.metrics import FONT_PX, HALO_STROKE
-
-_FONT_PACKAGE = "xenosite.pict.data.fonts"
-_FONT_NAME = "LiberationSans-Regular.ttf"
-_BEZIER_STEPS = 8
-
-
-def bundled_font_path() -> Path:
-    """Filesystem path to the packaged Liberation Sans Regular TTF."""
-    root = resources.files(_FONT_PACKAGE)
-    return Path(str(root.joinpath(_FONT_NAME)))
-
-
-@lru_cache(maxsize=1)
-def _font() -> tuple[TTFont, object, dict[int, str], float]:
-    path = bundled_font_path()
-    font = TTFont(path)
-    glyph_set = font.getGlyphSet()
-    cmap = font.getBestCmap() or {}
-    upem = float(font["head"].unitsPerEm)
-    return font, glyph_set, cmap, upem
-
-
-class _ContourPen(BasePen):
-    """Record TrueType contours as polylines (quadratic/cubic sampled)."""
-
-    def __init__(self, glyph_set: object) -> None:
-        super().__init__(glyph_set)
-        self.contours: list[list[tuple[float, float]]] = []
-        self._pts: list[tuple[float, float]] = []
-
-    def _moveTo(self, pt: tuple[float, float]) -> None:
-        self._pts = [pt]
-
-    def _lineTo(self, pt: tuple[float, float]) -> None:
-        self._pts.append(pt)
-
-    def _curveToOne(
-        self,
-        p1: tuple[float, float],
-        p2: tuple[float, float],
-        p3: tuple[float, float],
-    ) -> None:
-        p0 = self._pts[-1]
-        for i in range(1, _BEZIER_STEPS + 1):
-            t = i / _BEZIER_STEPS
-            mt = 1.0 - t
-            x = (
-                mt**3 * p0[0]
-                + 3 * mt**2 * t * p1[0]
-                + 3 * mt * t**2 * p2[0]
-                + t**3 * p3[0]
-            )
-            y = (
-                mt**3 * p0[1]
-                + 3 * mt**2 * t * p1[1]
-                + 3 * mt * t**2 * p2[1]
-                + t**3 * p3[1]
-            )
-            self._pts.append((x, y))
-
-    def _qCurveToOne(self, p1: tuple[float, float], p2: tuple[float, float]) -> None:
-        p0 = self._pts[-1]
-        for i in range(1, _BEZIER_STEPS + 1):
-            t = i / _BEZIER_STEPS
-            mt = 1.0 - t
-            x = mt**2 * p0[0] + 2 * mt * t * p1[0] + t**2 * p2[0]
-            y = mt**2 * p0[1] + 2 * mt * t * p1[1] + t**2 * p2[1]
-            self._pts.append((x, y))
-
-    def _closePath(self) -> None:
-        if len(self._pts) >= 3:
-            self.contours.append(self._pts)
-        self._pts = []
-
-    def _endPath(self) -> None:
-        self._pts = []
-
-
-def _advance_width(text: str, upem: float, glyph_set: object, cmap: dict[int, str]) -> float:
-    total = 0.0
-    for ch in text:
-        name = cmap.get(ord(ch))
-        if name is None:
-            total += 0.5 * upem
-            continue
-        total += float(glyph_set[name].width)  # type: ignore[index]
-    return total
+from xenosite.pict.draw.text_metrics import measure_text
 
 
 def label_outline(
@@ -119,8 +34,8 @@ def label_outline(
     """Glyph fill geometry in SVG coords for ``text`` at baseline ``(x, y)``."""
     if not text:
         return None
-    _font_obj, glyph_set, cmap, upem = _font()
-    pen = _ContourPen(glyph_set)
+    glyph_set, cmap, upem = glyph_set_cmap_upem()
+    pen = ContourPen(glyph_set)
     pen_x = 0.0
     for ch in text:
         name = cmap.get(ord(ch))
@@ -149,14 +64,12 @@ def label_outline(
     geom: BaseGeometry = unary_union(polys)
     scale = font_size / upem
     # Font space: +Y up. SVG: +Y down. Flip about the baseline (y=0).
-    from shapely import affinity
-
     geom = affinity.scale(geom, xfact=scale, yfact=-scale, origin=(0.0, 0.0))
-    advance = _advance_width(text, upem, glyph_set, cmap) * scale
+    metrics = measure_text(text, font_size)
     if anchor == "middle":
-        ox = x - advance * 0.5
+        ox = x - metrics.advance * 0.5
     elif anchor == "end":
-        ox = x - advance
+        ox = x - metrics.advance
     else:
         ox = x
     return affinity.translate(geom, xoff=ox, yoff=y)
@@ -172,18 +85,17 @@ def geom_to_svg_d(geom: BaseGeometry) -> str:
     elif isinstance(geom, MultiPolygon):
         parts = list(geom.geoms)
     else:
-        # GeometryCollection / others — take polygonal bits.
         parts = [g for g in getattr(geom, "geoms", [geom]) if isinstance(g, Polygon)]
 
     chunks: list[str] = []
     for poly in parts:
         if poly.is_empty:
             continue
+
         def _ring(coords: object) -> str:
             pts = list(coords)  # type: ignore[arg-type]
             if len(pts) < 2:
                 return ""
-            # Drop duplicate close point if present; we emit Z.
             if pts[0] == pts[-1]:
                 pts = pts[:-1]
             if not pts:

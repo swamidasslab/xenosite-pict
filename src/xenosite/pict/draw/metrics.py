@@ -80,15 +80,12 @@ def coord_scale(layout: MoleculeLayout) -> float:
 def label_clearance(text: str, font_px: float = FONT_PX) -> float:
     """Bond inset so the stroke stops before a centered label.
 
-    Helvetica caps are ~0.62 em; half-width plus a small pad. Xenopict
-    leaves this to RDKit’s label padding.
+    Uses the bundled face's real advance and ink width (plus half the halo
+    stroke so the line ends outside the white knockout).
     """
-    n = max(len(text), 1)
-    # Caps advance ~0.62 em (Helvetica). Half-width plus pad so the stroke
-    # stops at the glyph box, not inside it.
-    half = 0.62 * font_px * n * 0.5
-    pad = 0.22 * font_px
-    return half + pad
+    from xenosite.pict.draw.text_metrics import measure_text
+
+    return measure_text(text, font_px).clearance()
 
 
 def hash_count(length: float) -> int:

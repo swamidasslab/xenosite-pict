@@ -41,6 +41,7 @@ from xenosite.pict.draw.metrics import (
 )
 from xenosite.pict.draw.plotdot import PlotDot
 from xenosite.pict.draw.rings import bond_interior_normals, find_sssr
+from xenosite.pict.draw.text_metrics import label_baseline_offset
 
 _LAYER_ORDER = ("shading", "halo", "bonds", "labels", "marks", "overlay")
 _PAD = PAD_PX
@@ -362,7 +363,7 @@ def molecule_to_viewport(layout: MoleculeLayout, mol_spec: MoleculeSpec) -> View
                 )
         if not label:
             continue
-        label_y = y + FONT_PX * 0.35
+        label_y = y + label_baseline_offset(FONT_PX)
         if mol_spec.halo:
             # Glyph outlines → shapely buffer → path. Portable knockout; no
             # viewer font required for the halo (ink stays <text>).
