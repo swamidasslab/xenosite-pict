@@ -28,30 +28,10 @@
       "description": "Annotation as a nested object (alternative to mol.annotations list).",
       "properties": {
         "id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Optional stable id for refs/edges",
-          "title": "Id"
+          "$ref": "#/$defs/Id"
         },
         "panel": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Subfigure tag drawn as (a), (b), \u2026",
-          "title": "Panel"
+          "$ref": "#/$defs/Panel"
         },
         "layout": {
           "$ref": "#/$defs/LayoutSpec"
@@ -160,65 +140,7 @@
           "default": "auto"
         },
         "children": {
-          "items": {
-            "discriminator": {
-              "mapping": {
-                "annotation": "#/$defs/AnnotationNode",
-                "arrow": "#/$defs/ArrowNode",
-                "grid": "#/$defs/GridNode",
-                "group": "#/$defs/GroupNode",
-                "image": "#/$defs/ImageNode",
-                "mol": "#/$defs/MolNode",
-                "network": "#/$defs/NetworkNode",
-                "reaction": "#/$defs/ReactionNode",
-                "ref": "#/$defs/RefNode",
-                "stack": "#/$defs/StackNode",
-                "table": "#/$defs/TableNode",
-                "text": "#/$defs/TextNode"
-              },
-              "propertyName": "type"
-            },
-            "oneOf": [
-              {
-                "$ref": "#/$defs/MolNode"
-              },
-              {
-                "$ref": "#/$defs/ArrowNode"
-              },
-              {
-                "$ref": "#/$defs/TextNode"
-              },
-              {
-                "$ref": "#/$defs/ImageNode"
-              },
-              {
-                "$ref": "#/$defs/TableNode"
-              },
-              {
-                "$ref": "#/$defs/RefNode"
-              },
-              {
-                "$ref": "#/$defs/AnnotationNode"
-              },
-              {
-                "$ref": "#/$defs/GroupNode"
-              },
-              {
-                "$ref": "#/$defs/GridNode"
-              },
-              {
-                "$ref": "#/$defs/StackNode"
-              },
-              {
-                "$ref": "#/$defs/ReactionNode"
-              },
-              {
-                "$ref": "#/$defs/NetworkNode"
-              }
-            ]
-          },
-          "title": "Children",
-          "type": "array"
+          "$ref": "#/$defs/Children"
         }
       },
       "title": "AnnotationNode",
@@ -336,30 +258,10 @@
       "description": "Reaction / diagram arrow between siblings (or via layout.edges).",
       "properties": {
         "id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Optional stable id for refs/edges",
-          "title": "Id"
+          "$ref": "#/$defs/Id"
         },
         "panel": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Subfigure tag drawn as (a), (b), \u2026",
-          "title": "Panel"
+          "$ref": "#/$defs/Panel"
         },
         "layout": {
           "$ref": "#/$defs/LayoutSpec"
@@ -434,65 +336,7 @@
           "type": "boolean"
         },
         "children": {
-          "items": {
-            "discriminator": {
-              "mapping": {
-                "annotation": "#/$defs/AnnotationNode",
-                "arrow": "#/$defs/ArrowNode",
-                "grid": "#/$defs/GridNode",
-                "group": "#/$defs/GroupNode",
-                "image": "#/$defs/ImageNode",
-                "mol": "#/$defs/MolNode",
-                "network": "#/$defs/NetworkNode",
-                "reaction": "#/$defs/ReactionNode",
-                "ref": "#/$defs/RefNode",
-                "stack": "#/$defs/StackNode",
-                "table": "#/$defs/TableNode",
-                "text": "#/$defs/TextNode"
-              },
-              "propertyName": "type"
-            },
-            "oneOf": [
-              {
-                "$ref": "#/$defs/MolNode"
-              },
-              {
-                "$ref": "#/$defs/ArrowNode"
-              },
-              {
-                "$ref": "#/$defs/TextNode"
-              },
-              {
-                "$ref": "#/$defs/ImageNode"
-              },
-              {
-                "$ref": "#/$defs/TableNode"
-              },
-              {
-                "$ref": "#/$defs/RefNode"
-              },
-              {
-                "$ref": "#/$defs/AnnotationNode"
-              },
-              {
-                "$ref": "#/$defs/GroupNode"
-              },
-              {
-                "$ref": "#/$defs/GridNode"
-              },
-              {
-                "$ref": "#/$defs/StackNode"
-              },
-              {
-                "$ref": "#/$defs/ReactionNode"
-              },
-              {
-                "$ref": "#/$defs/NetworkNode"
-              }
-            ]
-          },
-          "title": "Children",
-          "type": "array"
+          "$ref": "#/$defs/Children"
         }
       },
       "title": "ArrowNode",
@@ -594,30 +438,10 @@
       "additionalProperties": false,
       "properties": {
         "id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Optional stable id for refs/edges",
-          "title": "Id"
+          "$ref": "#/$defs/Id"
         },
         "panel": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Subfigure tag drawn as (a), (b), \u2026",
-          "title": "Panel"
+          "$ref": "#/$defs/Panel"
         },
         "layout": {
           "$ref": "#/$defs/LayoutSpec"
@@ -634,65 +458,7 @@
           "type": "string"
         },
         "children": {
-          "items": {
-            "discriminator": {
-              "mapping": {
-                "annotation": "#/$defs/AnnotationNode",
-                "arrow": "#/$defs/ArrowNode",
-                "grid": "#/$defs/GridNode",
-                "group": "#/$defs/GroupNode",
-                "image": "#/$defs/ImageNode",
-                "mol": "#/$defs/MolNode",
-                "network": "#/$defs/NetworkNode",
-                "reaction": "#/$defs/ReactionNode",
-                "ref": "#/$defs/RefNode",
-                "stack": "#/$defs/StackNode",
-                "table": "#/$defs/TableNode",
-                "text": "#/$defs/TextNode"
-              },
-              "propertyName": "type"
-            },
-            "oneOf": [
-              {
-                "$ref": "#/$defs/MolNode"
-              },
-              {
-                "$ref": "#/$defs/ArrowNode"
-              },
-              {
-                "$ref": "#/$defs/TextNode"
-              },
-              {
-                "$ref": "#/$defs/ImageNode"
-              },
-              {
-                "$ref": "#/$defs/TableNode"
-              },
-              {
-                "$ref": "#/$defs/RefNode"
-              },
-              {
-                "$ref": "#/$defs/AnnotationNode"
-              },
-              {
-                "$ref": "#/$defs/GroupNode"
-              },
-              {
-                "$ref": "#/$defs/GridNode"
-              },
-              {
-                "$ref": "#/$defs/StackNode"
-              },
-              {
-                "$ref": "#/$defs/ReactionNode"
-              },
-              {
-                "$ref": "#/$defs/NetworkNode"
-              }
-            ]
-          },
-          "title": "Children",
-          "type": "array"
+          "$ref": "#/$defs/Children"
         }
       },
       "title": "GridNode",
@@ -702,30 +468,10 @@
       "additionalProperties": false,
       "properties": {
         "id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Optional stable id for refs/edges",
-          "title": "Id"
+          "$ref": "#/$defs/Id"
         },
         "panel": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Subfigure tag drawn as (a), (b), \u2026",
-          "title": "Panel"
+          "$ref": "#/$defs/Panel"
         },
         "layout": {
           "$ref": "#/$defs/LayoutSpec"
@@ -742,65 +488,7 @@
           "type": "string"
         },
         "children": {
-          "items": {
-            "discriminator": {
-              "mapping": {
-                "annotation": "#/$defs/AnnotationNode",
-                "arrow": "#/$defs/ArrowNode",
-                "grid": "#/$defs/GridNode",
-                "group": "#/$defs/GroupNode",
-                "image": "#/$defs/ImageNode",
-                "mol": "#/$defs/MolNode",
-                "network": "#/$defs/NetworkNode",
-                "reaction": "#/$defs/ReactionNode",
-                "ref": "#/$defs/RefNode",
-                "stack": "#/$defs/StackNode",
-                "table": "#/$defs/TableNode",
-                "text": "#/$defs/TextNode"
-              },
-              "propertyName": "type"
-            },
-            "oneOf": [
-              {
-                "$ref": "#/$defs/MolNode"
-              },
-              {
-                "$ref": "#/$defs/ArrowNode"
-              },
-              {
-                "$ref": "#/$defs/TextNode"
-              },
-              {
-                "$ref": "#/$defs/ImageNode"
-              },
-              {
-                "$ref": "#/$defs/TableNode"
-              },
-              {
-                "$ref": "#/$defs/RefNode"
-              },
-              {
-                "$ref": "#/$defs/AnnotationNode"
-              },
-              {
-                "$ref": "#/$defs/GroupNode"
-              },
-              {
-                "$ref": "#/$defs/GridNode"
-              },
-              {
-                "$ref": "#/$defs/StackNode"
-              },
-              {
-                "$ref": "#/$defs/ReactionNode"
-              },
-              {
-                "$ref": "#/$defs/NetworkNode"
-              }
-            ]
-          },
-          "title": "Children",
-          "type": "array"
+          "$ref": "#/$defs/Children"
         }
       },
       "title": "GroupNode",
@@ -810,30 +498,10 @@
       "additionalProperties": false,
       "properties": {
         "id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Optional stable id for refs/edges",
-          "title": "Id"
+          "$ref": "#/$defs/Id"
         },
         "panel": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Subfigure tag drawn as (a), (b), \u2026",
-          "title": "Panel"
+          "$ref": "#/$defs/Panel"
         },
         "layout": {
           "$ref": "#/$defs/LayoutSpec"
@@ -866,65 +534,7 @@
           "title": "Alt"
         },
         "children": {
-          "items": {
-            "discriminator": {
-              "mapping": {
-                "annotation": "#/$defs/AnnotationNode",
-                "arrow": "#/$defs/ArrowNode",
-                "grid": "#/$defs/GridNode",
-                "group": "#/$defs/GroupNode",
-                "image": "#/$defs/ImageNode",
-                "mol": "#/$defs/MolNode",
-                "network": "#/$defs/NetworkNode",
-                "reaction": "#/$defs/ReactionNode",
-                "ref": "#/$defs/RefNode",
-                "stack": "#/$defs/StackNode",
-                "table": "#/$defs/TableNode",
-                "text": "#/$defs/TextNode"
-              },
-              "propertyName": "type"
-            },
-            "oneOf": [
-              {
-                "$ref": "#/$defs/MolNode"
-              },
-              {
-                "$ref": "#/$defs/ArrowNode"
-              },
-              {
-                "$ref": "#/$defs/TextNode"
-              },
-              {
-                "$ref": "#/$defs/ImageNode"
-              },
-              {
-                "$ref": "#/$defs/TableNode"
-              },
-              {
-                "$ref": "#/$defs/RefNode"
-              },
-              {
-                "$ref": "#/$defs/AnnotationNode"
-              },
-              {
-                "$ref": "#/$defs/GroupNode"
-              },
-              {
-                "$ref": "#/$defs/GridNode"
-              },
-              {
-                "$ref": "#/$defs/StackNode"
-              },
-              {
-                "$ref": "#/$defs/ReactionNode"
-              },
-              {
-                "$ref": "#/$defs/NetworkNode"
-              }
-            ]
-          },
-          "title": "Children",
-          "type": "array"
+          "$ref": "#/$defs/Children"
         }
       },
       "required": [
@@ -1223,30 +833,10 @@
       "description": "Molecule object (chemistry payload + optional nested annotations/tables).",
       "properties": {
         "id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Optional stable id for refs/edges",
-          "title": "Id"
+          "$ref": "#/$defs/Id"
         },
         "panel": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Subfigure tag drawn as (a), (b), \u2026",
-          "title": "Panel"
+          "$ref": "#/$defs/Panel"
         },
         "layout": {
           "$ref": "#/$defs/LayoutSpec"
@@ -1428,65 +1018,7 @@
           "title": "Color"
         },
         "children": {
-          "items": {
-            "discriminator": {
-              "mapping": {
-                "annotation": "#/$defs/AnnotationNode",
-                "arrow": "#/$defs/ArrowNode",
-                "grid": "#/$defs/GridNode",
-                "group": "#/$defs/GroupNode",
-                "image": "#/$defs/ImageNode",
-                "mol": "#/$defs/MolNode",
-                "network": "#/$defs/NetworkNode",
-                "reaction": "#/$defs/ReactionNode",
-                "ref": "#/$defs/RefNode",
-                "stack": "#/$defs/StackNode",
-                "table": "#/$defs/TableNode",
-                "text": "#/$defs/TextNode"
-              },
-              "propertyName": "type"
-            },
-            "oneOf": [
-              {
-                "$ref": "#/$defs/MolNode"
-              },
-              {
-                "$ref": "#/$defs/ArrowNode"
-              },
-              {
-                "$ref": "#/$defs/TextNode"
-              },
-              {
-                "$ref": "#/$defs/ImageNode"
-              },
-              {
-                "$ref": "#/$defs/TableNode"
-              },
-              {
-                "$ref": "#/$defs/RefNode"
-              },
-              {
-                "$ref": "#/$defs/AnnotationNode"
-              },
-              {
-                "$ref": "#/$defs/GroupNode"
-              },
-              {
-                "$ref": "#/$defs/GridNode"
-              },
-              {
-                "$ref": "#/$defs/StackNode"
-              },
-              {
-                "$ref": "#/$defs/ReactionNode"
-              },
-              {
-                "$ref": "#/$defs/NetworkNode"
-              }
-            ]
-          },
-          "title": "Children",
-          "type": "array"
+          "$ref": "#/$defs/Children"
         }
       },
       "title": "MolNode",
@@ -1496,30 +1028,10 @@
       "additionalProperties": false,
       "properties": {
         "id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Optional stable id for refs/edges",
-          "title": "Id"
+          "$ref": "#/$defs/Id"
         },
         "panel": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Subfigure tag drawn as (a), (b), \u2026",
-          "title": "Panel"
+          "$ref": "#/$defs/Panel"
         },
         "layout": {
           "$ref": "#/$defs/LayoutSpec"
@@ -1536,65 +1048,7 @@
           "type": "string"
         },
         "children": {
-          "items": {
-            "discriminator": {
-              "mapping": {
-                "annotation": "#/$defs/AnnotationNode",
-                "arrow": "#/$defs/ArrowNode",
-                "grid": "#/$defs/GridNode",
-                "group": "#/$defs/GroupNode",
-                "image": "#/$defs/ImageNode",
-                "mol": "#/$defs/MolNode",
-                "network": "#/$defs/NetworkNode",
-                "reaction": "#/$defs/ReactionNode",
-                "ref": "#/$defs/RefNode",
-                "stack": "#/$defs/StackNode",
-                "table": "#/$defs/TableNode",
-                "text": "#/$defs/TextNode"
-              },
-              "propertyName": "type"
-            },
-            "oneOf": [
-              {
-                "$ref": "#/$defs/MolNode"
-              },
-              {
-                "$ref": "#/$defs/ArrowNode"
-              },
-              {
-                "$ref": "#/$defs/TextNode"
-              },
-              {
-                "$ref": "#/$defs/ImageNode"
-              },
-              {
-                "$ref": "#/$defs/TableNode"
-              },
-              {
-                "$ref": "#/$defs/RefNode"
-              },
-              {
-                "$ref": "#/$defs/AnnotationNode"
-              },
-              {
-                "$ref": "#/$defs/GroupNode"
-              },
-              {
-                "$ref": "#/$defs/GridNode"
-              },
-              {
-                "$ref": "#/$defs/StackNode"
-              },
-              {
-                "$ref": "#/$defs/ReactionNode"
-              },
-              {
-                "$ref": "#/$defs/NetworkNode"
-              }
-            ]
-          },
-          "title": "Children",
-          "type": "array"
+          "$ref": "#/$defs/Children"
         }
       },
       "title": "NetworkNode",
@@ -1639,30 +1093,10 @@
       "additionalProperties": false,
       "properties": {
         "id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Optional stable id for refs/edges",
-          "title": "Id"
+          "$ref": "#/$defs/Id"
         },
         "panel": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Subfigure tag drawn as (a), (b), \u2026",
-          "title": "Panel"
+          "$ref": "#/$defs/Panel"
         },
         "layout": {
           "$ref": "#/$defs/LayoutSpec"
@@ -1679,65 +1113,7 @@
           "type": "string"
         },
         "children": {
-          "items": {
-            "discriminator": {
-              "mapping": {
-                "annotation": "#/$defs/AnnotationNode",
-                "arrow": "#/$defs/ArrowNode",
-                "grid": "#/$defs/GridNode",
-                "group": "#/$defs/GroupNode",
-                "image": "#/$defs/ImageNode",
-                "mol": "#/$defs/MolNode",
-                "network": "#/$defs/NetworkNode",
-                "reaction": "#/$defs/ReactionNode",
-                "ref": "#/$defs/RefNode",
-                "stack": "#/$defs/StackNode",
-                "table": "#/$defs/TableNode",
-                "text": "#/$defs/TextNode"
-              },
-              "propertyName": "type"
-            },
-            "oneOf": [
-              {
-                "$ref": "#/$defs/MolNode"
-              },
-              {
-                "$ref": "#/$defs/ArrowNode"
-              },
-              {
-                "$ref": "#/$defs/TextNode"
-              },
-              {
-                "$ref": "#/$defs/ImageNode"
-              },
-              {
-                "$ref": "#/$defs/TableNode"
-              },
-              {
-                "$ref": "#/$defs/RefNode"
-              },
-              {
-                "$ref": "#/$defs/AnnotationNode"
-              },
-              {
-                "$ref": "#/$defs/GroupNode"
-              },
-              {
-                "$ref": "#/$defs/GridNode"
-              },
-              {
-                "$ref": "#/$defs/StackNode"
-              },
-              {
-                "$ref": "#/$defs/ReactionNode"
-              },
-              {
-                "$ref": "#/$defs/NetworkNode"
-              }
-            ]
-          },
-          "title": "Children",
-          "type": "array"
+          "$ref": "#/$defs/Children"
         }
       },
       "title": "ReactionNode",
@@ -1748,30 +1124,10 @@
       "description": "Reference to another node by id (sharing).",
       "properties": {
         "id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Optional stable id for refs/edges",
-          "title": "Id"
+          "$ref": "#/$defs/Id"
         },
         "panel": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Subfigure tag drawn as (a), (b), \u2026",
-          "title": "Panel"
+          "$ref": "#/$defs/Panel"
         },
         "layout": {
           "$ref": "#/$defs/LayoutSpec"
@@ -1792,65 +1148,7 @@
           "type": "string"
         },
         "children": {
-          "items": {
-            "discriminator": {
-              "mapping": {
-                "annotation": "#/$defs/AnnotationNode",
-                "arrow": "#/$defs/ArrowNode",
-                "grid": "#/$defs/GridNode",
-                "group": "#/$defs/GroupNode",
-                "image": "#/$defs/ImageNode",
-                "mol": "#/$defs/MolNode",
-                "network": "#/$defs/NetworkNode",
-                "reaction": "#/$defs/ReactionNode",
-                "ref": "#/$defs/RefNode",
-                "stack": "#/$defs/StackNode",
-                "table": "#/$defs/TableNode",
-                "text": "#/$defs/TextNode"
-              },
-              "propertyName": "type"
-            },
-            "oneOf": [
-              {
-                "$ref": "#/$defs/MolNode"
-              },
-              {
-                "$ref": "#/$defs/ArrowNode"
-              },
-              {
-                "$ref": "#/$defs/TextNode"
-              },
-              {
-                "$ref": "#/$defs/ImageNode"
-              },
-              {
-                "$ref": "#/$defs/TableNode"
-              },
-              {
-                "$ref": "#/$defs/RefNode"
-              },
-              {
-                "$ref": "#/$defs/AnnotationNode"
-              },
-              {
-                "$ref": "#/$defs/GroupNode"
-              },
-              {
-                "$ref": "#/$defs/GridNode"
-              },
-              {
-                "$ref": "#/$defs/StackNode"
-              },
-              {
-                "$ref": "#/$defs/ReactionNode"
-              },
-              {
-                "$ref": "#/$defs/NetworkNode"
-              }
-            ]
-          },
-          "title": "Children",
-          "type": "array"
+          "$ref": "#/$defs/Children"
         }
       },
       "required": [
@@ -1970,30 +1268,10 @@
       "additionalProperties": false,
       "properties": {
         "id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Optional stable id for refs/edges",
-          "title": "Id"
+          "$ref": "#/$defs/Id"
         },
         "panel": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Subfigure tag drawn as (a), (b), \u2026",
-          "title": "Panel"
+          "$ref": "#/$defs/Panel"
         },
         "layout": {
           "$ref": "#/$defs/LayoutSpec"
@@ -2010,65 +1288,7 @@
           "type": "string"
         },
         "children": {
-          "items": {
-            "discriminator": {
-              "mapping": {
-                "annotation": "#/$defs/AnnotationNode",
-                "arrow": "#/$defs/ArrowNode",
-                "grid": "#/$defs/GridNode",
-                "group": "#/$defs/GroupNode",
-                "image": "#/$defs/ImageNode",
-                "mol": "#/$defs/MolNode",
-                "network": "#/$defs/NetworkNode",
-                "reaction": "#/$defs/ReactionNode",
-                "ref": "#/$defs/RefNode",
-                "stack": "#/$defs/StackNode",
-                "table": "#/$defs/TableNode",
-                "text": "#/$defs/TextNode"
-              },
-              "propertyName": "type"
-            },
-            "oneOf": [
-              {
-                "$ref": "#/$defs/MolNode"
-              },
-              {
-                "$ref": "#/$defs/ArrowNode"
-              },
-              {
-                "$ref": "#/$defs/TextNode"
-              },
-              {
-                "$ref": "#/$defs/ImageNode"
-              },
-              {
-                "$ref": "#/$defs/TableNode"
-              },
-              {
-                "$ref": "#/$defs/RefNode"
-              },
-              {
-                "$ref": "#/$defs/AnnotationNode"
-              },
-              {
-                "$ref": "#/$defs/GroupNode"
-              },
-              {
-                "$ref": "#/$defs/GridNode"
-              },
-              {
-                "$ref": "#/$defs/StackNode"
-              },
-              {
-                "$ref": "#/$defs/ReactionNode"
-              },
-              {
-                "$ref": "#/$defs/NetworkNode"
-              }
-            ]
-          },
-          "title": "Children",
-          "type": "array"
+          "$ref": "#/$defs/Children"
         }
       },
       "title": "StackNode",
@@ -2079,30 +1299,10 @@
       "description": "Tabular panel; cells may be strings or nested nodes (e.g. mol).",
       "properties": {
         "id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Optional stable id for refs/edges",
-          "title": "Id"
+          "$ref": "#/$defs/Id"
         },
         "panel": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Subfigure tag drawn as (a), (b), \u2026",
-          "title": "Panel"
+          "$ref": "#/$defs/Panel"
         },
         "layout": {
           "$ref": "#/$defs/LayoutSpec"
@@ -2142,65 +1342,7 @@
           "type": "array"
         },
         "children": {
-          "items": {
-            "discriminator": {
-              "mapping": {
-                "annotation": "#/$defs/AnnotationNode",
-                "arrow": "#/$defs/ArrowNode",
-                "grid": "#/$defs/GridNode",
-                "group": "#/$defs/GroupNode",
-                "image": "#/$defs/ImageNode",
-                "mol": "#/$defs/MolNode",
-                "network": "#/$defs/NetworkNode",
-                "reaction": "#/$defs/ReactionNode",
-                "ref": "#/$defs/RefNode",
-                "stack": "#/$defs/StackNode",
-                "table": "#/$defs/TableNode",
-                "text": "#/$defs/TextNode"
-              },
-              "propertyName": "type"
-            },
-            "oneOf": [
-              {
-                "$ref": "#/$defs/MolNode"
-              },
-              {
-                "$ref": "#/$defs/ArrowNode"
-              },
-              {
-                "$ref": "#/$defs/TextNode"
-              },
-              {
-                "$ref": "#/$defs/ImageNode"
-              },
-              {
-                "$ref": "#/$defs/TableNode"
-              },
-              {
-                "$ref": "#/$defs/RefNode"
-              },
-              {
-                "$ref": "#/$defs/AnnotationNode"
-              },
-              {
-                "$ref": "#/$defs/GroupNode"
-              },
-              {
-                "$ref": "#/$defs/GridNode"
-              },
-              {
-                "$ref": "#/$defs/StackNode"
-              },
-              {
-                "$ref": "#/$defs/ReactionNode"
-              },
-              {
-                "$ref": "#/$defs/NetworkNode"
-              }
-            ]
-          },
-          "title": "Children",
-          "type": "array"
+          "$ref": "#/$defs/Children"
         }
       },
       "title": "TableNode",
@@ -2210,30 +1352,10 @@
       "additionalProperties": false,
       "properties": {
         "id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Optional stable id for refs/edges",
-          "title": "Id"
+          "$ref": "#/$defs/Id"
         },
         "panel": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Subfigure tag drawn as (a), (b), \u2026",
-          "title": "Panel"
+          "$ref": "#/$defs/Panel"
         },
         "layout": {
           "$ref": "#/$defs/LayoutSpec"
@@ -2254,65 +1376,7 @@
           "type": "string"
         },
         "children": {
-          "items": {
-            "discriminator": {
-              "mapping": {
-                "annotation": "#/$defs/AnnotationNode",
-                "arrow": "#/$defs/ArrowNode",
-                "grid": "#/$defs/GridNode",
-                "group": "#/$defs/GroupNode",
-                "image": "#/$defs/ImageNode",
-                "mol": "#/$defs/MolNode",
-                "network": "#/$defs/NetworkNode",
-                "reaction": "#/$defs/ReactionNode",
-                "ref": "#/$defs/RefNode",
-                "stack": "#/$defs/StackNode",
-                "table": "#/$defs/TableNode",
-                "text": "#/$defs/TextNode"
-              },
-              "propertyName": "type"
-            },
-            "oneOf": [
-              {
-                "$ref": "#/$defs/MolNode"
-              },
-              {
-                "$ref": "#/$defs/ArrowNode"
-              },
-              {
-                "$ref": "#/$defs/TextNode"
-              },
-              {
-                "$ref": "#/$defs/ImageNode"
-              },
-              {
-                "$ref": "#/$defs/TableNode"
-              },
-              {
-                "$ref": "#/$defs/RefNode"
-              },
-              {
-                "$ref": "#/$defs/AnnotationNode"
-              },
-              {
-                "$ref": "#/$defs/GroupNode"
-              },
-              {
-                "$ref": "#/$defs/GridNode"
-              },
-              {
-                "$ref": "#/$defs/StackNode"
-              },
-              {
-                "$ref": "#/$defs/ReactionNode"
-              },
-              {
-                "$ref": "#/$defs/NetworkNode"
-              }
-            ]
-          },
-          "title": "Children",
-          "type": "array"
+          "$ref": "#/$defs/Children"
         }
       },
       "required": [
@@ -2320,6 +1384,112 @@
       ],
       "title": "TextNode",
       "type": "object"
+    },
+    "Children": {
+      "items": {
+        "$ref": "#/$defs/NodeUnion"
+      },
+      "title": "Children",
+      "type": "array"
+    },
+    "NodeUnion": {
+      "discriminator": {
+        "mapping": {
+          "annotation": "#/$defs/AnnotationNode",
+          "arrow": "#/$defs/ArrowNode",
+          "grid": "#/$defs/GridNode",
+          "group": "#/$defs/GroupNode",
+          "image": "#/$defs/ImageNode",
+          "mol": "#/$defs/MolNode",
+          "network": "#/$defs/NetworkNode",
+          "reaction": "#/$defs/ReactionNode",
+          "ref": "#/$defs/RefNode",
+          "stack": "#/$defs/StackNode",
+          "table": "#/$defs/TableNode",
+          "text": "#/$defs/TextNode"
+        },
+        "propertyName": "type"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/MolNode"
+        },
+        {
+          "$ref": "#/$defs/ArrowNode"
+        },
+        {
+          "$ref": "#/$defs/TextNode"
+        },
+        {
+          "$ref": "#/$defs/ImageNode"
+        },
+        {
+          "$ref": "#/$defs/TableNode"
+        },
+        {
+          "$ref": "#/$defs/RefNode"
+        },
+        {
+          "$ref": "#/$defs/AnnotationNode"
+        },
+        {
+          "$ref": "#/$defs/GroupNode"
+        },
+        {
+          "$ref": "#/$defs/GridNode"
+        },
+        {
+          "$ref": "#/$defs/StackNode"
+        },
+        {
+          "$ref": "#/$defs/ReactionNode"
+        },
+        {
+          "$ref": "#/$defs/NetworkNode"
+        }
+      ]
+    },
+    "Panel": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Subfigure tag drawn as (a), (b), \u2026",
+      "title": "Panel"
+    },
+    "Id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional stable id for refs/edges",
+      "title": "Id"
+    },
+    "ArraySchema": {
+      "items": {
+        "maxItems": 2,
+        "minItems": 2,
+        "prefixItems": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "integer"
+          }
+        ],
+        "type": "array"
+      },
+      "type": "array"
     }
   },
   "description": "Canonical depiction document: one nested node tree.\n\nAlso accepts legacy flat ``{molecules, diagram, \u2026}``, which is lifted to a\nnested root on validation. Use :meth:`to_legacy` for the render pipeline.",
