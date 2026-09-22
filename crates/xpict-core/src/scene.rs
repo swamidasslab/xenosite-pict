@@ -250,7 +250,7 @@ mod tests {
                         d: "M 0 0 L 20 0".into(),
                         stroke: Some("#111".into()),
                         fill: Some("none".into()),
-                        stroke_width: 1.12,
+                        stroke_width: 0.84,
                         opacity: 1.0,
                         stroke_dasharray: None,
                         stroke_linecap: Some("round".into()),
