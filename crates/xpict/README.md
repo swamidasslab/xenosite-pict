@@ -1,13 +1,15 @@
 # xpict (native Rust)
 
-Public Rust API mirroring JS/Python: **`mol` / `render` / `to_svg`**, plus a
-batch stub **`depict({ molecules }) → Vec<Rendered>`**.
+Publication-quality small-molecule depiction for Rust: **`mol` / `render` /
+`to_svg`**, plus batch **`depict({ molecules }) → Vec<Rendered>`**.
 
-**Layout** uses crates.io [`rdkit`](https://crates.io/crates/rdkit) plus a
-local Depictor FFI. **Paint** is [`xpict-core`](../xpict-core). This crate is
-**not** a dependency of `xpict-py` / `xpict-wasm`.
+**Layout:** crates.io [`rdkit`](https://crates.io/crates/rdkit) + Depictor FFI.  
+**Paint:** [`xpict-core`](https://crates.io/crates/xpict-core) (no RDKit).  
+**Docs:** [GitHub Pages](https://swamidasslab.github.io/xenosite-pict/) ·
+[publish guide](https://github.com/swamidasslab/xenosite-pict/blob/main/docs/publish.md)
 
-## Usage
+This crate is **not** linked into the Python or WASM packages (those use
+`xpict-core` only).
 
 ```rust
 use xpict::{depict, mol, DepictSpec, MolRenderOptions, MolSpec};
@@ -41,17 +43,25 @@ fn main() -> Result<(), xpict::Error> {
 
 ## System requirements
 
-- RDKit C++ + Boost (e.g. Ubuntu `librdkit-dev`, `libboost-dev`)
-- C++17 (`g++`)
-- Ubuntu 202309: use the shipped `compat/rdkit` `FileWriters.h` shim
-  (`CPLUS_INCLUDE_PATH` — see repo `.cargo/config.toml`)
+- RDKit C++ libraries + headers, Boost, C++17 (`g++`)
+- On some Ubuntu images, set `CPLUS_INCLUDE_PATH` to the repo
+  `crates/xpict/compat/rdkit` shim (see `.cargo/config.toml` in the monorepo)
 
 ```bash
 cargo test -p xpict
 ```
 
-## Publish
+Publish **`xpict-core` first**, then this crate (`rust-core/v*` then `rust/v*`,
+or `release/v*` for an all-language cut).
 
-See [`docs/publish.md`](../../docs/publish.md). Publish **`xpict-core` first**,
-then this crate. Not part of default workspace members / CI coverage (no RDKit
-on that job).
+## Contributing
+
+Issues and PRs welcome:
+https://github.com/swamidasslab/xenosite-pict  
+
+Future nested `PictSpec` design (comments welcome):
+https://github.com/swamidasslab/xenosite-pict/tree/main/python/xpict/future  
+
+## License
+
+MIT

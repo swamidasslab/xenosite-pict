@@ -3,7 +3,9 @@ name = "xpict-py"
 version = "0.1.4"
 edition.workspace = true
 license.workspace = true
+authors.workspace = true
 repository.workspace = true
+homepage.workspace = true
 rust-version.workspace = true
 description = "PyO3 bindings for xpict-core"
 

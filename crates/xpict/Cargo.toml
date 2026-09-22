@@ -3,10 +3,13 @@ name = "xpict"
 version = "0.1.4"
 edition.workspace = true
 license.workspace = true
+authors.workspace = true
 repository.workspace = true
+homepage.workspace = true
 rust-version.workspace = true
-description = "Public Rust molecule depiction API (RDKit layout + xpict-core paint)"
+description = "Publication-quality small-molecule depiction for Rust (RDKit layout + xpict-core paint)"
 readme = "README.md"
+documentation = "https://docs.rs/xpict"
 keywords = ["chemistry", "molecule", "svg", "rdkit", "depiction"]
 categories = ["science", "visualization"]
 

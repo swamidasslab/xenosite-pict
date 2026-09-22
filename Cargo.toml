@@ -13,7 +13,9 @@ default-members = ["crates/xpict-core"]
 [workspace.package]
 edition = "2021"
 license = "MIT"
+authors = ["S. Joshua Swamidass <swamidass@gmail.com>"]
 repository = "https://github.com/swamidasslab/xenosite-pict"
+homepage = "https://swamidasslab.github.io/xenosite-pict/"
 # elkrs → indexmap 2.14 needs edition2024 (stable since 1.85).
 rust-version = "1.85"
 

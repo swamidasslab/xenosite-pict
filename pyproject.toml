@@ -1,13 +1,22 @@
 [project]
 name = "xpict"
 version = "0.1.4"
-description = "Declarative, publication-quality small-molecule depiction for Python and the web"
+description = "Publication-quality small-molecule depiction for Python (and the web via @xenosite/xpict)"
 readme = "README.md"
 license = { text = "MIT" }
 authors = [
   { name = "S. Joshua Swamidass", email = "swamidass@gmail.com" },
 ]
 requires-python = ">=3.11,<3.14"
+keywords = [
+  "chemistry",
+  "molecule",
+  "depiction",
+  "svg",
+  "rdkit",
+  "smiles",
+  "xenosite",
+]
 dependencies = [
   "pydantic>=2.7",
   "typing_extensions>=4.12",
@@ -21,6 +30,7 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Topic :: Scientific/Engineering :: Chemistry",
+  "Topic :: Scientific/Engineering :: Visualization",
 ]
 
 [project.optional-dependencies]
@@ -33,8 +43,12 @@ indigo = [
 all = ["xpict[rdkit,indigo]"]
 
 [project.urls]
-Homepage = "https://github.com/swamidasslab/xenosite-pict"
+Homepage = "https://swamidasslab.github.io/xenosite-pict/"
+Documentation = "https://swamidasslab.github.io/xenosite-pict/"
 Repository = "https://github.com/swamidasslab/xenosite-pict"
+Issues = "https://github.com/swamidasslab/xenosite-pict/issues"
+Changelog = "https://github.com/swamidasslab/xenosite-pict/releases"
+"Future PictSpec" = "https://github.com/swamidasslab/xenosite-pict/tree/main/python/xpict/future"
 
 [project.scripts]
 xpict-export-schema = "xpict.export_schema:main"

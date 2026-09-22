@@ -26,12 +26,14 @@ Language clients: ``mol`` / ``render`` / ``toSvg`` / ``depict`` (see root README
 
 Full nested ``PictSpec`` (groups, reactions, annotations, shorthand, diagram
 chrome) lives in ``xpict.future`` and ``schema/future/xpict.schema.json``.
+**Comments and design PRs on that tree are welcome** — open a GitHub issue and
+link those paths.
 
 Import as ``from xpict.future import PictSpec, MoleculeSpec, …``. Lab code
 (``Pict``, POCs, nested-schema tests) still uses these models; they are **not**
 the publish surface until features land in ``contracts``.
 
-See ``python/xpict/future/README.md``.
+See ``python/xpict/future/README.md`` and ``CONTRIBUTING.md``.
 
 ## Runtime vs document
 

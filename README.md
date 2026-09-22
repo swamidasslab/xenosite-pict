@@ -125,6 +125,19 @@ Details: [`docs/bindings.md`](docs/bindings.md) · shipping to xenosite:
 [`docs/migration-xenosite.md`](docs/migration-xenosite.md) · **publish setup**:
 [`docs/publish.md`](docs/publish.md).
 
+## Contributing
+
+Bug reports and pull requests are welcome on
+[GitHub](https://github.com/swamidasslab/xenosite-pict).
+
+For nested diagrams, reactions, and the full declarative document, please
+comment on the **future** design rather than the shipped MVP API:
+
+- [`python/xpict/future/`](python/xpict/future/README.md)
+- [`schema/future/xpict.schema.json`](schema/future/xpict.schema.json)
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md).
+
 ## License
 
 MIT
