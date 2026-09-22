@@ -74,6 +74,11 @@ export type MolRenderOptions = {
   bond_shade?: number[];
   mark_atoms?: number[];
   mark_bonds?: Array<[number, number]>;
+  /**
+   * Labels for ``*`` atoms in encounter order.
+   * ``null`` / ``"*"`` → bare star glyph; other strings (e.g. ``R1``) replace it.
+   */
+  star_labels?: Array<string | null>;
   align_to?: AlignTarget;
 };
 
@@ -123,8 +128,39 @@ async function ensureFrame(target: AlignTarget): Promise<string> {
   return target.frame_molblock;
 }
 
+function isStarAtom(a: {
+  element?: string;
+  z?: number;
+}): boolean {
+  if (a.element === "*") return true;
+  if (a.z === 0) return true;
+  return false;
+}
+
+/** Apply ``star_labels`` onto ``*`` atoms in layout order. */
+function applyStarLabels(
+  molecule: MoleculeIn,
+  labels: Array<string | null> | undefined
+): MoleculeIn {
+  if (!labels || labels.length === 0) return molecule;
+  const stars = molecule.atoms
+    .map((a, i) => ({ a, i }))
+    .filter(({ a }) => isStarAtom(a));
+  if (stars.length === 0) return molecule;
+  const atoms = molecule.atoms.map((a) => ({ ...a }));
+  for (let k = 0; k < labels.length && k < stars.length; k++) {
+    const raw = labels[k];
+    const label =
+      raw === null || raw === undefined || String(raw).trim() === ""
+        ? "*"
+        : String(raw).trim();
+    atoms[stars[k].i] = { ...atoms[stars[k].i], label };
+  }
+  return { ...molecule, atoms };
+}
+
 function applyOpts(molecule: MoleculeIn, opts: MolRenderOptions): MoleculeIn {
-  const out: MoleculeIn = {
+  let out: MoleculeIn = {
     ...molecule,
     atoms: [...molecule.atoms],
     bonds: [...molecule.bonds],
@@ -135,6 +171,7 @@ function applyOpts(molecule: MoleculeIn, opts: MolRenderOptions): MoleculeIn {
   if (opts.bond_shade !== undefined) out.bond_shade = opts.bond_shade;
   if (opts.mark_atoms !== undefined) out.mark_atoms = opts.mark_atoms;
   if (opts.mark_bonds !== undefined) out.mark_bonds = opts.mark_bonds;
+  out = applyStarLabels(out, opts.star_labels);
   return out;
 }
 

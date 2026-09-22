@@ -43,8 +43,11 @@ pub const MARK_OPACITY: f64 = 0.7;
 pub const MARK_HALO_OPACITY: f64 = 0.45;
 /// RDKit ``DrawText::SUBS_SCALE`` / ``SUPER_SCALE`` for H-counts and charges.
 pub const SCRIPT_SCALE: f64 = 0.66;
-/// Dummy / R-group ``*`` drawn larger than a Liberation asterisk.
-pub const STAR_FRAC: f64 = 1.35;
+/// Dummy / R-group ``*`` height as a multiple of Liberation cap-height.
+///
+/// Custom five-point star (not the Liberation asterisk); larger than heteroatom
+/// letters so attachment points read clearly.
+pub const STAR_FRAC: f64 = 1.65;
 
 pub const STROKE_PX: f64 = STROKE_FRAC * BOND_PX;
 pub const OFFSET_PX: f64 = OFFSET_FRAC * BOND_PX;

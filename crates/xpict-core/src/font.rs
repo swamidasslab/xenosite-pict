@@ -354,18 +354,19 @@ fn outline_glyph_em_uncached(
     }
 }
 
-/// Custom five-point star in em units (centered on advance, optical mid-height).
+/// Custom five-point star in em units (centered on advance, mid cap-height).
 ///
-/// Liberation's asterisk is too small / high for R-group markers; chemistry
-/// drawers use a larger centered star.
+/// Liberation's asterisk is too small / high for R-group markers. Size is
+/// driven by [`STAR_FRAC`] × cap-height (outer diameter).
 pub fn outline_star_em(style: FaceStyle) -> (Shape, f64) {
     let face_m = face_metrics(style);
-    let upem = face_m.upem;
-    let advance = 0.55 * upem * STAR_FRAC;
+    let height = STAR_FRAC * face_m.cap_height;
+    let outer = 0.5 * height;
+    let inner = outer * 0.38;
+    let pad = 0.12 * face_m.cap_height;
+    let advance = height + pad;
     let cx = 0.5 * advance;
-    let cy = 0.35 * face_m.cap_height;
-    let outer = 0.42 * face_m.cap_height * STAR_FRAC;
-    let inner = outer * 0.40;
+    let cy = 0.5 * face_m.cap_height;
     let mut ring = Vec::with_capacity(10);
     for i in 0..10 {
         let a = -std::f64::consts::FRAC_PI_2 + i as f64 * std::f64::consts::PI / 5.0;
@@ -501,7 +502,7 @@ fn measure_stem_em(style: FaceStyle) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::metrics::{FONT_PX, FONT_STEM_EM, SCRIPT_SCALE};
+    use crate::metrics::{FONT_PX, FONT_STEM_EM, SCRIPT_SCALE, STAR_FRAC};
 
     #[test]
     fn liberation_face_metrics() {
@@ -559,7 +560,14 @@ mod tests {
     #[test]
     fn star_is_larger_than_asterisk_advance() {
         let (_ast, adv_ast) = outline_run_em("*", FaceStyle::Regular);
-        let (_star, adv_star) = outline_star_em(FaceStyle::Regular);
-        assert!(adv_star > adv_ast * 1.05);
+        let (star, adv_star) = outline_star_em(FaceStyle::Regular);
+        assert!(adv_star > adv_ast * 1.2);
+        let face = face_metrics(FaceStyle::Regular);
+        let (_x0, y0, _x1, y1) = star.bounds().expect("star ink");
+        let height = y1 - y0;
+        // Custom star targets STAR_FRAC × cap-height; allow simplify slack.
+        assert!(height > 1.4 * face.cap_height);
+        assert!(height < 1.9 * face.cap_height);
+        let _ = STAR_FRAC;
     }
 }

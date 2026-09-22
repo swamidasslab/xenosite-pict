@@ -69,6 +69,20 @@ if (Math.hypot(methyl.x - circle.cx, methyl.y - circle.cy) > 1e-6) {
   throw new Error("svg_coords must match mark position in scene");
 }
 
+const starred = await xpict.render(xpict.mol("*C"), { star_labels: ["R1"] });
+const starSvg = xpict.toSvg(starred.scene);
+if (!starSvg.includes('data-text="R1"')) {
+  throw new Error("star_labels should replace * with R1");
+}
+const bareStar = await xpict.render(xpict.mol("*C"), { star_labels: ["*"] });
+const bareSvg = xpict.toSvg(bareStar.scene);
+if (!bareSvg.includes('data-text="*"')) {
+  throw new Error("bare * should keep data-text=*");
+}
+if (bareSvg.includes("<text")) {
+  throw new Error("star label must be a glyph path, not <text>");
+}
+
 console.log("api smoke ok", {
   svgBytes: svg.length,
   alignToMol: xpict.toSvg(alignedToMol.scene).length,

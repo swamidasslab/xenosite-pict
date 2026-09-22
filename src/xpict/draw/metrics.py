@@ -74,8 +74,8 @@ MARK_HALO_OPACITY = 0.45
 MARK_HALO_COLOR = "#555"
 # RDKit DrawText::SUBS_SCALE / SUPER_SCALE for H-counts and charges.
 SCRIPT_SCALE = 0.66
-# Dummy / R-group ``*`` drawn larger than a Liberation asterisk.
-STAR_FRAC = 1.35
+# Dummy / R-group ``*`` height as a multiple of Liberation cap-height.
+STAR_FRAC = 1.65
 # Annotation callouts / region outlines (box, oval, spline).
 ANNOT_PAD_FRAC = 0.45  # region outline stand-off from atom centers
 ANNOT_GAP_FRAC = 0.40  # callout label air past the target
