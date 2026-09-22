@@ -102,6 +102,57 @@ if (!xpict.toSvg(override.scene).includes('data-text="X"')) {
   throw new Error("explicit star_labels should override CX trailer");
 }
 
+// Multi-star: CX label slots must hit the right * by atom index.
+function starLabelsByIndex(mol: Awaited<ReturnType<typeof xpict.render>>) {
+  return mol.molecule.atoms
+    .filter((a) => a.z === 0 || a.element === "*")
+    .map((a) => ({ index: a.index, label: a.label ?? "*" }));
+}
+
+const firstOnly = await xpict.render(xpict.mol("*C* |$R1;;;$|"));
+{
+  const stars = starLabelsByIndex(firstOnly);
+  if (stars.length !== 2) throw new Error(`expected 2 stars, got ${stars.length}`);
+  if (stars[0]!.index !== 0 || stars[0]!.label !== "R1") {
+    throw new Error(`first star should be R1 at 0, got ${JSON.stringify(stars)}`);
+  }
+  if (stars[1]!.index !== 2 || stars[1]!.label !== "*") {
+    throw new Error(`second star should stay *, got ${JSON.stringify(stars)}`);
+  }
+  const texts = [...xpict.toSvg(firstOnly.scene).matchAll(/data-text="([^"]*)"/g)].map(
+    (m) => m[1]
+  );
+  if (!texts.includes("R1") || !texts.includes("*")) {
+    throw new Error(`first-only SVG labels ${JSON.stringify(texts)}`);
+  }
+}
+
+const secondOnly = await xpict.render(xpict.mol("*C* |$;;R2;$|"));
+{
+  const stars = starLabelsByIndex(secondOnly);
+  if (stars.length !== 2) throw new Error(`expected 2 stars, got ${stars.length}`);
+  if (stars[0]!.label !== "*") {
+    throw new Error(`first star should stay *, got ${JSON.stringify(stars)}`);
+  }
+  if (stars[1]!.index !== 2 || stars[1]!.label !== "R2") {
+    throw new Error(`second star should be R2 at 2, got ${JSON.stringify(stars)}`);
+  }
+  const texts = [...xpict.toSvg(secondOnly.scene).matchAll(/data-text="([^"]*)"/g)].map(
+    (m) => m[1]
+  );
+  if (!texts.includes("R2") || !texts.includes("*")) {
+    throw new Error(`second-only SVG labels ${JSON.stringify(texts)}`);
+  }
+}
+
+const both = await xpict.render(xpict.mol("*C* |$R1;;R2;$|"));
+{
+  const stars = starLabelsByIndex(both);
+  if (stars.map((s) => s.label).join(",") !== "R1,R2") {
+    throw new Error(`both stars labeled, got ${JSON.stringify(stars)}`);
+  }
+}
+
 console.log("api smoke ok", {
   svgBytes: svg.length,
   alignToMol: xpict.toSvg(alignedToMol.scene).length,

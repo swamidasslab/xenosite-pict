@@ -211,7 +211,7 @@ export async function layoutWithRdkit(
         ensureCoords(mol);
         return {
           molecule: toMoleculeIn(mol, { id: opts.id }),
-          molblock: mol.get_molblock(),
+          molblock: sanitizeDummyMolblock(mol.get_molblock()),
         };
       }
       const tmplJson = JSON.parse(templateMol.get_json()) as RdkitMolJson;
@@ -222,18 +222,31 @@ export async function layoutWithRdkit(
       for (const [, y] of tmplCoords) flipMaxY = Math.max(flipMaxY, y);
       return {
         molecule: toMoleculeIn(mol, { id: opts.id, scale: tmplScale, flipMaxY }),
-        molblock: mol.get_molblock(),
+        molblock: sanitizeDummyMolblock(mol.get_molblock()),
       };
     }
     ensureCoords(mol);
     return {
       molecule: toMoleculeIn(mol, { id: opts.id }),
-      molblock: mol.get_molblock(),
+      molblock: sanitizeDummyMolblock(mol.get_molblock()),
     };
   } finally {
     mol.delete();
     templateMol?.delete();
   }
+}
+
+/**
+ * MinimalLib writes dummy ``*`` as molfile ``R`` plus an ``M  ALS`` query that
+ * re-parses the first dummy as hydrogen. Rewrite dummies as ``*`` and drop ALS
+ * so multi-star frames round-trip with stable indices.
+ */
+export function sanitizeDummyMolblock(molblock: string): string {
+  return molblock
+    .split("\n")
+    .filter((line) => !line.startsWith("M  ALS"))
+    .map((line) => line.replace(/ R /g, " * "))
+    .join("\n");
 }
 
 /**
@@ -250,7 +263,7 @@ export async function materializeTemplateMolblock(source: string): Promise<strin
       }
       mol.normalize_depiction();
     }
-    return mol.get_molblock();
+    return sanitizeDummyMolblock(mol.get_molblock());
   } finally {
     mol.delete();
   }

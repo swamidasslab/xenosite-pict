@@ -24,7 +24,7 @@ import { depictMolecule, initNative, isNativeReady } from "./native.js";
 import { atomsInSvgFrame, type SvgAtom, type SvgBond } from "./frame.js";
 import { sceneToSvg, type Scene } from "./draw/scene-svg.js";
 import { elementSymbol } from "./elements.js";
-import { starLabelsFromCxsmiles } from "./cxsmiles.js";
+import { cxAtomLabels } from "./cxsmiles.js";
 
 export type { SvgAtom, SvgBond } from "./frame.js";
 export type {
@@ -76,10 +76,10 @@ export type MolRenderOptions = {
   mark_atoms?: number[];
   mark_bonds?: Array<[number, number]>;
   /**
-   * Labels for ``*`` atoms in encounter order.
+   * Labels for ``*`` atoms in layout encounter order.
    * ``null`` / ``"*"`` → bare star glyph; other strings (e.g. ``R1``) replace it.
-   * When omitted, CXSMILES ``|$alias;…$|`` trailers on the input are applied
-   * automatically (parity with Python ``cx_atom_labels``).
+   * When omitted, CXSMILES ``|$alias;…$|`` trailers are applied by **atom
+   * index** (parity with Python ``cx_atom_labels`` / native backend).
    */
   star_labels?: Array<string | null>;
   /**
@@ -145,7 +145,7 @@ function isStarAtom(a: {
   return false;
 }
 
-/** Apply ``star_labels`` onto ``*`` atoms in layout order. */
+/** Apply ``star_labels`` onto ``*`` atoms in layout encounter order. */
 function applyStarLabels(
   molecule: MoleculeIn,
   labels: Array<string | null> | undefined
@@ -167,6 +167,26 @@ function applyStarLabels(
   return { ...molecule, atoms };
 }
 
+/**
+ * Apply CXSMILES ``|$a;b;c;$|`` aliases by atom index (Python
+ * ``cx_atom_labels`` / native backend parity). Only non-empty slots change
+ * labels — so ``*C* |$;;R2;$|`` labels the second star, not the first.
+ */
+function applyCxLabelsByIndex(
+  molecule: MoleculeIn,
+  aliases: Array<string | null>
+): MoleculeIn {
+  if (!aliases.length) return molecule;
+  const atoms = molecule.atoms.map((a) => {
+    const raw = a.index < aliases.length ? aliases[a.index] : null;
+    if (raw === null || raw === undefined) return a;
+    const label = String(raw).trim();
+    if (!label) return a;
+    return { ...a, label };
+  });
+  return { ...molecule, atoms };
+}
+
 function applyOpts(
   molecule: MoleculeIn,
   opts: MolRenderOptions,
@@ -184,8 +204,12 @@ function applyOpts(
   if (opts.mark_atoms !== undefined) out.mark_atoms = opts.mark_atoms;
   if (opts.mark_bonds !== undefined) out.mark_bonds = opts.mark_bonds;
   if (opts.bold_labels !== undefined) out.bold_labels = opts.bold_labels;
-  const starLabels = opts.star_labels ?? starLabelsFromCxsmiles(source);
-  out = applyStarLabels(out, starLabels);
+  // Explicit star_labels (encounter order) wins; otherwise CX by atom index.
+  if (opts.star_labels !== undefined) {
+    out = applyStarLabels(out, opts.star_labels);
+  } else {
+    out = applyCxLabelsByIndex(out, cxAtomLabels(source));
+  }
   return out;
 }
 
@@ -236,8 +260,12 @@ async function render(
     laid = result.molecule;
     poseMolblock = result.molblock;
   } else {
-    const home = await ensureFrame(m);
-    const result = await layoutWithRdkit(home, { id: opts.id, template: null });
+    // Layout from the SMILES/CX source (not a molblock round-trip) so dummy
+    // ``*`` atoms keep stable indices for CX alias slots.
+    const result = await layoutWithRdkit(m.source, {
+      id: opts.id,
+      template: null,
+    });
     laid = result.molecule;
     poseMolblock = result.molblock;
     if (!m.frame_molblock) m.frame_molblock = poseMolblock;
