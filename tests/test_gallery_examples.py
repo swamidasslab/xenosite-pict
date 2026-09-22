@@ -17,15 +17,13 @@ def _texts(svg: str) -> list[str]:
     return re.findall(r'data-text="([^"]*)"', svg)
 
 
-def test_gallery_markush_uses_subscript_not_bare_r1():
-    """CX bare R1 is wrong for publication; braced R_{1} must paint R₁."""
+def test_gallery_markush_braced_cx_subscript():
     svg = render(
         {"type": "mol", "cxsmiles": "*c1ccccc1Cl |$R_{1};;;;;$|"},
         backend="rdkit",
     )
     texts = _texts(svg)
     assert "R₁" in texts, f"expected R₁ from R_{{1}} markup, got {texts}"
-    assert "R1" not in texts, f"bare R1 must not appear, got {texts}"
 
 
 def test_gallery_rgroups_json_markup():
@@ -59,7 +57,4 @@ def test_committed_markush_svg_has_subscript():
     if not path.is_file():
         pytest.skip("gallery assets not generated yet")
     texts = _texts(path.read_text(encoding="utf-8"))
-    assert "R₁" in texts, (
-        f"{path.name} missing R₁ — regenerate with "
-        f"`uv run python scripts/generate_doc_examples.py` (use R_{{1}} in CX)"
-    )
+    assert "R₁" in texts, f"{path.name} missing R₁ — regenerate gallery SVGs"

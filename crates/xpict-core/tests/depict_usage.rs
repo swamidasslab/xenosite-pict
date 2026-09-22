@@ -114,8 +114,6 @@ fn ethanol_oh_and_single_bonds() {
 
 #[test]
 fn braced_rgroup_markup_subscripts_on_star() {
-    // Callers must pass chem markup (``R_{1}`` / ``$R_1$``). Bare ``R1`` is
-    // literal — do not invent ad-hoc CX alias rewriting in paint.
     let mol = MoleculeIn {
         id: Some("markush".into()),
         atoms: vec![

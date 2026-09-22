@@ -4,7 +4,7 @@ Preferred public document shape matches the nested future tree, trimmed to
 what paint supports today:
 
 - Root is a ``type: "mol"`` leaf, or a ``type: "group"`` with ``children``
-- Molecule discriminator is ``type: "mol"`` (not a ``molecules`` list)
+- Molecule discriminator is ``type: "mol"``
 - Shade via ``shade: {atoms, bonds, …}``; R-group labels via ``rgroups`` /
   CXSMILES aliases with chem markup (``R_{1}``, ``$R_1$``)
 

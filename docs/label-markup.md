@@ -48,9 +48,8 @@ flowchart LR
   M --> G[glyph paths + data-text]
 ```
 
-Bare `R1` (no markup) stays the literal characters **R1**. xpict does **not**
-rewrite CX-style aliases into subscripts ad hoc — pass real markup when you
-want scripts.
+Bare `R1` (no markup) stays the literal characters **R1**. For subscripts,
+pass chem markup (`R_{1}`, `$R_1$`) on the label string.
 
 ## CXSMILES: what works, what does not
 

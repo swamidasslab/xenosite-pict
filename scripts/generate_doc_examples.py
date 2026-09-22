@@ -47,7 +47,7 @@ CASES: dict[str, dict] = {
     },
     "markush": {
         "type": "mol",
-        # Braced markup inside CX (not bare R1) — see docs/label-markup.md
+        # Braced markup inside CX — see docs/label-markup.md
         "cxsmiles": "*c1ccccc1Cl |$R_{1};;;;;$|",
     },
     "markush_json": {
