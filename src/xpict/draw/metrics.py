@@ -35,6 +35,8 @@ FONT_FRAC = 0.60  # RDKit baseFontSize, inherited by xenopict
 FONT_STEM_EM = 0.0933
 STROKE_FRAC = round(FONT_STEM_EM * FONT_FRAC, 3)  # 0.056 → 1.12 px
 OFFSET_FRAC = 0.15  # RDKit multipleBondOffset (xenopict keeps this)
+# Parallel spacing uses OFFSET_PX even after label insets shorten the stroke;
+# see ``bonds.multi_bond_offset``.
 WEDGE_WIDTH_FRAC = 0.30  # full width at fat end; > stroke so wedges read
 # xenopict ``reframe`` padding is 1.5× scale around atom centers. Ours
 # already includes label overflow in the box, so 1.0× is the same air.

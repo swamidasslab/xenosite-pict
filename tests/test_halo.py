@@ -45,7 +45,9 @@ def test_halo_layer_is_first_in_viewport():
     spec = PictSpec.model_validate({"molecules": [{"smiles": "CCO"}], "halo": True})
     scene = build_scene(layouts, spec.molecules, spec.to_legacy())
     names = [layer.name for layer in scene.viewports[0].layers]
-    assert names[0] == "halo"
+    # xenopict: shading → mol_halo → lines (halo cuts channels through shade).
+    assert names[0] == "shading"
+    assert names[1] == "halo"
     assert names.index("halo") < names.index("bonds")
     assert names.index("halo") < names.index("labels")
 

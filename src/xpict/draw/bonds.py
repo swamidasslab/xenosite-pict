@@ -176,6 +176,19 @@ def _offset_gap(length: float, *, chain: bool) -> float:
     return min(px, length * 0.22)
 
 
+def multi_bond_offset(length: float) -> float:
+    """Parallel spacing for double/triple strokes (RDKit ``multipleBondOffset``).
+
+    Always prefer ``OFFSET_PX`` (``OFFSET_FRAC × BOND_PX``). Do **not** scale
+    the offset down to the post-label stroke length — heteroatom insets would
+    collapse carbonyl spacing and make doubles look glued together. Only shrink
+    for degenerate stubs shorter than two offset widths.
+    """
+    if length < 2.0 * OFFSET_PX:
+        return min(OFFSET_PX, length * 0.25)
+    return OFFSET_PX
+
+
 # Shallow angles make the mitre run away along the bond. ~20° off the axis.
 _JOIN_MIN_SIN = 0.34
 _JOIN_MAX_FRAC = 0.45
@@ -259,7 +272,7 @@ def join_centered_multibonds(bonds: list[DrawnBond]) -> None:
         _ux, _uy, _nx, _ny, length = _unit(bond.x1, bond.y1, bond.x2, bond.y2)
         if length < 1.0:
             continue
-        off = min(OFFSET_PX, length * 0.22)
+        off = multi_bond_offset(length)
         disps = centered_displacements(depict_order(bond.order), off)
         # Displacements above are along the begin→end left normal. Flip at end.
         end_disps = (disps, [-d for d in disps])
@@ -341,7 +354,7 @@ def crossed_double(
     """Crossed double for unspecified E/Z (RDKit EITHERDOUBLE)."""
     ux, uy, lx, ly, length = _unit(x1, y1, x2, y2)
     nx, ny = interior if interior is not None else (lx, ly)
-    off = min(OFFSET_PX, length * 0.22)
+    off = multi_bond_offset(length)
     gap = _offset_gap(length, chain=interior is None)
     sx1, sy1, sx2, sy2 = shorten(x1, y1, x2, y2, gap, gap)
     # Two diagonals between the parallel offset positions.
@@ -396,7 +409,7 @@ def bond_strokes(
     if order < 1.5:
         return BondStrokes(skeleton=skeleton)
 
-    off = min(OFFSET_PX, length * 0.22)
+    off = multi_bond_offset(length)
     if interior is None:
         return _centered_strokes(x1, y1, x2, y2, order, off, ux, uy, lx, ly, length, trims)
 

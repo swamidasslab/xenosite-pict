@@ -19,6 +19,7 @@ from xpict.contracts.spec import (
 from xpict.draw.annotate import render_annotation
 from xpict.draw.bonds import DrawnBond, bond_strokes, join_centered_multibonds, shorten
 from xpict.draw.collision import CollisionGrid
+from xpict.draw.colormap import colormap_rgb
 from xpict.draw.drawn import Drawn, emit_drawn, shift_layers
 from xpict.draw.glyphs import compile_text_shapes
 from xpict.draw.halo import (
@@ -50,7 +51,9 @@ from xpict.draw.plotdot import PlotDot
 from xpict.draw.rings import bond_interior_normals, find_sssr
 from xpict.draw.text_metrics import label_baseline_offset, text_box
 
-LAYER_ORDER = ("halo", "shading", "bonds", "labels", "marks", "overlay")
+# xenopict drawer groups: shading → mol_halo → lines → text → overlay.
+# Halo must sit above shade so white knockouts cut channels for bonds.
+LAYER_ORDER = ("shading", "halo", "bonds", "labels", "marks", "overlay")
 _PAD = PAD_PX
 
 
@@ -192,14 +195,11 @@ def mol_occupancy(
     return grid
 
 
-def _shade_rgb(z: float) -> str:
-    z = max(-1.0, min(1.0, z))
-    t = abs(z) ** 1.35
-    if z >= 0:
-        r, g, b = 255, int(255 - t * 210), int(255 - t * 210)
-    else:
-        r, g, b = int(255 - t * 210), int(255 - t * 170), 255
-    return f"rgb({r},{g},{b})"
+def _shade_rgb(
+    z: float, *, colormap: str = "xenosite", diverging: bool = False
+) -> str:
+    """xenopict ``color_map`` → CSS rgb (default LUT: xenosite)."""
+    return colormap_rgb(z, name=colormap, diverging=diverging)
 
 
 def _normalize_shade_scores(zs: list[float], vmin: float, vmax: float) -> list[float]:
@@ -216,29 +216,59 @@ class ShadeDrawable(Drawable):
     spec: ShadeSpec
 
     def draw(self, ctx: MolContext) -> Drawn | None:
-        if not self.spec.atoms or not ctx.coords:
+        atom_zs = list(self.spec.atoms) if self.spec.atoms else []
+        bond_zs = list(self.spec.bonds) if self.spec.bonds else []
+        if not atom_zs and not bond_zs:
             return None
-        zs = list(self.spec.atoms)
-        vmin = self.spec.vmin if self.spec.vmin is not None else min(zs)
-        vmax = self.spec.vmax if self.spec.vmax is not None else max(zs)
-        norm = _normalize_shade_scores(zs, vmin, vmax)
-        base_r = BOND_PX * SHADE_FRAC
+
+        samples: list[float] = []
+        if atom_zs:
+            samples.extend(atom_zs)
+        if bond_zs:
+            samples.extend(bond_zs)
+        vmin = self.spec.vmin if self.spec.vmin is not None else min(samples)
+        vmax = self.spec.vmax if self.spec.vmax is not None else max(samples)
+        # xenopict ``diverging_cmap``: map [-1,1]→[0,1] so negatives aren't clipped
+        # to the white end of a sequential LUT.
+        diverging = vmin < 0.0 < vmax
+        # xenopict ``shade()``: scale*0.9, or scale*0.8 when atoms and bonds both set.
+        base_r = BOND_PX * (0.8 if atom_zs and bond_zs else SHADE_FRAC)
         drawn = Drawn(layer="shading", halo_cls="halo")
-        for radius_frac, color_z, (x, y) in PlotDot()(norm, ctx.coords[: len(norm)]):
-            if abs(color_z) < 0.05 and radius_frac < 0.35:
-                continue
-            if abs(color_z) < 0.02:
-                continue
-            drawn.primitives.append(
-                CirclePrim(
-                    cx=x,
-                    cy=y,
-                    r=base_r * radius_frac,
-                    fill=_shade_rgb(color_z),
-                    opacity=1.0,
-                    cls="shade",
+        cmap = self.spec.colormap
+
+        def _emit(zs: list[float], coords: list[tuple[float, float]]) -> None:
+            norm = _normalize_shade_scores(zs, vmin, vmax)
+            for radius_frac, color_z, (x, y) in PlotDot()(norm, coords[: len(norm)]):
+                if abs(color_z) < 0.05 and radius_frac < 0.35:
+                    continue
+                if abs(color_z) < 0.02:
+                    continue
+                drawn.primitives.append(
+                    CirclePrim(
+                        cx=x,
+                        cy=y,
+                        r=base_r * radius_frac,
+                        fill=_shade_rgb(color_z, colormap=cmap, diverging=diverging),
+                        opacity=1.0,
+                        cls="shade",
+                    )
                 )
-            )
+
+        if atom_zs and ctx.coords:
+            _emit(atom_zs, list(ctx.coords))
+        if bond_zs and ctx.layout.bonds:
+            mids: list[tuple[float, float]] = []
+            scores: list[float] = []
+            for bond, z in zip(ctx.layout.bonds, bond_zs, strict=False):
+                i0, i1 = ctx.atom_pos.get(bond.begin), ctx.atom_pos.get(bond.end)
+                if i0 is None or i1 is None:
+                    continue
+                x1, y1 = ctx.coords[i0]
+                x2, y2 = ctx.coords[i1]
+                mids.append(((x1 + x2) * 0.5, (y1 + y2) * 0.5))
+                scores.append(z)
+            if scores:
+                _emit(scores, mids)
         return drawn if drawn.primitives else None
 
 
