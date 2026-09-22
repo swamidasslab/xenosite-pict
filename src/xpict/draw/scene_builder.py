@@ -20,7 +20,7 @@ from xpict.draw.drawable import (
     normalize_coords,
     paint_molecule,
 )
-from xpict.draw.drawn import halo_prims
+from xpict.draw.drawn import union_halo_prim
 from xpict.draw.glyphs import compile_text_shapes
 from xpict.draw.halo import circle_ring_shape, disk_shape
 from xpict.draw.markush import apply_rgroup_texts
@@ -130,8 +130,8 @@ def build_scene(
 
 
 def _halo_overlay_ink(prims: Sequence) -> list[PathPrim]:
-    """Bottom-most knockouts for document overlays (edge shafts / labels)."""
-    out: list[PathPrim] = []
+    """Single unioned knockout for document overlays (edge shafts / labels)."""
+    jobs: list[tuple[object, float]] = []
     for prim in prims:
         if isinstance(prim, TextPrim):
             ink = compile_text_shapes(
@@ -141,16 +141,21 @@ def _halo_overlay_ink(prims: Sequence) -> list[PathPrim]:
                 font_size=prim.font_size,
                 anchor=prim.anchor,
             )
-            out.extend(halo_prims(ink, HALO_GAP_PX, cls="halo label-halo"))
+            if ink is not None:
+                jobs.append((ink, HALO_GAP_PX))
         elif isinstance(prim, PathPrim):
             ink = ink_from_path_prim(prim)
+            if ink is None:
+                continue
             ink_r = max(prim.stroke_width, STROKE_PX) * 0.5
             dist = max(HALO_GAP_PX, 0.25 * HALO_STROKE - ink_r)
-            out.extend(halo_prims(ink, dist, cls="halo"))
+            jobs.append((ink, dist))
         elif isinstance(prim, CirclePrim):
             if prim.fill not in (None, "none"):
                 ink = disk_shape(prim.cx, prim.cy, prim.r)
             else:
                 ink = circle_ring_shape(prim.cx, prim.cy, prim.r, prim.stroke_width)
-            out.extend(halo_prims(ink, HALO_GAP_PX, cls="halo"))
-    return out
+            if ink is not None:
+                jobs.append((ink, HALO_GAP_PX))
+    prim = union_halo_prim(jobs, cls="halo")
+    return [prim] if prim is not None else []

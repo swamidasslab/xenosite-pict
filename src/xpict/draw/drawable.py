@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from xpict.contracts.layout import MoleculeLayout
 from xpict.contracts.scene import CirclePrim, Layer, PathPrim, TextPrim, Viewport
@@ -20,7 +20,7 @@ from xpict.draw.annotate import render_annotation
 from xpict.draw.bonds import DrawnBond, bond_strokes, join_centered_multibonds, shorten
 from xpict.draw.collision import CollisionGrid
 from xpict.draw.colormap import colormap_rgb
-from xpict.draw.drawn import Drawn, emit_drawn, shift_layers
+from xpict.draw.drawn import Drawn, HaloJob, emit_drawn, shift_ink, shift_layers, union_halo_prim
 from xpict.draw.glyphs import compile_text_shapes
 from xpict.draw.halo import (
     capsule_shape,
@@ -92,6 +92,7 @@ class MolContext:
     layers: dict[str, Layer]
     halo: bool = True
     label_pack: LabelPack | None = None
+    halo_jobs: list[HaloJob] = field(default_factory=list)
 
     def points(self, atoms: Sequence[int] | None) -> list[tuple[float, float]]:
         if not atoms:
@@ -105,7 +106,12 @@ class MolContext:
     def emit(self, drawn: Drawn | None) -> None:
         if drawn is None:
             return
-        emit_drawn(self.layers, drawn, halo=self.halo)
+        emit_drawn(
+            self.layers,
+            drawn,
+            halo=self.halo,
+            halo_jobs=self.halo_jobs if self.halo else None,
+        )
         for box in drawn.boxes:
             self.grid.mark_box(*box, pad=LABEL_GAP_PX * 0.5)
 
@@ -121,6 +127,7 @@ class MolContext:
         dy = max(0.0, pad - min_y)
         if dx or dy:
             shift_layers(self.layers, dx, dy)
+            self.halo_jobs = [(shift_ink(ink, dx, dy), dist) for ink, dist in self.halo_jobs]
             if self.label_pack is not None:
                 from dataclasses import replace
 
@@ -137,6 +144,10 @@ class MolContext:
         self.height = max(self.height, max_y + pad)
 
     def to_viewport(self) -> Viewport:
+        if self.halo and self.halo_jobs:
+            prim = union_halo_prim(self.halo_jobs, cls="halo")
+            if prim is not None:
+                self.layers["halo"].primitives = [prim]
         return Viewport(
             id=self.layout.id,
             width=self.width,

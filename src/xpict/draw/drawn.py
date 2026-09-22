@@ -13,11 +13,13 @@ from xpict.contracts.scene import (
     Primitive,
     TextPrim,
 )
-from xpict.draw.halo import halo_path_d
+from xpict.draw.halo import halo_from_shapes
 from xpict.draw.metrics import HALO_GAP_PX, HALO_OPACITY
 from xpict.draw.paths import shift_path_d
+from xpict.native_bridge import CapsuleInk, DiskInk, Shape
 
 Box = tuple[float, float, float, float]
+HaloJob = tuple[Any, float]  # (ink, dist)
 
 
 @dataclass
@@ -45,38 +47,32 @@ class Drawn:
         return self
 
 
-def halo_prims(
-    ink: Any,
-    dist: float | None = None,
-    *,
-    cls: str = "halo",
-) -> list[PathPrim]:
-    """Soft white knockout PathPrims for one ink geometry (bottom layer only)."""
-    d = halo_path_d(ink, dist)
-    if not d:
-        return []
-    return [
-        PathPrim(
-            d=d,
-            stroke="none",
-            fill="#fff",
-            stroke_width=0.0,
-            opacity=HALO_OPACITY,
-            cls=cls,
-        )
-    ]
+def _as_shape(ink: Any) -> Shape | None:
+    if ink is None:
+        return None
+    if isinstance(ink, CapsuleInk):
+        return Shape.capsule(ink.x1, ink.y1, ink.x2, ink.y2, ink.radius)
+    if isinstance(ink, DiskInk):
+        return Shape.disk(ink.cx, ink.cy, ink.radius)
+    if getattr(ink, "is_empty", False):
+        return None
+    return ink
 
 
-def emit_drawn(
-    layers: dict[str, Layer],
-    drawn: Drawn,
-    *,
-    halo: bool = True,
-) -> None:
-    """Append primitives to ``drawn.layer`` and optional halo knockouts."""
-    layers[drawn.layer].primitives.extend(drawn.primitives)
-    if not halo:
-        return
+def shift_ink(ink: Any, dx: float, dy: float) -> Any:
+    """Translate tagged ink or Shape by ``(dx, dy)``."""
+    if abs(dx) < 1e-12 and abs(dy) < 1e-12:
+        return ink
+    if isinstance(ink, CapsuleInk):
+        return CapsuleInk(ink.x1 + dx, ink.y1 + dy, ink.x2 + dx, ink.y2 + dy, ink.radius)
+    if isinstance(ink, DiskInk):
+        return DiskInk(ink.cx + dx, ink.cy + dy, ink.radius)
+    return ink.translate(dx, dy)
+
+
+def drawn_halo_jobs(drawn: Drawn) -> list[HaloJob]:
+    """Ink geometries and buffer distances from one :class:`Drawn`."""
+    jobs: list[HaloJob] = []
     for i, geom in enumerate(drawn.ink):
         if geom is None:
             continue
@@ -85,11 +81,67 @@ def emit_drawn(
             if i < len(drawn.ink_dists) and drawn.ink_dists
             else None
         )
-        if dist is None:
-            dist = HALO_GAP_PX
-        layers["halo"].primitives.extend(
-            halo_prims(geom, dist, cls=drawn.halo_cls)
-        )
+        jobs.append((geom, HALO_GAP_PX if dist is None else dist))
+    return jobs
+
+
+def union_halo_prim(
+    jobs: list[HaloJob],
+    *,
+    cls: str = "halo",
+) -> PathPrim | None:
+    """One soft white knockout for all ink (union of per-ink halos)."""
+    acc: Shape | None = None
+    for ink, dist in jobs:
+        grown = halo_from_shapes(_as_shape(ink), dist)
+        if grown is None:
+            continue
+        acc = grown if acc is None else acc.union(grown)
+    if acc is None or acc.is_empty:
+        return None
+    d = acc.to_svg_d()
+    if not d:
+        return None
+    return PathPrim(
+        d=d,
+        stroke="none",
+        fill="#fff",
+        stroke_width=0.0,
+        opacity=HALO_OPACITY,
+        cls=cls,
+    )
+
+
+def halo_prims(
+    ink: Any,
+    dist: float | None = None,
+    *,
+    cls: str = "halo",
+) -> list[PathPrim]:
+    """Knockout PathPrims for one ink geometry."""
+    prim = union_halo_prim([(ink, HALO_GAP_PX if dist is None else dist)], cls=cls)
+    return [prim] if prim is not None else []
+
+
+def emit_drawn(
+    layers: dict[str, Layer],
+    drawn: Drawn,
+    *,
+    halo: bool = True,
+    halo_jobs: list[HaloJob] | None = None,
+) -> None:
+    """Append primitives to ``drawn.layer``; collect ink for a later union halo."""
+    layers[drawn.layer].primitives.extend(drawn.primitives)
+    if not halo:
+        return
+    jobs = drawn_halo_jobs(drawn)
+    if halo_jobs is not None:
+        halo_jobs.extend(jobs)
+        return
+    # Fallback: emit a union for this Drawn alone (no collector).
+    prim = union_halo_prim(jobs, cls="halo")
+    if prim is not None:
+        layers["halo"].primitives.append(prim)
 
 
 def shift_layers(layers: dict[str, Layer], dx: float, dy: float) -> None:
@@ -113,7 +165,11 @@ def shift_layers(layers: dict[str, Layer], dx: float, dy: float) -> None:
 __all__ = [
     "Box",
     "Drawn",
+    "HaloJob",
+    "drawn_halo_jobs",
     "emit_drawn",
     "halo_prims",
+    "shift_ink",
     "shift_layers",
+    "union_halo_prim",
 ]

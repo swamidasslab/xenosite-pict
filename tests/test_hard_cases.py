@@ -174,32 +174,23 @@ def test_svg_background_is_clear_by_default():
     assert "background-color" not in root.group(0)
 
 
-def test_halo_follows_each_bond_stroke():
-    """Every bond stroke gets a halo derived via halo_from_shapes.
-
-    Not one halo per bond: Kekulé offsets get their own knockout.
-    """
+def test_halo_is_single_union_per_molecule():
+    """All molecule ink shares one unioned halo path (no stacked opacities)."""
     backend = _chem_backend()
     svg = render({"molecules": [{"smiles": "c1ccccc1"}]}, backend=backend)
-    n_bonds = len(
-        Pict(backend=backend)
-        .layout({"molecules": [{"smiles": "c1ccccc1"}]})
-        .molecules[0]
-        .bonds
-    )
     n_halo = len(re.findall(r"<path[^>]*class=\"halo\"", svg))
     n_ink = len(re.findall(r"bond-skeleton|bond-offset|bond-wedge", svg))
-    assert n_halo == n_ink
-    assert n_halo > n_bonds  # offsets are haloed too
+    assert n_halo == 1
+    assert n_ink > 1  # multiple strokes still feed the one union
 
 
 def test_halo_includes_buffered_label_glyphs():
-    """Label knockout is halo_from_shapes(glyph ink); counters stay open."""
+    """Label knockout is in the unioned halo; counters stay open."""
     backend = _chem_backend()
     svg = render({"molecules": [{"smiles": "CCO"}]}, backend=backend)
     assert not re.search(r'<circle[^>]*label-halo', svg)
     assert not re.search(r'<text[^>]*label-halo', svg)
-    halo = re.search(r'<path[^>]*class="halo label-halo"[^/]*/>', svg)
+    halo = re.search(r'<path[^>]*class="halo"[^/]*/>', svg)
     assert halo is not None
     assert 'fill="#fff"' in halo.group(0)
     assert 'stroke="none"' in halo.group(0)
