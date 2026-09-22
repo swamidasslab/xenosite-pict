@@ -38,7 +38,7 @@ def test_native_parses_star_and_charge():
 def test_charge_label_in_svg():
     svg = render({"molecules": [{"smiles": "[NH4+]"}]}, backend="native")
     assert "N" in svg
-    assert "+" in svg or "＋" in svg
+    assert "+" in svg or "⁺" in svg or "＋" in svg
 
 
 def test_radical_dot_in_svg_native():

@@ -16,7 +16,7 @@ from xpict import _native
 from xpict.contracts.layout import BondLayout
 from xpict.draw.metrics import FONT_PX
 
-LabelSide = Literal["east", "west"]
+LabelSide = Literal["east", "west", "north", "south"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,6 +28,9 @@ class PlacedLabel:
     atom_y: float
     side: LabelSide
     clearance: float
+    path_d: str = ""
+    #: Original label string before orientation (for re-outline / halo).
+    raw: str = ""
 
 
 def split_atom_label(raw: str) -> tuple[str, str]:
@@ -95,7 +98,7 @@ def place_backbone(
         if item is None:
             labels.append(None)
             continue
-        text, ox, y, ax, ay, side, clearance = item
+        text, ox, y, ax, ay, side, clearance, path_d, raw = item
         labels.append(
             PlacedLabel(
                 text=text,
@@ -103,8 +106,10 @@ def place_backbone(
                 y=float(y),
                 atom_x=float(ax),
                 atom_y=float(ay),
-                side=side if side in ("east", "west") else "east",
+                side=side if side in ("east", "west", "north", "south") else "east",
                 clearance=float(clearance),
+                path_d=str(path_d or ""),
+                raw=str(raw or text),
             )
         )
     return fixed_ends, labels

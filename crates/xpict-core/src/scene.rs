@@ -54,6 +54,9 @@ pub enum Primitive {
         stroke_linecap: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none", rename = "cls")]
         class: Option<String>,
+        /// Plain label string for ``data-text`` (glyph paths only).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        data_text: Option<String>,
     },
     Circle {
         cx: f64,
@@ -255,6 +258,7 @@ mod tests {
                         stroke_dasharray: None,
                         stroke_linecap: Some("round".into()),
                         class: Some("bond bond-skeleton".into()),
+                        data_text: None,
                     }],
                 }],
             }],

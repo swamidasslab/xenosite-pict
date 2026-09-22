@@ -16,7 +16,7 @@ use crate::metrics::{
 use crate::plotdot::PlotDot;
 use crate::rings::{bond_interior_normals, find_sssr};
 use crate::scene::{
-    AtomIn, Layer, LayerName, MoleculeIn, Primitive, Scene, TextAnchor, Viewport,
+    AtomIn, Layer, LayerName, MoleculeIn, Primitive, Scene, Viewport,
 };
 
 /// Paint one molecule into a single-viewport [`Scene`].
@@ -161,28 +161,38 @@ pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
     }
 
     let mut label_prims: Vec<Primitive> = Vec::new();
-    let mut label_halos: Vec<(f64, f64, String)> = Vec::new(); // origin_x, y, text
+    let mut label_ink_for_halo: Vec<crate::geom::Shape> = Vec::new();
     for (slot, pl) in placed.iter().enumerate() {
         let Some(pl) = pl else { continue };
         let atom_index = mol.atoms[slot].index;
         // Grow canvas if traveling text spills past the initial pad.
-        width = width.max(pl.origin_x + FONT_PX * pl.text.len() as f64 * 0.65 + pad * 0.25);
+        width = width.max(pl.origin_x + FONT_PX * pl.text.chars().count() as f64 * 0.65 + pad * 0.25);
         height = height.max(pl.y + FONT_PX * 0.35 + pad * 0.25);
-        label_halos.push((pl.origin_x, pl.y, pl.text.clone()));
-        label_prims.push(Primitive::Text {
-            x: pl.origin_x,
-            y: pl.y,
-            text: pl.text.clone(),
-            fill: color.to_string(),
-            font_size: FONT_PX,
-            anchor: TextAnchor::Start,
+        if matches!(pl.side, labels::LabelSide::North | labels::LabelSide::South) {
+            height = height.max(pl.atom_y + FONT_PX * 1.6 + pad * 0.25);
+        }
+        if let Some(ink) = labels::label_ink_shape(pl, FONT_PX) {
+            label_ink_for_halo.push(ink);
+        }
+        if pl.path_d.is_empty() {
+            continue;
+        }
+        label_prims.push(Primitive::Path {
+            d: pl.path_d.clone(),
+            stroke: Some("none".into()),
+            fill: Some(color.to_string()),
+            stroke_width: 0.0,
+            opacity: 1.0,
+            stroke_dasharray: None,
+            stroke_linecap: None,
             class: Some(format!("atom-{atom_index} label")),
+            data_text: Some(pl.text.clone()),
         });
     }
 
     let shade_prims = paint_shade(mol, &by_index, dx, dy);
     let mark_prims = paint_marks(mol, &by_index, dx, dy);
-    let halo_prims = paint_halo(&bond_strokes_for_halo, &label_halos);
+    let halo_prims = paint_halo(&bond_strokes_for_halo, &label_ink_for_halo);
 
     let mut layers = Vec::new();
     if !shade_prims.is_empty() {
@@ -227,19 +237,39 @@ pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
 }
 
 /// Explicit ``label``, else heteroatom / charged symbol (carbons stay silent).
+///
+/// Appends a charge suffix when the label body does not already include one
+/// (matches Python ``display_text``).
 fn display_label(a: &AtomIn) -> Option<String> {
-    if let Some(ref l) = a.label {
+    let mut body = if let Some(ref l) = a.label {
         let t = l.trim();
-        if !t.is_empty() {
-            return Some(t.to_string());
+        if t.is_empty() {
+            None
+        } else {
+            Some(t.to_string())
+        }
+    } else {
+        None
+    };
+    if body.is_none() {
+        let sym = a.symbol();
+        if sym == "C" && a.charge == 0 {
+            return None;
+        }
+        body = Some(sym.to_string());
+    }
+    let mut body = body.unwrap();
+    let parsed_chg = labels::split_label(&body).charge;
+    if a.charge != 0 && parsed_chg == 0 {
+        let sign = if a.charge > 0 { "+" } else { "−" };
+        let mag = a.charge.unsigned_abs();
+        if mag == 1 {
+            body.push_str(sign);
+        } else {
+            body.push_str(&format!("{mag}{sign}"));
         }
     }
-    let sym = a.symbol();
-    if sym == "C" && a.charge == 0 {
-        None
-    } else {
-        Some(sym.to_string())
-    }
+    Some(body)
 }
 
 fn paint_shade(
@@ -338,10 +368,11 @@ fn normalize_shade_scores(zs: &[f64], vmin: f64, vmax: f64) -> Vec<f64> {
 /// xenopict: union of per-ink buffers at [`HALO_GAP_PX`] (with a floor from
 /// stroke thickness). Requires the `geom` feature (WASM enables it via `font`).
 #[cfg(feature = "geom")]
-fn paint_halo(bond_strokes: &[StrokePath], labels: &[(f64, f64, String)]) -> Vec<Primitive> {
+fn paint_halo(
+    bond_strokes: &[StrokePath],
+    label_ink: &[crate::geom::Shape],
+) -> Vec<Primitive> {
     use crate::geom::Shape;
-    #[cfg(feature = "font")]
-    use crate::font::{compile_text_shapes, FaceStyle};
 
     let mut ink: Option<Shape> = None;
     let mut absorb = |piece: Shape| {
@@ -383,16 +414,9 @@ fn paint_halo(bond_strokes: &[StrokePath], labels: &[(f64, f64, String)]) -> Vec
         }
     }
 
-    #[cfg(feature = "font")]
-    for (ox, y, text) in labels {
-        if let Some(shape) =
-            compile_text_shapes(text, *ox, *y, FONT_PX, "start", FaceStyle::Regular)
-        {
-            absorb(shape);
-        }
+    for shape in label_ink {
+        absorb(shape.clone());
     }
-    #[cfg(not(feature = "font"))]
-    let _ = labels;
 
     let Some(ink) = ink.filter(|s| !s.is_empty()) else {
         return Vec::new();
@@ -417,11 +441,15 @@ fn paint_halo(bond_strokes: &[StrokePath], labels: &[(f64, f64, String)]) -> Vec
         stroke_dasharray: None,
         stroke_linecap: None,
         class: Some("halo".into()),
+        data_text: None,
     }]
 }
 
 #[cfg(not(feature = "geom"))]
-fn paint_halo(_bond_strokes: &[StrokePath], _labels: &[(f64, f64, String)]) -> Vec<Primitive> {
+fn paint_halo(
+    _bond_strokes: &[StrokePath],
+    _label_ink: &[crate::geom::Shape],
+) -> Vec<Primitive> {
     Vec::new()
 }
 
@@ -465,8 +493,12 @@ fn paint_marks(
 
     let mut out = Vec::new();
     let r = BOND_PX * MARK_FRAC;
+    // xenopict mark halo `<use href="#mark" stroke="#555" …>`; mark ink uses the
+    // backbone stroke color (lines default `#000000`), not a separate coral.
     const MARK_HALO_COLOR: &str = "#555";
-    let color = "#c44";
+    let color = mol.color.as_deref().unwrap_or("#000000");
+    // shapely `resolution=6` → 24 verts/circle; keep capsules smooth.
+    const CAPSULE_QUAD_SEGS: u32 = 16;
 
     // Bond capsules (outline path `d`) — xenopict buffers the bond at mark radius.
     let mut bond_capsules: Vec<(i32, i32, String)> = Vec::new();
@@ -485,7 +517,7 @@ fn paint_marks(
             a1.x + dx,
             a1.y + dy,
             r,
-            8,
+            CAPSULE_QUAD_SEGS,
         ));
         if !d.is_empty() {
             bond_capsules.push((a, b, d));
@@ -519,6 +551,7 @@ fn paint_marks(
             stroke_dasharray: None,
             stroke_linecap: Some("round".into()),
             class: Some(format!("bond-mark-halo atom-{a} atom-{b}")),
+            data_text: None,
         });
     }
 
@@ -549,6 +582,7 @@ fn paint_marks(
             stroke_dasharray: None,
             stroke_linecap: Some("round".into()),
             class: Some(format!("bond-mark atom-{a} atom-{b}")),
+            data_text: None,
         });
     }
     out
@@ -704,13 +738,20 @@ mod tests {
             .primitives
             .iter()
             .filter_map(|p| match p {
-                Primitive::Text { text, .. } => Some(text.as_str()),
+                Primitive::Path {
+                    data_text: Some(t),
+                    ..
+                } => Some(t.as_str()),
                 _ => None,
             })
             .collect();
         assert!(
             texts.iter().any(|t| *t == "OH" || *t == "HO"),
-            "expected OH/HO, got {texts:?}"
+            "expected OH/HO path data-text, got {texts:?}"
+        );
+        assert!(
+            labels.primitives.iter().all(|p| matches!(p, Primitive::Path { .. })),
+            "labels must be glyph paths, not text nodes"
         );
     }
 

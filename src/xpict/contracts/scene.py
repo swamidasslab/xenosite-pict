@@ -25,6 +25,8 @@ class PathPrim(StrictModel):
     stroke_dasharray: str | None = None
     stroke_linecap: Literal["butt", "round", "square"] | None = None
     cls: str | None = None
+    # Plain label string when this path is outlined glyph ink.
+    data_text: str | None = None
 
 
 class CirclePrim(StrictModel):

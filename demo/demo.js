@@ -51,11 +51,22 @@ function parseBondPairs(raw) {
   return pairs;
 }
 
+function parseStarLabels(raw) {
+  const text = raw.trim();
+  if (!text) return undefined;
+  return text.split(/[\s,]+/).filter(Boolean).map((tok) => {
+    if (tok === "-" || tok.toLowerCase() === "null") return null;
+    return tok;
+  });
+}
+
 function readOptions() {
   return {
     align: $("align").checked,
     color1: $("color1").value,
     color2: $("color2").value,
+    star_labels1: parseStarLabels($("star_labels1").value),
+    star_labels2: parseStarLabels($("star_labels2").value),
     mark_atoms: parseIndexList($("mark_atoms").value),
     mark_bonds: parseBondPairs($("mark_bonds").value),
     atom_shade: parseFloatList($("atom_shade").value),
@@ -99,12 +110,14 @@ async function draw() {
     const template = xpict.mol(smiles1);
     const rendered1 = await xpict.render(template, {
       color: opts.color1,
+      ...(opts.star_labels1 ? { star_labels: opts.star_labels1 } : {}),
     });
     if (gen !== drawGen) return;
     showSvg(out1, xpict.toSvg(rendered1.scene));
 
     const queryOpts = {
       color: opts.color2,
+      ...(opts.star_labels2 ? { star_labels: opts.star_labels2 } : {}),
       ...(opts.mark_atoms ? { mark_atoms: opts.mark_atoms } : {}),
       ...(opts.mark_bonds ? { mark_bonds: opts.mark_bonds } : {}),
       ...(opts.atom_shade ? { atom_shade: opts.atom_shade } : {}),

@@ -3,12 +3,20 @@
 //! Replaces Python fontTools for advances, ink bounds, and glyph contours.
 //! Contours are sampled (8 steps per curve) to match the old ContourPen, then
 //! assembled with even-odd fill into [`crate::geom::Shape`].
+//!
+//! Chem scripts (H-counts, charges) are **fake** sub/superscripts: scale by
+//! [`crate::metrics::SCRIPT_SCALE`], buffer the outline to restore stem weight,
+//! and cache the result. Dummy ``*`` uses a custom star at [`STAR_FRAC`].
 
 #![cfg(feature = "font")]
+
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
 
 use ttf_parser::{Face, GlyphId, OutlineBuilder, Rect};
 
 use crate::geom::Shape;
+use crate::metrics::{FONT_STEM_EM, SCRIPT_SCALE, STAR_FRAC};
 
 const BEZIER_STEPS: usize = 8;
 
@@ -272,6 +280,180 @@ pub fn outline_run_em(text: &str, style: FaceStyle) -> (Option<Shape>, f64) {
     }
 }
 
+/// Sub / super / normal draw role for chem label glyphs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ScriptRole {
+    Normal,
+    Subscript,
+    Superscript,
+}
+
+/// One chem-label glyph with an optional script role.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ChemGlyph {
+    pub ch: char,
+    pub role: ScriptRole,
+}
+
+fn script_cache() -> &'static Mutex<HashMap<(char, FaceStyle, ScriptRole), (Option<Shape>, f64)>> {
+    static CACHE: OnceLock<Mutex<HashMap<(char, FaceStyle, ScriptRole), (Option<Shape>, f64)>>> =
+        OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Outline one character in em space (+Y up), optionally as a fake script.
+///
+/// Scripts: scale by [`SCRIPT_SCALE`], then buffer so stem weight stays close
+/// to the full-size glyph. Results are memoized.
+pub fn outline_glyph_em(ch: char, style: FaceStyle, role: ScriptRole) -> (Option<Shape>, f64) {
+    if let Ok(guard) = script_cache().lock() {
+        if let Some(hit) = guard.get(&(ch, style, role)) {
+            return hit.clone();
+        }
+    }
+    let built = outline_glyph_em_uncached(ch, style, role);
+    if let Ok(mut guard) = script_cache().lock() {
+        guard.insert((ch, style, role), built.clone());
+    }
+    built
+}
+
+fn outline_glyph_em_uncached(
+    ch: char,
+    style: FaceStyle,
+    role: ScriptRole,
+) -> (Option<Shape>, f64) {
+    let f = face(style);
+    let upem = f64::from(f.units_per_em());
+    let Some(gid) = f.glyph_index(ch) else {
+        return (None, 0.5 * upem);
+    };
+    let advance = f64::from(f.glyph_hor_advance(gid).unwrap_or(0));
+    let contours = outline_glyph(&f, gid);
+    if contours.is_empty() {
+        return (None, advance);
+    }
+    let shape = Shape::from_contours_evenodd(&contours);
+    if shape.is_empty() {
+        return (None, advance);
+    }
+    match role {
+        ScriptRole::Normal => (Some(shape), advance),
+        ScriptRole::Subscript | ScriptRole::Superscript => {
+            // Scale about the glyph origin; advance tracks the smaller width.
+            let scaled = shape.scale(SCRIPT_SCALE, SCRIPT_SCALE, 0.0, 0.0);
+            // Inflate so 0.66× glyphs keep roughly full stem weight.
+            let grow = 0.5 * (1.0 - SCRIPT_SCALE) * FONT_STEM_EM * upem;
+            let thick = if grow > 0.05 {
+                scaled.buffer(grow)
+            } else {
+                scaled
+            };
+            (Some(thick), advance * SCRIPT_SCALE)
+        }
+    }
+}
+
+/// Custom five-point star in em units (centered on advance, mid cap-height).
+///
+/// Liberation's asterisk is too small / high for R-group markers. Size is
+/// driven by [`STAR_FRAC`] × cap-height (outer diameter).
+pub fn outline_star_em(style: FaceStyle) -> (Shape, f64) {
+    let face_m = face_metrics(style);
+    let height = STAR_FRAC * face_m.cap_height;
+    let outer = 0.5 * height;
+    let inner = outer * 0.38;
+    let pad = 0.12 * face_m.cap_height;
+    let advance = height + pad;
+    let cx = 0.5 * advance;
+    let cy = 0.5 * face_m.cap_height;
+    let mut ring = Vec::with_capacity(10);
+    for i in 0..10 {
+        let a = -std::f64::consts::FRAC_PI_2 + i as f64 * std::f64::consts::PI / 5.0;
+        let r = if i % 2 == 0 { outer } else { inner };
+        ring.push((cx + r * a.cos(), cy + r * a.sin()));
+    }
+    let shape = Shape::from_ring(&ring);
+    (shape, advance)
+}
+
+/// Outline a chem glyph run in em space (+Y up). Returns `(shape, advance_em)`.
+///
+/// Subscripts drop by ~⅓ cap-height; superscripts rise by ~½ (RDKit-ish).
+pub fn outline_chem_run_em(glyphs: &[ChemGlyph], style: FaceStyle) -> (Option<Shape>, f64) {
+    if glyphs.is_empty() {
+        return (None, 0.0);
+    }
+    // Lone ``*`` → custom star.
+    if glyphs.len() == 1 && glyphs[0].ch == '*' && glyphs[0].role == ScriptRole::Normal {
+        let (s, adv) = outline_star_em(style);
+        return (if s.is_empty() { None } else { Some(s) }, adv);
+    }
+    let face_m = face_metrics(style);
+    let sub_dy = -0.33 * face_m.cap_height;
+    let super_dy = 0.50 * face_m.cap_height;
+    let mut pen_x = 0.0;
+    let mut acc: Option<Shape> = None;
+    for g in glyphs {
+        let (piece, adv) = if g.ch == '*' && g.role == ScriptRole::Normal {
+            let (s, a) = outline_star_em(style);
+            (Some(s), a)
+        } else {
+            outline_glyph_em(g.ch, style, g.role)
+        };
+        let dy = match g.role {
+            ScriptRole::Normal => 0.0,
+            ScriptRole::Subscript => sub_dy,
+            ScriptRole::Superscript => super_dy,
+        };
+        if let Some(p) = piece.filter(|s| !s.is_empty()) {
+            let placed = p.translate(pen_x, dy);
+            acc = Some(match acc.take() {
+                Some(a) => a.union(&placed),
+                None => placed,
+            });
+        }
+        pen_x += adv;
+    }
+    (acc, pen_x)
+}
+
+/// Place a chem glyph run in SVG space (+Y down) with baseline at `y`.
+///
+/// `anchor`: ``start`` / ``middle`` / ``end`` on the advance box.
+pub fn compile_chem_shapes(
+    glyphs: &[ChemGlyph],
+    x: f64,
+    y: f64,
+    font_size: f64,
+    anchor: &str,
+    style: FaceStyle,
+) -> Option<Shape> {
+    if glyphs.is_empty() {
+        return None;
+    }
+    let face_m = face_metrics(style);
+    let scale = font_size / face_m.upem;
+    let (geom_em, advance_em) = outline_chem_run_em(glyphs, style);
+    let advance = advance_em * scale;
+    let origin_x = match anchor {
+        "end" => x - advance,
+        "start" | "left" => x,
+        _ => x - 0.5 * advance,
+    };
+    let geom_em = geom_em?;
+    // Scripts: RDKit shifts sub down / super up by ~½ of the preceding glyph height.
+    // We bake a vertical nudge per glyph when assembling horizontal runs in labels.
+    let geom = geom_em
+        .scale(scale, -scale, 0.0, 0.0)
+        .translate(origin_x, y);
+    if geom.is_empty() {
+        None
+    } else {
+        Some(geom)
+    }
+}
+
 /// Compile plain text to SVG-space glyph geometry (+Y down).
 pub fn compile_text_shapes(
     text: &str,
@@ -284,25 +466,14 @@ pub fn compile_text_shapes(
     if text.is_empty() {
         return None;
     }
-    let f = face(style);
-    let upem = f64::from(f.units_per_em());
-    let scale = font_size / upem;
-    let (geom_em, advance_em) = outline_run_em(text, style);
-    let advance = advance_em * scale;
-    let origin_x = match anchor {
-        "end" => x - advance,
-        "start" | "left" => x,
-        _ => x - 0.5 * advance, // middle
-    };
-    let geom_em = geom_em?;
-    let geom = geom_em
-        .scale(scale, -scale, 0.0, 0.0)
-        .translate(origin_x, y);
-    if geom.is_empty() {
-        None
-    } else {
-        Some(geom)
-    }
+    let glyphs: Vec<ChemGlyph> = text
+        .chars()
+        .map(|ch| ChemGlyph {
+            ch,
+            role: ScriptRole::Normal,
+        })
+        .collect();
+    compile_chem_shapes(&glyphs, x, y, font_size, anchor, style)
 }
 
 fn measure_stem_em(style: FaceStyle) -> f64 {
@@ -331,7 +502,7 @@ fn measure_stem_em(style: FaceStyle) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::metrics::{FONT_PX, FONT_STEM_EM};
+    use crate::metrics::{FONT_PX, FONT_STEM_EM, SCRIPT_SCALE, STAR_FRAC};
 
     #[test]
     fn liberation_face_metrics() {
@@ -372,5 +543,31 @@ mod tests {
         assert!(!shape.is_empty());
         let d = shape.to_svg_d();
         assert!(d.contains('M') && d.contains('Z'));
+    }
+
+    #[test]
+    fn script_glyph_is_smaller_but_thickened() {
+        let (full, adv_full) = outline_glyph_em('2', FaceStyle::Regular, ScriptRole::Normal);
+        let (sub, adv_sub) = outline_glyph_em('2', FaceStyle::Regular, ScriptRole::Subscript);
+        let full = full.expect("2");
+        let sub = sub.expect("2 sub");
+        assert!(adv_sub < adv_full * 0.75);
+        assert!(sub.area() > 0.0);
+        // Buffered script should not collapse to a speck.
+        assert!(sub.area() > full.area() * SCRIPT_SCALE * SCRIPT_SCALE * 0.5);
+    }
+
+    #[test]
+    fn star_is_larger_than_asterisk_advance() {
+        let (_ast, adv_ast) = outline_run_em("*", FaceStyle::Regular);
+        let (star, adv_star) = outline_star_em(FaceStyle::Regular);
+        assert!(adv_star > adv_ast * 1.2);
+        let face = face_metrics(FaceStyle::Regular);
+        let (_x0, y0, _x1, y1) = star.bounds().expect("star ink");
+        let height = y1 - y0;
+        // Custom star targets STAR_FRAC × cap-height; allow simplify slack.
+        assert!(height > 1.7 * face.cap_height);
+        assert!(height < 2.3 * face.cap_height);
+        let _ = STAR_FRAC;
     }
 }

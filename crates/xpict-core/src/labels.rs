@@ -6,30 +6,43 @@
 //! `HO` with `O` still at the atom; abbreviations like `GlcA` have no
 //! traveling part — the first or last glyph is the center depending on the
 //! bond approach side.
+//!
+//! Orientation follows RDKit MolDraw2D (`E`/`W`/`N`/`S`). H-counts and charges
+//! are fake scripts (scale + buffer) outlined as glyph **paths**, not text.
 
-use crate::font::{self, FaceStyle};
+use crate::font::{self, ChemGlyph, FaceStyle, ScriptRole};
+use crate::geom::Shape;
 use crate::metrics::LABEL_GAP_PX;
 
-/// Which horizontal side the traveling text extends toward.
+/// Which side the traveling text extends toward (RDKit OrientType).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LabelSide {
     /// Bond approaches from the left; traveling text extends east (right).
     East,
     /// Bond approaches from the right; traveling text extends west (left).
     West,
+    /// Bond approaches from below; traveling text extends north (up, −Y SVG).
+    North,
+    /// Bond approaches from above; traveling text extends south (down, +Y SVG).
+    South,
 }
 
-/// Atom-center glyph(s) vs optional traveling suffix/prefix.
+/// Atom-center glyph(s) vs optional traveling H / charge.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LabelParts {
     pub center: String,
+    /// Traveling H run (`"H"`, `"H2"`, …) or empty.
     pub traveling: String,
+    /// Formal charge (`0` = none). Drawn as a superscript.
+    pub charge: i32,
 }
 
 /// One placed atom label in SVG space (+Y down).
 #[derive(Debug, Clone)]
 pub struct PlacedLabel {
-    /// Display string after orientation (`OH` or `HO`).
+    /// Original input label (for re-outline / halo).
+    pub raw: String,
+    /// Display string for ``data-text`` (unicode scripts when possible).
     pub text: String,
     /// Left edge of the advance (SVG text origin), baseline at [`Self::y`].
     pub origin_x: f64,
@@ -41,40 +54,97 @@ pub struct PlacedLabel {
     /// advance/ink width + gap). Per-bond shortening uses directional ink
     /// support via [`place_backbone`].
     pub clearance: f64,
+    /// Outlined glyph path `d` (empty when no ink).
+    pub path_d: String,
 }
 
-/// Split a raw label into center + traveling parts.
+/// Split a raw label into center + traveling H + charge.
 ///
-/// Traveling is the trailing `H` / `H2` / … on a simple element token
-/// (`OH`, `NH2`, `SH`). Everything else (e.g. `GlcA`, `Cl`, `OMe`) has an
-/// empty traveling part — the center glyph is chosen by side at place time.
+/// Accepts backend strings like ``NH2``, ``OH``, ``NH4+``, ``O−``, ``*``.
 pub fn split_label(raw: &str) -> LabelParts {
     let s = raw.trim();
     if s.is_empty() {
         return LabelParts {
             center: String::new(),
             traveling: String::new(),
+            charge: 0,
         };
     }
-    // Element symbol + optional implicit-H suffix.
-    let bytes = s.as_bytes();
-    if bytes[0].is_ascii_uppercase() {
+    let (body, charge) = strip_charge(s);
+    if body == "*" {
+        return LabelParts {
+            center: "*".into(),
+            traveling: String::new(),
+            charge,
+        };
+    }
+    let bytes = body.as_bytes();
+    if !bytes.is_empty() && bytes[0].is_ascii_uppercase() {
         let mut i = 1usize;
         if bytes.len() > 1 && bytes[1].is_ascii_lowercase() {
             i = 2;
         }
-        let (elem, rest) = s.split_at(i);
+        let (elem, rest) = body.split_at(i);
         if let Some(travel) = parse_h_suffix(rest) {
             return LabelParts {
                 center: elem.to_string(),
                 traveling: travel.to_string(),
+                charge,
             };
         }
     }
     LabelParts {
-        center: s.to_string(),
+        center: body.to_string(),
         traveling: String::new(),
+        charge,
     }
+}
+
+fn strip_charge(s: &str) -> (String, i32) {
+    let chars: Vec<char> = s.chars().collect();
+    if chars.is_empty() {
+        return (String::new(), 0);
+    }
+    // Trailing + / − / - / ⁺ / ⁻, optional leading magnitude or repeated signs.
+    let last = *chars.last().unwrap();
+    let is_plus = last == '+' || last == '⁺';
+    let is_minus = last == '-' || last == '−' || last == '⁻';
+    if !is_plus && !is_minus {
+        return (s.to_string(), 0);
+    }
+    let sign: i32 = if is_plus { 1 } else { -1 };
+    let mut i = chars.len() - 1;
+    // Collapse repeated ++++ / ----
+    while i > 0 {
+        let c = chars[i - 1];
+        let same = (sign > 0 && (c == '+' || c == '⁺'))
+            || (sign < 0 && (c == '-' || c == '−' || c == '⁻'));
+        if same {
+            i -= 1;
+        } else {
+            break;
+        }
+    }
+    let n_signs = (chars.len() - i) as i32;
+    let without_sign: String = chars[..i].iter().collect();
+    // ``NH4+`` → H-count owns the digits; charge mag is just the sign count.
+    // ``Fe3+`` / ``N2+`` → digits before the sign are the charge magnitude.
+    if without_sign.contains('H') {
+        // Element…H… — don't steal H-count digits for the charge.
+        return (without_sign, sign * n_signs);
+    }
+    let mut j = i;
+    while j > 0 && chars[j - 1].is_ascii_digit() {
+        j -= 1;
+    }
+    let mag = if j < i {
+        let digits: String = chars[j..i].iter().collect();
+        digits.parse::<i32>().unwrap_or(n_signs).max(1)
+    } else {
+        n_signs
+    };
+    let body: String = chars[..j].iter().collect();
+    (body, sign * mag)
 }
 
 fn parse_h_suffix(rest: &str) -> Option<&str> {
@@ -97,12 +167,38 @@ fn parse_h_suffix(rest: &str) -> Option<&str> {
     }
 }
 
+fn h_count(parts: &LabelParts) -> u32 {
+    let t = parts.traveling.as_str();
+    if t.is_empty() || !t.starts_with('H') {
+        return 0;
+    }
+    if t.len() == 1 {
+        return 1;
+    }
+    t[1..].parse().unwrap_or(1)
+}
+
 /// Orient a label from the sum of neighbor vectors (SVG +Y down).
 ///
-/// Neighbors to the right → bond approaches from the east → West orientation
-/// (traveling text goes left). Degree-0 defaults to East.
+/// Matches RDKit ``getAtomOrientation`` (70° vertical slope; degree-1 prefers
+/// E/W; degree-0 defaults East except O/F/S/Cl-class → West).
 pub fn label_side(atom: (f64, f64), neighbors: &[(f64, f64)]) -> LabelSide {
+    label_side_for(atom, neighbors, None)
+}
+
+/// Like [`label_side`] but degree-0 Hs-first elements use West (RDKit).
+pub fn label_side_for(
+    atom: (f64, f64),
+    neighbors: &[(f64, f64)],
+    element: Option<&str>,
+) -> LabelSide {
+    const VERT_SLOPE: f64 = 2.747477; // tan(70°)
     if neighbors.is_empty() {
+        // RDKit: O, F, S, Cl, … list H first → West.
+        const HS_FIRST: &[&str] = &["O", "F", "S", "Cl", "Br", "I", "Se", "Te", "At"];
+        if element.is_some_and(|e| HS_FIRST.contains(&e)) {
+            return LabelSide::West;
+        }
         return LabelSide::East;
     }
     let (ax, ay) = atom;
@@ -112,50 +208,204 @@ pub fn label_side(atom: (f64, f64), neighbors: &[(f64, f64)]) -> LabelSide {
         sx += nx - ax;
         sy += ny - ay;
     }
-    // Near-vertical approaches still pick E/W from the x component when present;
-    // pure vertical defaults to East (H to the right), matching common drawers.
-    const VERT_SLOPE: f64 = 2.747477; // tan(70°)
-    if sx.abs() < 1e-9 {
-        return LabelSide::East;
-    }
-    let slope = sy / sx;
-    if slope.abs() <= VERT_SLOPE {
+    let islope = if sx.abs() > 1e-4 { sy / sx } else { 1000.0 };
+    let mut orient = if islope.abs() <= VERT_SLOPE {
         if sx > 0.0 {
             LabelSide::West
         } else {
             LabelSide::East
         }
+    } else if sy > 0.0 {
+        // SVG +Y down → neighbor sum south → label extends North (away).
+        LabelSide::North
     } else {
-        // Steep: still prefer E/W from horizontal component for single bonds.
-        if sx > 0.0 {
-            LabelSide::West
+        LabelSide::South
+    };
+
+    // Degree-1: never N/S (RDKit).
+    if neighbors.len() == 1 && matches!(orient, LabelSide::North | LabelSide::South) {
+        if islope.abs() > VERT_SLOPE {
+            orient = LabelSide::East;
+        } else if sx > 0.0 {
+            orient = LabelSide::West;
         } else {
-            LabelSide::East
+            orient = LabelSide::East;
+        }
+    }
+
+    // Degree-3: keep N/S when a near-vertical bond points that way.
+    if neighbors.len() == 3 && matches!(orient, LabelSide::North | LabelSide::South) {
+        for &(nx, ny) in neighbors {
+            let dx = nx - ax;
+            let dy = ny - ay;
+            if dx.abs() < 1e-9 {
+                if dy > 0.0 {
+                    orient = LabelSide::North;
+                } else {
+                    orient = LabelSide::South;
+                }
+                break;
+            }
+            let ang = (dy / dx).atan().to_degrees();
+            if (80.0..100.0).contains(&ang) && orient == LabelSide::North {
+                break;
+            }
+            if (-100.0..-80.0).contains(&ang) && orient == LabelSide::South {
+                break;
+            }
+        }
+    }
+
+    orient
+}
+
+fn charge_glyphs(charge: i32) -> Vec<ChemGlyph> {
+    if charge == 0 {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    let mag = charge.unsigned_abs();
+    if mag > 1 {
+        for d in mag.to_string().chars() {
+            out.push(ChemGlyph {
+                ch: d,
+                role: ScriptRole::Superscript,
+            });
+        }
+    }
+    out.push(ChemGlyph {
+        ch: if charge > 0 { '+' } else { '-' },
+        role: ScriptRole::Superscript,
+    });
+    out
+}
+
+fn h_travel_glyphs(parts: &LabelParts) -> Vec<ChemGlyph> {
+    let n = h_count(parts);
+    if n == 0 {
+        return Vec::new();
+    }
+    let mut out = vec![ChemGlyph {
+        ch: 'H',
+        role: ScriptRole::Normal,
+    }];
+    if n > 1 {
+        for d in n.to_string().chars() {
+            out.push(ChemGlyph {
+                ch: d,
+                role: ScriptRole::Subscript,
+            });
+        }
+    }
+    out
+}
+
+fn center_glyphs(parts: &LabelParts) -> Vec<ChemGlyph> {
+    parts
+        .center
+        .chars()
+        .map(|ch| ChemGlyph {
+            ch,
+            role: ScriptRole::Normal,
+        })
+        .collect()
+}
+
+/// Glyphs in draw order for an orientation (atom-center first for E; …).
+fn glyphs_for_side(parts: &LabelParts, side: LabelSide) -> Vec<ChemGlyph> {
+    let center = center_glyphs(parts);
+    let travel = h_travel_glyphs(parts);
+    let charge = charge_glyphs(parts.charge);
+    match side {
+        LabelSide::East | LabelSide::South | LabelSide::North => {
+            let mut g = center;
+            g.extend(travel);
+            g.extend(charge);
+            g
+        }
+        LabelSide::West => {
+            // Travel + charge left of center (RDKit reverses pieces for W).
+            let mut g = charge;
+            g.extend(travel);
+            g.extend(center);
+            g
         }
     }
 }
 
-/// Compose the display string for a side.
-///
-/// With a traveling part: East → `center+travel`, West → `travel+center`.
-/// Without: the full center string is kept; placement picks first/last glyph.
+/// Plain display string after orientation (``OH`` / ``HO`` / ``NH₂⁺``).
 pub fn compose_label(parts: &LabelParts, side: LabelSide) -> String {
-    if parts.traveling.is_empty() {
-        return parts.center.clone();
+    let glyphs = glyphs_for_side(parts, side);
+    glyphs_to_data_text(&glyphs)
+}
+
+fn glyphs_to_data_text(glyphs: &[ChemGlyph]) -> String {
+    let mut out = String::new();
+    for g in glyphs {
+        match g.role {
+            ScriptRole::Normal => out.push(g.ch),
+            ScriptRole::Subscript => out.push(subscript_char(g.ch)),
+            ScriptRole::Superscript => out.push(superscript_char(g.ch)),
+        }
     }
-    match side {
-        LabelSide::East => format!("{}{}", parts.center, parts.traveling),
-        LabelSide::West => format!("{}{}", parts.traveling, parts.center),
+    out
+}
+
+fn subscript_char(ch: char) -> char {
+    match ch {
+        '0' => '₀',
+        '1' => '₁',
+        '2' => '₂',
+        '3' => '₃',
+        '4' => '₄',
+        '5' => '₅',
+        '6' => '₆',
+        '7' => '₇',
+        '8' => '₈',
+        '9' => '₉',
+        _ => ch,
     }
+}
+
+fn superscript_char(ch: char) -> char {
+    match ch {
+        '+' => '⁺',
+        '-' => '⁻',
+        '0' => '⁰',
+        '1' => '¹',
+        '2' => '²',
+        '3' => '³',
+        '4' => '⁴',
+        '5' => '⁵',
+        '6' => '⁶',
+        '7' => '⁷',
+        '8' => '⁸',
+        '9' => '⁹',
+        _ => ch,
+    }
+}
+
+fn advance_glyphs_px(glyphs: &[ChemGlyph], font_px: f64) -> f64 {
+    if glyphs.is_empty() {
+        return 0.0;
+    }
+    let face = font::face_metrics(FaceStyle::Regular);
+    let (_shape, adv_em) = font::outline_chem_run_em(glyphs, FaceStyle::Regular);
+    adv_em * (font_px / face.upem)
 }
 
 fn advance_px(text: &str, font_px: f64) -> f64 {
     if text.is_empty() {
         return 0.0;
     }
-    let (_shape, adv_em) = font::outline_run_em(text, FaceStyle::Regular);
-    let face = font::face_metrics(FaceStyle::Regular);
-    adv_em * (font_px / face.upem)
+    let glyphs: Vec<_> = text
+        .chars()
+        .map(|ch| ChemGlyph {
+            ch,
+            role: ScriptRole::Normal,
+        })
+        .collect();
+    advance_glyphs_px(&glyphs, font_px)
 }
 
 fn baseline_offset(font_px: f64) -> f64 {
@@ -163,50 +413,43 @@ fn baseline_offset(font_px: f64) -> f64 {
     0.5 * (face.cap_height / face.upem) * font_px
 }
 
-/// Atom-center glyph string (center token, or first/last char).
+/// Atom-center glyph string (element token, or first/last char of abbreviation).
 fn center_glyph_text(parts: &LabelParts, side: LabelSide) -> String {
     if parts.center.is_empty() {
         return String::new();
     }
-    if !parts.traveling.is_empty() {
+    if !parts.traveling.is_empty() || parts.charge != 0 {
         return parts.center.clone();
     }
-    // No traveling part: first glyph (East) or last glyph (West) is the center.
     let ch = match side {
-        LabelSide::East => parts.center.chars().next(),
+        LabelSide::East | LabelSide::South | LabelSide::North => parts.center.chars().next(),
         LabelSide::West => parts.center.chars().last(),
     };
     ch.map(|c| c.to_string()).unwrap_or_default()
 }
 
-/// Advance from string start to the start of the center glyph.
+/// Advance from string start to the start of the center glyph (E/W runs).
 fn prefix_before_center(parts: &LabelParts, side: LabelSide, font_px: f64) -> f64 {
-    if parts.traveling.is_empty() {
-        match side {
-            LabelSide::East => 0.0,
-            LabelSide::West => {
-                // Everything except the last glyph precedes the center.
+    match side {
+        LabelSide::East | LabelSide::North | LabelSide::South => 0.0,
+        LabelSide::West => {
+            if parts.traveling.is_empty() && parts.charge == 0 {
                 let mut chars = parts.center.chars();
                 let last = chars.next_back();
                 if last.is_none() {
                     return 0.0;
                 }
                 let prefix: String = chars.collect();
-                advance_px(&prefix, font_px)
+                return advance_px(&prefix, font_px);
             }
-        }
-    } else {
-        match side {
-            LabelSide::East => 0.0,
-            LabelSide::West => advance_px(&parts.traveling, font_px),
+            let mut prefix = charge_glyphs(parts.charge);
+            prefix.extend(h_travel_glyphs(parts));
+            advance_glyphs_px(&prefix, font_px)
         }
     }
 }
 
 /// Ink AABB of the center glyph relative to the atom (SVG +Y down).
-///
-/// Advance center lies on the atom; baseline is [`baseline_offset`] below it.
-/// Returns `(advance_px, Option<(xmin, xmax, ymin, ymax)>)`.
 fn center_glyph_ink_rel(
     parts: &LabelParts,
     side: LabelSide,
@@ -215,6 +458,24 @@ fn center_glyph_ink_rel(
     let text = center_glyph_text(parts, side);
     if text.is_empty() {
         return (0.0, None);
+    }
+    // ``*`` uses the custom star metrics.
+    if text == "*" {
+        let face = font::face_metrics(FaceStyle::Regular);
+        let scale = font_px / face.upem;
+        let (shape, adv_em) = font::outline_star_em(FaceStyle::Regular);
+        let advance = adv_em * scale;
+        let half = 0.5 * advance;
+        let base = baseline_offset(font_px);
+        let ink = shape.bounds().map(|(x0, y0, x1, y1)| {
+            (
+                x0 * scale - half,
+                x1 * scale - half,
+                base - y1 * scale,
+                base - y0 * scale,
+            )
+        });
+        return (advance, ink);
     }
     let face = font::face_metrics(FaceStyle::Regular);
     let scale = font_px / face.upem;
@@ -245,31 +506,23 @@ fn center_glyph_ink_rel(
     let half = 0.5 * advance;
     let base = baseline_offset(font_px);
     let ink = match (ink_xmin, ink_ymin, ink_xmax, ink_ymax) {
-        (Some(x0), Some(y0), Some(x1), Some(y1)) => {
-            // Font +Y up → SVG +Y down; origin at left of advance on baseline.
-            Some((
-                x0 * scale - half,
-                x1 * scale - half,
-                base - y1 * scale,
-                base - y0 * scale,
-            ))
-        }
+        (Some(x0), Some(y0), Some(x1), Some(y1)) => Some((
+            x0 * scale - half,
+            x1 * scale - half,
+            base - y1 * scale,
+            base - y0 * scale,
+        )),
         _ => None,
     };
     (advance, ink)
 }
 
-/// Support of an axis-aligned box in direction `(ux, uy)` (unit vector).
 fn aabb_support(xmin: f64, xmax: f64, ymin: f64, ymax: f64, ux: f64, uy: f64) -> f64 {
     let sx = if ux >= 0.0 { xmax } else { xmin };
     let sy = if uy >= 0.0 { ymax } else { ymin };
     sx * ux + sy * uy
 }
 
-/// Bond inset toward `(ux, uy)` from glyph advance + ink metrics.
-///
-/// Uses `max(½ advance, ink support)` so horizontal hetero bonds keep the
-/// advance floor while diagonal approaches clear the ink corners (e.g. N).
 fn clearance_toward(
     advance: f64,
     ink: Option<(f64, f64, f64, f64)>,
@@ -283,13 +536,74 @@ fn clearance_toward(
     half.max(ink_reach) + LABEL_GAP_PX
 }
 
-/// Isotropic label clearance (no bond direction): advance + ink width.
 fn clearance_isotropic(advance: f64, ink: Option<(f64, f64, f64, f64)>) -> f64 {
     let mut half = 0.5 * advance;
     if let Some((x0, x1, _, _)) = ink {
         half = half.max(0.5 * (x1 - x0));
     }
     half + LABEL_GAP_PX
+}
+
+/// Outline chem label glyphs at the placed origin (SVG +Y down).
+fn outline_placed(
+    parts: &LabelParts,
+    side: LabelSide,
+    origin_x: f64,
+    baseline_y: f64,
+    atom_x: f64,
+    _atom_y: f64,
+    font_px: f64,
+) -> Option<Shape> {
+    let face = font::face_metrics(FaceStyle::Regular);
+    let scale = font_px / face.upem;
+    let line_gap = 1.1 * (face.cap_height / face.upem) * font_px;
+
+    match side {
+        LabelSide::East | LabelSide::West => {
+            let glyphs = glyphs_for_side(parts, side);
+            font::compile_chem_shapes(
+                &glyphs,
+                origin_x,
+                baseline_y,
+                font_px,
+                "start",
+                FaceStyle::Regular,
+            )
+        }
+        LabelSide::North | LabelSide::South => {
+            // Stack: center on atom; travel (+ charge) above (N) or below (S).
+            let center = center_glyphs(parts);
+            let mut travel = h_travel_glyphs(parts);
+            travel.extend(charge_glyphs(parts.charge));
+            let (c_shape, c_adv_em) = font::outline_chem_run_em(&center, FaceStyle::Regular);
+            let c_adv = c_adv_em * scale;
+            let c_origin_x = atom_x - 0.5 * c_adv;
+            let mut acc = c_shape.map(|s| {
+                s.scale(scale, -scale, 0.0, 0.0)
+                    .translate(c_origin_x, baseline_y)
+            });
+            if !travel.is_empty() {
+                let (t_shape, t_adv_em) = font::outline_chem_run_em(&travel, FaceStyle::Regular);
+                let t_adv = t_adv_em * scale;
+                let t_origin_x = atom_x - 0.5 * t_adv;
+                let t_y = if side == LabelSide::North {
+                    baseline_y - line_gap
+                } else {
+                    baseline_y + line_gap
+                };
+                if let Some(ts) = t_shape {
+                    let placed = ts
+                        .scale(scale, -scale, 0.0, 0.0)
+                        .translate(t_origin_x, t_y);
+                    acc = Some(match acc.take() {
+                        Some(a) => a.union(&placed),
+                        None => placed,
+                    });
+                }
+            }
+            acc.filter(|s| !s.is_empty())
+        }
+    }
 }
 
 /// Place one label so the atom-center glyph sits on `(atom_x, atom_y)`.
@@ -304,11 +618,14 @@ pub fn place_label(
     let text = compose_label(&parts, side);
     let (center_adv, ink) = center_glyph_ink_rel(&parts, side, font_px);
     let prefix = prefix_before_center(&parts, side, font_px);
-    // Center of the center-glyph advance lands on the atom.
     let origin_x = atom_x - prefix - 0.5 * center_adv;
     let y = atom_y + baseline_offset(font_px);
     let clearance = clearance_isotropic(center_adv, ink);
+    let path_d = outline_placed(&parts, side, origin_x, y, atom_x, atom_y, font_px)
+        .map(|s| s.to_svg_d())
+        .unwrap_or_default();
     PlacedLabel {
+        raw: raw.to_string(),
         text,
         origin_x,
         y,
@@ -316,7 +633,22 @@ pub fn place_label(
         atom_y,
         side,
         clearance,
+        path_d,
     }
+}
+
+/// Glyph ink for a placed label (halo / occupancy).
+pub fn label_ink_shape(pl: &PlacedLabel, font_px: f64) -> Option<Shape> {
+    let parts = split_label(&pl.raw);
+    outline_placed(
+        &parts,
+        pl.side,
+        pl.origin_x,
+        pl.y,
+        pl.atom_x,
+        pl.atom_y,
+        font_px,
+    )
 }
 
 /// Shorten a bond segment by end insets (same as Python `bonds.shorten`).
@@ -372,13 +704,6 @@ pub struct BondOut {
 }
 
 /// Place all atom labels and shorten bond endpoints into label clearances.
-///
-/// `atoms[i]` coords are caller-supplied SVG positions. Bond indices refer to
-/// that slice. Returns `(bonds, labels)` where `labels[i]` is `Some` only when
-/// atom `i` has a non-empty label.
-///
-/// Bond insets use the center glyph's advance floor and ink AABB support in
-/// the bond direction (not a single ad-hoc radius).
 pub fn place_backbone(
     atoms: &[AtomIn],
     bonds: &[BondIn],
@@ -393,7 +718,6 @@ pub fn place_backbone(
         }
     }
 
-    // Per-atom center-glyph metrics for directional bond insets.
     let mut metrics: Vec<Option<(f64, Option<(f64, f64, f64, f64)>)>> = Vec::with_capacity(n);
     let mut labels: Vec<Option<PlacedLabel>> = Vec::with_capacity(n);
     for (i, atom) in atoms.iter().enumerate() {
@@ -403,8 +727,9 @@ pub fn place_backbone(
             metrics.push(None);
             continue;
         }
-        let side = label_side((atom.x, atom.y), &nbrs[i]);
         let parts = split_label(raw);
+        let elem = parts.center.as_str();
+        let side = label_side_for((atom.x, atom.y), &nbrs[i], Some(elem));
         metrics.push(Some(center_glyph_ink_rel(&parts, side, font_px)));
         labels.push(Some(place_label(raw, atom.x, atom.y, side, font_px)));
     }
@@ -464,10 +789,36 @@ mod tests {
     }
 
     #[test]
+    fn split_charge_and_ammonium() {
+        let n = split_label("NH4+");
+        assert_eq!(n.center, "N");
+        assert_eq!(n.traveling, "H4");
+        assert_eq!(n.charge, 1);
+        let o = split_label("O−");
+        assert_eq!(o.center, "O");
+        assert_eq!(o.charge, -1);
+        let star = split_label("*");
+        assert_eq!(star.center, "*");
+    }
+
+    #[test]
     fn oh_flips_on_west() {
         let parts = split_label("OH");
         assert_eq!(compose_label(&parts, LabelSide::East), "OH");
         assert_eq!(compose_label(&parts, LabelSide::West), "HO");
+    }
+
+    #[test]
+    fn nh2_uses_subscript() {
+        let parts = split_label("NH2");
+        assert_eq!(compose_label(&parts, LabelSide::East), "NH₂");
+        assert_eq!(compose_label(&parts, LabelSide::West), "H₂N");
+    }
+
+    #[test]
+    fn charge_is_superscript() {
+        let parts = split_label("NH4+");
+        assert_eq!(compose_label(&parts, LabelSide::East), "NH₄⁺");
     }
 
     #[test]
@@ -479,7 +830,6 @@ mod tests {
 
     #[test]
     fn side_from_neighbors() {
-        // Neighbor to the right → West (label extends left).
         assert_eq!(
             label_side((0.0, 0.0), &[(10.0, 0.0)]),
             LabelSide::West
@@ -487,6 +837,11 @@ mod tests {
         assert_eq!(
             label_side((0.0, 0.0), &[(-10.0, 0.0)]),
             LabelSide::East
+        );
+        // Steep vertical, degree > 1 → N/S.
+        assert_eq!(
+            label_side((0.0, 0.0), &[(1.0, 10.0), (-1.0, 10.0)]),
+            LabelSide::North
         );
     }
 
@@ -496,23 +851,27 @@ mod tests {
         let west = place_label("OH", 100.0, 50.0, LabelSide::West, FONT_PX);
         assert_eq!(east.text, "OH");
         assert_eq!(west.text, "HO");
+        assert!(!east.path_d.is_empty());
+        assert!(east.path_d.contains('M'));
         let o_adv = advance_px("O", FONT_PX);
-        // Origin places the midpoint of O on the atom.
         assert!((east.origin_x + 0.5 * o_adv - 100.0).abs() < 1e-6);
         let h_adv = advance_px("H", FONT_PX);
         assert!((west.origin_x + h_adv + 0.5 * o_adv - 100.0).abs() < 1e-6);
-        // Clearance uses O metrics, not the full OH width.
         assert!((east.clearance - (0.5 * o_adv + LABEL_GAP_PX)).abs() < 1e-6);
         assert!(east.clearance < advance_px("OH", FONT_PX) * 0.5 + LABEL_GAP_PX - 0.1);
     }
 
     #[test]
     fn n_diagonal_clearance_uses_ink_support() {
-        // Horizontal: advance floor. Diagonal: ink corner extends past half-advance.
         let parts = split_label("N");
         let (adv, ink) = center_glyph_ink_rel(&parts, LabelSide::East, FONT_PX);
         let horiz = clearance_toward(adv, ink, 1.0, 0.0);
-        let diag = clearance_toward(adv, ink, std::f64::consts::FRAC_1_SQRT_2, std::f64::consts::FRAC_1_SQRT_2);
+        let diag = clearance_toward(
+            adv,
+            ink,
+            std::f64::consts::FRAC_1_SQRT_2,
+            std::f64::consts::FRAC_1_SQRT_2,
+        );
         assert!((horiz - (0.5 * adv + LABEL_GAP_PX)).abs() < 1e-6);
         assert!(diag > horiz + 0.3);
     }
@@ -535,7 +894,7 @@ mod tests {
         let (out, labels) = place_backbone(&atoms, &bonds, FONT_PX);
         assert!(labels[1].is_some());
         let lab = labels[1].as_ref().unwrap();
-        assert_eq!(lab.text, "OH"); // neighbor on the left → East
+        assert_eq!(lab.text, "OH");
         assert!(out[0].x2 < 40.0);
         assert!((40.0 - out[0].x2 - lab.clearance).abs() < 1e-6);
     }
@@ -560,7 +919,13 @@ mod tests {
         let n_adv = advance_px("N", FONT_PX);
         let gap = ((out[0].x2 - 30.0).powi(2) + (out[0].y2 - 30.0).powi(2)).sqrt();
         assert!(gap > 0.5 * n_adv + LABEL_GAP_PX + 0.3);
-        // Isotropic label clearance stays on the advance floor (ink width < advance).
         assert!((lab.clearance - (0.5 * n_adv + LABEL_GAP_PX)).abs() < 1e-6);
+    }
+
+    #[test]
+    fn star_label_emits_path() {
+        let pl = place_label("*", 10.0, 10.0, LabelSide::East, FONT_PX);
+        assert_eq!(pl.text, "*");
+        assert!(!pl.path_d.is_empty());
     }
 }

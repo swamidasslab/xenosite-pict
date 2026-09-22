@@ -20,6 +20,8 @@ export type ScenePrimitive =
       stroke_dasharray?: string | null;
       stroke_linecap?: string | null;
       cls?: string | null;
+      /** Plain label string when this path is outlined glyph ink. */
+      data_text?: string | null;
     }
   | {
       kind: "circle";
@@ -107,6 +109,7 @@ function renderPrimitive(p: ScenePrimitive): string {
       attr("opacity", p.opacity ?? 1) +
       attr("stroke-dasharray", p.stroke_dasharray) +
       attr("class", p.cls) +
+      attr("data-text", p.data_text) +
       `/>`
     );
   }

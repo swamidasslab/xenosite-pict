@@ -129,6 +129,7 @@ impl StrokePath {
             stroke_dasharray: None,
             stroke_linecap: self.stroke_linecap.clone(),
             class: Some(self.class.clone()),
+            data_text: None,
         }
     }
 
