@@ -11,7 +11,7 @@ class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-LayerName = Literal["halo", "shading", "bonds", "labels", "marks", "overlay"]
+LayerName = Literal["shading", "halo", "bonds", "labels", "marks", "overlay"]
 
 
 class Point(StrictModel):
