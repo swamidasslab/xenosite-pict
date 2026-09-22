@@ -16,6 +16,7 @@ from xpict.draw.drawable import (
 )
 from xpict.draw.drawn import Halo
 from xpict.draw.markush import apply_rgroup_texts
+from xpict.draw.metrics import shared_coord_scale
 from xpict.draw.mol_title import pack_label
 
 
@@ -41,10 +42,13 @@ def _label_text(mol_spec: MoleculeSpec | None) -> str | None:
 
 
 def viewport_size(
-    layout: MoleculeLayout, mol_spec: MoleculeSpec | None = None
+    layout: MoleculeLayout,
+    mol_spec: MoleculeSpec | None = None,
+    *,
+    scale: float | None = None,
 ) -> tuple[float, float]:
     """Viewport width/height including a molecule label when present."""
-    coords, width, height = normalize_coords(layout)
+    coords, width, height = normalize_coords(layout, scale=scale)
     text = _label_text(mol_spec)
     if text is None or mol_spec is None or mol_spec.label is None:
         return width, height
@@ -67,9 +71,10 @@ def molecule_to_viewport(
     mol_spec: MoleculeSpec,
     *,
     halo: bool = True,
+    scale: float | None = None,
 ) -> Viewport:
     """Paint one molecule via the drawable hierarchy."""
-    vp, _halo = paint_molecule(layout, mol_spec, halo=halo)
+    vp, _halo = paint_molecule(layout, mol_spec, halo=halo, scale=scale)
     return vp
 
 
@@ -82,15 +87,21 @@ def build_scene(
     *,
     diagram_width: float | None = None,
     diagram_height: float | None = None,
+    scale: float | None = None,
 ) -> Scene:
     """Assemble viewports + overlays; one document :class:`~xpict.draw.drawn.Halo`.
 
     Drawables opt into that halo (backbone, element symbols, annotations).
     Shading, molecule captions, and diagram arrows do not.
+
+    Co-displayed molecules share one coord ``scale`` (default:
+    :func:`~xpict.draw.metrics.shared_coord_scale`).
     """
     spec = _flat(spec)
+    if scale is None:
+        scale = shared_coord_scale(layouts)
     painted: list[tuple[Viewport, Halo]] = [
-        paint_molecule(layout, mol_spec, halo=spec.halo)
+        paint_molecule(layout, mol_spec, halo=spec.halo, scale=scale)
         for layout, mol_spec in zip(layouts, mol_specs, strict=True)
     ]
     viewports = [vp for vp, _ in painted]

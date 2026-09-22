@@ -56,11 +56,19 @@ _PAD = PAD_PX
 
 def normalize_coords(
     layout: MoleculeLayout,
+    *,
+    scale: float | None = None,
 ) -> tuple[list[tuple[float, float]], float, float]:
-    """Return SVG coords (Y-flipped), width, height."""
+    """Return SVG coords (Y-flipped), width, height.
+
+    ``scale`` defaults to :func:`~xpict.draw.metrics.coord_scale` for this
+    layout. Co-displayed molecules should pass a shared scale from
+    :func:`~xpict.draw.metrics.shared_coord_scale`.
+    """
     if not layout.atoms:
         return [], _PAD * 2, _PAD * 2
-    scale = coord_scale(layout)
+    if scale is None:
+        scale = coord_scale(layout)
     xs = [a.x for a in layout.atoms]
     ys = [a.y for a in layout.atoms]
     min_x, max_x = min(xs), max(xs)
@@ -582,9 +590,15 @@ def paint_molecule(
     mol_spec: MoleculeSpec,
     *,
     halo: bool = True,
+    scale: float | None = None,
 ) -> tuple[Viewport, Halo]:
-    """Build a molecule viewport; return ink opted into the document halo."""
-    coords, width, height = normalize_coords(layout)
+    """Build a molecule viewport; return ink opted into the document halo.
+
+    ``scale`` is SVG px per layout unit. When several molecules share a
+    figure, pass :func:`~xpict.draw.metrics.shared_coord_scale` so bond
+    lengths match.
+    """
+    coords, width, height = normalize_coords(layout, scale=scale)
     texts = apply_rgroup_texts(
         layout, mol_spec, [display_text(a) for a in layout.atoms]
     )

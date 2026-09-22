@@ -21,6 +21,7 @@ and native (bond = 1.5) depict at the same size.
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 
 from xpict.contracts.layout import MoleculeLayout
 
@@ -93,14 +94,24 @@ ANNOT_STROKE_PX = ANNOT_STROKE_FRAC * BOND_PX
 
 def coord_scale(layout: MoleculeLayout) -> float:
     """SVG pixels per layout unit so the mean bond draws at ``BOND_PX``."""
-    by_index = {a.index: a for a in layout.atoms}
+    return shared_coord_scale([layout])
+
+
+def shared_coord_scale(layouts: Sequence[MoleculeLayout]) -> float:
+    """One scale for co-displayed molecules so mean bonds match ``BOND_PX``.
+
+    Pools every bond length across ``layouts`` rather than normalizing each
+    molecule on its own mean (which made neighbors look differently sized).
+    """
     lengths: list[float] = []
-    for bond in layout.bonds:
-        a = by_index.get(bond.begin)
-        b = by_index.get(bond.end)
-        if a is None or b is None:
-            continue
-        lengths.append(math.hypot(a.x - b.x, a.y - b.y))
+    for layout in layouts:
+        by_index = {a.index: a for a in layout.atoms}
+        for bond in layout.bonds:
+            a = by_index.get(bond.begin)
+            b = by_index.get(bond.end)
+            if a is None or b is None:
+                continue
+            lengths.append(math.hypot(a.x - b.x, a.y - b.y))
     mean = sum(lengths) / len(lengths) if lengths else 1.0
     if mean < 1e-6:
         mean = 1.0

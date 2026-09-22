@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 
 from xpict.contracts.layout import MoleculeLayout
 from xpict.contracts.spec import DiagramKind, LegacyPictSpec, MoleculeSpec
+from xpict.draw.metrics import shared_coord_scale
 from xpict.draw.scene_builder import viewport_size
 from xpict.warnings import PictBackendWarning
 
@@ -31,10 +32,11 @@ _REACTION_GAP = 56.0  # room for arrow shafts + edge labels between molecules
 def _viewport_sizes(
     layouts: Sequence[MoleculeLayout], spec: LegacyPictSpec
 ) -> list[tuple[float, float]]:
+    scale = shared_coord_scale(layouts)
     sizes: list[tuple[float, float]] = []
     for i, layout in enumerate(layouts):
         mol: MoleculeSpec | None = spec.molecules[i] if i < len(spec.molecules) else None
-        sizes.append(viewport_size(layout, mol))
+        sizes.append(viewport_size(layout, mol, scale=scale))
     return sizes
 
 
