@@ -23,12 +23,6 @@ pub fn parse_label_markup(raw: &str, base: FaceStyle) -> Vec<ChemGlyph> {
     out
 }
 
-/// Alias used by the label placer — same pathway for star labels and
-/// structural ``H_{2}`` / ``^{+}`` emits.
-pub fn parse_script_markup(raw: &str) -> Vec<ChemGlyph> {
-    parse_label_markup(raw, FaceStyle::Regular)
-}
-
 fn face_flags(style: FaceStyle) -> (bool, bool) {
     match style {
         FaceStyle::Regular => (false, false),
@@ -319,16 +313,6 @@ fn unicode_script_base(ch: char) -> Option<(char, ScriptRole)> {
     None
 }
 
-/// Strip one optional pair of chem ``$…$`` delimiters (for split / display helpers).
-pub fn strip_math_dollars(s: &str) -> String {
-    let t = s.trim();
-    if t.len() >= 2 && t.starts_with('$') && t.ends_with('$') {
-        t[1..t.len() - 1].to_string()
-    } else {
-        t.to_string()
-    }
-}
-
 // TeX-ish name → Unicode (Liberation Sans coverage). Same set as Python richtext.
 const SYMBOLS: &[(&str, &str)] = &[
     ("alpha", "α"),
@@ -419,7 +403,7 @@ mod tests {
     use super::*;
 
     fn text_roles(raw: &str) -> Vec<(char, ScriptRole, FaceStyle)> {
-        parse_script_markup(raw)
+        parse_label_markup(raw, FaceStyle::Regular)
             .into_iter()
             .map(|g| (g.ch, g.role, g.face))
             .collect()
@@ -427,7 +411,7 @@ mod tests {
 
     #[test]
     fn my_name_literal_underscore() {
-        let g = parse_script_markup("my_name");
+        let g = parse_label_markup("my_name", FaceStyle::Regular);
         assert_eq!(g.len(), 7);
         assert!(g.iter().all(|x| x.role == ScriptRole::Normal));
         assert_eq!(g.iter().map(|x| x.ch).collect::<String>(), "my_name");
@@ -435,11 +419,11 @@ mod tests {
 
     #[test]
     fn bare_r_1_literal_dollar_r_1_subscript() {
-        let bare = parse_script_markup("R_1");
+        let bare = parse_label_markup("R_1", FaceStyle::Regular);
         assert_eq!(bare.iter().map(|x| x.ch).collect::<String>(), "R_1");
         assert_eq!(bare[1].role, ScriptRole::Normal);
 
-        let math = parse_script_markup("$R_1$");
+        let math = parse_label_markup("$R_1$", FaceStyle::Regular);
         assert_eq!(math.len(), 2);
         assert_eq!(math[0].ch, 'R');
         assert_eq!(math[1].ch, '1');
@@ -448,7 +432,7 @@ mod tests {
 
     #[test]
     fn braced_sub_outside_math() {
-        let g = parse_script_markup("H_{2}");
+        let g = parse_label_markup("H_{2}", FaceStyle::Regular);
         assert_eq!(g.len(), 2);
         assert_eq!(g[1].role, ScriptRole::Subscript);
         assert_eq!(g[1].ch, '2');
@@ -456,32 +440,32 @@ mod tests {
 
     #[test]
     fn caret_super_bare() {
-        let g = parse_script_markup("R^2");
+        let g = parse_label_markup("R^2", FaceStyle::Regular);
         assert_eq!(g[1].role, ScriptRole::Superscript);
         assert_eq!(g[1].ch, '2');
     }
 
     #[test]
     fn greek_and_delta() {
-        let g = parse_script_markup(r"\alpha-\beta");
+        let g = parse_label_markup(r"\alpha-\beta", FaceStyle::Regular);
         assert_eq!(g.iter().map(|x| x.ch).collect::<String>(), "α-β");
-        let d = parse_script_markup(r"\Delta\DeltaG");
+        let d = parse_label_markup(r"\Delta\DeltaG", FaceStyle::Regular);
         assert_eq!(d.iter().map(|x| x.ch).collect::<String>(), "ΔΔG");
     }
 
     #[test]
     fn markdown_bold_italic() {
-        let g = parse_script_markup("**Et**OH");
+        let g = parse_label_markup("**Et**OH", FaceStyle::Regular);
         assert_eq!(g[0].face, FaceStyle::Bold);
         assert_eq!(g[1].face, FaceStyle::Bold);
         assert_eq!(g[2].face, FaceStyle::Regular);
-        let it = parse_script_markup("*cis*");
+        let it = parse_label_markup("*cis*", FaceStyle::Regular);
         assert!(it.iter().all(|x| x.face == FaceStyle::Italic));
     }
 
     #[test]
     fn math_with_alpha_sub() {
-        let g = parse_script_markup(r"$\alpha_D$");
+        let g = parse_label_markup(r"$\alpha_D$", FaceStyle::Regular);
         assert_eq!(g[0].ch, 'α');
         assert_eq!(g[1].ch, 'D');
         assert_eq!(g[1].role, ScriptRole::Subscript);

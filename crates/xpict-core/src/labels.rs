@@ -14,7 +14,7 @@
 
 use crate::font::{self, ChemGlyph, FaceStyle, ScriptRole};
 use crate::geom::Shape;
-use crate::markup::{self, parse_script_markup};
+use crate::markup;
 use crate::metrics::LABEL_GAP_PX;
 
 /// Which side the traveling text extends toward (RDKit OrientType).
@@ -401,6 +401,7 @@ fn advance_glyphs_px(glyphs: &[ChemGlyph], font_px: f64, style: FaceStyle) -> f6
     adv_em * (font_px / face.upem)
 }
 
+#[cfg(test)]
 fn advance_px(text: &str, font_px: f64, style: FaceStyle) -> f64 {
     if text.is_empty() {
         return 0.0;
@@ -822,7 +823,7 @@ mod tests {
         assert_eq!(compose_label(&parts, LabelSide::East), "NH₂");
         assert_eq!(compose_label(&parts, LabelSide::West), "H₂N");
         // Same pathway as braced markup (bare ``H_2`` is literal outside ``$``).
-        let via_markup = parse_script_markup("H_{2}");
+        let via_markup = markup::parse_label_markup("H_{2}", FaceStyle::Regular);
         assert_eq!(via_markup.len(), 2);
         assert_eq!(via_markup[0].ch, 'H');
         assert_eq!(via_markup[1].role, ScriptRole::Subscript);

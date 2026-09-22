@@ -42,7 +42,7 @@ pub use labels::{
     BondIn, BondOut, LabelParts, LabelSide, PlacedLabel,
 };
 #[cfg(feature = "font")]
-pub use markup::{parse_label_markup, parse_script_markup, strip_math_dollars};
+pub use markup::parse_label_markup;
 pub use metrics::{BOND_PX, OFFSET_FRAC, OFFSET_PX, SCALE, SHADE_FRAC, STROKE_PX};
 pub use plotdot::{PlotDot, ShadeDisk};
 pub use rings::{apply_ring_interiors, bond_interior_normals, find_sssr, Ring};
