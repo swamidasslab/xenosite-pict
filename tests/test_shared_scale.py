@@ -66,46 +66,48 @@ def test_build_scene_uses_shared_scale_for_codisplayed():
     assert (span_s + span_l) / 2 == pytest.approx(BOND_PX)
 
 
-def test_reaction_pathway_mols_match_bond_scale():
-    """Ethanol + aspirin in one diagram share drawn bond length."""
+def test_codisplayed_unlabeled_bonds_match_length():
+    """Different viewport sizes, same unlabeled bond length in SVG space."""
+    import re
+
+    from xpict.contracts.scene import PathPrim
     from xpict.diagram.elk import layout_diagram_ex
-    from xpict.draw.metrics import shared_coord_scale
 
     doc = PictSpec.model_validate(
         {
             "molecules": [
                 {"id": "etoh", "smiles": "CCO"},
-                {"id": "asa", "smiles": "CC(=O)Oc1ccccc1C(=O)O"},
+                {"id": "phenol", "smiles": "c1ccccc1O"},
             ],
-            "diagram": {
-                "kind": "reaction",
-                "edges": [{"source": "etoh", "target": "asa", "arrow": "forward"}],
-            },
+            "diagram": {"kind": "grid", "columns": 2},
         }
     )
     pict = Pict(backend="native")
     layouts = pict.layout(doc).molecules
     scale = shared_coord_scale(layouts)
-    # Each mol's own scale may differ slightly; shared is one number.
-    own = [coord_scale(lay) for lay in layouts]
-    assert max(own) / min(own) >= 1.0
     place = layout_diagram_ex(layouts, doc)
     scene = build_scene(
-        layouts,
-        doc.molecules,
-        doc,
-        positions=place.positions,
-        edge_paths=place.edge_paths,
-        scale=scale,
+        layouts, doc.molecules, doc, positions=place.positions, scale=scale
     )
-    assert len(scene.viewports) == 2
-    # Spot-check: mean bond in each viewport's layout coords × shared scale ≈ BOND_PX.
-    for lay in layouts:
-        by = {a.index: a for a in lay.atoms}
-        lens = [
-            math.hypot(by[b.begin].x - by[b.end].x, by[b.begin].y - by[b.end].y)
-            for b in lay.bonds
-            if b.begin in by and b.end in by
-        ]
-        mean = sum(lens) / len(lens)
-        assert mean * scale == pytest.approx(BOND_PX, rel=0.15)
+
+    def unlabeled_skeleton_lens(vp):
+        out = []
+        for layer in vp.layers:
+            for p in layer.primitives:
+                if not isinstance(p, PathPrim) or not p.cls:
+                    continue
+                if "bond-skeleton" not in p.cls:
+                    continue
+                nums = [float(x) for x in re.findall(r"[-+]?\d*\.?\d+", p.d)]
+                if len(nums) < 4:
+                    continue
+                x1, y1, x2, y2 = nums[:4]
+                out.append(math.hypot(x2 - x1, y2 - y1))
+        return out
+
+    # Viewports differ in size (phenol is larger)…
+    assert scene.viewports[0].width != pytest.approx(scene.viewports[1].width, rel=0.01)
+    # …but the long unlabeled skeletons sit on BOND_PX.
+    for vp in scene.viewports:
+        lens = unlabeled_skeleton_lens(vp)
+        assert max(lens) == pytest.approx(BOND_PX, abs=0.05)
