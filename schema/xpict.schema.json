@@ -24,127 +24,117 @@
       "type": "string"
     },
     "AnnotationNode": {
-      "additionalProperties": false,
-      "description": "Annotation as a nested object (alternative to mol.annotations list).",
-      "properties": {
-        "id": {
-          "$ref": "#/$defs/Id"
+      "title": "AnnotationNode",
+      "allOf": [
+        {
+          "$ref": "#/$defs/NodeCommon"
         },
-        "panel": {
-          "$ref": "#/$defs/Panel"
-        },
-        "layout": {
-          "$ref": "#/$defs/LayoutSpec"
-        },
-        "meta": {
-          "additionalProperties": true,
-          "title": "Meta",
-          "type": "object"
-        },
-        "type": {
-          "const": "annotation",
-          "default": "annotation",
-          "title": "Type",
-          "type": "string"
-        },
-        "kind": {
-          "$ref": "#/$defs/AnnotKind",
-          "default": "callout"
-        },
-        "atoms": {
-          "anyOf": [
-            {
-              "items": {
-                "type": "integer"
-              },
-              "type": "array"
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "annotation",
+              "default": "annotation",
+              "title": "Type",
+              "type": "string"
             },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Atoms"
-        },
-        "bonds": {
-          "anyOf": [
-            {
-              "items": {
-                "maxItems": 2,
-                "minItems": 2,
-                "prefixItems": [
-                  {
+            "kind": {
+              "$ref": "#/$defs/AnnotKind",
+              "default": "callout"
+            },
+            "atoms": {
+              "anyOf": [
+                {
+                  "items": {
                     "type": "integer"
                   },
-                  {
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Atoms"
+            },
+            "bonds": {
+              "anyOf": [
+                {
+                  "items": {
+                    "maxItems": 2,
+                    "minItems": 2,
+                    "prefixItems": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "integer"
+                      }
+                    ],
+                    "type": "array"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Bonds"
+            },
+            "ring": {
+              "anyOf": [
+                {
+                  "items": {
                     "type": "integer"
-                  }
-                ],
-                "type": "array"
-              },
-              "type": "array"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Ring"
             },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Bonds"
-        },
-        "ring": {
-          "anyOf": [
-            {
-              "items": {
-                "type": "integer"
-              },
-              "type": "array"
+            "label": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Label"
             },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Ring"
-        },
-        "label": {
-          "anyOf": [
-            {
-              "type": "string"
+            "color": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Color"
             },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Label"
-        },
-        "color": {
-          "anyOf": [
-            {
-              "type": "string"
+            "arrow": {
+              "default": true,
+              "title": "Arrow",
+              "type": "boolean"
             },
-            {
-              "type": "null"
+            "prefer": {
+              "$ref": "#/$defs/AnnotPrefer",
+              "default": "auto"
             }
-          ],
-          "default": null,
-          "title": "Color"
-        },
-        "arrow": {
-          "default": true,
-          "title": "Arrow",
-          "type": "boolean"
-        },
-        "prefer": {
-          "$ref": "#/$defs/AnnotPrefer",
-          "default": "auto"
-        },
-        "children": {
-          "$ref": "#/$defs/Children"
+          }
         }
-      },
-      "title": "AnnotationNode",
-      "type": "object"
+      ],
+      "description": "Annotation as a nested object (alternative to mol.annotations list).",
+      "unevaluatedProperties": false
     },
     "AnnotationSpec": {
       "additionalProperties": false,
@@ -254,93 +244,83 @@
       "type": "object"
     },
     "ArrowNode": {
-      "additionalProperties": false,
-      "description": "Reaction / diagram arrow between siblings (or via layout.edges).",
-      "properties": {
-        "id": {
-          "$ref": "#/$defs/Id"
-        },
-        "panel": {
-          "$ref": "#/$defs/Panel"
-        },
-        "layout": {
-          "$ref": "#/$defs/LayoutSpec"
-        },
-        "meta": {
-          "additionalProperties": true,
-          "title": "Meta",
-          "type": "object"
-        },
-        "type": {
-          "const": "arrow",
-          "default": "arrow",
-          "title": "Type",
-          "type": "string"
-        },
-        "arrow": {
-          "$ref": "#/$defs/EdgeArrow",
-          "default": "forward"
-        },
-        "label": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Legacy single edge label; prefer layout.above",
-          "title": "Label"
-        },
-        "role": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Role"
-        },
-        "color": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Color"
-        },
-        "stroke_width": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Stroke Width"
-        },
-        "dashed": {
-          "default": false,
-          "title": "Dashed",
-          "type": "boolean"
-        },
-        "children": {
-          "$ref": "#/$defs/Children"
-        }
-      },
       "title": "ArrowNode",
-      "type": "object"
+      "allOf": [
+        {
+          "$ref": "#/$defs/NodeCommon"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "arrow",
+              "default": "arrow",
+              "title": "Type",
+              "type": "string"
+            },
+            "arrow": {
+              "$ref": "#/$defs/EdgeArrow",
+              "default": "forward"
+            },
+            "label": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Legacy single edge label; prefer layout.above",
+              "title": "Label"
+            },
+            "role": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Role"
+            },
+            "color": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Color"
+            },
+            "stroke_width": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Stroke Width"
+            },
+            "dashed": {
+              "default": false,
+              "title": "Dashed",
+              "type": "boolean"
+            }
+          }
+        }
+      ],
+      "description": "Reaction / diagram arrow between siblings (or via layout.edges).",
+      "unevaluatedProperties": false
     },
     "EdgeArrow": {
       "description": "Arrow head / shaft style for diagram edges.",
@@ -435,113 +415,80 @@
       "type": "object"
     },
     "GridNode": {
-      "additionalProperties": false,
-      "properties": {
-        "id": {
-          "$ref": "#/$defs/Id"
-        },
-        "panel": {
-          "$ref": "#/$defs/Panel"
-        },
-        "layout": {
-          "$ref": "#/$defs/LayoutSpec"
-        },
-        "meta": {
-          "additionalProperties": true,
-          "title": "Meta",
-          "type": "object"
-        },
-        "type": {
-          "const": "grid",
-          "default": "grid",
-          "title": "Type",
-          "type": "string"
-        },
-        "children": {
-          "$ref": "#/$defs/Children"
-        }
-      },
       "title": "GridNode",
-      "type": "object"
+      "allOf": [
+        {
+          "$ref": "#/$defs/NodeCommon"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "grid",
+              "default": "grid",
+              "title": "Type",
+              "type": "string"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
     },
     "GroupNode": {
-      "additionalProperties": false,
-      "properties": {
-        "id": {
-          "$ref": "#/$defs/Id"
-        },
-        "panel": {
-          "$ref": "#/$defs/Panel"
-        },
-        "layout": {
-          "$ref": "#/$defs/LayoutSpec"
-        },
-        "meta": {
-          "additionalProperties": true,
-          "title": "Meta",
-          "type": "object"
-        },
-        "type": {
-          "const": "group",
-          "default": "group",
-          "title": "Type",
-          "type": "string"
-        },
-        "children": {
-          "$ref": "#/$defs/Children"
-        }
-      },
       "title": "GroupNode",
-      "type": "object"
+      "allOf": [
+        {
+          "$ref": "#/$defs/NodeCommon"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "group",
+              "default": "group",
+              "title": "Type",
+              "type": "string"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
     },
     "ImageNode": {
-      "additionalProperties": false,
-      "properties": {
-        "id": {
-          "$ref": "#/$defs/Id"
+      "title": "ImageNode",
+      "allOf": [
+        {
+          "$ref": "#/$defs/NodeCommon"
         },
-        "panel": {
-          "$ref": "#/$defs/Panel"
-        },
-        "layout": {
-          "$ref": "#/$defs/LayoutSpec"
-        },
-        "meta": {
-          "additionalProperties": true,
-          "title": "Meta",
-          "type": "object"
-        },
-        "type": {
-          "const": "image",
-          "default": "image",
-          "title": "Type",
-          "type": "string"
-        },
-        "src": {
-          "title": "Src",
-          "type": "string"
-        },
-        "alt": {
-          "anyOf": [
-            {
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "image",
+              "default": "image",
+              "title": "Type",
               "type": "string"
             },
-            {
-              "type": "null"
+            "src": {
+              "title": "Src",
+              "type": "string"
+            },
+            "alt": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Alt"
             }
-          ],
-          "default": null,
-          "title": "Alt"
-        },
-        "children": {
-          "$ref": "#/$defs/Children"
+          }
         }
-      },
-      "required": [
-        "src"
       ],
-      "title": "ImageNode",
-      "type": "object"
+      "unevaluatedProperties": false
     },
     "LayoutSpec": {
       "additionalProperties": false,
@@ -829,230 +776,210 @@
       "type": "object"
     },
     "MolNode": {
-      "additionalProperties": false,
-      "description": "Molecule object (chemistry payload + optional nested annotations/tables).",
-      "properties": {
-        "id": {
-          "$ref": "#/$defs/Id"
+      "title": "MolNode",
+      "allOf": [
+        {
+          "$ref": "#/$defs/NodeCommon"
         },
-        "panel": {
-          "$ref": "#/$defs/Panel"
-        },
-        "layout": {
-          "$ref": "#/$defs/LayoutSpec"
-        },
-        "meta": {
-          "additionalProperties": true,
-          "title": "Meta",
-          "type": "object"
-        },
-        "type": {
-          "const": "mol",
-          "default": "mol",
-          "title": "Type",
-          "type": "string"
-        },
-        "smiles": {
-          "anyOf": [
-            {
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "mol",
+              "default": "mol",
+              "title": "Type",
               "type": "string"
             },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Smiles"
-        },
-        "cxsmiles": {
-          "anyOf": [
-            {
-              "type": "string"
+            "smiles": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Smiles"
             },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Cxsmiles"
-        },
-        "esmiles": {
-          "anyOf": [
-            {
-              "type": "string"
+            "cxsmiles": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Cxsmiles"
             },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Esmiles"
-        },
-        "molfile": {
-          "anyOf": [
-            {
-              "type": "string"
+            "esmiles": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Esmiles"
             },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Molfile"
-        },
-        "ids": {
-          "additionalProperties": {
-            "anyOf": [
-              {
-                "type": "integer"
+            "molfile": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Molfile"
+            },
+            "ids": {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "items": {
+                      "type": "integer"
+                    },
+                    "type": "array"
+                  }
+                ]
               },
-              {
+              "title": "Ids",
+              "type": "object"
+            },
+            "rings": {
+              "additionalProperties": {
                 "items": {
                   "type": "integer"
                 },
                 "type": "array"
-              }
-            ]
-          },
-          "title": "Ids",
-          "type": "object"
-        },
-        "rings": {
-          "additionalProperties": {
-            "items": {
-              "type": "integer"
-            },
-            "type": "array"
-          },
-          "title": "Rings",
-          "type": "object"
-        },
-        "rgroups": {
-          "anyOf": [
-            {
-              "items": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
               },
-              "type": "array"
-            },
-            {
-              "additionalProperties": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
+              "title": "Rings",
               "type": "object"
             },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Rgroups"
-        },
-        "ring_attachments": {
-          "items": {
-            "$ref": "#/$defs/RingAttachmentSpec"
-          },
-          "title": "Ring Attachments",
-          "type": "array"
-        },
-        "rtable": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/RTableSpec"
+            "rgroups": {
+              "anyOf": [
+                {
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "type": "array"
+                },
+                {
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Rgroups"
             },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
-        },
-        "marks": {
-          "items": {
-            "$ref": "#/$defs/MarkSpec"
-          },
-          "title": "Marks",
-          "type": "array"
-        },
-        "annotations": {
-          "items": {
-            "$ref": "#/$defs/AnnotationSpec"
-          },
-          "title": "Annotations",
-          "type": "array"
-        },
-        "shade": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/ShadeSpec"
+            "ring_attachments": {
+              "items": {
+                "$ref": "#/$defs/RingAttachmentSpec"
+              },
+              "title": "Ring Attachments",
+              "type": "array"
             },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
-        },
-        "color": {
-          "anyOf": [
-            {
-              "type": "string"
+            "rtable": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/RTableSpec"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
             },
-            {
-              "type": "null"
+            "marks": {
+              "items": {
+                "$ref": "#/$defs/MarkSpec"
+              },
+              "title": "Marks",
+              "type": "array"
+            },
+            "annotations": {
+              "items": {
+                "$ref": "#/$defs/AnnotationSpec"
+              },
+              "title": "Annotations",
+              "type": "array"
+            },
+            "shade": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/ShadeSpec"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "color": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Color"
             }
-          ],
-          "default": null,
-          "title": "Color"
-        },
-        "children": {
-          "$ref": "#/$defs/Children"
+          }
         }
-      },
-      "title": "MolNode",
-      "type": "object"
+      ],
+      "description": "Molecule object (chemistry payload + optional nested annotations/tables).",
+      "unevaluatedProperties": false
     },
     "NetworkNode": {
-      "additionalProperties": false,
-      "properties": {
-        "id": {
-          "$ref": "#/$defs/Id"
-        },
-        "panel": {
-          "$ref": "#/$defs/Panel"
-        },
-        "layout": {
-          "$ref": "#/$defs/LayoutSpec"
-        },
-        "meta": {
-          "additionalProperties": true,
-          "title": "Meta",
-          "type": "object"
-        },
-        "type": {
-          "const": "network",
-          "default": "network",
-          "title": "Type",
-          "type": "string"
-        },
-        "children": {
-          "$ref": "#/$defs/Children"
-        }
-      },
       "title": "NetworkNode",
-      "type": "object"
+      "allOf": [
+        {
+          "$ref": "#/$defs/NodeCommon"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "network",
+              "default": "network",
+              "title": "Type",
+              "type": "string"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
     },
     "RTableSpec": {
       "additionalProperties": false,
@@ -1090,72 +1017,49 @@
       "type": "object"
     },
     "ReactionNode": {
-      "additionalProperties": false,
-      "properties": {
-        "id": {
-          "$ref": "#/$defs/Id"
-        },
-        "panel": {
-          "$ref": "#/$defs/Panel"
-        },
-        "layout": {
-          "$ref": "#/$defs/LayoutSpec"
-        },
-        "meta": {
-          "additionalProperties": true,
-          "title": "Meta",
-          "type": "object"
-        },
-        "type": {
-          "const": "reaction",
-          "default": "reaction",
-          "title": "Type",
-          "type": "string"
-        },
-        "children": {
-          "$ref": "#/$defs/Children"
-        }
-      },
       "title": "ReactionNode",
-      "type": "object"
+      "allOf": [
+        {
+          "$ref": "#/$defs/NodeCommon"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "reaction",
+              "default": "reaction",
+              "title": "Type",
+              "type": "string"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
     },
     "RefNode": {
-      "additionalProperties": false,
-      "description": "Reference to another node by id (sharing).",
-      "properties": {
-        "id": {
-          "$ref": "#/$defs/Id"
-        },
-        "panel": {
-          "$ref": "#/$defs/Panel"
-        },
-        "layout": {
-          "$ref": "#/$defs/LayoutSpec"
-        },
-        "meta": {
-          "additionalProperties": true,
-          "title": "Meta",
-          "type": "object"
-        },
-        "type": {
-          "const": "ref",
-          "default": "ref",
-          "title": "Type",
-          "type": "string"
-        },
-        "ref": {
-          "title": "Ref",
-          "type": "string"
-        },
-        "children": {
-          "$ref": "#/$defs/Children"
-        }
-      },
-      "required": [
-        "ref"
-      ],
       "title": "RefNode",
-      "type": "object"
+      "allOf": [
+        {
+          "$ref": "#/$defs/NodeCommon"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "ref",
+              "default": "ref",
+              "title": "Type",
+              "type": "string"
+            },
+            "ref": {
+              "title": "Ref",
+              "type": "string"
+            }
+          }
+        }
+      ],
+      "description": "Reference to another node by id (sharing).",
+      "unevaluatedProperties": false
     },
     "RingAttachmentSpec": {
       "additionalProperties": false,
@@ -1265,97 +1169,123 @@
       "type": "object"
     },
     "StackNode": {
-      "additionalProperties": false,
-      "properties": {
-        "id": {
-          "$ref": "#/$defs/Id"
-        },
-        "panel": {
-          "$ref": "#/$defs/Panel"
-        },
-        "layout": {
-          "$ref": "#/$defs/LayoutSpec"
-        },
-        "meta": {
-          "additionalProperties": true,
-          "title": "Meta",
-          "type": "object"
-        },
-        "type": {
-          "const": "stack",
-          "default": "stack",
-          "title": "Type",
-          "type": "string"
-        },
-        "children": {
-          "$ref": "#/$defs/Children"
-        }
-      },
       "title": "StackNode",
-      "type": "object"
+      "allOf": [
+        {
+          "$ref": "#/$defs/NodeCommon"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "stack",
+              "default": "stack",
+              "title": "Type",
+              "type": "string"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
     },
     "TableNode": {
-      "additionalProperties": false,
+      "title": "TableNode",
+      "allOf": [
+        {
+          "$ref": "#/$defs/NodeCommon"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "table",
+              "default": "table",
+              "title": "Type",
+              "type": "string"
+            },
+            "columns": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Columns"
+            },
+            "rows": {
+              "items": {
+                "items": {},
+                "type": "array"
+              },
+              "title": "Rows",
+              "type": "array"
+            }
+          }
+        }
+      ],
       "description": "Tabular panel; cells may be strings or nested nodes (e.g. mol).",
+      "unevaluatedProperties": false
+    },
+    "TextNode": {
+      "title": "TextNode",
+      "allOf": [
+        {
+          "$ref": "#/$defs/NodeCommon"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "text",
+              "default": "text",
+              "title": "Type",
+              "type": "string"
+            },
+            "text": {
+              "title": "Text",
+              "type": "string"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "NodeCommon": {
+      "title": "NodeCommon",
+      "description": "Fields shared by every figure node (id, panel, layout, meta, children).",
+      "type": "object",
       "properties": {
         "id": {
-          "$ref": "#/$defs/Id"
-        },
-        "panel": {
-          "$ref": "#/$defs/Panel"
-        },
-        "layout": {
-          "$ref": "#/$defs/LayoutSpec"
-        },
-        "meta": {
-          "additionalProperties": true,
-          "title": "Meta",
-          "type": "object"
-        },
-        "type": {
-          "const": "table",
-          "default": "table",
-          "title": "Type",
-          "type": "string"
-        },
-        "columns": {
           "anyOf": [
             {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
+              "type": "string"
             },
             {
               "type": "null"
             }
           ],
           "default": null,
-          "title": "Columns"
-        },
-        "rows": {
-          "items": {
-            "items": {},
-            "type": "array"
-          },
-          "title": "Rows",
-          "type": "array"
-        },
-        "children": {
-          "$ref": "#/$defs/Children"
-        }
-      },
-      "title": "TableNode",
-      "type": "object"
-    },
-    "TextNode": {
-      "additionalProperties": false,
-      "properties": {
-        "id": {
-          "$ref": "#/$defs/Id"
+          "description": "Optional stable id for refs/edges",
+          "title": "Id"
         },
         "panel": {
-          "$ref": "#/$defs/Panel"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Subfigure tag drawn as (a), (b), \u2026",
+          "title": "Panel"
         },
         "layout": {
           "$ref": "#/$defs/LayoutSpec"
@@ -1365,115 +1295,69 @@
           "title": "Meta",
           "type": "object"
         },
-        "type": {
-          "const": "text",
-          "default": "text",
-          "title": "Type",
-          "type": "string"
-        },
-        "text": {
-          "title": "Text",
-          "type": "string"
-        },
         "children": {
-          "$ref": "#/$defs/Children"
+          "description": "Owned nested nodes (same discriminated union as the document root)",
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "annotation": "#/$defs/AnnotationNode",
+                "arrow": "#/$defs/ArrowNode",
+                "grid": "#/$defs/GridNode",
+                "group": "#/$defs/GroupNode",
+                "image": "#/$defs/ImageNode",
+                "mol": "#/$defs/MolNode",
+                "network": "#/$defs/NetworkNode",
+                "reaction": "#/$defs/ReactionNode",
+                "ref": "#/$defs/RefNode",
+                "stack": "#/$defs/StackNode",
+                "table": "#/$defs/TableNode",
+                "text": "#/$defs/TextNode"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/MolNode"
+              },
+              {
+                "$ref": "#/$defs/ArrowNode"
+              },
+              {
+                "$ref": "#/$defs/TextNode"
+              },
+              {
+                "$ref": "#/$defs/ImageNode"
+              },
+              {
+                "$ref": "#/$defs/TableNode"
+              },
+              {
+                "$ref": "#/$defs/RefNode"
+              },
+              {
+                "$ref": "#/$defs/AnnotationNode"
+              },
+              {
+                "$ref": "#/$defs/GroupNode"
+              },
+              {
+                "$ref": "#/$defs/GridNode"
+              },
+              {
+                "$ref": "#/$defs/StackNode"
+              },
+              {
+                "$ref": "#/$defs/ReactionNode"
+              },
+              {
+                "$ref": "#/$defs/NetworkNode"
+              }
+            ]
+          },
+          "title": "Children",
+          "type": "array"
         }
-      },
-      "required": [
-        "text"
-      ],
-      "title": "TextNode",
-      "type": "object"
-    },
-    "Children": {
-      "items": {
-        "$ref": "#/$defs/NodeUnion"
-      },
-      "title": "Children",
-      "type": "array"
-    },
-    "NodeUnion": {
-      "discriminator": {
-        "mapping": {
-          "annotation": "#/$defs/AnnotationNode",
-          "arrow": "#/$defs/ArrowNode",
-          "grid": "#/$defs/GridNode",
-          "group": "#/$defs/GroupNode",
-          "image": "#/$defs/ImageNode",
-          "mol": "#/$defs/MolNode",
-          "network": "#/$defs/NetworkNode",
-          "reaction": "#/$defs/ReactionNode",
-          "ref": "#/$defs/RefNode",
-          "stack": "#/$defs/StackNode",
-          "table": "#/$defs/TableNode",
-          "text": "#/$defs/TextNode"
-        },
-        "propertyName": "type"
-      },
-      "oneOf": [
-        {
-          "$ref": "#/$defs/MolNode"
-        },
-        {
-          "$ref": "#/$defs/ArrowNode"
-        },
-        {
-          "$ref": "#/$defs/TextNode"
-        },
-        {
-          "$ref": "#/$defs/ImageNode"
-        },
-        {
-          "$ref": "#/$defs/TableNode"
-        },
-        {
-          "$ref": "#/$defs/RefNode"
-        },
-        {
-          "$ref": "#/$defs/AnnotationNode"
-        },
-        {
-          "$ref": "#/$defs/GroupNode"
-        },
-        {
-          "$ref": "#/$defs/GridNode"
-        },
-        {
-          "$ref": "#/$defs/StackNode"
-        },
-        {
-          "$ref": "#/$defs/ReactionNode"
-        },
-        {
-          "$ref": "#/$defs/NetworkNode"
-        }
-      ]
-    },
-    "Panel": {
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "description": "Subfigure tag drawn as (a), (b), \u2026",
-      "title": "Panel"
-    },
-    "Id": {
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "description": "Optional stable id for refs/edges",
-      "title": "Id"
+      }
     },
     "ArraySchema": {
       "items": {

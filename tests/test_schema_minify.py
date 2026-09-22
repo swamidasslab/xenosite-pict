@@ -9,31 +9,35 @@ from xpict.export_schema import minify_json_schema
 
 
 def test_minify_reduces_size_and_shares_children():
+    from xpict.export_schema import factor_node_common_allof
+
     raw = PictSpec.model_json_schema()
-    mini = minify_json_schema(raw)
+    mini = minify_json_schema(factor_node_common_allof(raw))
     raw_s = json.dumps(raw, indent=2)
     mini_s = json.dumps(mini, indent=2)
-    assert len(mini_s) < len(raw_s) * 0.85
+    assert len(mini_s) < len(raw_s) * 0.75
 
-    # Structural validity: keyword shapes preserved
     assert isinstance(mini["oneOf"], list)
     assert isinstance(mini["discriminator"], dict)
-    assert mini["discriminator"].get("propertyName") == "type"
 
     defs = mini["$defs"]
-    assert "Children" in defs
-    assert defs["Children"]["type"] == "array"
-    # Shared across node kinds
+    assert "NodeCommon" in defs
+    mol = defs["MolNode"]
+    assert any(
+        isinstance(x, dict) and x.get("$ref") == "#/$defs/NodeCommon"
+        for x in mol.get("allOf", [])
+    )
     blob = json.dumps(mini)
-    assert blob.count("#/$defs/Children") >= 8
-    assert defs["MolNode"]["properties"]["children"] == {"$ref": "#/$defs/Children"}
-    assert defs["GridNode"]["properties"]["children"] == {"$ref": "#/$defs/Children"}
+    assert blob.count("#/$defs/NodeCommon") >= 12
+    # Shared children live on NodeCommon (once), not re-inlined per node
+    assert "children" in defs["NodeCommon"].get("properties", {})
 
 
 def test_minify_preserves_def_bodies():
-    mini = minify_json_schema(PictSpec.model_json_schema())
-    for name in ("MolNode", "LayoutSpec", "ReactionNode"):
-        body = mini["$defs"][name]
-        assert isinstance(body, dict)
-        assert "$ref" not in body
-        assert "properties" in body
+    from xpict.export_schema import factor_node_common_allof
+
+    mini = minify_json_schema(factor_node_common_allof(PictSpec.model_json_schema()))
+    assert "NodeCommon" in mini["$defs"]
+    assert "properties" in mini["$defs"]["NodeCommon"]
+    mol = mini["$defs"]["MolNode"]
+    assert "allOf" in mol

@@ -105,16 +105,22 @@ class LayoutSpec(StrictModel):
 # ---------------------------------------------------------------------------
 
 
-class _NodeCommon(StrictModel):
+class NodeCommon(StrictModel):
+    """Fields shared by every figure node (factored to ``allOf`` in JSON Schema)."""
+
     id: str | None = Field(default=None, description="Optional stable id for refs/edges")
     panel: str | None = Field(
         default=None, description="Subfigure tag drawn as (a), (b), …"
     )
     layout: LayoutSpec = Field(default_factory=LayoutSpec)
     meta: dict[str, Any] = Field(default_factory=dict)
+    children: list[Node] = Field(
+        default_factory=list,
+        description="Owned nested nodes (same discriminated union as the document root)",
+    )
 
 
-class MolNode(_NodeCommon):
+class MolNode(NodeCommon):
     """Molecule object (chemistry payload + optional nested annotations/tables)."""
 
     type: Literal["mol"] = "mol"
@@ -131,7 +137,6 @@ class MolNode(_NodeCommon):
     annotations: list[AnnotationSpec] = Field(default_factory=list)
     shade: ShadeSpec | None = None
     color: str | None = None
-    children: list[Node] = Field(default_factory=list)
 
     @model_validator(mode="before")
     @classmethod
@@ -176,7 +181,7 @@ class MolNode(_NodeCommon):
         return self
 
 
-class ArrowNode(_NodeCommon):
+class ArrowNode(NodeCommon):
     """Reaction / diagram arrow between siblings (or via layout.edges)."""
 
     type: Literal["arrow"] = "arrow"
@@ -189,40 +194,35 @@ class ArrowNode(_NodeCommon):
     color: str | None = None
     stroke_width: float | None = None
     dashed: bool = False
-    children: list[Node] = Field(default_factory=list)
 
 
-class TextNode(_NodeCommon):
+class TextNode(NodeCommon):
     type: Literal["text"] = "text"
     text: str
-    children: list[Node] = Field(default_factory=list)
 
 
-class ImageNode(_NodeCommon):
+class ImageNode(NodeCommon):
     type: Literal["image"] = "image"
     src: str
     alt: str | None = None
-    children: list[Node] = Field(default_factory=list)
 
 
-class TableNode(_NodeCommon):
+class TableNode(NodeCommon):
     """Tabular panel; cells may be strings or nested nodes (e.g. mol)."""
 
     type: Literal["table"] = "table"
     columns: list[str] | None = None
     rows: list[list[Any]] = Field(default_factory=list)
-    children: list[Node] = Field(default_factory=list)
 
 
-class RefNode(_NodeCommon):
+class RefNode(NodeCommon):
     """Reference to another node by id (sharing)."""
 
     type: Literal["ref"] = "ref"
     ref: str
-    children: list[Node] = Field(default_factory=list)
 
 
-class AnnotationNode(_NodeCommon):
+class AnnotationNode(NodeCommon):
     """Annotation as a nested object (alternative to mol.annotations list)."""
 
     type: Literal["annotation"] = "annotation"
@@ -234,7 +234,6 @@ class AnnotationNode(_NodeCommon):
     color: str | None = None
     arrow: bool = True
     prefer: AnnotPrefer = AnnotPrefer.auto
-    children: list[Node] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def require_target(self) -> AnnotationNode:
@@ -243,29 +242,24 @@ class AnnotationNode(_NodeCommon):
         return self
 
 
-class GroupNode(_NodeCommon):
+class GroupNode(NodeCommon):
     type: Literal["group"] = "group"
-    children: list[Node] = Field(default_factory=list)
 
 
-class GridNode(_NodeCommon):
+class GridNode(NodeCommon):
     type: Literal["grid"] = "grid"
-    children: list[Node] = Field(default_factory=list)
 
 
-class StackNode(_NodeCommon):
+class StackNode(NodeCommon):
     type: Literal["stack"] = "stack"
-    children: list[Node] = Field(default_factory=list)
 
 
-class ReactionNode(_NodeCommon):
+class ReactionNode(NodeCommon):
     type: Literal["reaction"] = "reaction"
-    children: list[Node] = Field(default_factory=list)
 
 
-class NetworkNode(_NodeCommon):
+class NetworkNode(NodeCommon):
     type: Literal["network"] = "network"
-    children: list[Node] = Field(default_factory=list)
 
 
 Node = Annotated[
@@ -288,6 +282,7 @@ Node = Annotated[
 
 # Rebuild forward refs for children: list[Node]
 for _cls in (
+    NodeCommon,
     MolNode,
     ArrowNode,
     TextNode,
@@ -724,6 +719,7 @@ __all__ = [
     "MolNode",
     "NetworkNode",
     "Node",
+    "NodeCommon",
     "PictSpec",
     "ReactionNode",
     "RefNode",

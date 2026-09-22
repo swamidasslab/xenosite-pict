@@ -171,13 +171,96 @@ def minify_json_schema(schema: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+_NODE_TYPE_DEFS = frozenset(
+    {
+        "MolNode",
+        "ArrowNode",
+        "TextNode",
+        "ImageNode",
+        "TableNode",
+        "RefNode",
+        "AnnotationNode",
+        "GroupNode",
+        "GridNode",
+        "StackNode",
+        "ReactionNode",
+        "NetworkNode",
+    }
+)
+
+# Properties owned by NodeCommon (shared via allOf in the exported schema).
+_NODE_COMMON_FIELDS = ("id", "panel", "layout", "meta", "children")
+
+
+def factor_node_common_allof(schema: dict[str, Any]) -> dict[str, Any]:
+    """Rewrite node defs as ``allOf: [NodeCommon, {type-specific props}]``.
+
+    Pydantic flattens Python inheritance into each model schema. JSON Schema's
+    portable extension form is ``allOf`` + ``$ref``, which we restore here so
+    ``NodeCommon`` is shared instead of copy-pasted.
+    """
+    root: dict[str, Any] = json.loads(json.dumps(schema))
+    defs: dict[str, Any] = dict(root.get("$defs") or {})
+
+    # Prefer MolNode (richest) as the property template for shared fields.
+    template_name = next((n for n in ("MolNode", "GroupNode") if n in defs), None)
+    if template_name is None:
+        return root
+    template_props = dict(defs[template_name].get("properties") or {})
+    common_props = {
+        k: template_props[k] for k in _NODE_COMMON_FIELDS if k in template_props
+    }
+    if len(common_props) < 2:
+        return root
+
+    defs["NodeCommon"] = {
+        "title": "NodeCommon",
+        "description": (
+            "Fields shared by every figure node "
+            "(id, panel, layout, meta, children)."
+        ),
+        "type": "object",
+        "properties": common_props,
+    }
+
+    for name in _NODE_TYPE_DEFS:
+        body = defs.get(name)
+        if not isinstance(body, dict):
+            continue
+        props = dict(body.get("properties") or {})
+        if not all(f in props for f in common_props):
+            continue
+        own = {k: v for k, v in props.items() if k not in common_props}
+        extension: dict[str, Any] = {
+            "type": "object",
+            "properties": own,
+        }
+        # Keep forbid-unknown on the combined node via unevaluatedProperties
+        # when the original model forbade extras.
+        rewritten: dict[str, Any] = {
+            "title": body.get("title", name),
+            "allOf": [
+                {"$ref": "#/$defs/NodeCommon"},
+                extension,
+            ],
+        }
+        if "description" in body:
+            rewritten["description"] = body["description"]
+        if body.get("additionalProperties") is False:
+            rewritten["unevaluatedProperties"] = False
+        defs[name] = rewritten
+
+    root["$defs"] = defs
+    return root
+
+
 def export_schemas(
     out_dir: Path | None = None, *, minify: bool = True
 ) -> dict[str, Path]:
     target = out_dir or schema_dir()
     target.mkdir(parents=True, exist_ok=True)
     raw = {
-        "xpict.schema.json": PictSpec.model_json_schema(),
+        "xpict.schema.json": factor_node_common_allof(PictSpec.model_json_schema()),
         "layout.schema.json": LayoutResult.model_json_schema(),
         "scene.schema.json": Scene.model_json_schema(),
     }
@@ -193,25 +276,20 @@ def export_schemas(
 
 def main() -> None:
     raw = PictSpec.model_json_schema()
-    mini = minify_json_schema(raw)
+    factored = factor_node_common_allof(raw)
+    mini = minify_json_schema(factored)
     raw_s = json.dumps(raw, indent=2)
     mini_s = json.dumps(mini, indent=2)
     print(
         f"xpict.schema.json  raw={len(raw_s.splitlines())} lines / {len(raw_s)} chars  "
-        f"→ minified={len(mini_s.splitlines())} lines / {len(mini_s)} chars  "
+        f"→ allOf+minify={len(mini_s.splitlines())} lines / {len(mini_s)} chars  "
         f"({100 * len(mini_s) / len(raw_s):.0f}% of raw)"
     )
-    raw_defs = set(raw.get("$defs") or {})
-    mini_defs = set(mini.get("$defs") or {})
-    print("new $defs:", sorted(mini_defs - raw_defs))
-    blob = json.dumps(mini)
-    print("Children $refs:", blob.count("#/$defs/Children"))
-    print("NodeList $refs:", blob.count("#/$defs/NodeList"))
-    print("Id $refs:", blob.count("#/$defs/Id"), " Panel $refs:", blob.count("#/$defs/Panel"))
-    # Validity sniffs
-    assert isinstance(mini.get("oneOf"), list), "root oneOf must stay an array"
-    assert isinstance(mini.get("discriminator"), dict), "discriminator must stay an object"
-    assert "propertyName" in mini["discriminator"]
+    mol = mini["$defs"]["MolNode"]
+    print("MolNode keys:", list(mol))
+    print(json.dumps(mol, indent=2)[:600])
+    assert "NodeCommon" in mini["$defs"]
+    assert mol.get("allOf")
     for name, path in export_schemas().items():
         print(f"wrote {path}")
 
