@@ -174,18 +174,19 @@ def test_svg_background_is_clear_by_default():
     assert "background-color" not in root.group(0)
 
 
-def test_halo_is_single_union_per_molecule():
-    """All molecule ink shares one unioned halo path (no stacked opacities)."""
+def test_halo_is_single_document_union():
+    """All molecule + overlay ink shares one document-space halo path."""
     backend = _chem_backend()
     svg = render({"molecules": [{"smiles": "c1ccccc1"}]}, backend=backend)
     n_halo = len(re.findall(r"<path[^>]*class=\"halo\"", svg))
     n_ink = len(re.findall(r"bond-skeleton|bond-offset|bond-wedge", svg))
     assert n_halo == 1
-    assert n_ink > 1  # multiple strokes still feed the one union
+    assert n_ink > 1
+    assert 'class="xpict-halo"' in svg or 'id="halo"' in svg
 
 
 def test_halo_includes_buffered_label_glyphs():
-    """Label knockout is in the unioned halo; counters stay open."""
+    """Label knockout is in the unioned document halo; counters stay open."""
     backend = _chem_backend()
     svg = render({"molecules": [{"smiles": "CCO"}]}, backend=backend)
     assert not re.search(r'<circle[^>]*label-halo', svg)
@@ -195,7 +196,6 @@ def test_halo_includes_buffered_label_glyphs():
     assert 'fill="#fff"' in halo.group(0)
     assert 'stroke="none"' in halo.group(0)
     assert 'opacity="0.5"' in halo.group(0)
-    # Atom label ink is a glyph path (shared shapes engine).
     assert re.search(
         r'<path[^>]*data-text="OH"[^>]*class="[^"]*\blabel\b',
         svg,
@@ -205,6 +205,15 @@ def test_halo_includes_buffered_label_glyphs():
     )
     d = re.search(r'\bd="([^"]+)"', halo.group(0))
     assert d is not None and d.group(1).count("L") > 8
+
+
+def test_multi_molecule_still_one_halo():
+    backend = _chem_backend()
+    svg = render(
+        {"molecules": [{"smiles": "CCO"}, {"smiles": "CC=O"}]},
+        backend=backend,
+    )
+    assert len(re.findall(r'<path[^>]*class="halo"', svg)) == 1
 
 
 def test_shade_zeros_do_not_paint_full_disks():

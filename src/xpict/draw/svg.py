@@ -76,13 +76,23 @@ def _render_primitive(parent: Element, prim: Primitive) -> None:
         SubElement(parent, "path", attrs)
 
 
-def _render_viewport(parent: Element, vp: Viewport) -> None:
+def _render_viewport(
+    parent: Element,
+    vp: Viewport,
+    *,
+    layers: tuple[str, ...] | None = None,
+) -> None:
     g = SubElement(
         parent, "g", {"class": "xpict-mol", "transform": f"translate({vp.x},{vp.y})"}
     )
     if vp.id:
         g.set("data-id", vp.id)
+    want = set(layers) if layers is not None else None
     for layer in vp.layers:
+        if want is not None and layer.name not in want:
+            continue
+        if not layer.primitives:
+            continue
         lg = SubElement(g, "g", {"class": f"layer-{layer.name}", "id": layer.name})
         for prim in layer.primitives:
             _render_primitive(lg, prim)
@@ -99,8 +109,15 @@ def scene_to_svg(scene: Scene) -> str:
             "class": "xpict",
         },
     )
+    # Shade under the document halo; ink above it.
     for vp in scene.viewports:
-        _render_viewport(root, vp)
+        _render_viewport(root, vp, layers=("shading",))
+    if scene.halo:
+        hg = SubElement(root, "g", {"class": "xpict-halo", "id": "halo"})
+        for prim in scene.halo:
+            _render_primitive(hg, prim)
+    for vp in scene.viewports:
+        _render_viewport(root, vp, layers=("bonds", "labels", "marks", "overlay"))
     if scene.overlays:
         og = SubElement(root, "g", {"class": "xpict-overlays", "id": "overlays"})
         for prim in scene.overlays:

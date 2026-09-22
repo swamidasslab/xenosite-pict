@@ -70,7 +70,7 @@ def test_svg_layer_order_shading_before_halo():
         backend="native",
     )
     i_shade = svg.index('class="layer-shading"')
-    i_halo = svg.index('class="layer-halo"')
+    i_halo = svg.index('class="xpict-halo"')
     i_bonds = svg.index('class="layer-bonds"')
     assert i_shade < i_halo < i_bonds
 

@@ -20,7 +20,7 @@ from xpict.draw.drawable import (
     normalize_coords,
     paint_molecule,
 )
-from xpict.draw.drawn import union_halo_prim
+from xpict.draw.drawn import HaloJob, shift_ink, union_halo_prim
 from xpict.draw.glyphs import compile_text_shapes
 from xpict.draw.halo import circle_ring_shape, disk_shape
 from xpict.draw.markush import apply_rgroup_texts
@@ -79,7 +79,8 @@ def molecule_to_viewport(
     halo: bool = True,
 ) -> Viewport:
     """Paint one molecule via the drawable hierarchy."""
-    return paint_molecule(layout, mol_spec, halo=halo)
+    vp, _jobs = paint_molecule(layout, mol_spec, halo=halo)
+    return vp
 
 
 def build_scene(
@@ -93,10 +94,11 @@ def build_scene(
     diagram_height: float | None = None,
 ) -> Scene:
     spec = _flat(spec)
-    viewports = [
-        molecule_to_viewport(layout, mol_spec, halo=spec.halo)
+    painted: list[tuple[Viewport, list[HaloJob]]] = [
+        paint_molecule(layout, mol_spec, halo=spec.halo)
         for layout, mol_spec in zip(layouts, mol_specs, strict=True)
     ]
+    viewports = [vp for vp, _ in painted]
     if positions is None:
         x = 0.0
         auto: list[tuple[float, float]] = []
@@ -106,11 +108,14 @@ def build_scene(
         positions = auto
 
     placed: list[Viewport] = []
+    halo_jobs: list[HaloJob] = []
     max_r = max_b = 0.0
-    for vp, (px, py) in zip(viewports, positions, strict=True):
+    for (vp, jobs), (px, py) in zip(painted, positions, strict=True):
         placed.append(vp.model_copy(update={"x": px, "y": py}))
         max_r = max(max_r, px + vp.width)
         max_b = max(max_b, py + vp.height)
+        if spec.halo:
+            halo_jobs.extend((shift_ink(ink, px, py), dist) for ink, dist in jobs)
 
     if edge_paths:
         for route in edge_paths:
@@ -122,16 +127,28 @@ def build_scene(
 
     overlays = diagram_overlays(spec.diagram.edges, placed, edge_paths=edge_paths)
     if spec.halo:
-        overlays = _halo_overlay_ink(overlays) + overlays
+        halo_jobs.extend(_overlay_halo_jobs(overlays))
+
+    halo_prims: list[PathPrim] = []
+    if spec.halo and halo_jobs:
+        prim = union_halo_prim(halo_jobs, cls="halo")
+        if prim is not None:
+            halo_prims = [prim]
 
     width = spec.width or max(max_r, diagram_width or 0.0)
     height = spec.height or max(max_b, diagram_height or 0.0)
-    return Scene(width=width, height=height, viewports=placed, overlays=overlays)
+    return Scene(
+        width=width,
+        height=height,
+        viewports=placed,
+        overlays=overlays,
+        halo=halo_prims,
+    )
 
 
-def _halo_overlay_ink(prims: Sequence) -> list[PathPrim]:
-    """Single unioned knockout for document overlays (edge shafts / labels)."""
-    jobs: list[tuple[object, float]] = []
+def _overlay_halo_jobs(prims: Sequence) -> list[HaloJob]:
+    """Ink jobs for document overlays (edge shafts / labels)."""
+    jobs: list[HaloJob] = []
     for prim in prims:
         if isinstance(prim, TextPrim):
             ink = compile_text_shapes(
@@ -157,5 +174,4 @@ def _halo_overlay_ink(prims: Sequence) -> list[PathPrim]:
                 ink = circle_ring_shape(prim.cx, prim.cy, prim.r, prim.stroke_width)
             if ink is not None:
                 jobs.append((ink, HALO_GAP_PX))
-    prim = union_halo_prim(jobs, cls="halo")
-    return [prim] if prim is not None else []
+    return jobs

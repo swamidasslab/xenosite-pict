@@ -84,4 +84,8 @@ class Scene(StrictModel):
         default_factory=list,
         description="Document-space primitives (reaction/network arrows) drawn above viewports",
     )
+    halo: list[Primitive] = Field(
+        default_factory=list,
+        description="Single document-space unioned knockout, under molecule ink",
+    )
     meta: dict[str, Any] = Field(default_factory=dict)

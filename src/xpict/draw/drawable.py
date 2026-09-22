@@ -20,7 +20,7 @@ from xpict.draw.annotate import render_annotation
 from xpict.draw.bonds import DrawnBond, bond_strokes, join_centered_multibonds, shorten
 from xpict.draw.collision import CollisionGrid
 from xpict.draw.colormap import colormap_rgb
-from xpict.draw.drawn import Drawn, HaloJob, emit_drawn, shift_ink, shift_layers, union_halo_prim
+from xpict.draw.drawn import Drawn, HaloJob, emit_drawn, shift_ink, shift_layers
 from xpict.draw.glyphs import compile_text_shapes
 from xpict.draw.halo import (
     capsule_shape,
@@ -144,10 +144,7 @@ class MolContext:
         self.height = max(self.height, max_y + pad)
 
     def to_viewport(self) -> Viewport:
-        if self.halo and self.halo_jobs:
-            prim = union_halo_prim(self.halo_jobs, cls="halo")
-            if prim is not None:
-                self.layers["halo"].primitives = [prim]
+        # Halo is unioned once at document level in build_scene — leave layer empty.
         return Viewport(
             id=self.layout.id,
             width=self.width,
@@ -587,8 +584,8 @@ def paint_molecule(
     mol_spec: MoleculeSpec,
     *,
     halo: bool = True,
-) -> Viewport:
-    """Build a molecule viewport by emitting drawables into shared layers."""
+) -> tuple[Viewport, list]:
+    """Build a molecule viewport; return pending halo jobs for document union."""
     coords, width, height = normalize_coords(layout)
     texts = apply_rgroup_texts(
         layout, mol_spec, [display_text(a) for a in layout.atoms]
@@ -632,7 +629,8 @@ def paint_molecule(
         ctx.emit(drawn)
     ctx.grow_to_boxes(annot_boxes)
     vp = ctx.to_viewport()
-    return vp.model_copy(update={"id": layout.id or mol_spec.id})
+    vp = vp.model_copy(update={"id": layout.id or mol_spec.id})
+    return vp, list(ctx.halo_jobs) if halo else []
 
 
 __all__ = [
