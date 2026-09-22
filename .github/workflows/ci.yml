@@ -1,7 +1,7 @@
 # Deploy gates: strict typecheck + tests before merge / pages / publish.
 #
 # JS:     tsc --strict
-# Python: pyright (typeCheckingMode=strict) + pytest on 3.11–3.14
+# Python: pyright (typeCheckingMode=strict) + pytest on 3.11–3.13
 
 name: CI
 
@@ -74,7 +74,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12", "3.13", "3.14"]
+        python-version: ["3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
 
@@ -94,9 +94,6 @@ jobs:
           enable-cache: true
 
       - name: Sync Python deps (dev + rdkit)
-        # abi3-py311 + forward-compat lets the extension build on 3.14.
-        env:
-          PYO3_USE_ABI3_FORWARD_COMPATIBILITY: "1"
         run: uv sync --group dev --extra rdkit
 
       - name: Pytest
