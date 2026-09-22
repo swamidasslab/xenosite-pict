@@ -7,7 +7,6 @@
 
 export { xpict } from "./api.js";
 export type {
-  InitOptions,
   Mol,
   Rendered,
   AlignTarget,

@@ -5,14 +5,12 @@
  * ```ts
  * import { xpict } from "@swamidasslab/xpict";
  *
- * await xpict.init();
  * const mol = xpict.mol("CCCC");
  * const rendered = await xpict.render(mol);
  * // tweak rendered.scene if needed, then:
  * const svg = xpict.toSvg(rendered.scene);
  *
  * const aligned = await xpict.render(xpict.mol("CCCO"), { align_to: mol });
- * // or: { align_to: rendered }
  * ```
  */
 
@@ -21,31 +19,18 @@ import {
   materializeTemplateMolblock,
   type MoleculeIn,
 } from "./layout/rdkit-layout.js";
-import {
-  ensureRdkit,
-  isRdkitReady,
-  type RdkitLoadOptions,
-} from "./rdkit-loader.js";
-import {
-  depictMolecule,
-  initNative,
-  isNativeReady,
-  type InitInput,
-} from "./native.js";
+import { ensureRdkit, isRdkitReady } from "./rdkit-loader.js";
+import { depictMolecule, initNative, isNativeReady } from "./native.js";
 import { atomsInSvgFrame, type SvgAtom, type SvgBond } from "./frame.js";
-import {
-  sceneToImgDataUri,
-  sceneToSvg,
-  type Scene,
-} from "./draw/scene-svg.js";
+import { sceneToSvg, type Scene } from "./draw/scene-svg.js";
 
 export type { SvgAtom, SvgBond } from "./frame.js";
-export type { Scene, ScenePrimitive, SceneLayer, SceneViewport } from "./draw/scene-svg.js";
-
-export type InitOptions = RdkitLoadOptions & {
-  /** Pass-through for xpict-core.wasm (Node usually needs bytes). */
-  wasm?: InitInput | { module_or_path: InitInput | Promise<InitInput> };
-};
+export type {
+  Scene,
+  ScenePrimitive,
+  SceneLayer,
+  SceneViewport,
+} from "./draw/scene-svg.js";
 
 /** Input molecule — SMILES/molfile plus optional cached alignment frame. */
 export type Mol = {
@@ -91,25 +76,20 @@ export type MolRenderOptions = {
   align_to?: AlignTarget;
 };
 
-let initPromise: Promise<void> | null = null;
+let readyPromise: Promise<void> | null = null;
 
-async function init(opts: InitOptions = {}): Promise<void> {
+/** Internal: load RDKit + wasm once (from first render). */
+async function ensureReady(): Promise<void> {
   if (isNativeReady() && isRdkitReady()) return;
-  if (!initPromise) {
-    initPromise = (async () => {
-      await Promise.all([
-        ensureRdkit({
-          scriptUrl: opts.scriptUrl,
-          locateFile: opts.locateFile,
-        }),
-        initNative(opts.wasm),
-      ]);
+  if (!readyPromise) {
+    readyPromise = (async () => {
+      await Promise.all([ensureRdkit(), initNative()]);
     })().catch((err) => {
-      initPromise = null;
+      readyPromise = null;
       throw err;
     });
   }
-  await initPromise;
+  await readyPromise;
 }
 
 function mol(smilesOrMolfile: string): Mol {
@@ -129,7 +109,7 @@ function isRendered(value: AlignTarget): value is Rendered {
 }
 
 async function ensureFrame(target: AlignTarget): Promise<string> {
-  await init();
+  await ensureReady();
   if (isRendered(target)) {
     if (!target.frame_molblock) {
       throw new Error("Rendered is missing frame_molblock");
@@ -181,7 +161,7 @@ async function render(
   input: Mol | string,
   opts: MolRenderOptions = {}
 ): Promise<Rendered> {
-  await init();
+  await ensureReady();
   const m: Mol = typeof input === "string" ? mol(input) : input;
 
   let laid: MoleculeIn;
@@ -221,13 +201,10 @@ async function render(
   };
 }
 
-/** Public lib namespace — MVP surface for xenosite. */
+/** Public lib namespace — three functions only. */
 export const xpict = {
-  init,
   mol,
   render,
   /** Scene JSON → SVG string (tweak ``rendered.scene`` first if needed). */
   toSvg: sceneToSvg,
-  /** Scene JSON → ``data:image/svg+xml`` URI for ``<img src>``. */
-  toImgDataUri: sceneToImgDataUri,
 } as const;

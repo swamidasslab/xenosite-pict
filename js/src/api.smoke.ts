@@ -2,22 +2,11 @@
  * Smoke: xpict.mol / xpict.render + scene → toSvg.
  * Run: `npx tsx src/api.smoke.ts` (after wasm build).
  */
-import { readFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { xpict } from "./api.js";
-
-const here = dirname(fileURLToPath(import.meta.url));
 
 if (typeof document !== "undefined") {
   throw new Error("api smoke expects Node (server-side) without document");
 }
-
-await xpict.init({
-  wasm: {
-    module_or_path: await readFile(join(here, "wasm", "xpict_core_bg.wasm")),
-  },
-});
 
 const mol = xpict.mol("c1ccccc1");
 const rendered = await xpict.render(mol);
@@ -32,7 +21,6 @@ if (!svg.includes("<svg") || !svg.includes("viewBox")) {
   throw new Error("toSvg missing root");
 }
 
-// Tweak scene then re-serialize.
 rendered.scene.width = Math.ceil(rendered.scene.width);
 const tweaked = xpict.toSvg(rendered.scene);
 if (!tweaked.includes(`width="${rendered.scene.width}"`)) {
@@ -80,9 +68,6 @@ if (!methyl) throw new Error("missing methyl");
 if (Math.hypot(methyl.x - circle.cx, methyl.y - circle.cy) > 1e-6) {
   throw new Error("svg_coords must match mark position in scene");
 }
-
-const uri = xpict.toImgDataUri(alignedToMol.scene);
-if (!uri.startsWith("data:image/svg+xml")) throw new Error("bad data uri");
 
 console.log("api smoke ok", {
   svgBytes: svg.length,
