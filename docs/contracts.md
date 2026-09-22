@@ -2,13 +2,17 @@
 
 ## Live (shipped)
 
-Pydantic under ``xpict.contracts`` — what the public package implements today:
+Pydantic under ``xpict.contracts`` — **strict subset** of future nested
+``PictSpec``:
 
 | Model | Role |
 | --- | --- |
-| ``MolSpec`` / ``DepictSpec`` | **Preferred** declarative document: mol list → ``Rendered[]`` |
+| ``DepictSpec`` / ``MolNode`` | Preferred document: ``type: "mol"`` or ``type: "group"`` + ``children`` |
 | ``Scene`` (+ primitives) | Paint ABI (Rust / JS / Python serializers) |
 | ``MoleculeLayout`` / ``LayoutResult`` | Backend layout result |
+
+Every live document must also validate as ``xpict.future.PictSpec``. There is
+**no** ``molecules`` list key on the preferred surface.
 
 JSON Schema (committed):
 
@@ -20,28 +24,26 @@ JSON Schema (committed):
 uv run xpict-export-schema
 ```
 
-Language clients also expose a **simple** single-mol path
-(``mol`` / ``render`` / ``toSvg``) that the document path uses internally.
+## Simple client (not a JSON document)
+
+``mol`` / ``render`` / ``toSvg`` — imperative single-mol API. Options:
+``color``, ``atom_shade``, ``bond_shade``, ``star_labels``, ``bold_labels``,
+``align_to``, ``id``. Document path calls this layer internally.
 
 ## Future (design / refinement)
 
-Full nested ``PictSpec`` (groups, reactions, annotations, shorthand, diagram
-chrome) lives in ``xpict.future`` and ``schema/future/xpict.schema.json``.
-**Comments and design PRs on that tree are welcome** — open a GitHub issue and
-link those paths.
-
-Import as ``from xpict.future import PictSpec, MoleculeSpec, …``. Lab code
-(``Pict``, POCs, nested-schema tests) still uses these models; they are **not**
-the publish surface until features land in ``contracts``.
-
-See ``python/xpict/future/README.md`` and ``CONTRIBUTING.md``.
+Full nested ``PictSpec`` lives in ``xpict.future`` and
+``schema/future/xpict.schema.json``. Comments welcome.
 
 ## Runtime vs document
 
-- **In a live ``MolSpec``:** structure string, marks, shade, color, star labels,
-  bold labels, ``id``. (No list-index ``align_to``.)
-- **Simple ``render`` only:** ``align_to`` as Mol / Rendered (or pose molblock).
-- **Runtime only:** layout backend (RDKit / Indigo / native), output format where applicable.
+- **Live mol node:** ``smiles`` / ``cxsmiles`` / ``molfile``, ``id``, ``color``,
+  ``shade``, ``rgroups`` (chem markup for scripts).
+- **Simple ``render`` only:** ``align_to`` as Mol / Rendered (or pose molblock),
+  plus flat ``atom_shade`` / ``star_labels`` mirrors of document fields.
+- **Runtime only:** layout backend, output format.
+
+Label scripts: [Label markup](label-markup.md).
 
 ## Partial backend support
 

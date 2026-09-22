@@ -8,14 +8,6 @@ outlines.
 Structural labels (`NH2`, charges) emit the same markup (`H_{2}`, `^{+}`) and
 go through the same parser. There is no second script pathway.
 
-## Why not an existing crate?
-
-Math crates (`pulldown-latex`, `tex2math`, …) emit **MathML**. xpict paints
-**glyph paths** with fake sub/superscripts so labels match bond ink. Pulling a
-full math engine would add weight and a second sink without removing our
-outline step. We ported the Python `richtext` symbol table + a tiny script /
-emphasis grammar instead.
-
 ## Dialect
 
 | Input | Result | Notes |
@@ -40,10 +32,115 @@ $\alpha$-D-Glc
 $\beta_{D}$
 ```
 
-Molecule-level `bold_labels` sets the base face; markup bold/italic OR on top
-(so `*cis*` with bold labels → BoldItalic).
+Molecule-level `bold_labels` (simple API) sets the base face; markup
+bold/italic OR on top (so `*cis*` with bold labels → BoldItalic).
+
+## How labels get into paint
+
+Three common inputs converge on the same markup parser:
+
+```mermaid
+flowchart LR
+  CX["CXSMILES |$…$| aliases"] --> L[atom label string]
+  RG["doc rgroups / simple star_labels"] --> L
+  STRUCT["structural NH2 / charge"] --> L
+  L --> M["xpict-core markup"]
+  M --> G[glyph paths + data-text]
+```
+
+Bare `R1` (no markup) stays the literal characters **R1**. xpict does **not**
+rewrite CX-style aliases into subscripts ad hoc — pass real markup when you
+want scripts.
+
+## CXSMILES: what works, what does not
+
+ChemAxon atom labels live inside a trailer whose **delimiters are `$`**:
+
+```text
+*c1ccccc1Cl |$R1;;;;;$|
+```
+
+That outer `|$ … $|` is CX syntax, not xpict math mode. Consequences:
+
+| Want | In CX trailer? | Notes |
+| --- | --- | --- |
+| Literal `R1` | Yes | Painted as R1 (no subscript) |
+| Subscript R₁ via `R_{1}` | Yes | Braced `_{…}` needs no `$…$` zone |
+| Unicode `R₁` | Yes | Works if your source encoding keeps it |
+| `$R_1$` math zone | **No (practical)** | Inner `$` fights the CX `$…$` delimiters |
+| `\alpha`, `\beta`, … | Fragile / avoid | Backslashes and CX tooling vary |
+| `**bold**` / `*italic*` | Fragile / avoid | `*` collides with star atoms and CX |
+| Multi-char markup with `;` | **No** | `;` separates CX alias slots |
+
+**Rule of thumb:** use CX for plain aliases or braced scripts (`R_{1}`,
+`R_{12}`). For anything richer, put the markup on the JSON / document path.
+
+## JSON opts and the document schema
+
+Full dialect is available wherever the label is a normal JSON string (no CX
+`$` wrapper):
+
+### Simple API (single mol)
+
+```ts
+// star_labels: encounter order of * atoms
+await xpict.render(xpict.mol("*c1ccccc1Cl"), {
+  star_labels: ["$R_1$"], // or "R_{1}"
+  bold_labels: true,
+});
+```
+
+```rust
+mol.render(MolRenderOptions {
+    star_labels: Some(vec![Some("$R_1$".into())]),
+    ..Default::default()
+})?;
+```
+
+`star_labels` **wins over** CX aliases when both are present.
+
+### Preferred document (nested subset of PictSpec)
+
+```json
+{
+  "type": "mol",
+  "smiles": "*c1ccccc1Cl",
+  "rgroups": ["$R_1$"]
+}
+```
+
+```json
+{
+  "type": "group",
+  "children": [
+    {
+      "type": "mol",
+      "cxsmiles": "*c1ccccc1Cl |$R_{1};;;;;$|"
+    }
+  ]
+}
+```
+
+`rgroups` is a list in star encounter order (or an ordinal dict). Same markup
+strings as `star_labels`. CX can still supply simple / braced aliases when you
+omit `rgroups`.
+
+## Picking a path
+
+| Goal | Prefer |
+| --- | --- |
+| Round-trip a CXSMILES from another tool | CX trailer; braced `R_{1}` if you need scripts |
+| Publication Markush with `$R_1$`, Greek, bold | `rgroups` / `star_labels` JSON |
+| Both CX topology and rich labels | CX for structure; override labels via JSON |
 
 ## Not supported (on purpose)
 
 Fractions, matrices, real TeX layout, Markdown `_emphasis_` (would break
 `my_name`). Put chemistry scripts in `$…$` or use `_{…}` / `^{…}`.
+
+## Why not an existing crate?
+
+Math crates (`pulldown-latex`, `tex2math`, …) emit **MathML**. xpict paints
+**glyph paths** with fake sub/superscripts so labels match bond ink. Pulling a
+full math engine would add weight and a second sink without removing our
+outline step.

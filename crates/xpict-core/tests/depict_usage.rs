@@ -113,6 +113,32 @@ fn ethanol_oh_and_single_bonds() {
 }
 
 #[test]
+fn braced_rgroup_markup_subscripts_on_star() {
+    // Callers must pass chem markup (``R_{1}`` / ``$R_1$``). Bare ``R1`` is
+    // literal — do not invent ad-hoc CX alias rewriting in paint.
+    let mol = MoleculeIn {
+        id: Some("markush".into()),
+        atoms: vec![
+            atom(0, "C", 0.0, 0.0, None),
+            atom(1, "*", 20.0, 0.0, Some("R_{1}")),
+            atom(2, "Cl", -20.0, 0.0, Some("Cl")),
+        ],
+        bonds: vec![bond(0, 0, 1, 1.0), bond(1, 0, 2, 1.0)],
+        color: None,
+        atom_shade: None,
+        bond_shade: None,
+        mark_atoms: vec![],
+        mark_bonds: vec![],
+        bold_labels: false,
+    };
+    let texts = label_texts(&depict_molecule(&mol));
+    assert!(
+        texts.iter().any(|t| t == "R₁"),
+        "R_{{1}} on * must become R₁, got {texts:?}"
+    );
+}
+
+#[test]
 fn amine_nh2_subscript_in_scene() {
     let mol = MoleculeIn {
         id: None,

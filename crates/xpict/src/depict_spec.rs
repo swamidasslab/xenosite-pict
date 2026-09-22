@@ -1,52 +1,108 @@
-//! Limited declarative document: list of mols → list of [`Rendered`].
+//! Live declarative document — strict subset of future ``PictSpec``.
 //!
-//! This is the **preferred** public document surface (expandable toward full
-//! ``PictSpec``). It calls [`crate::render`] / [`crate::mol`] internally.
-//! Do not put list-index ``align_to`` on [`MolSpec`] — imperative alignment
-//! belongs on [`crate::MolRenderOptions::align_to`] (pose molblock).
+//! Root is ``type: "mol"`` or ``type: "group"`` with ``children``. Calls the
+//! simple [`crate::render`] / [`crate::mol`] client internally.
 
 use serde::{Deserialize, Serialize};
 
 use crate::{render, Error, Mol, MolRenderOptions, Rendered};
 
-/// Preferred declarative depiction document (MVP subset of PictSpec).
+/// Per-atom / per-bond colormap scores (document ``shade``).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct DepictSpec {
-    pub molecules: Vec<MolSpec>,
+pub struct ShadeSpec {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub atoms: Option<Vec<f64>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bonds: Option<Vec<f64>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub colormap: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vmin: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vmax: Option<f64>,
 }
 
-/// One molecule entry — paint options + a structure string.
+/// Live mol node — subset of future ``MolNode``.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct MolSpec {
-    /// SMILES or CXSMILES (preferred field name for the document stub).
+pub struct MolNode {
+    #[serde(rename = "type", default = "mol_type")]
+    pub type_: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub smiles: Option<String>,
-    /// Alias accepted in JSON: ``"source": "CCO"``.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub source: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub molfile: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cxsmiles: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub molfile: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub atom_shade: Option<Vec<f64>>,
+    pub shade: Option<ShadeSpec>,
+    /// Star labels (encounter order). Use chem markup: ``$R_1$`` / ``R_{1}``.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub bond_shade: Option<Vec<f64>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub mark_atoms: Option<Vec<i32>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub mark_bonds: Option<Vec<(i32, i32)>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub star_labels: Option<Vec<Option<String>>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub bold_labels: Option<bool>,
+    pub rgroups: Option<Vec<Option<String>>>,
 }
 
-impl MolSpec {
+fn mol_type() -> String {
+    "mol".into()
+}
+
+/// Preferred declarative document (``mol`` or ``group`` root).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum DepictSpec {
+    Mol {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        smiles: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cxsmiles: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        molfile: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        color: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        shade: Option<ShadeSpec>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        rgroups: Option<Vec<Option<String>>>,
+    },
+    Group {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        #[serde(default)]
+        children: Vec<MolNode>,
+    },
+}
+
+impl DepictSpec {
+    fn owned_mols(&self) -> Vec<MolNode> {
+        match self {
+            DepictSpec::Mol {
+                smiles,
+                cxsmiles,
+                molfile,
+                id,
+                color,
+                shade,
+                rgroups,
+            } => vec![MolNode {
+                type_: "mol".into(),
+                smiles: smiles.clone(),
+                cxsmiles: cxsmiles.clone(),
+                molfile: molfile.clone(),
+                id: id.clone(),
+                color: color.clone(),
+                shade: shade.clone(),
+                rgroups: rgroups.clone(),
+            }],
+            DepictSpec::Group { children, .. } => children.clone(),
+        }
+    }
+}
+
+impl MolNode {
     fn structure(&self) -> Result<&str, Error> {
         if let Some(ref s) = self.molfile {
             if !s.trim().is_empty() {
@@ -63,32 +119,30 @@ impl MolSpec {
                 return Ok(s.as_str());
             }
         }
-        if let Some(ref s) = self.source {
-            if !s.trim().is_empty() {
-                return Ok(s.as_str());
-            }
-        }
         Err(Error::Message(
-            "MolSpec needs smiles, cxsmiles, molfile, or source".into(),
+            "mol node needs smiles, cxsmiles, or molfile".into(),
         ))
     }
 }
 
-/// Render every molecule via the simple [`crate::render`] client.
+/// Historical alias.
+pub type MolSpec = MolNode;
+
+/// Render every mol via the simple [`crate::render`] client.
 pub fn depict(spec: &DepictSpec) -> Result<Vec<Rendered>, Error> {
-    let mut out: Vec<Rendered> = Vec::with_capacity(spec.molecules.len());
-    for entry in &spec.molecules {
+    let mut out: Vec<Rendered> = Vec::new();
+    for entry in spec.owned_mols() {
         let structure = entry.structure()?;
         let mut mol = Mol::from_source(structure)?;
         let opts = MolRenderOptions {
             id: entry.id.clone(),
             color: entry.color.clone(),
-            atom_shade: entry.atom_shade.clone(),
-            bond_shade: entry.bond_shade.clone(),
-            mark_atoms: entry.mark_atoms.clone(),
-            mark_bonds: entry.mark_bonds.clone(),
-            star_labels: entry.star_labels.clone(),
-            bold_labels: entry.bold_labels,
+            atom_shade: entry.shade.as_ref().and_then(|s| s.atoms.clone()),
+            bond_shade: entry.shade.as_ref().and_then(|s| s.bonds.clone()),
+            mark_atoms: None,
+            mark_bonds: None,
+            star_labels: entry.rgroups.clone(),
+            bold_labels: None,
             align_to: None,
         };
         out.push(render(&mut mol, opts)?);

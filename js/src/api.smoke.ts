@@ -153,16 +153,31 @@ const both = await xpict.render(xpict.mol("*C* |$R1;;R2;$|"));
   }
 }
 
-// Batch stub: mol list → Rendered[] (no index align_to — use render + Mol/Rendered)
+// Preferred document: nested PictSpec subset → Rendered[]
 const batch = await xpict.depict({
-  molecules: [
-    { smiles: "CCO", mark_atoms: [2] },
-    { smiles: "CCCO" },
+  type: "group",
+  children: [
+    { type: "mol", smiles: "CCO", color: "#111" },
+    { type: "mol", smiles: "CCCO" },
   ],
 });
 if (batch.length !== 2) throw new Error(`depict length ${batch.length}`);
 if (batch[0]!.molecule.atoms.length !== 3) throw new Error("depict[0] atoms");
 if (batch[1]!.molecule.atoms.length !== 4) throw new Error("depict[1] atoms");
+
+const markush = await xpict.depict({
+  type: "mol",
+  smiles: "*c1ccccc1Cl",
+  rgroups: ["$R_1$"],
+});
+{
+  const texts = [...xpict.toSvg(markush[0]!.scene).matchAll(/data-text="([^"]*)"/g)].map(
+    (m) => m[1]
+  );
+  if (!texts.includes("R₁")) {
+    throw new Error(`rgroups $R_1$ should paint R₁, got ${JSON.stringify(texts)}`);
+  }
+}
 
 console.log("api smoke ok", {
   svgBytes: svg.length,

@@ -1,7 +1,8 @@
 /**
- * `@xenosite/xpict` — MVP client for xenosite.org.
+ * `@xenosite/xpict` — molecule depiction for xenosite.org.
  *
- * Public: ``xpict.mol`` / ``xpict.render`` / ``xpict.toSvg`` / ``xpict.depict``.
+ * Preferred: ``xpict.depict`` (nested PictSpec subset).
+ * Simple: ``xpict.mol`` / ``xpict.render`` / ``xpict.toSvg``.
  */
 
 export { xpict } from "./api.js";
@@ -10,6 +11,8 @@ export type {
   Rendered,
   AlignTarget,
   MolRenderOptions,
+  MolNode,
+  GroupNode,
   MolSpec,
   DepictSpec,
   SvgAtom,

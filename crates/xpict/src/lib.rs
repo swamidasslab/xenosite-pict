@@ -3,21 +3,22 @@
 //! Layout uses the crates.io [`rdkit`] package (SMILES/molblock) plus a local
 //! Depictor FFI for 2D coords / template align. Paint is [`xpict_core`].
 //!
-//! **Preferred** — declarative document ([`depict`] / [`DepictSpec`]), grows
-//! toward full PictSpec; implemented via the simple client:
+//! **Preferred** — nested document ([`depict`] / [`DepictSpec`]), a strict
+//! subset of future PictSpec (`type: "mol"` | `type: "group"` + `children`):
 //!
 //! ```ignore
-//! use xpict::{depict, DepictSpec, MolSpec};
-//! let out = depict(&DepictSpec {
-//!     molecules: vec![
-//!         MolSpec { smiles: Some("CCO".into()), mark_atoms: Some(vec![2]), ..Default::default() },
-//!         MolSpec { smiles: Some("CCCO".into()), ..Default::default() },
+//! use xpict::{depict, DepictSpec, MolNode};
+//! let out = depict(&DepictSpec::Group {
+//!     id: None,
+//!     children: vec![
+//!         MolNode { smiles: Some("CCO".into()), ..Default::default() },
+//!         MolNode { smiles: Some("CCCO".into()), ..Default::default() },
 //!     ],
 //! })?;
 //! ```
 //!
 //! **Simple** — single molecule (`mol` / `render` / `to_svg`); `align_to` is a
-//! pose molblock, not a document list index:
+//! pose molblock:
 //!
 //! ```ignore
 //! use xpict::{mol, MolRenderOptions};
@@ -36,7 +37,8 @@ mod layout;
 mod svg;
 
 pub use cxsmiles::{cx_atom_labels, smiles_base};
-pub use depict_spec::{depict, DepictSpec, MolSpec};
+pub use depict_spec::{depict, DepictSpec, MolNode, MolSpec, ShadeSpec};
+
 pub use layout::{layout_with_rdkit, sanitize_dummy_molblock, source_to_molblock};
 pub use svg::scene_to_svg;
 pub use xpict_core::scene::{AtomIn, BondIn, MoleculeIn, Scene};
