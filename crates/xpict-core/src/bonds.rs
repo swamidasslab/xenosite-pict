@@ -301,9 +301,35 @@ pub fn crossed_double(
     ]
 }
 
-// Shallow angles make the mitre run away along the bond. ~20° off the axis.
-const JOIN_MIN_SIN: f64 = 0.34;
-const JOIN_MAX_FRAC: f64 = 0.45;
+/// Parallel lines have `|cross(d0, d1)|` below this (unit directions).
+const JOIN_PARALLEL_EPS: f64 = 1e-9;
+/// Reject mitres that run farther than this fraction of the multi-bond length.
+const JOIN_MAX_T_FRAC: f64 = 0.9;
+
+/// Intersect `p0 + t d0` with `p1 + s d1`.
+///
+/// Returns `(t, s, ix, iy)` or `None` when the directions are parallel.
+#[allow(clippy::too_many_arguments)]
+pub fn line_intersect(
+    p0x: f64,
+    p0y: f64,
+    d0x: f64,
+    d0y: f64,
+    p1x: f64,
+    p1y: f64,
+    d1x: f64,
+    d1y: f64,
+) -> Option<(f64, f64, f64, f64)> {
+    let det = d0x * d1y - d0y * d1x;
+    if det.abs() < JOIN_PARALLEL_EPS {
+        return None;
+    }
+    let dx = p1x - p0x;
+    let dy = p1y - p0y;
+    let t = (dx * d1y - dy * d1x) / det;
+    let s = (dx * d0y - dy * d0x) / det;
+    Some((t, s, p0x + t * d0x, p0y + t * d0y))
+}
 
 /// Trim distance at begin, then end, one entry per centered line.
 pub type EndTrims = (Vec<f64>, Vec<f64>);
@@ -391,6 +417,10 @@ fn end_frame(bond: &DrawnBond, at_begin: bool) -> (f64, f64, f64, f64, f64, f64)
 
 /// Mitre acyclic doubles and triples to their single-bond neighbors.
 ///
+/// Each parallel stroke is an infinite line; each neighboring single is another.
+/// Junction ends are **line–line intersections** (no fixed-length stubs), so
+/// acute and obtuse angles both close cleanly.
+///
 /// One single: extend it to the far parallel line; both multiple-bond strokes
 /// stop on that single.
 ///
@@ -430,6 +460,8 @@ pub fn join_centered_multibonds(bonds: &mut [DrawnBond]) {
             vec![0.0; disps.len()],
         );
         let mut joined = false;
+        let t_lo = -0.5 * length;
+        let t_hi = JOIN_MAX_T_FRAC * length;
 
         let ends = [
             (0usize, bonds[bi].begin, bonds[bi].begin_labeled),
@@ -472,35 +504,36 @@ pub fn join_centered_multibonds(bonds: &mut [DrawnBond]) {
                 }
                 let vhx = vx / vlen;
                 let vhy = vy / vlen;
-                let side = ux * vhy - uy * vhx;
-                if side.abs() < JOIN_MIN_SIN {
-                    continue;
-                }
-                let cross_nv = nx * vhy - ny * vhx;
                 for (i, &d) in disps_e.iter().enumerate() {
-                    let ti = -d * cross_nv / side;
-                    if ti > -0.25 * length && ti < JOIN_MAX_FRAC * length && ti.abs() > 1e-9 {
+                    let Some((ti, _s, _ix, _iy)) =
+                        line_intersect(ex + nx * d, ey + ny * d, ux, uy, ex, ey, vhx, vhy)
+                    else {
+                        continue;
+                    };
+                    if ti > t_lo && ti < t_hi && ti.abs() > 1e-9 {
                         line_ts[i].push(ti);
                     }
                 }
                 if singles.len() == 1 {
+                    let side = ux * vhy - uy * vhx;
                     let d_far = if side > 0.0 {
                         disps_e.iter().cloned().fold(f64::INFINITY, f64::min)
                     } else {
                         disps_e.iter().cloned().fold(f64::NEG_INFINITY, f64::max)
                     };
-                    let t_far = -d_far * cross_nv / side;
-                    if t_far > 0.0 && t_far < JOIN_MAX_FRAC * length {
-                        let px = ex + ux * t_far + nx * d_far;
-                        let py = ey + uy * t_far + ny * d_far;
-                        let dist = ((px - ex).powi(2) + (py - ey).powi(2)).sqrt();
-                        let key = (single.index, end_flag);
-                        let replace = match moves.get(&key) {
-                            None => true,
-                            Some(&(_, _, prev)) => dist > prev,
-                        };
-                        if replace {
-                            moves.insert(key, (px, py, dist));
+                    if let Some((t_far, _s, px, py)) =
+                        line_intersect(ex + nx * d_far, ey + ny * d_far, ux, uy, ex, ey, vhx, vhy)
+                    {
+                        if t_far > 0.0 && t_far < t_hi {
+                            let dist = ((px - ex).powi(2) + (py - ey).powi(2)).sqrt();
+                            let key = (single.index, end_flag);
+                            let replace = match moves.get(&key) {
+                                None => true,
+                                Some(&(_, _, prev)) => dist > prev,
+                            };
+                            if replace {
+                                moves.insert(key, (px, py, dist));
+                            }
                         }
                     }
                 }
@@ -958,6 +991,37 @@ mod tests {
                 -10.0
             ));
         }
+    }
+
+    #[test]
+    fn acute_two_singles_still_land_on_lines() {
+        // ~25° between singles — old JOIN_MIN_SIN (0.34) rejected this angle.
+        let mut bonds = vec![
+            DrawnBond::new(0, 0, 1, 0.0, 0.0, 20.0, 0.0, 2.0),
+            DrawnBond::new(1, 0, 2, 0.0, 0.0, -18.0, 4.0, 1.0),
+            DrawnBond::new(2, 0, 3, 0.0, 0.0, -18.0, -4.0, 1.0),
+        ];
+        join_centered_multibonds(&mut bonds);
+        let trims = bonds[0].trims.as_ref().expect("trims at acute junction");
+        assert!(trims.0.iter().all(|&t| t < 0.0));
+        let strokes = bond_strokes(0.0, 0.0, 20.0, 0.0, 2.0, None, None, Some(trims));
+        for path in &strokes.offsets {
+            let (x, y) = path_pts(&path.d)[0];
+            let on_upper = on_line(x, y, 0.0, 0.0, -18.0, 4.0);
+            let on_lower = on_line(x, y, 0.0, 0.0, -18.0, -4.0);
+            assert!(on_upper || on_lower, "end ({x},{y}) not on a single");
+            assert!(x < -0.2);
+        }
+    }
+
+    #[test]
+    fn line_intersect_crosses_unit_axes() {
+        let (t, s, ix, iy) = line_intersect(0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0).unwrap();
+        assert!((t - 1.0).abs() < 1e-9);
+        assert!((s - 1.0).abs() < 1e-9);
+        assert!((ix - 1.0).abs() < 1e-9);
+        assert!((iy - 1.0).abs() < 1e-9);
+        assert!(line_intersect(0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0).is_none());
     }
 
     #[test]

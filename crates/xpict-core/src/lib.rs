@@ -22,7 +22,7 @@ pub mod scene;
 
 pub use bonds::{
     bond_paths, bond_strokes, centered_displacements, depict_order, join_centered_multibonds,
-    multi_bond_offset, BondStrokes, DrawnBond, StrokePath,
+    line_intersect, multi_bond_offset, BondStrokes, DrawnBond, StrokePath,
 };
 pub use depict::depict_molecule;
 #[cfg(feature = "elk")]

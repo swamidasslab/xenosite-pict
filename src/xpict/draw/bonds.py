@@ -196,9 +196,33 @@ def multi_bond_offset(length: float) -> float:
         return _multi_bond_offset_py(length)
 
 
-# Shallow angles make the mitre run away along the bond. ~20° off the axis.
-_JOIN_MIN_SIN = 0.34
-_JOIN_MAX_FRAC = 0.45
+# Parallel lines have |cross(d0, d1)| below this (unit directions).
+_JOIN_PARALLEL_EPS = 1e-9
+# Reject mitres that run farther than this fraction of the multi-bond length.
+_JOIN_MAX_T_FRAC = 0.9
+
+
+def line_intersect(
+    p0x: float,
+    p0y: float,
+    d0x: float,
+    d0y: float,
+    p1x: float,
+    p1y: float,
+    d1x: float,
+    d1y: float,
+) -> tuple[float, float, float, float] | None:
+    """Intersect ``p0 + t d0`` with ``p1 + s d1``.
+
+    Returns ``(t, s, ix, iy)`` or ``None`` when the directions are parallel.
+    """
+    det = d0x * d1y - d0y * d1x
+    if abs(det) < _JOIN_PARALLEL_EPS:
+        return None
+    dx, dy = p1x - p0x, p1y - p0y
+    t = (dx * d1y - dy * d1x) / det
+    s = (dx * d0y - dy * d0x) / det
+    return t, s, p0x + t * d0x, p0y + t * d0y
 
 
 def centered_displacements(order: float, off: float) -> list[float]:
@@ -260,6 +284,10 @@ def _end_frame(
 def join_centered_multibonds(bonds: list[DrawnBond]) -> None:
     """Mitre acyclic doubles and triples to their single-bond neighbors.
 
+    Each parallel stroke is an infinite line; each neighboring single is another.
+    Junction ends are **line–line intersections** (no fixed-length stubs), so
+    acute and obtuse angles both close cleanly.
+
     One single: extend it to the far parallel line; both multiple-bond strokes
     stop on that single.
 
@@ -288,6 +316,7 @@ def join_centered_multibonds(bonds: list[DrawnBond]) -> None:
         end_disps = (disps, [-d for d in disps])
         trims = [[0.0] * len(disps), [0.0] * len(disps)]
         joined = False
+        t_lo, t_hi = -0.5 * length, _JOIN_MAX_T_FRAC * length
         for end_i, atom, labeled in (
             (0, bond.begin, bond.begin_labeled),
             (1, bond.end, bond.end_labeled),
@@ -304,8 +333,8 @@ def join_centered_multibonds(bonds: list[DrawnBond]) -> None:
             ex, ey, ux, uy, nx, ny = _end_frame(bond, end_i == 0)
             disps_e = end_disps[end_i]
 
-            # Per multiple-bond line: intersection t along the bond with each single.
-            # Positive t shortens from the atom; negative t extends past it.
+            # Per multiple-bond line: intersection t along the stroke with each single.
+            # Stroke line: (atom + d·n) + t·u. Positive t into the bond; negative past atom.
             line_ts: list[list[float]] = [[] for _ in disps_e]
             for single in singles:
                 if single.begin == atom:
@@ -319,26 +348,29 @@ def join_centered_multibonds(bonds: list[DrawnBond]) -> None:
                 if vlen < 1e-6:
                     continue
                 vhx, vhy = vx / vlen, vy / vlen
-                side = ux * vhy - uy * vhx
-                if abs(side) < _JOIN_MIN_SIN:
-                    continue
-                cross_nv = nx * vhy - ny * vhx
                 for i, d in enumerate(disps_e):
-                    ti = -d * cross_nv / side
-                    if -0.25 * length < ti < _JOIN_MAX_FRAC * length and abs(ti) > 1e-9:
+                    hit = line_intersect(
+                        ex + nx * d, ey + ny * d, ux, uy, ex, ey, vhx, vhy
+                    )
+                    if hit is None:
+                        continue
+                    ti, _s, _ix, _iy = hit
+                    if t_lo < ti < t_hi and abs(ti) > 1e-9:
                         line_ts[i].append(ti)
                 if len(singles) == 1:
                     # Grow the single to the far parallel so both strokes meet it.
-                    d_far = min(disps_e) if side > 0 else max(disps_e)
-                    t_far = -d_far * cross_nv / side
-                    if 0.0 < t_far < _JOIN_MAX_FRAC * length:
-                        px = ex + ux * t_far + nx * d_far
-                        py = ey + uy * t_far + ny * d_far
-                        dist = math.hypot(px - ex, py - ey)
-                        key = (single.index, end_flag)
-                        prev = moves.get(key)
-                        if prev is None or dist > prev[2]:
-                            moves[key] = (px, py, dist)
+                    d_far = min(disps_e) if (ux * vhy - uy * vhx) > 0 else max(disps_e)
+                    hit = line_intersect(
+                        ex + nx * d_far, ey + ny * d_far, ux, uy, ex, ey, vhx, vhy
+                    )
+                    if hit is not None:
+                        t_far, _s, px, py = hit
+                        if 0.0 < t_far < t_hi:
+                            dist = math.hypot(px - ex, py - ey)
+                            key = (single.index, end_flag)
+                            prev = moves.get(key)
+                            if prev is None or dist > prev[2]:
+                                moves[key] = (px, py, dist)
 
             for i, ts in enumerate(line_ts):
                 if not ts:

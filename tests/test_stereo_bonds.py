@@ -223,3 +223,33 @@ def test_far_end_single_joins_too():
     for path in strokes.offsets:
         end = _pts(path.d)[1]
         assert _on_line(end[0], end[1], bonds[1].x1, bonds[1].y1, 30.0, -10.0)
+
+
+def test_acute_two_singles_still_land_on_lines():
+    """~25° between singles — intersection math must still close the vertex."""
+    bonds = [
+        DrawnBond(0, 0, 1, 0.0, 0.0, 20.0, 0.0, 2.0),
+        DrawnBond(1, 0, 2, 0.0, 0.0, -18.0, 4.0, 1.0),
+        DrawnBond(2, 0, 3, 0.0, 0.0, -18.0, -4.0, 1.0),
+    ]
+    join_centered_multibonds(bonds)
+    assert bonds[0].trims is not None
+    assert all(t < 0.0 for t in bonds[0].trims[0])
+    strokes = bond_strokes(0, 0, 20, 0, 2.0, trims=bonds[0].trims)
+    for path in strokes.offsets:
+        x, y = _pts(path.d)[0]
+        assert _on_line(x, y, 0.0, 0.0, -18.0, 4.0) or _on_line(
+            x, y, 0.0, 0.0, -18.0, -4.0
+        )
+        assert x < -0.2
+
+
+def test_line_intersect_unit_axes():
+    from xpict.draw.bonds import line_intersect
+
+    t, s, ix, iy = line_intersect(0, 1, 1, 0, 1, 0, 0, 1)
+    assert t == pytest.approx(1.0)
+    assert s == pytest.approx(1.0)
+    assert ix == pytest.approx(1.0)
+    assert iy == pytest.approx(1.0)
+    assert line_intersect(0, 0, 1, 0, 0, 1, 1, 0) is None
