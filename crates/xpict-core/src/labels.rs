@@ -37,7 +37,9 @@ pub struct PlacedLabel {
     pub atom_x: f64,
     pub atom_y: f64,
     pub side: LabelSide,
-    /// Bond inset from the atom toward neighbors (center glyph + gap).
+    /// Bond inset from the atom toward neighbors (isotropic: center glyph
+    /// advance/ink width + gap). Per-bond shortening uses directional ink
+    /// support via [`place_backbone`].
     pub clearance: f64,
 }
 
@@ -161,23 +163,20 @@ fn baseline_offset(font_px: f64) -> f64 {
     0.5 * (face.cap_height / face.upem) * font_px
 }
 
-/// Width of the glyph that sits on the atom (center token, or first/last char).
-fn center_glyph_advance(parts: &LabelParts, side: LabelSide, font_px: f64) -> f64 {
+/// Atom-center glyph string (center token, or first/last char).
+fn center_glyph_text(parts: &LabelParts, side: LabelSide) -> String {
     if parts.center.is_empty() {
-        return 0.0;
+        return String::new();
     }
     if !parts.traveling.is_empty() {
-        return advance_px(&parts.center, font_px);
+        return parts.center.clone();
     }
     // No traveling part: first glyph (East) or last glyph (West) is the center.
     let ch = match side {
         LabelSide::East => parts.center.chars().next(),
         LabelSide::West => parts.center.chars().last(),
     };
-    match ch {
-        Some(c) => advance_px(&c.to_string(), font_px),
-        None => 0.0,
-    }
+    ch.map(|c| c.to_string()).unwrap_or_default()
 }
 
 /// Advance from string start to the start of the center glyph.
@@ -204,6 +203,95 @@ fn prefix_before_center(parts: &LabelParts, side: LabelSide, font_px: f64) -> f6
     }
 }
 
+/// Ink AABB of the center glyph relative to the atom (SVG +Y down).
+///
+/// Advance center lies on the atom; baseline is [`baseline_offset`] below it.
+/// Returns `(advance_px, Option<(xmin, xmax, ymin, ymax)>)`.
+fn center_glyph_ink_rel(
+    parts: &LabelParts,
+    side: LabelSide,
+    font_px: f64,
+) -> (f64, Option<(f64, f64, f64, f64)>) {
+    let text = center_glyph_text(parts, side);
+    if text.is_empty() {
+        return (0.0, None);
+    }
+    let face = font::face_metrics(FaceStyle::Regular);
+    let scale = font_px / face.upem;
+    let mut advance_em = 0.0;
+    let mut ink_xmin: Option<f64> = None;
+    let mut ink_ymin: Option<f64> = None;
+    let mut ink_xmax: Option<f64> = None;
+    let mut ink_ymax: Option<f64> = None;
+    let mut x_cursor = 0.0;
+    for ch in text.chars() {
+        let Some(g) = font::glyph_metrics(ch, FaceStyle::Regular) else {
+            continue;
+        };
+        if g.has_ink() {
+            let gx0 = x_cursor + g.ink_xmin.unwrap();
+            let gy0 = g.ink_ymin.unwrap();
+            let gx1 = x_cursor + g.ink_xmax.unwrap();
+            let gy1 = g.ink_ymax.unwrap();
+            ink_xmin = Some(ink_xmin.map_or(gx0, |v| v.min(gx0)));
+            ink_ymin = Some(ink_ymin.map_or(gy0, |v| v.min(gy0)));
+            ink_xmax = Some(ink_xmax.map_or(gx1, |v| v.max(gx1)));
+            ink_ymax = Some(ink_ymax.map_or(gy1, |v| v.max(gy1)));
+        }
+        x_cursor += g.advance;
+        advance_em += g.advance;
+    }
+    let advance = advance_em * scale;
+    let half = 0.5 * advance;
+    let base = baseline_offset(font_px);
+    let ink = match (ink_xmin, ink_ymin, ink_xmax, ink_ymax) {
+        (Some(x0), Some(y0), Some(x1), Some(y1)) => {
+            // Font +Y up → SVG +Y down; origin at left of advance on baseline.
+            Some((
+                x0 * scale - half,
+                x1 * scale - half,
+                base - y1 * scale,
+                base - y0 * scale,
+            ))
+        }
+        _ => None,
+    };
+    (advance, ink)
+}
+
+/// Support of an axis-aligned box in direction `(ux, uy)` (unit vector).
+fn aabb_support(xmin: f64, xmax: f64, ymin: f64, ymax: f64, ux: f64, uy: f64) -> f64 {
+    let sx = if ux >= 0.0 { xmax } else { xmin };
+    let sy = if uy >= 0.0 { ymax } else { ymin };
+    sx * ux + sy * uy
+}
+
+/// Bond inset toward `(ux, uy)` from glyph advance + ink metrics.
+///
+/// Uses `max(½ advance, ink support)` so horizontal hetero bonds keep the
+/// advance floor while diagonal approaches clear the ink corners (e.g. N).
+fn clearance_toward(
+    advance: f64,
+    ink: Option<(f64, f64, f64, f64)>,
+    ux: f64,
+    uy: f64,
+) -> f64 {
+    let half = 0.5 * advance;
+    let ink_reach = ink
+        .map(|(x0, x1, y0, y1)| aabb_support(x0, x1, y0, y1, ux, uy).max(0.0))
+        .unwrap_or(0.0);
+    half.max(ink_reach) + LABEL_GAP_PX
+}
+
+/// Isotropic label clearance (no bond direction): advance + ink width.
+fn clearance_isotropic(advance: f64, ink: Option<(f64, f64, f64, f64)>) -> f64 {
+    let mut half = 0.5 * advance;
+    if let Some((x0, x1, _, _)) = ink {
+        half = half.max(0.5 * (x1 - x0));
+    }
+    half + LABEL_GAP_PX
+}
+
 /// Place one label so the atom-center glyph sits on `(atom_x, atom_y)`.
 pub fn place_label(
     raw: &str,
@@ -214,12 +302,12 @@ pub fn place_label(
 ) -> PlacedLabel {
     let parts = split_label(raw);
     let text = compose_label(&parts, side);
-    let center_adv = center_glyph_advance(&parts, side, font_px);
+    let (center_adv, ink) = center_glyph_ink_rel(&parts, side, font_px);
     let prefix = prefix_before_center(&parts, side, font_px);
     // Center of the center-glyph advance lands on the atom.
     let origin_x = atom_x - prefix - 0.5 * center_adv;
     let y = atom_y + baseline_offset(font_px);
-    let clearance = 0.5 * center_adv + LABEL_GAP_PX;
+    let clearance = clearance_isotropic(center_adv, ink);
     PlacedLabel {
         text,
         origin_x,
@@ -288,6 +376,9 @@ pub struct BondOut {
 /// `atoms[i]` coords are caller-supplied SVG positions. Bond indices refer to
 /// that slice. Returns `(bonds, labels)` where `labels[i]` is `Some` only when
 /// atom `i` has a non-empty label.
+///
+/// Bond insets use the center glyph's advance floor and ink AABB support in
+/// the bond direction (not a single ad-hoc radius).
 pub fn place_backbone(
     atoms: &[AtomIn],
     bonds: &[BondIn],
@@ -302,18 +393,20 @@ pub fn place_backbone(
         }
     }
 
+    // Per-atom center-glyph metrics for directional bond insets.
+    let mut metrics: Vec<Option<(f64, Option<(f64, f64, f64, f64)>)>> = Vec::with_capacity(n);
     let mut labels: Vec<Option<PlacedLabel>> = Vec::with_capacity(n);
-    let mut clearances = vec![0.0; n];
     for (i, atom) in atoms.iter().enumerate() {
         let raw = atom.label.as_deref().unwrap_or("").trim();
         if raw.is_empty() {
             labels.push(None);
+            metrics.push(None);
             continue;
         }
         let side = label_side((atom.x, atom.y), &nbrs[i]);
-        let placed = place_label(raw, atom.x, atom.y, side, font_px);
-        clearances[i] = placed.clearance;
-        labels.push(Some(placed));
+        let parts = split_label(raw);
+        metrics.push(Some(center_glyph_ink_rel(&parts, side, font_px)));
+        labels.push(Some(place_label(raw, atom.x, atom.y, side, font_px)));
     }
 
     let mut out_bonds = Vec::with_capacity(bonds.len());
@@ -329,14 +422,20 @@ pub fn place_backbone(
         }
         let a = &atoms[b.begin];
         let c = &atoms[b.end];
-        let (x1, y1, x2, y2) = shorten_bond(
-            a.x,
-            a.y,
-            c.x,
-            c.y,
-            clearances[b.begin],
-            clearances[b.end],
-        );
+        let dx = c.x - a.x;
+        let dy = c.y - a.y;
+        let len = (dx * dx + dy * dy).sqrt().max(1e-9);
+        let ux = dx / len;
+        let uy = dy / len;
+        let gap1 = match metrics[b.begin] {
+            Some((adv, ink)) => clearance_toward(adv, ink, ux, uy),
+            None => 0.0,
+        };
+        let gap2 = match metrics[b.end] {
+            Some((adv, ink)) => clearance_toward(adv, ink, -ux, -uy),
+            None => 0.0,
+        };
+        let (x1, y1, x2, y2) = shorten_bond(a.x, a.y, c.x, c.y, gap1, gap2);
         out_bonds.push(BondOut { x1, y1, x2, y2 });
     }
 
@@ -402,9 +501,20 @@ mod tests {
         assert!((east.origin_x + 0.5 * o_adv - 100.0).abs() < 1e-6);
         let h_adv = advance_px("H", FONT_PX);
         assert!((west.origin_x + h_adv + 0.5 * o_adv - 100.0).abs() < 1e-6);
-        // Clearance uses O, not the full OH width.
+        // Clearance uses O metrics, not the full OH width.
         assert!((east.clearance - (0.5 * o_adv + LABEL_GAP_PX)).abs() < 1e-6);
         assert!(east.clearance < advance_px("OH", FONT_PX) * 0.5 + LABEL_GAP_PX - 0.1);
+    }
+
+    #[test]
+    fn n_diagonal_clearance_uses_ink_support() {
+        // Horizontal: advance floor. Diagonal: ink corner extends past half-advance.
+        let parts = split_label("N");
+        let (adv, ink) = center_glyph_ink_rel(&parts, LabelSide::East, FONT_PX);
+        let horiz = clearance_toward(adv, ink, 1.0, 0.0);
+        let diag = clearance_toward(adv, ink, std::f64::consts::FRAC_1_SQRT_2, std::f64::consts::FRAC_1_SQRT_2);
+        assert!((horiz - (0.5 * adv + LABEL_GAP_PX)).abs() < 1e-6);
+        assert!(diag > horiz + 0.3);
     }
 
     #[test]
@@ -428,5 +538,29 @@ mod tests {
         assert_eq!(lab.text, "OH"); // neighbor on the left → East
         assert!(out[0].x2 < 40.0);
         assert!((40.0 - out[0].x2 - lab.clearance).abs() < 1e-6);
+    }
+
+    #[test]
+    fn backbone_n_diagonal_standoff_exceeds_half_advance() {
+        let atoms = vec![
+            AtomIn {
+                x: 0.0,
+                y: 0.0,
+                label: None,
+            },
+            AtomIn {
+                x: 30.0,
+                y: 30.0,
+                label: Some("N".into()),
+            },
+        ];
+        let bonds = vec![BondIn { begin: 0, end: 1 }];
+        let (out, labels) = place_backbone(&atoms, &bonds, FONT_PX);
+        let lab = labels[1].as_ref().unwrap();
+        let n_adv = advance_px("N", FONT_PX);
+        let gap = ((out[0].x2 - 30.0).powi(2) + (out[0].y2 - 30.0).powi(2)).sqrt();
+        assert!(gap > 0.5 * n_adv + LABEL_GAP_PX + 0.3);
+        // Isotropic label clearance stays on the advance floor (ink width < advance).
+        assert!((lab.clearance - (0.5 * n_adv + LABEL_GAP_PX)).abs() < 1e-6);
     }
 }

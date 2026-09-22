@@ -1,5 +1,6 @@
 /**
  * GitHub Pages demo — two SMILES, query aligned to template, editable options.
+ * Redraws on any input change (no Draw button).
  */
 import { xpict } from "./pkg/index.js";
 
@@ -9,7 +10,10 @@ const form = $("form");
 const statusEl = $("status");
 const out1 = $("out1");
 const out2 = $("out2");
-const drawBtn = $("draw");
+
+const DEBOUNCE_MS = 180;
+let debounceTimer = 0;
+let drawGen = 0;
 
 function setStatus(text, isError = false) {
   statusEl.textContent = text;
@@ -72,9 +76,11 @@ function clearOut() {
 }
 
 async function draw() {
+  const gen = ++drawGen;
   const smiles1 = $("smiles1").value.trim();
   const smiles2 = $("smiles2").value.trim();
   if (!smiles1 || !smiles2) {
+    clearOut();
     setStatus("Both SMILES are required.", true);
     return;
   }
@@ -87,7 +93,6 @@ async function draw() {
     return;
   }
 
-  drawBtn.disabled = true;
   setStatus("Loading RDKit + wasm…");
 
   try {
@@ -95,6 +100,7 @@ async function draw() {
     const rendered1 = await xpict.render(template, {
       color: opts.color1,
     });
+    if (gen !== drawGen) return;
     showSvg(out1, xpict.toSvg(rendered1.scene));
 
     const queryOpts = {
@@ -106,6 +112,7 @@ async function draw() {
       ...(opts.align ? { align_to: template } : {}),
     };
     const rendered2 = await xpict.render(xpict.mol(smiles2), queryOpts);
+    if (gen !== drawGen) return;
     showSvg(out2, xpict.toSvg(rendered2.scene));
 
     setStatus(
@@ -113,11 +120,17 @@ async function draw() {
         (opts.align ? " · aligned" : " · free layout")
     );
   } catch (err) {
+    if (gen !== drawGen) return;
     console.error(err);
     setStatus(`FAIL: ${err?.message || err}`, true);
-  } finally {
-    drawBtn.disabled = false;
   }
+}
+
+function scheduleDraw() {
+  window.clearTimeout(debounceTimer);
+  debounceTimer = window.setTimeout(() => {
+    void draw();
+  }, DEBOUNCE_MS);
 }
 
 form.addEventListener("submit", (ev) => {
@@ -125,10 +138,14 @@ form.addEventListener("submit", (ev) => {
   void draw();
 });
 
+form.addEventListener("input", scheduleDraw);
+form.addEventListener("change", scheduleDraw);
+
 $("swap").addEventListener("click", () => {
   const a = $("smiles1").value;
   $("smiles1").value = $("smiles2").value;
   $("smiles2").value = a;
+  scheduleDraw();
 });
 
 clearOut();

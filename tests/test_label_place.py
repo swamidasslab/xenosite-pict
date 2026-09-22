@@ -56,6 +56,20 @@ def test_place_backbone_oh_on_right_is_oh():
     assert ends[0][2] == pytest.approx(40.0 - labels[1].clearance)
 
 
+def test_place_backbone_n_diagonal_uses_ink_metrics():
+    """Diagonal bonds clear N ink corners, not just half-advance."""
+    coords = [(0.0, 0.0), (30.0, 30.0)]
+    texts = [None, "N"]
+    bonds = [(0, 1)]
+    ends, labels = place_backbone(coords, texts, bonds)
+    assert labels[1] is not None
+    n_adv = measure_text("N", FONT_PX).advance
+    gap = ((ends[0][2] - 30.0) ** 2 + (ends[0][3] - 30.0) ** 2) ** 0.5
+    assert gap > 0.5 * n_adv + LABEL_GAP_PX + 0.3
+    # Stored isotropic clearance stays on the advance floor.
+    assert labels[1].clearance == pytest.approx(0.5 * n_adv + LABEL_GAP_PX)
+
+
 def test_glca_centers_first_or_last_glyph():
     coords = [(0.0, 0.0), (60.0, 0.0)]
     texts = ["GlcA", None]
