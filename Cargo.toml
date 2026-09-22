@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/xpict-core", "crates/xpict-py"]
+members = ["crates/xpict-core", "crates/xpict-py", "crates/xpict-wasm"]
 default-members = ["crates/xpict-core"]
 
 [workspace.package]

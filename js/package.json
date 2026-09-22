@@ -3,25 +3,35 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "TypeScript/WASM processor for xpict contracts (Indigo WASM + SVG scene)",
+  "description": "TypeScript + WASM bindings for xpict (shared Rust core + Indigo layout stub)",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./native": {
+      "types": "./dist/native.d.ts",
+      "import": "./dist/native.js"
     }
   },
   "files": [
     "dist",
-    "src"
+    "src",
+    "src/wasm/*.wasm",
+    "src/wasm/*.js",
+    "src/wasm/*.d.ts"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build:wasm": "../scripts/build_bindings.sh wasm",
+    "build": "npm run build:wasm && tsc -p tsconfig.json",
     "check": "tsc -p tsconfig.json --noEmit",
-    "test": "npm run check"
+    "test:native": "node src/native.smoke.mjs",
+    "test": "npm run check && npm run test:native"
   },
   "devDependencies": {
+    "@types/node": "^22.20.4",
     "typescript": "^5.6.0"
   },
   "optionalDependencies": {

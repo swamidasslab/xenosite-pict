@@ -1,0 +1,3 @@
+# Keep wasm-pack artifacts; ignore only npm metadata it emits.
+package.json
+README.md

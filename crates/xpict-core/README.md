@@ -35,21 +35,19 @@ cargo test -p xpict-core
 cargo clippy -p xpict-core -- -D warnings
 ```
 
-## Python (PyO3)
+## Python (PyO3) and JS (WASM)
 
-Bindings live in `crates/xpict-py` → import `xpict._native` after:
+| Edge | Crate | Consumer |
+| --- | --- | --- |
+| Python | `crates/xpict-py` → `xpict._native` | `src/xpict/native_bridge.py` |
+| JS | `crates/xpict-wasm` → `js/src/wasm/` | `js/src/native.ts` |
 
 ```bash
-uv sync --group dev
-maturin develop --manifest-path crates/xpict-py/Cargo.toml
+./scripts/build_bindings.sh all
 ```
 
-Python calls Rust via `xpict.native_bridge` (capsule/disk halos, plotdot,
-bond offset). **Glyphs** still use fontTools + Shapely; only simple ink uses
-Rust geometry today.
-
-FFI features (`wasm-bindgen`) will be additive; the default `rlib` stays
-dependency-light.
+See [`docs/bindings.md`](../../docs/bindings.md). Keep both binding crates in sync when
+adding exports. Glyphs still use fontTools + Shapely on Python until ported.
 
 ## LLM-assisted ports (no Rust required to start)
 

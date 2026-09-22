@@ -1,23 +1,37 @@
 # @xenosite/xpict (JS / TypeScript)
 
-Browser and Node processor for the same JSON contracts as Python `xpict`.
+Browser and Node client for xpict contracts, plus **shared Rust core** via WASM
+(same algorithms as Python `xpict._native`).
 
-## Layout
+## Layout / draw (still stubs)
 
-- **Primary:** Indigo WASM (`indigo-ketcher` / Indigo wasm) — stub in `src/layout/indigo-wasm.ts`
-- **Secondary (optional later):** `@rdkit/rdkit` MinimalLib
-- Drawing always happens here (`src/draw/svg.ts`), never by mutating engine SVG
+- **Primary layout:** Indigo WASM (stub in `src/layout/indigo-wasm.ts`)
+- **Drawing:** own SVG scene (stub) — full drawer ports via `xpict-core` over time
 
-## Shared schema
+## Native core (Rust → WASM)
 
-JSON Schema is generated from Pydantic and committed under `../schema/` (`xpict.schema.json`, etc.).
+```bash
+# from repo root
+./scripts/build_bindings.sh wasm
+cd js && npm test
+```
+
+```ts
+import { initNative, multiBondOffset, plotdotRings } from "@xenosite/xpict";
+
+await initNative();
+multiBondOffset(20); // 3
+plotdotRings(1.0);   // [{ radiusFrac, colorZ }, ...]
+```
+
+Shared API table: [`docs/bindings.md`](../docs/bindings.md).
 
 ## Scripts
 
 ```bash
 npm install
-npm run check   # tsc --noEmit
-npm run build   # emit dist/
+npm run check      # tsc
+npm run build:wasm # wasm-pack → src/wasm/
+npm run build      # wasm + tsc → dist/
+npm test           # check + native smoke
 ```
-
-Python remains the working engine today; this package validates the shared API surface.

@@ -32,6 +32,27 @@ export type {
 
 export { layoutWithIndigoWasm } from "./layout/indigo-wasm.js";
 export { layoutToSvgStub } from "./draw/svg.js";
+export {
+  initNative,
+  isNativeReady,
+  multiBondOffset,
+  centeredDisplacements,
+  plotdotRings,
+  plotdotDisks,
+  capsuleHaloPathD,
+  diskHaloPathD,
+  bondPx,
+  offsetPx,
+  strokePx,
+  shadeFrac,
+  coreVersion,
+} from "./native.js";
+export type { ShadeDisk } from "./native.js";
+export {
+  multiBondOffsetPy,
+  plotdotRingsPy,
+} from "./native-fallback.js";
+
 
 function isLegacyPict(spec: PictSpec): spec is import("./types.js").LegacyPictSpec {
   return (
