@@ -85,13 +85,14 @@ stub to grow toward full `PictSpec` without blocking shipping.
 
 ## Docs & demo
 
-Cross-language docs on GitHub Pages:
+Cross-language docs on GitHub Pages (MkDocs Material + autodoc):
 https://swamidasslab.github.io/xenosite-pict/
 
 JS interactive demo (align + paint):
 https://swamidasslab.github.io/xenosite-pict/js/demo/
 
-Sources: [`site/`](site/) (docs) · [`demo/`](demo/) (JS playground).
+Sources: [`docs/`](docs/) · [`mkdocs.yml`](mkdocs.yml) · [`demo/`](demo/).  
+Build: `bash scripts/build_pages.sh` (see [`docs/README.md`](docs/README.md)).
 
 **Versioning:** major/minor are all-or-none (`release/v*`); patches are
 per-language (`js/v*`, `py/v*`, …). See [`docs/publish.md`](docs/publish.md).

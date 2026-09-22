@@ -1,0 +1,48 @@
+/* MkDocs Material extras for xpict docs */
+
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1.25rem;
+  margin: 1.5rem 0 2rem;
+}
+
+.gallery-grid figure {
+  margin: 0;
+  padding: 0.75rem;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 0.4rem;
+  background: var(--md-default-bg-color);
+  text-align: center;
+}
+
+.gallery-grid img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 220px;
+  object-fit: contain;
+  margin: 0 auto 0.5rem;
+}
+
+.gallery-grid figcaption {
+  font-size: 0.8rem;
+  color: var(--md-default-fg-color--light);
+}
+
+.api-frame {
+  position: relative;
+  width: 100%;
+  height: min(70vh, 720px);
+  margin: 1rem 0 1.5rem;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 0.4rem;
+  overflow: hidden;
+  background: var(--md-default-bg-color);
+}
+
+.api-frame iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+}

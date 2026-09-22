@@ -1,0 +1,119 @@
+# MkDocs Material — cross-language docs + autodoc.
+# Build: bash scripts/build_pages.sh
+# Local:  uv run mkdocs serve
+
+site_name: xpict
+site_description: Declarative molecule depiction for publication-quality SVG
+site_url: https://swamidasslab.github.io/xenosite-pict/
+repo_url: https://github.com/swamidasslab/xenosite-pict
+repo_name: swamidasslab/xenosite-pict
+edit_uri: edit/main/docs/
+
+docs_dir: docs
+site_dir: _site
+
+# Internal / non-page trees under docs/.
+exclude_docs: |
+  README.md
+  pocs/**
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: green
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: green
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  font:
+    text: Source Sans 3
+    code: Source Code Pro
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - content.code.copy
+    - toc.follow
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - search
+  - autorefs
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          paths: [python]
+          options:
+            docstring_style: google
+            show_source: true
+            show_root_heading: true
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            members_order: source
+            filters: ["!^_"]
+            separate_signature: true
+            merge_init_into_class: true
+            show_signature_annotations: true
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - toc:
+      permalink: true
+
+extra_css:
+  - stylesheets/extra.css
+
+nav:
+  - Home: index.md
+  - Gallery: gallery.md
+  - Install: install.md
+  - API:
+      - Overview: api/overview.md
+      - Python: api/python.md
+      - JavaScript: api/javascript.md
+      - Rust: api/rust.md
+  - Languages:
+      - JavaScript: languages/javascript.md
+      - Python: languages/python.md
+      - Rust: languages/rust.md
+  - Guide:
+      - Label markup: label-markup.md
+      - Bindings: bindings.md
+      - Contracts: contracts.md
+      - Publish: publish.md
+      - Migration: migration-xenosite.md
+      - Layout notes: layout-notes.md
+      - npm / xenosite: npm-xenosite.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/swamidasslab/xenosite-pict
+    - icon: fontawesome/brands/npm
+      link: https://www.npmjs.com/package/@xenosite/xpict
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/xpict/

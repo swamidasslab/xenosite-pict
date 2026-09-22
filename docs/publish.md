@@ -14,13 +14,13 @@ Language tags **cannot** ship `X.Y.0` (rejected by
 
 | Intent | Tag | Workflow |
 | --- | --- | --- |
-| Product cut (all surfaces) | `release/v0.2.0` | [`release.yml`](../.github/workflows/release.yml) |
-| JS patch only | `js/v0.1.5` (`Z≥1`) | [`publish-js.yml`](../.github/workflows/publish-js.yml) |
-| Python patch only | `py/v0.1.5` | [`pypi.yml`](../.github/workflows/pypi.yml) |
-| `xpict-core` patch | `rust-core/v0.1.5` | [`crates.yml`](../.github/workflows/crates.yml) |
-| Rust `xpict` patch | `rust/v0.1.5` | [`crates.yml`](../.github/workflows/crates.yml) |
+| Product cut (all surfaces) | `release/v0.2.0` | [`release.yml`](https://github.com/swamidasslab/xenosite-pict/blob/main/.github/workflows/release.yml) |
+| JS patch only | `js/v0.1.5` (`Z≥1`) | [`publish-js.yml`](https://github.com/swamidasslab/xenosite-pict/blob/main/.github/workflows/publish-js.yml) |
+| Python patch only | `py/v0.1.5` | [`pypi.yml`](https://github.com/swamidasslab/xenosite-pict/blob/main/.github/workflows/pypi.yml) |
+| `xpict-core` patch | `rust-core/v0.1.5` | [`crates.yml`](https://github.com/swamidasslab/xenosite-pict/blob/main/.github/workflows/crates.yml) |
+| Rust `xpict` patch | `rust/v0.1.5` | [`crates.yml`](https://github.com/swamidasslab/xenosite-pict/blob/main/.github/workflows/crates.yml) |
 
-CI runs [`scripts/check_version_policy.sh`](../scripts/check_version_policy.sh).
+CI runs [`scripts/check_version_policy.sh`](https://github.com/swamidasslab/xenosite-pict/blob/main/scripts/check_version_policy.sh).
 
 The **public API** to document and version is the single-molecule client:
 
@@ -44,7 +44,7 @@ The **public API** to document and version is the single-molecule client:
    git push origin release/v0.2.0
    ```
 
-5. [`release.yml`](../.github/workflows/release.yml) publishes **xpict-core →
+5. [`release.yml`](https://github.com/swamidasslab/xenosite-pict/blob/main/.github/workflows/release.yml) publishes **xpict-core →
    xpict → JS → Python** at that version (or Actions → **release** workflow
    dispatch).
 
