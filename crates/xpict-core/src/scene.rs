@@ -143,16 +143,38 @@ pub struct Scene {
 }
 
 /// Atom input for a molecule depict call (SVG-space coords from the caller).
+///
+/// Identity: pass ``element`` and/or atomic number ``z``. If only ``z`` is
+/// set, the symbol comes from [`crate::element_symbol`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AtomIn {
     pub index: i32,
-    pub element: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub element: Option<String>,
+    /// Atomic number (`0` = ``*``). Used when ``element`` is omitted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub z: Option<u32>,
     pub x: f64,
     pub y: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
     #[serde(default)]
     pub charge: i32,
+}
+
+impl AtomIn {
+    /// Resolved element symbol (`element` if set, else from ``z``, else ``"C"``).
+    pub fn symbol(&self) -> &str {
+        if let Some(ref el) = self.element {
+            if !el.is_empty() {
+                return el.as_str();
+            }
+        }
+        match self.z {
+            Some(z) => crate::element_symbol(z),
+            None => "C",
+        }
+    }
 }
 
 /// Bond input (indices into [`AtomIn::index`]).

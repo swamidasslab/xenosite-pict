@@ -39,9 +39,9 @@ const sceneJson = depictMolecule(
   JSON.stringify({
     id: "etoh",
     atoms: [
-      { index: 0, element: "C", x: 0, y: 0 },
-      { index: 1, element: "C", x: 20, y: 0 },
-      { index: 2, element: "O", x: 30, y: 10, label: "OH" },
+      { index: 0, z: 6, x: 0, y: 0 },
+      { index: 1, z: 6, x: 20, y: 0 },
+      { index: 2, z: 8, x: 30, y: 10, label: "OH" },
     ],
     bonds: [
       { index: 0, begin: 0, end: 1, order: 1 },

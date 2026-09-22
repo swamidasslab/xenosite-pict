@@ -15,7 +15,10 @@ export type MoleculeIn = {
   id?: string;
   atoms: Array<{
     index: number;
-    element: string;
+    /** Optional — omit when ``z`` is set (Rust resolves the symbol). */
+    element?: string;
+    /** Atomic number (`0` = ``*``). Preferred from RDKit JSON. */
+    z?: number;
     x: number;
     y: number;
     label?: string;
@@ -119,6 +122,7 @@ function toMoleculeIn(
   }
 
   const atoms: MoleculeIn["atoms"] = entry.atoms.map((a, index) => {
+    const z = a.z ?? 6;
     const element = elementFromZ(a.z);
     const charge = a.chg ?? 0;
     const impHs = a.impHs ?? 0;
@@ -130,7 +134,7 @@ function toMoleculeIn(
     const label = atomLabel(element, impHs, charge);
     return {
       index,
-      element,
+      z,
       x,
       y,
       ...(charge ? { charge } : {}),

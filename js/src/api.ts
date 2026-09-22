@@ -23,6 +23,7 @@ import { ensureRdkit, isRdkitReady } from "./rdkit-loader.js";
 import { depictMolecule, initNative, isNativeReady } from "./native.js";
 import { atomsInSvgFrame, type SvgAtom, type SvgBond } from "./frame.js";
 import { sceneToSvg, type Scene } from "./draw/scene-svg.js";
+import { elementSymbol } from "./elements.js";
 
 export type { SvgAtom, SvgBond } from "./frame.js";
 export type {
@@ -140,21 +141,30 @@ function applyOpts(molecule: MoleculeIn, opts: MolRenderOptions): MoleculeIn {
 function toCoordList(
   atoms: Array<{
     index: number;
-    element: string;
+    element?: string;
+    z?: number;
     x: number;
     y: number;
     label?: string;
     charge?: number;
   }>
 ): SvgAtom[] {
-  return atoms.map((a) => ({
-    index: a.index,
-    element: a.element,
-    x: a.x,
-    y: a.y,
-    ...(a.label ? { label: a.label } : {}),
-    ...(a.charge ? { charge: a.charge } : {}),
-  }));
+  return atoms.map((a) => {
+    const element =
+      a.element && a.element.length > 0
+        ? a.element
+        : a.z !== undefined
+          ? elementSymbol(a.z)
+          : "C";
+    return {
+      index: a.index,
+      element,
+      x: a.x,
+      y: a.y,
+      ...(a.label ? { label: a.label } : {}),
+      ...(a.charge ? { charge: a.charge } : {}),
+    };
+  });
 }
 
 async function render(

@@ -62,7 +62,7 @@ pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
                 .map(|s| !s.trim().is_empty())
                 .unwrap_or(false);
             // Heteroatoms / charged atoms get labels even without an explicit string.
-            let labeled = if a.element == "C" && a.charge == 0 {
+            let labeled = if a.symbol() == "C" && a.charge == 0 {
                 has_label
             } else {
                 true
@@ -336,34 +336,25 @@ mod tests {
     use super::*;
     use crate::scene::{AtomIn, BondIn};
 
+    fn atom(index: i32, element: &str, x: f64, y: f64, label: Option<&str>) -> AtomIn {
+        AtomIn {
+            index,
+            element: Some(element.into()),
+            z: None,
+            x,
+            y,
+            label: label.map(str::to_string),
+            charge: 0,
+        }
+    }
+
     fn ethanol() -> MoleculeIn {
         MoleculeIn {
             id: Some("etoh".into()),
             atoms: vec![
-                AtomIn {
-                    index: 0,
-                    element: "C".into(),
-                    x: 0.0,
-                    y: 0.0,
-                    label: None,
-                    charge: 0,
-                },
-                AtomIn {
-                    index: 1,
-                    element: "C".into(),
-                    x: 20.0,
-                    y: 0.0,
-                    label: None,
-                    charge: 0,
-                },
-                AtomIn {
-                    index: 2,
-                    element: "O".into(),
-                    x: 30.0,
-                    y: 10.0,
-                    label: Some("OH".into()),
-                    charge: 0,
-                },
+                atom(0, "C", 0.0, 0.0, None),
+                atom(1, "C", 20.0, 0.0, None),
+                atom(2, "O", 30.0, 10.0, Some("OH")),
             ],
             bonds: vec![
                 BondIn {
@@ -395,38 +386,10 @@ mod tests {
         MoleculeIn {
             id: Some("acetone".into()),
             atoms: vec![
-                AtomIn {
-                    index: 0,
-                    element: "C".into(),
-                    x: -20.0,
-                    y: 8.0,
-                    label: None,
-                    charge: 0,
-                },
-                AtomIn {
-                    index: 1,
-                    element: "C".into(),
-                    x: 0.0,
-                    y: 0.0,
-                    label: None,
-                    charge: 0,
-                },
-                AtomIn {
-                    index: 2,
-                    element: "O".into(),
-                    x: 0.0,
-                    y: -20.0,
-                    label: Some("O".into()),
-                    charge: 0,
-                },
-                AtomIn {
-                    index: 3,
-                    element: "C".into(),
-                    x: 20.0,
-                    y: 8.0,
-                    label: None,
-                    charge: 0,
-                },
+                atom(0, "C", -20.0, 8.0, None),
+                atom(1, "C", 0.0, 0.0, None),
+                atom(2, "O", 0.0, -20.0, Some("O")),
+                atom(3, "C", 20.0, 8.0, None),
             ],
             bonds: vec![
                 BondIn {
@@ -460,6 +423,50 @@ mod tests {
             mark_atoms: vec![],
             mark_bonds: vec![],
         }
+    }
+
+    #[test]
+    fn z_only_atoms_resolve_symbols() {
+        let mol = MoleculeIn {
+            id: Some("z".into()),
+            atoms: vec![
+                AtomIn {
+                    index: 0,
+                    element: None,
+                    z: Some(6),
+                    x: 0.0,
+                    y: 0.0,
+                    label: None,
+                    charge: 0,
+                },
+                AtomIn {
+                    index: 1,
+                    element: None,
+                    z: Some(8),
+                    x: 20.0,
+                    y: 0.0,
+                    label: Some("O".into()),
+                    charge: 0,
+                },
+            ],
+            bonds: vec![BondIn {
+                index: 0,
+                begin: 0,
+                end: 1,
+                order: 1.0,
+                stereo: None,
+                interior: None,
+            }],
+            color: None,
+            atom_shade: None,
+            bond_shade: None,
+            mark_atoms: vec![],
+            mark_bonds: vec![],
+        };
+        assert_eq!(mol.atoms[0].symbol(), "C");
+        assert_eq!(mol.atoms[1].symbol(), "O");
+        let scene = depict_molecule(&mol);
+        assert_eq!(scene.viewports.len(), 1);
     }
 
     #[test]

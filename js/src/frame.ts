@@ -5,6 +5,7 @@
 
 import type { MoleculeIn } from "./layout/rdkit-layout.js";
 import { SCALE } from "./layout/rdkit-layout.js";
+import { elementSymbol } from "./elements.js";
 
 /** Matches Rust ``PAD_PX`` / ``MARK_FRAC`` (SCALE-space). */
 const PAD_PX = SCALE;
@@ -77,14 +78,22 @@ export function atomsInSvgFrame(mol: MoleculeIn): {
   dy: number;
 } {
   const { dx, dy, width, height } = frameTransform(mol);
-  const atoms: SvgAtom[] = mol.atoms.map((a) => ({
-    index: a.index,
-    element: a.element,
-    x: a.x + dx,
-    y: a.y + dy,
-    ...(a.label ? { label: a.label } : {}),
-    ...(a.charge ? { charge: a.charge } : {}),
-  }));
+  const atoms: SvgAtom[] = mol.atoms.map((a) => {
+    const element =
+      a.element && a.element.length > 0
+        ? a.element
+        : a.z !== undefined
+          ? elementSymbol(a.z)
+          : "C";
+    return {
+      index: a.index,
+      element,
+      x: a.x + dx,
+      y: a.y + dy,
+      ...(a.label ? { label: a.label } : {}),
+      ...(a.charge ? { charge: a.charge } : {}),
+    };
+  });
   const bonds: SvgBond[] = mol.bonds.map((b) => ({
     index: b.index,
     begin: b.begin,
