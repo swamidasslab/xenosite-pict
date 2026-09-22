@@ -93,6 +93,9 @@ https://swamidasslab.github.io/xenosite-pict/js/demo/
 
 Sources: [`site/`](site/) (docs) · [`demo/`](demo/) (JS playground).
 
+**Versioning:** major.minor lockstep across JS / Python / Rust; patches are
+per-language. See [`docs/publish.md`](docs/publish.md).
+
 ## Install / build (dev)
 
 ```bash

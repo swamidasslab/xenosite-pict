@@ -58,7 +58,7 @@ jobs:
         run: |
           VER="${GITHUB_REF_NAME#py/v}"
           echo "Publishing version $VER"
-          # Keep pyproject version in sync with the tag for the build.
+          bash scripts/check_version_policy.sh "$VER"
           python3 - <<PY
           from pathlib import Path
           import re
@@ -74,23 +74,27 @@ jobs:
           p.write_text(text)
           PY
 
+      - name: Version policy (workflow_dispatch)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          VER="$(python3 -c "import re; from pathlib import Path; print(re.search(r'(?m)^version = \"([^\"]+)\"', Path('pyproject.toml').read_text()).group(1))")"
+          bash scripts/check_version_policy.sh "$VER"
+
       - name: Build wheels (manylinux) + sdist
         uses: PyO3/maturin-action@v1
         with:
           command: build
           args: --release --out dist --find-interpreter
           manylinux: auto
-          # maturin reads python-source=python from pyproject.toml
 
       - name: List artifacts
         run: ls -la dist
 
       - name: Publish to PyPI
-        if: ${{ !inputs.dry_run }}
+        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.dry_run }}
         uses: PyO3/maturin-action@v1
         with:
           command: publish
           args: --skip-existing dist/*
         env:
-          # Prefer Trusted Publishing (OIDC). Fallback token if configured.
           MATURIN_PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}

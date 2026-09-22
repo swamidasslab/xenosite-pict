@@ -1,0 +1,153 @@
+# Publish Rust crates to crates.io.
+#
+# Triggers:
+#   - tag rust-core/v* → xpict-core
+#   - tag rust/v*      → xpict (needs xpict-core already on crates.io)
+#   - workflow_dispatch → choose crate + version (dry_run optional)
+#
+# Version policy: major.minor lockstep with JS/Python; patch may differ.
+# See docs/publish.md.
+
+name: crates
+
+on:
+  push:
+    tags:
+      - "rust-core/v*"
+      - "rust/v*"
+  workflow_dispatch:
+    inputs:
+      crate:
+        description: "Crate to publish"
+        type: choice
+        options:
+          - xpict-core
+          - xpict
+        default: xpict-core
+      version:
+        description: "Semver to publish (sets Cargo.toml for the build)"
+        required: true
+        type: string
+      dry_run:
+        description: "cargo publish --dry-run only"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: crates-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    needs: checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve crate + version
+        id: meta
+        run: |
+          REF="${GITHUB_REF_NAME:-}"
+          if [[ "$REF" == rust-core/v* ]]; then
+            CRATE=xpict-core
+            VER="${REF#rust-core/v}"
+          elif [[ "$REF" == rust/v* ]]; then
+            CRATE=xpict
+            VER="${REF#rust/v}"
+          else
+            CRATE="${{ inputs.crate }}"
+            VER="${{ inputs.version }}"
+          fi
+          if [[ -z "$CRATE" || -z "$VER" ]]; then
+            echo "error: could not resolve crate/version" >&2
+            exit 1
+          fi
+          echo "crate=$CRATE" >> "$GITHUB_OUTPUT"
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          echo "Publishing $CRATE@$VER"
+
+      - name: Version policy (major.minor lockstep)
+        run: bash scripts/check_version_policy.sh "${{ steps.meta.outputs.version }}"
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+
+      - name: Set crate version from tag
+        run: |
+          VER="${{ steps.meta.outputs.version }}"
+          CRATE="${{ steps.meta.outputs.crate }}"
+          python3 - <<PY
+          from pathlib import Path
+          import re
+          ver = "$VER"
+          crate = "$CRATE"
+          path = Path(f"crates/{crate}/Cargo.toml")
+          text = path.read_text()
+          text, n = re.subn(r'(?m)^version = "[^"]+"', f'version = "{ver}"', text, count=1)
+          assert n == 1, path
+          path.write_text(text)
+          # Public xpict depends on xpict-core by version — keep the dep major.minor;
+          # crates.io requires a published core matching the path dep version field.
+          if crate == "xpict":
+              core = Path("crates/xpict-core/Cargo.toml")
+              m = re.search(r'(?m)^version = "([^"]+)"', core.read_text())
+              assert m
+              core_ver = m.group(1)
+              dep = Path("crates/xpict/Cargo.toml")
+              t = dep.read_text()
+              t, n = re.subn(
+                  r'(xpict-core = \{ path = "[^"]+", version = ")[^"]+(")',
+                  rf"\g<1>{core_ver}\2",
+                  t,
+                  count=1,
+              )
+              assert n == 1
+              dep.write_text(t)
+              print(f"xpict-core dep version = {core_ver}")
+          print(f"set {crate} version = {ver}")
+          PY
+
+      - name: Install RDKit (native xpict only)
+        if: steps.meta.outputs.crate == 'xpict'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y librdkit-dev librdkit1 libboost-all-dev g++
+
+      - name: Dry-run publish
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        env:
+          CPLUS_INCLUDE_PATH: ${{ github.workspace }}/crates/xpict/compat/rdkit
+        run: |
+          if [[ "${{ steps.meta.outputs.crate }}" == "xpict" ]]; then
+            cargo publish -p xpict --dry-run --allow-dirty
+          else
+            cargo publish -p xpict-core --dry-run --allow-dirty
+          fi
+
+      - name: Publish to crates.io
+        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.dry_run }}
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          CPLUS_INCLUDE_PATH: ${{ github.workspace }}/crates/xpict/compat/rdkit
+        run: |
+          if [[ -z "${CARGO_REGISTRY_TOKEN:-}" ]]; then
+            echo "CARGO_REGISTRY_TOKEN secret required (or configure Trusted Publishing later)" >&2
+            exit 1
+          fi
+          if [[ "${{ steps.meta.outputs.crate }}" == "xpict" ]]; then
+            cargo publish -p xpict --allow-dirty
+          else
+            cargo publish -p xpict-core --allow-dirty
+          fi

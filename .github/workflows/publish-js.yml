@@ -92,14 +92,19 @@ jobs:
         run: |
           VER="${GITHUB_REF_NAME#js/v}"
           echo "Publishing version $VER"
+          bash ../scripts/check_version_policy.sh "$VER"
           npm version "$VER" --no-git-tag-version --allow-same-version
 
+      - name: Version policy (workflow_dispatch)
+        if: github.event_name == 'workflow_dispatch'
+        run: bash ../scripts/check_version_policy.sh "$(node -p "require('./package.json').version")"
+
       - name: Pack (dry run)
-        if: ${{ inputs.dry_run }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
         run: npm pack
 
       - name: Publish to GitHub Packages
-        if: ${{ !inputs.dry_run }}
+        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.dry_run }}
         run: npm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

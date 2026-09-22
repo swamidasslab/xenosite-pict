@@ -40,6 +40,9 @@ jobs:
       - name: cargo test -p xpict-core
         run: cargo test -p xpict-core
 
+      - name: Version policy (major.minor lockstep)
+        run: bash scripts/check_version_policy.sh
+
       - name: llvm-cov (line floor)
         run: |
           cargo llvm-cov -p xpict-core --lcov --output-path lcov.info \
