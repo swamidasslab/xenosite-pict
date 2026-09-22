@@ -1,8 +1,8 @@
 # xpict
 
-Publication-quality small-molecule depiction for **JavaScript**, **Python**, and
-**native Rust**. Shared paint lives in Rust (`xpict-core`); each language owns
-RDKit layout at its edge.
+**Declarative molecule depiction for publication-quality vector graphics** —
+use it from **Rust**, **Python**, or on the web with **JavaScript**. Shared
+paint lives in Rust (`xpict-core`); each language owns RDKit layout at its edge.
 
 Import / package names:
 

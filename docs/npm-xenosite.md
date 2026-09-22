@@ -1,7 +1,7 @@
 # `@xenosite/xpict` for xenosite.org
 
-The website installs the WASM/TS package from the **public npm registry**
-([npmjs.org](https://www.npmjs.com) scope `@xenosite`).
+Declarative molecule depiction for publication-quality vector graphics on the
+web. The site installs from **npmjs.org** (scope `@xenosite`).
 
 Full registry setup (npm / crates.io / PyPI): [`publish.md`](publish.md).
 

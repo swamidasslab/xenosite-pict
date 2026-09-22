@@ -1,7 +1,7 @@
 [project]
 name = "xpict"
 version = "0.1.4"
-description = "Publication-quality small-molecule depiction for Python (and the web via @xenosite/xpict)"
+description = "Declarative molecule depiction for publication-quality vector graphics (Python; also Rust and JS)"
 readme = "README.md"
 license = { text = "MIT" }
 authors = [

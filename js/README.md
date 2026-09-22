@@ -1,7 +1,10 @@
 # @xenosite/xpict
 
-Publication-quality small-molecule depiction for the browser and Node — shared
-Rust paint (`xpict-core`) via WASM, RDKit.js at the layout edge.
+**Declarative molecule depiction for publication-quality vector graphics** —
+JavaScript/TypeScript on the web (and Node), with the same API shape in Python
+and Rust.
+
+Shared Rust paint (`xpict-core`) via WASM; RDKit.js at the layout edge.
 
 **npm:** [`@xenosite/xpict`](https://www.npmjs.com/package/@xenosite/xpict)  
 **Docs / demo:** [GitHub Pages](https://swamidasslab.github.io/xenosite-pict/) ·

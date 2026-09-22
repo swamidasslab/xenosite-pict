@@ -1,7 +1,8 @@
 # xpict (native Rust)
 
-Publication-quality small-molecule depiction for Rust: **`mol` / `render` /
-`to_svg`**, plus batch **`depict({ molecules }) → Vec<Rendered>`**.
+**Declarative molecule depiction for publication-quality vector graphics** —
+Rust API (`mol` / `render` / `to_svg`, plus batch `depict`), matching Python and
+JavaScript.
 
 **Layout:** crates.io [`rdkit`](https://crates.io/crates/rdkit) + Depictor FFI.  
 **Paint:** [`xpict-core`](https://crates.io/crates/xpict-core) (no RDKit).  

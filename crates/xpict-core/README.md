@@ -1,9 +1,8 @@
 # xpict-core
 
 Shared **paint core** for [xpict](https://github.com/swamidasslab/xenosite-pict):
-bonds, marks, shade, labels (with chem markup), halo, and `Scene` → used by
-Python (`xpict._native`), JS/WASM (`@xenosite/xpict`), and the RDKit-backed
-[`xpict`](https://crates.io/crates/xpict) crate.
+**declarative molecule depiction** rendered as **publication-quality vector
+graphics** (SVG paths). Used from Rust, Python, and JS/WASM.
 
 **No RDKit** in this crate — layout stays at language edges.
 
