@@ -1,4 +1,8 @@
-"""Atom-label orientation + backbone insets (Rust `xpict-core::labels`).
+"""Atom-label orientation + backbone insets (Python wrapper over Rust labels).
+
+**Keep in Python for now** — do not fold this into the JS-mirrored
+``depict_molecule``-only path yet. Callers that need orientation / backbone
+insets outside Rust paint still import from here.
 
 Coords are caller SVG positions. Labels split into an atom-center part and an
 optional traveling part (`OH` → center ``O``, travel ``H``). On the west side
