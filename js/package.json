@@ -37,6 +37,7 @@
     "check:pocs": "tsc --strict --module ES2022 --moduleResolution bundler --target ES2022 --esModuleInterop --skipLibCheck --types node --noEmit pocs/elk_layout.ts",
     "test:api": "tsx src/api.smoke.ts",
     "test": "npm run check && npm run check:pocs && npm run test:api",
+    "build:pages": "bash ../scripts/build_pages.sh",
     "prepack": "npm run build:ts && npm run build:copy-wasm"
   },
   "devDependencies": {

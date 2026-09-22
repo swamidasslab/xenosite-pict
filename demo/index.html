@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>xpict — align demo</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,650&family=Source+Sans+3:wght@400;600&family=Source+Code+Pro:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./demo.css" />
+  </head>
+  <body>
+    <div class="atmosphere" aria-hidden="true"></div>
+    <header class="hero">
+      <p class="brand">xpict</p>
+      <h1>Align two molecules</h1>
+      <p class="lede">
+        Enter SMILES for a template and a query. The query is laid out with
+        RDKit against the template, then painted to SVG.
+      </p>
+    </header>
+
+    <main class="stage">
+      <form id="form" class="controls" autocomplete="off">
+        <fieldset class="inputs">
+          <legend>Molecules</legend>
+          <label>
+            <span>Template SMILES</span>
+            <input
+              id="smiles1"
+              name="smiles1"
+              type="text"
+              spellcheck="false"
+              value="c1ccccc1"
+              required
+            />
+          </label>
+          <label>
+            <span>Query SMILES <em>(aligned to template)</em></span>
+            <input
+              id="smiles2"
+              name="smiles2"
+              type="text"
+              spellcheck="false"
+              value="Cc1ccccc1"
+              required
+            />
+          </label>
+          <label class="check">
+            <input id="align" name="align" type="checkbox" checked />
+            <span>Align query to template</span>
+          </label>
+        </fieldset>
+
+        <fieldset class="options">
+          <legend>Options</legend>
+          <div class="opt-grid">
+            <label>
+              <span>Template color</span>
+              <input id="color1" name="color1" type="color" value="#1c2430" />
+            </label>
+            <label>
+              <span>Query color</span>
+              <input id="color2" name="color2" type="color" value="#0b6e4f" />
+            </label>
+            <label class="wide">
+              <span>Mark atoms <em>(query indices, comma-separated)</em></span>
+              <input
+                id="mark_atoms"
+                name="mark_atoms"
+                type="text"
+                spellcheck="false"
+                placeholder="e.g. 0 or 0,1,2"
+                value="0"
+              />
+            </label>
+            <label class="wide">
+              <span>Mark bonds <em>(query begin-end pairs)</em></span>
+              <input
+                id="mark_bonds"
+                name="mark_bonds"
+                type="text"
+                spellcheck="false"
+                placeholder="e.g. 0-1,1-2"
+                value=""
+              />
+            </label>
+            <label class="wide">
+              <span>Atom shade <em>(query, one float per atom)</em></span>
+              <input
+                id="atom_shade"
+                name="atom_shade"
+                type="text"
+                spellcheck="false"
+                placeholder="e.g. 0.8,0,0,0,0,0,0"
+                value=""
+              />
+            </label>
+            <label class="wide">
+              <span>Bond shade <em>(query, one float per bond)</em></span>
+              <input
+                id="bond_shade"
+                name="bond_shade"
+                type="text"
+                spellcheck="false"
+                placeholder="e.g. 0.5,0,0,…"
+                value=""
+              />
+            </label>
+          </div>
+        </fieldset>
+
+        <div class="actions">
+          <button type="submit" id="draw">Draw</button>
+          <button type="button" id="swap" class="ghost">Swap SMILES</button>
+          <p id="status" role="status">Idle</p>
+        </div>
+      </form>
+
+      <section class="canvas" aria-live="polite">
+        <figure>
+          <figcaption>Template</figcaption>
+          <div class="frame" id="out1"></div>
+        </figure>
+        <figure>
+          <figcaption>Query</figcaption>
+          <div class="frame" id="out2"></div>
+        </figure>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <p>
+        <code>xpict.mol</code> · <code>render</code> · <code>toSvg</code> —
+        <a href="https://github.com/swamidasslab/xenosite-pict"
+          >swamidasslab/xenosite-pict</a
+        >
+      </p>
+    </footer>
+
+    <script type="module" src="./demo.js"></script>
+  </body>
+</html>

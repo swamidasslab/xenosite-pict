@@ -14,6 +14,9 @@ Scaffold in progress. Language-neutral JSON contracts (Pydantic → generated JS
 [`docs/migration-xenosite.md`](docs/migration-xenosite.md). Package for the site:
 [`@swamidasslab/xpict`](docs/npm-xenosite.md) on GitHub Packages.
 
+**Browser demo (GitHub Pages):** two SMILES + align + paint options —
+[`demo/`](demo/) → https://swamidasslab.github.io/xenosite-pict/
+
 **Focus now — RDKit at the language edges:**
 - **2D coords** via Python `rdkit` / JS `@rdkit/rdkit` (`backend="rdkit"`, auto-picked when installed)
 - **Alignment** via the same RDKit packages (template depict); maps/coords then into Rust for shared math
