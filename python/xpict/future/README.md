@@ -8,9 +8,10 @@ still being designed:
 - Label / R-group shorthand expanders
 - Legacy flat `{ molecules, diagram }` lift/flatten
 
-The **live** public contract is `xpict.contracts.depict` (`MolSpec` /
-`DepictSpec`) — a subset that matches the implemented
-`mol` / `render` / `depict` API across JS, Python, and Rust.
+The **live preferred** document contract is `xpict.contracts.depict`
+(`MolSpec` / `DepictSpec`) — the subset painted today. The simple
+`mol` / `render` / `to_svg` client is for single-mol callers; documents use
+that layer internally.
 
 JSON Schema for this tree is exported under `schema/future/xpict.schema.json`.
 

@@ -1,18 +1,10 @@
-//! Public Rust molecule depiction API — mirrors JS ``xpict`` / Python ``Mol``.
+//! Public Rust molecule depiction API — mirrors JS ``xpict`` / Python.
 //!
 //! Layout uses the crates.io [`rdkit`] package (SMILES/molblock) plus a local
 //! Depictor FFI for 2D coords / template align. Paint is [`xpict_core`].
 //!
-//! ```ignore
-//! use xpict::{mol, MolRenderOptions};
-//!
-//! let mut m = mol("CCO")?;
-//! let rendered = m.render(MolRenderOptions::default())?;
-//! let svg = rendered.to_svg();
-//! ```
-//!
-//! Batch stub (list of mols → list of [`Rendered`]; alignment via client
-//! ``render(..., align_to: pose)``, not document indices):
+//! **Preferred** — declarative document ([`depict`] / [`DepictSpec`]), grows
+//! toward full PictSpec; implemented via the simple client:
 //!
 //! ```ignore
 //! use xpict::{depict, DepictSpec, MolSpec};
@@ -22,6 +14,17 @@
 //!         MolSpec { smiles: Some("CCCO".into()), ..Default::default() },
 //!     ],
 //! })?;
+//! ```
+//!
+//! **Simple** — single molecule (`mol` / `render` / `to_svg`); `align_to` is a
+//! pose molblock, not a document list index:
+//!
+//! ```ignore
+//! use xpict::{mol, MolRenderOptions};
+//!
+//! let mut m = mol("CCO")?;
+//! let rendered = m.render(MolRenderOptions::default())?;
+//! let svg = rendered.to_svg();
 //! ```
 
 #![allow(clippy::module_name_repetitions)]

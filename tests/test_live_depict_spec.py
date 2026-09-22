@@ -28,7 +28,7 @@ def test_depict_batch_shape():
 
 
 def test_molspec_rejects_index_align_to():
-    """Alignment is Mol/Rendered on render(), not a DepictSpec index."""
+    """Document MolSpec has no list-index align_to (simple client uses Mol/Rendered)."""
     with pytest.raises(ValidationError):
         MolSpec.model_validate({"smiles": "CCCO", "align_to": 0})
 

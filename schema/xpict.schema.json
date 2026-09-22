@@ -2,7 +2,7 @@
   "$defs": {
     "MolSpec": {
       "additionalProperties": false,
-      "description": "One molecule entry for the batch ``depict`` stub (paint options only).\n\nStructure: pass exactly one of ``smiles``, ``cxsmiles``, ``molfile``, or\n``source`` (alias for any structure string).\n\nAlignment is **not** on this model \u2014 use the client ``render(..., align_to=)``\nwith a Mol / Rendered target (or Rust pose molblock).",
+      "description": "One molecule entry in the preferred declarative document.\n\nStructure: pass exactly one of ``smiles``, ``cxsmiles``, ``molfile``, or\n``source`` (alias for any structure string).\n\nDo **not** put list-index ``align_to`` here. Imperative alignment belongs\non the simple client (``render(..., align_to=Mol|Rendered)``); document-\nlevel align references will grow with ``PictSpec``.",
       "properties": {
         "smiles": {
           "anyOf": [
@@ -198,7 +198,7 @@
     }
   },
   "additionalProperties": false,
-  "description": "Batch document: ordered mols \u2192 ordered rendered results.",
+  "description": "Preferred declarative document: ordered mols \u2192 ordered rendered results.",
   "properties": {
     "molecules": {
       "items": {

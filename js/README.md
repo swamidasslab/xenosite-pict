@@ -15,26 +15,34 @@ Shared Rust paint (`xpict-core`) via WASM; RDKit.js at the layout edge.
 npm install @xenosite/xpict
 ```
 
+**Preferred** — declarative document (grows toward full PictSpec):
+
 ```ts
 import { xpict } from "@xenosite/xpict";
 
-const mol = xpict.mol("c1ccccc1");
-const rendered = await xpict.render(mol, { mark_atoms: [0], color: "#0b6e4f" });
-const svg = xpict.toSvg(rendered.scene);
-
-const aligned = await xpict.render(xpict.mol("Cc1ccccc1"), { align_to: mol });
-
-// Optional batch stub (independent layouts; align via render + Mol/Rendered)
-const batch = await xpict.depict({
-  molecules: [{ smiles: "CCO", mark_atoms: [2] }, { smiles: "CCCO" }],
+const results = await xpict.depict({
+  molecules: [
+    { smiles: "CCO", mark_atoms: [2], color: "#0b6e4f" },
+    { smiles: "CCCO" },
+  ],
 });
+const svg = xpict.toSvg(results[0]!.scene);
 ```
 
-Surface: `xpict.mol` / `xpict.render` / `xpict.toSvg` (+ optional `xpict.depict`).  
-RDKit + WASM initialize on first `render`.
+**Simple** — single molecule (`mol` / `render` / `toSvg`; used internally):
 
-**Render options today:** `color`, `mark_atoms`, `mark_bonds`, `atom_shade`,
-`bond_shade`, `star_labels`, `bold_labels`, `align_to` (`Mol` | `Rendered`), `id`.
+```ts
+const mol = xpict.mol("c1ccccc1");
+const rendered = await xpict.render(mol, { mark_atoms: [0] });
+const svg = xpict.toSvg(rendered.scene);
+const aligned = await xpict.render(xpict.mol("Cc1ccccc1"), { align_to: mol });
+```
+
+RDKit + WASM initialize on first `render` / `depict`.
+
+**Render / MolSpec options today:** `color`, `mark_atoms`, `mark_bonds`,
+`atom_shade`, `bond_shade`, `star_labels`, `bold_labels`, `id`.  
+**Simple `align_to` only:** `Mol` | `Rendered` (not a list index).
 
 Chem label markup (`$R_1$`, `R^2`, `\alpha`, `**bold**`):  
 https://github.com/swamidasslab/xenosite-pict/blob/main/docs/label-markup.md

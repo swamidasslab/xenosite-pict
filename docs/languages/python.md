@@ -7,15 +7,12 @@ the Rust extension `xpict._native`; RDKit is an optional layout extra.
 pip install 'xpict[rdkit]'
 ```
 
-**Today on main:** document-shaped `render` / `Pict` (legacy / future PictSpec
-lift). That is **not** the preferred cross-language client — JS and Rust ship
-`mol` → `render` → `to_svg` with `align_to` as a Mol/Rendered (pose), not a
-list index.
+**Preferred:** declarative document — `render(doc)` / `Pict` (DepictSpec-shaped
+JSON, growing toward full `PictSpec`). This is the long-term surface.
 
 ```python
 from xpict import render
 
-# Works now: multi-mol / diagram document path
 svg = render(
     {
         "molecules": [
@@ -26,16 +23,13 @@ svg = render(
 )
 ```
 
-**Intended parity** (Mol client):
+**Simple:** single-molecule client (`Mol` → `render` → `to_svg`) mirrors JS/Rust
+for one-off depictions; that layer is what the document path calls internally.
+`align_to` on that client is a Mol/Rendered pose — **not** a list index like
+`align_to: 0`.
 
-```python
-# Mol.from_source("CCO").render(mark_atoms=[2]).to_svg()
-# other.render(align_to=home)  # Mol | Rendered — not align_to=0
-```
-
-Live contracts: `MolSpec` / `DepictSpec` in `xpict.contracts.depict` (batch
-paint fields only — no index `align_to`). Nested `PictSpec` under
-`xpict.future` is not the ship surface yet.
+Live contracts: `MolSpec` / `DepictSpec` in `xpict.contracts.depict`. Nested
+`PictSpec` under `xpict.future` is design-only until features graduate.
 
 - [Python autodoc](../api/python.md)
 - [Install](../install.md)

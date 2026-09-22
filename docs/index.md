@@ -6,23 +6,22 @@ one Rust paint core (`xpict-core`), with RDKit layout at each language edge
 
 [Browse the gallery](gallery.md) · [Install](install.md) · [API](api/overview.md)
 
-## Same three calls everywhere
+## Preferred: declarative document
 
 === "JavaScript"
 
     ```js
     import { xpict } from "@xenosite/xpict";
 
-    const mol = xpict.mol("c1ccccc1O");
-    const rendered = await xpict.render(mol, { mark_atoms: [6] });
-    const svg = xpict.toSvg(rendered.scene);
+    const [r] = await xpict.depict({
+      molecules: [{ smiles: "c1ccccc1O", mark_atoms: [6] }],
+    });
+    const svg = xpict.toSvg(r.scene);
     ```
 
 === "Python"
 
     ```python
-    # Document path today — preferred Mol.from_source(...).render().to_svg()
-    # mirrors JS/Rust when that client lands.
     from xpict import render
 
     svg = render({"molecules": [{"smiles": "c1ccccc1O", "mark_atoms": [6]}]})
@@ -31,10 +30,20 @@ one Rust paint core (`xpict-core`), with RDKit layout at each language edge
 === "Rust"
 
     ```rust
-    use xpict::mol;
+    use xpict::{depict, DepictSpec, MolSpec};
 
-    let svg = mol("c1ccccc1O")?.render()?.to_svg();
+    let out = depict(&DepictSpec {
+        molecules: vec![MolSpec {
+            smiles: Some("c1ccccc1O".into()),
+            mark_atoms: Some(vec![6]),
+            ..Default::default()
+        }],
+    })?;
+    let svg = out[0].to_svg();
     ```
+
+Simple single-mol client (`mol` → `render` → `toSvg`) is also available — see
+[API overview](api/overview.md).
 
 ## Live examples
 

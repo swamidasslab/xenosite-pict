@@ -1,15 +1,18 @@
 /**
- * MVP public surface for xenosite: plain JSON shapes + ``xpict`` namespace.
+ * Public surface for xenosite: declarative documents + a simple single-mol client.
  * RDKit stays hidden (auto script in browser / npm on Node).
  *
+ * Preferred — declarative document (grows toward full PictSpec):
  * ```ts
- * import { xpict } from "@xenosite/xpict";
+ * const [r] = await xpict.depict({ molecules: [{ smiles: "CCCC", mark_atoms: [0] }] });
+ * const svg = xpict.toSvg(r.scene);
+ * ```
  *
+ * Simple — single molecule (used internally by depict):
+ * ```ts
  * const mol = xpict.mol("CCCC");
  * const rendered = await xpict.render(mol);
- * // tweak rendered.scene if needed, then:
  * const svg = xpict.toSvg(rendered.scene);
- *
  * const aligned = await xpict.render(xpict.mol("CCCO"), { align_to: mol });
  * ```
  */
@@ -91,9 +94,9 @@ export type MolRenderOptions = {
 };
 
 /**
- * One molecule in the batch ``depict`` stub (expandable toward full PictSpec).
- * Alignment is **not** expressed here — use ``render(mol, { align_to })`` with a
- * ``Mol`` / ``Rendered`` target (the agreed client API).
+ * One molecule entry in the preferred declarative document.
+ * Do not put list-index ``align_to`` here — imperative align is on
+ * ``render(mol, { align_to: Mol | Rendered })``; document-level refs grow later.
  */
 export type MolSpec = {
   smiles?: string;
@@ -110,7 +113,7 @@ export type MolSpec = {
   bold_labels?: boolean;
 };
 
-/** Limited declarative document: mol list in → ``Rendered[]`` out. */
+/** Preferred declarative document: mol list in → ``Rendered[]`` out. */
 export type DepictSpec = {
   molecules: MolSpec[];
 };
@@ -329,9 +332,8 @@ function structureFromSpec(entry: MolSpec): string {
 }
 
 /**
- * Batch stub: ``{ molecules: [...] }`` → ``Rendered[]``.
- * Independent layouts only — for ``align_to``, call ``render`` with a
- * ``Mol`` / ``Rendered`` target.
+ * Preferred document API: ``{ molecules: [...] }`` → ``Rendered[]``.
+ * Implemented via the simple ``mol`` / ``render`` client (no list-index align).
  */
 async function depict(spec: DepictSpec): Promise<Rendered[]> {
   const out: Rendered[] = [];
@@ -359,6 +361,6 @@ export const xpict = {
   render,
   /** Scene JSON → SVG string (tweak ``rendered.scene`` first if needed). */
   toSvg: sceneToSvg,
-  /** Mol-list document → ``Rendered[]`` (stub toward full PictSpec). */
+  /** Preferred declarative document → ``Rendered[]`` (grows toward PictSpec). */
   depict,
 } as const;

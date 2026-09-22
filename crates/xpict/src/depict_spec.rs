@@ -1,21 +1,21 @@
 //! Limited declarative document: list of mols → list of [`Rendered`].
 //!
-//! This is the expandable stub toward full ``PictSpec``. Only fields that the
-//! single-mol client already supports are accepted. Alignment is **not**
-//! expressed here — use [`crate::render`] with
-//! [`crate::MolRenderOptions::align_to`] (pose molblock from [`crate::Rendered::frame`]).
+//! This is the **preferred** public document surface (expandable toward full
+//! ``PictSpec``). It calls [`crate::render`] / [`crate::mol`] internally.
+//! Do not put list-index ``align_to`` on [`MolSpec`] — imperative alignment
+//! belongs on [`crate::MolRenderOptions::align_to`] (pose molblock).
 
 use serde::{Deserialize, Serialize};
 
 use crate::{render, Error, Mol, MolRenderOptions, Rendered};
 
-/// Batch depiction document (MVP).
+/// Preferred declarative depiction document (MVP subset of PictSpec).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct DepictSpec {
     pub molecules: Vec<MolSpec>,
 }
 
-/// One molecule entry — mirrors JS/Python render options + a structure string.
+/// One molecule entry — paint options + a structure string.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct MolSpec {
     /// SMILES or CXSMILES (preferred field name for the document stub).
@@ -74,7 +74,7 @@ impl MolSpec {
     }
 }
 
-/// Render every molecule independently (no index-based ``align_to``).
+/// Render every molecule via the simple [`crate::render`] client.
 pub fn depict(spec: &DepictSpec) -> Result<Vec<Rendered>, Error> {
     let mut out: Vec<Rendered> = Vec::with_capacity(spec.molecules.len());
     for entry in &spec.molecules {

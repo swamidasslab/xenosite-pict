@@ -1,8 +1,11 @@
 """xpict — molecule depiction.
 
-Preferred cross-language surface: ``mol`` / ``render`` / ``to_svg`` (JS + Rust
-today; Python Mol client landing). This package currently exports document
-``render`` / ``Pict`` plus live ``MolSpec`` / ``DepictSpec`` contracts.
+**Preferred:** declarative document (``DepictSpec`` / ``render(doc)`` /
+``depict``) — grows toward full ``PictSpec``.
+
+**Simple:** ``mol`` / ``render`` / ``to_svg`` for single-molecule depiction;
+the document path uses that layer internally (JS + Rust today; Python Mol
+client landing).
 """
 
 from __future__ import annotations

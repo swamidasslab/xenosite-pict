@@ -16,11 +16,62 @@ Label markup (scripts, `\alpha`, `**bold**`): [`docs/label-markup.md`](docs/labe
 
 ## Public API (shipped)
 
-Three calls — same idea in every language:
+Two layers — same paint underneath:
 
-1. **`mol(source)`** — SMILES / CXSMILES / molfile → input handle  
-2. **`render(mol, opts?)`** — layout + paint → **`Rendered`** (editable `scene`, coords, frame)  
-3. **`toSvg(scene)`** — scene JSON → SVG string  
+1. **Preferred — declarative document** (`depict` / `DepictSpec`, growing toward
+   full `PictSpec`). JSON in → rendered molecules out. Uses the simple API
+   internally; this is the surface that keeps gaining diagram / chrome features.
+2. **Simple — single molecule** (`mol` → `render` → `toSvg`). Handy when you
+   only need one depiction (or imperative align). Not the long-term document
+   model.
+
+### Preferred: declarative document
+
+```ts
+import { xpict } from "@xenosite/xpict";
+
+const results = await xpict.depict({
+  molecules: [
+    { smiles: "CCO", mark_atoms: [2], color: "#0b6e4f" },
+    { smiles: "CCCO" },
+  ],
+});
+// results: Rendered[] — each has .scene; xpict.toSvg(results[0].scene)
+```
+
+```python
+from xpict import render  # document path (Pict / DepictSpec-shaped JSON)
+
+svg = render(
+    {
+        "molecules": [
+            {"smiles": "CCO", "mark_atoms": [2]},
+            {"smiles": "CCCO"},
+        ]
+    }
+)
+```
+
+```rust
+use xpict::{depict, DepictSpec, MolSpec};
+
+let results = depict(&DepictSpec {
+    molecules: vec![
+        MolSpec { smiles: Some("CCO".into()), mark_atoms: Some(vec![2]), ..Default::default() },
+        MolSpec { smiles: Some("CCCO".into()), ..Default::default() },
+    ],
+})?;
+```
+
+Live contract: `MolSpec` / `DepictSpec` (`xpict.contracts.depict`,
+`schema/xpict.schema.json`). Nested diagrams / ELK / reaction chrome stay under
+`xpict.future` until they graduate into contracts.
+
+**Document `align_to`:** not a list index (`0`). Alignment in the simple API is
+a `Mol` / `Rendered` (or Rust pose molblock). Document-level align references
+will land as the declarative model grows — do not invent index-based align.
+
+### Simple: single-molecule client
 
 ```ts
 import { xpict } from "@xenosite/xpict";
@@ -30,12 +81,6 @@ const rendered = await xpict.render(mol, { mark_atoms: [0], color: "#0b6e4f" });
 const svg = xpict.toSvg(rendered.scene);
 
 const aligned = await xpict.render(xpict.mol("Cc1ccccc1"), { align_to: mol });
-```
-
-```python
-# Preferred (objects/methods) — see client when merged:
-# Mol.from_source("CCO").render(mark_atoms=[2]).to_svg()
-from xpict import Pict  # multi-mol / legacy document path still available
 ```
 
 ```rust
@@ -49,7 +94,7 @@ let rendered = m.render(MolRenderOptions {
 let svg = rendered.to_svg();
 ```
 
-### Options available today
+### Options available today (simple `render` / each `MolSpec` entry)
 
 | Option | Effect |
 | --- | --- |
@@ -58,34 +103,12 @@ let svg = rendered.to_svg();
 | `atom_shade` / `bond_shade` | Plot-dot shading scores |
 | `star_labels` | Labels for `*` atoms (encounter order); else CXSMILES `|$…$|` by index |
 | `bold_labels` | Bold Liberation + thicker stem-keyed strokes |
-| `align_to` | Template pose (`Mol` / `Rendered` in JS·Py; molblock string in Rust) |
+| `align_to` | **Simple API only:** template pose (`Mol` / `Rendered` in JS·Py; molblock in Rust) |
 | `id` | Optional molecule id on the paint ABI |
 
 **Not in the public MVP yet:** nested diagrams, ELK placement, reaction/network
 chrome, captions/annotations as first-class document nodes. Those remain
 under ``xpict.future`` / ``schema/future/`` for design review (`PictSpec`).
-
-### Batch stub (expandable seam)
-
-A thin declarative document that only knows **lists of mols** with the paint
-options above (no alignment indices), and returns a **language-level list of
-`Rendered`**:
-
-```ts
-const results = await xpict.depict({
-  molecules: [
-    { smiles: "CCO", mark_atoms: [2] },
-    { smiles: "CCCO" },
-  ],
-});
-// results: Rendered[]
-```
-
-Alignment stays on the client API: `render(mol, { align_to: otherMol })` (JS),
-`align_to=rendered` (Python client), or a pose molblock (Rust). Same batch
-shape in Rust (`xpict::depict`); Python still uses the document `render` path
-until the Mol client lands. This stub grows toward full `PictSpec` without
-blocking shipping.
 
 ## Docs & demo
 

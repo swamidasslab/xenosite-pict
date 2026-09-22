@@ -1,8 +1,9 @@
-"""Live declarative subset — mol list in → list of rendered molecules out.
+"""Live declarative subset — preferred document: mol list → rendered molecules.
 
-Matches JS ``xpict.depict`` / Rust ``xpict::depict``. This is what the public
-package ships today. Nested diagrams, annotations, ELK, etc. stay in
-``xpict.future``.
+Matches JS ``xpict.depict`` / Rust ``xpict::depict``. The simple
+``mol`` / ``render`` / ``to_svg`` client is for single-mol callers; the
+document path uses that layer internally. Nested diagrams, annotations, ELK,
+etc. stay in ``xpict.future`` until they graduate here.
 """
 
 from __future__ import annotations
@@ -15,13 +16,14 @@ class StrictModel(BaseModel):
 
 
 class MolSpec(StrictModel):
-    """One molecule entry for the batch ``depict`` stub (paint options only).
+    """One molecule entry in the preferred declarative document.
 
     Structure: pass exactly one of ``smiles``, ``cxsmiles``, ``molfile``, or
     ``source`` (alias for any structure string).
 
-    Alignment is **not** on this model — use the client ``render(..., align_to=)``
-    with a Mol / Rendered target (or Rust pose molblock).
+    Do **not** put list-index ``align_to`` here. Imperative alignment belongs
+    on the simple client (``render(..., align_to=Mol|Rendered)``); document-
+    level align references will grow with ``PictSpec``.
     """
 
     smiles: str | None = Field(default=None, description="SMILES string")
@@ -77,6 +79,6 @@ class MolSpec(StrictModel):
 
 
 class DepictSpec(StrictModel):
-    """Batch document: ordered mols → ordered rendered results."""
+    """Preferred declarative document: ordered mols → ordered rendered results."""
 
     molecules: list[MolSpec] = Field(default_factory=list)
