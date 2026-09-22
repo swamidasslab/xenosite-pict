@@ -4,7 +4,7 @@
 //! the language edge via RDKit. This module only rotates/translates point
 //! sets so a caller-supplied correspondence lands on a **template** frame.
 //!
-//! Keep in sync with `src/xpict/align.py` (`_kabsch_2d`, `_apply_transform`).
+//! Keep in sync with `python/xpict/align.py` (`_kabsch_2d`, `_apply_transform`).
 
 /// Rigid transform: `x' = cos·x ∓ sin·y + tx`, `y' = sin·x ± cos·y + ty`
 /// (sign of the sin terms flips when [`RigidTransform::det`] is negative).

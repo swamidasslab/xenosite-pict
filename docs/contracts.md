@@ -31,7 +31,7 @@ Import as ``from xpict.future import PictSpec, MoleculeSpec, …``. Lab code
 (``Pict``, POCs, nested-schema tests) still uses these models; they are **not**
 the publish surface until features land in ``contracts``.
 
-See ``src/xpict/future/README.md``.
+See ``python/xpict/future/README.md``.
 
 ## Runtime vs document
 

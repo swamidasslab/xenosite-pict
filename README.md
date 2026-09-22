@@ -9,8 +9,10 @@ Import / package names:
 | Language | Package |
 | --- | --- |
 | JS/TS | [`@swamidasslab/xpict`](docs/npm-xenosite.md) (GitHub Packages) |
-| Python | `xpict` (PyPI — publish setup in [`docs/publish.md`](docs/publish.md)) |
+| Python | `xpict` (PyPI — [`docs/publish.md`](docs/publish.md); source in `python/`) |
 | Rust | `xpict` on crates.io (depends on `xpict-core`; see publish doc) |
+
+Label markup (scripts, `\alpha`, `**bold**`): [`docs/label-markup.md`](docs/label-markup.md).
 
 ## Public API (shipped)
 
@@ -81,10 +83,15 @@ const results = await xpict.depict({
 Same shape in Rust (`xpict::depict`) and documented for Python. This is the
 stub to grow toward full `PictSpec` without blocking shipping.
 
-## Demo
+## Docs & demo
 
-Browser demo (GitHub Pages): [`demo/`](demo/) →
+Cross-language docs on GitHub Pages:
 https://swamidasslab.github.io/xenosite-pict/
+
+JS interactive demo (align + paint):
+https://swamidasslab.github.io/xenosite-pict/js/demo/
+
+Sources: [`site/`](site/) (docs) · [`demo/`](demo/) (JS playground).
 
 ## Install / build (dev)
 

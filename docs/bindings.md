@@ -70,7 +70,7 @@ of fontTools/Shapely.
 
 Crates to prefer when filling stubs: **`ttf-parser`/`skrifa`** (fonts),
 **`geo` + `i_overlay`** (boolean + buffer). Keep Liberation files under
-`src/xpict/data/fonts/` (or `crates/xpict-core/fonts/`) so both bindings share bytes.
+`python/xpict/data/fonts/` (or `crates/xpict-core/fonts/`) so both bindings share bytes.
 
 ## Coords + alignment (RDKit at the edges, Rust for shared math)
 

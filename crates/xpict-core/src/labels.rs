@@ -7,11 +7,14 @@
 //! traveling part — the first or last glyph is the center depending on the
 //! bond approach side.
 //!
-//! Orientation follows RDKit MolDraw2D (`E`/`W`/`N`/`S`). H-counts and charges
-//! are fake scripts (scale + buffer) outlined as glyph **paths**, not text.
+//! Orientation follows RDKit MolDraw2D (`E`/`W`/`N`/`S`). **All** chem scripts
+//! (H-counts, charges, star-label markup, symbols, bold/italic) go through
+//! [`crate::markup::parse_label_markup`] → [`ScriptRole`] fake scripts,
+//! outlined as glyph **paths**, not ``<text>``.
 
 use crate::font::{self, ChemGlyph, FaceStyle, ScriptRole};
 use crate::geom::Shape;
+use crate::markup::{self, parse_script_markup};
 use crate::metrics::LABEL_GAP_PX;
 
 /// Which side the traveling text extends toward (RDKit OrientType).
@@ -60,7 +63,10 @@ pub struct PlacedLabel {
 
 /// Split a raw label into center + traveling H + charge.
 ///
-/// Accepts backend strings like ``NH2``, ``OH``, ``NH4+``, ``O−``, ``*``.
+/// Accepts backend strings like ``NH2``, ``OH``, ``NH4+``, ``O−``, ``*``,
+/// and marked forms ``$R_1$`` / ``R^2`` (markup stays on ``center`` for
+/// [`parse_label_markup`]). Bare underscores (``my_name``) are **not**
+/// treated as scripts at split time.
 pub fn split_label(raw: &str) -> LabelParts {
     let s = raw.trim();
     if s.is_empty() {
@@ -70,10 +76,30 @@ pub fn split_label(raw: &str) -> LabelParts {
             charge: 0,
         };
     }
-    let (body, charge) = strip_charge(s);
+    // Keep `$…$` intact so the markup parser still sees the chem zone.
+    let (body, charge) = if s.starts_with('$') && s.ends_with('$') && s.len() >= 2 {
+        // Charge rarely wraps the dollars; strip charge outside only.
+        (s.to_string(), 0)
+    } else {
+        strip_charge(s)
+    };
     if body == "*" {
         return LabelParts {
             center: "*".into(),
+            traveling: String::new(),
+            charge,
+        };
+    }
+    // Explicit markup: `$…$`, `^`, or braced `_{…}` — no H-split.
+    let has_markup = body.contains('$')
+        || body.contains('^')
+        || body.contains("_{")
+        || body.contains("\\")
+        || body.contains("**")
+        || (body.contains('*') && body != "*");
+    if has_markup {
+        return LabelParts {
+            center: body,
             traveling: String::new(),
             charge,
         };
@@ -259,63 +285,44 @@ pub fn label_side_for(
     orient
 }
 
-fn charge_glyphs(charge: i32) -> Vec<ChemGlyph> {
+fn charge_glyphs(charge: i32, style: FaceStyle) -> Vec<ChemGlyph> {
     if charge == 0 {
         return Vec::new();
     }
-    let mut out = Vec::new();
     let mag = charge.unsigned_abs();
-    if mag > 1 {
-        for d in mag.to_string().chars() {
-            out.push(ChemGlyph {
-                ch: d,
-                role: ScriptRole::Superscript,
-            });
-        }
-    }
-    out.push(ChemGlyph {
-        ch: if charge > 0 { '+' } else { '-' },
-        role: ScriptRole::Superscript,
-    });
-    out
+    let sign = if charge > 0 { '+' } else { '-' };
+    // Single pathway: charge → ``^`` / ``^{…}`` → parse_label_markup.
+    let marked = if mag == 1 {
+        format!("^{sign}")
+    } else {
+        format!("^{{{mag}{sign}}}")
+    };
+    markup::parse_label_markup(&marked, style)
 }
 
-fn h_travel_glyphs(parts: &LabelParts) -> Vec<ChemGlyph> {
+fn h_travel_glyphs(parts: &LabelParts, style: FaceStyle) -> Vec<ChemGlyph> {
     let n = h_count(parts);
     if n == 0 {
         return Vec::new();
     }
-    let mut out = vec![ChemGlyph {
-        ch: 'H',
-        role: ScriptRole::Normal,
-    }];
-    if n > 1 {
-        for d in n.to_string().chars() {
-            out.push(ChemGlyph {
-                ch: d,
-                role: ScriptRole::Subscript,
-            });
-        }
-    }
-    out
+    // Braced ``H_{n}`` so subscript works outside ``$…$`` (bare ``_`` does not).
+    let marked = if n == 1 {
+        "H".to_string()
+    } else {
+        format!("H_{{{n}}}")
+    };
+    markup::parse_label_markup(&marked, style)
 }
 
-fn center_glyphs(parts: &LabelParts) -> Vec<ChemGlyph> {
-    parts
-        .center
-        .chars()
-        .map(|ch| ChemGlyph {
-            ch,
-            role: ScriptRole::Normal,
-        })
-        .collect()
+fn center_glyphs(parts: &LabelParts, style: FaceStyle) -> Vec<ChemGlyph> {
+    markup::parse_label_markup(&parts.center, style)
 }
 
 /// Glyphs in draw order for an orientation (atom-center first for E; …).
-fn glyphs_for_side(parts: &LabelParts, side: LabelSide) -> Vec<ChemGlyph> {
-    let center = center_glyphs(parts);
-    let travel = h_travel_glyphs(parts);
-    let charge = charge_glyphs(parts.charge);
+fn glyphs_for_side(parts: &LabelParts, side: LabelSide, style: FaceStyle) -> Vec<ChemGlyph> {
+    let center = center_glyphs(parts, style);
+    let travel = h_travel_glyphs(parts, style);
+    let charge = charge_glyphs(parts.charge, style);
     match side {
         LabelSide::East | LabelSide::South | LabelSide::North => {
             let mut g = center;
@@ -335,7 +342,7 @@ fn glyphs_for_side(parts: &LabelParts, side: LabelSide) -> Vec<ChemGlyph> {
 
 /// Plain display string after orientation (``OH`` / ``HO`` / ``NH₂⁺``).
 pub fn compose_label(parts: &LabelParts, side: LabelSide) -> String {
-    let glyphs = glyphs_for_side(parts, side);
+    let glyphs = glyphs_for_side(parts, side, FaceStyle::Regular);
     glyphs_to_data_text(&glyphs)
 }
 
@@ -403,6 +410,7 @@ fn advance_px(text: &str, font_px: f64, style: FaceStyle) -> f64 {
         .map(|ch| ChemGlyph {
             ch,
             role: ScriptRole::Normal,
+            face: style,
         })
         .collect();
     advance_glyphs_px(&glyphs, font_px, style)
@@ -413,19 +421,29 @@ fn baseline_offset(font_px: f64, style: FaceStyle) -> f64 {
     0.5 * (face.cap_height / face.upem) * font_px
 }
 
-/// Atom-center glyph string (element token, or first/last char of abbreviation).
-fn center_glyph_text(parts: &LabelParts, side: LabelSide) -> String {
-    if parts.center.is_empty() {
-        return String::new();
+/// Atom-center glyph(s) for clearance / anchoring (element token, or one
+/// base glyph of an abbreviation — never a script mark or digit alone).
+fn center_anchor_glyphs(parts: &LabelParts, side: LabelSide, style: FaceStyle) -> Vec<ChemGlyph> {
+    let center = center_glyphs(parts, style);
+    if center.is_empty() {
+        return Vec::new();
     }
     if !parts.traveling.is_empty() || parts.charge != 0 {
-        return parts.center.clone();
+        return center;
     }
-    let ch = match side {
-        LabelSide::East | LabelSide::South | LabelSide::North => parts.center.chars().next(),
-        LabelSide::West => parts.center.chars().last(),
+    let normals: Vec<ChemGlyph> = center
+        .iter()
+        .copied()
+        .filter(|g| g.role == ScriptRole::Normal)
+        .collect();
+    if normals.is_empty() {
+        return center;
+    }
+    let g = match side {
+        LabelSide::East | LabelSide::South | LabelSide::North => normals[0],
+        LabelSide::West => *normals.last().unwrap(),
     };
-    ch.map(|c| c.to_string()).unwrap_or_default()
+    vec![g]
 }
 
 /// Advance from string start to the start of the center glyph (E/W runs).
@@ -439,16 +457,19 @@ fn prefix_before_center(
         LabelSide::East | LabelSide::North | LabelSide::South => 0.0,
         LabelSide::West => {
             if parts.traveling.is_empty() && parts.charge == 0 {
-                let mut chars = parts.center.chars();
-                let last = chars.next_back();
-                if last.is_none() {
+                let center = center_glyphs(parts, style);
+                let normals: Vec<_> = center
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, g)| g.role == ScriptRole::Normal)
+                    .collect();
+                let Some(&(idx, _)) = normals.last() else {
                     return 0.0;
-                }
-                let prefix: String = chars.collect();
-                return advance_px(&prefix, font_px, style);
+                };
+                return advance_glyphs_px(&center[..idx], font_px, style);
             }
-            let mut prefix = charge_glyphs(parts.charge);
-            prefix.extend(h_travel_glyphs(parts));
+            let mut prefix = charge_glyphs(parts.charge, style);
+            prefix.extend(h_travel_glyphs(parts, style));
             advance_glyphs_px(&prefix, font_px, style)
         }
     }
@@ -461,12 +482,12 @@ fn center_glyph_ink_rel(
     font_px: f64,
     style: FaceStyle,
 ) -> (f64, Option<(f64, f64, f64, f64)>) {
-    let text = center_glyph_text(parts, side);
-    if text.is_empty() {
+    let anchor = center_anchor_glyphs(parts, side, style);
+    if anchor.is_empty() {
         return (0.0, None);
     }
     // ``*`` uses the custom star metrics.
-    if text == "*" {
+    if anchor.len() == 1 && anchor[0].ch == '*' && anchor[0].role == ScriptRole::Normal {
         let face = font::face_metrics(style);
         let scale = font_px / face.upem;
         let (shape, adv_em) = font::outline_star_em(style);
@@ -485,41 +506,18 @@ fn center_glyph_ink_rel(
     }
     let face = font::face_metrics(style);
     let scale = font_px / face.upem;
-    let mut advance_em = 0.0;
-    let mut ink_xmin: Option<f64> = None;
-    let mut ink_ymin: Option<f64> = None;
-    let mut ink_xmax: Option<f64> = None;
-    let mut ink_ymax: Option<f64> = None;
-    let mut x_cursor = 0.0;
-    for ch in text.chars() {
-        let Some(g) = font::glyph_metrics(ch, style) else {
-            continue;
-        };
-        if g.has_ink() {
-            let gx0 = x_cursor + g.ink_xmin.unwrap();
-            let gy0 = g.ink_ymin.unwrap();
-            let gx1 = x_cursor + g.ink_xmax.unwrap();
-            let gy1 = g.ink_ymax.unwrap();
-            ink_xmin = Some(ink_xmin.map_or(gx0, |v| v.min(gx0)));
-            ink_ymin = Some(ink_ymin.map_or(gy0, |v| v.min(gy0)));
-            ink_xmax = Some(ink_xmax.map_or(gx1, |v| v.max(gx1)));
-            ink_ymax = Some(ink_ymax.map_or(gy1, |v| v.max(gy1)));
-        }
-        x_cursor += g.advance;
-        advance_em += g.advance;
-    }
-    let advance = advance_em * scale;
+    let (shape, adv_em) = font::outline_chem_run_em(&anchor, style);
+    let advance = adv_em * scale;
     let half = 0.5 * advance;
     let base = baseline_offset(font_px, style);
-    let ink = match (ink_xmin, ink_ymin, ink_xmax, ink_ymax) {
-        (Some(x0), Some(y0), Some(x1), Some(y1)) => Some((
+    let ink = shape.and_then(|s| s.bounds()).map(|(x0, y0, x1, y1)| {
+        (
             x0 * scale - half,
             x1 * scale - half,
             base - y1 * scale,
             base - y0 * scale,
-        )),
-        _ => None,
-    };
+        )
+    });
     (advance, ink)
 }
 
@@ -567,7 +565,7 @@ fn outline_placed(
 
     match side {
         LabelSide::East | LabelSide::West => {
-            let glyphs = glyphs_for_side(parts, side);
+            let glyphs = glyphs_for_side(parts, side, style);
             font::compile_chem_shapes(
                 &glyphs,
                 origin_x,
@@ -579,9 +577,9 @@ fn outline_placed(
         }
         LabelSide::North | LabelSide::South => {
             // Stack: center on atom; travel (+ charge) above (N) or below (S).
-            let center = center_glyphs(parts);
-            let mut travel = h_travel_glyphs(parts);
-            travel.extend(charge_glyphs(parts.charge));
+            let center = center_glyphs(parts, style);
+            let mut travel = h_travel_glyphs(parts, style);
+            travel.extend(charge_glyphs(parts.charge, style));
             let (c_shape, c_adv_em) = font::outline_chem_run_em(&center, style);
             let c_adv = c_adv_em * scale;
             let c_origin_x = atom_x - 0.5 * c_adv;
@@ -823,6 +821,51 @@ mod tests {
         let parts = split_label("NH2");
         assert_eq!(compose_label(&parts, LabelSide::East), "NH₂");
         assert_eq!(compose_label(&parts, LabelSide::West), "H₂N");
+        // Same pathway as braced markup (bare ``H_2`` is literal outside ``$``).
+        let via_markup = parse_script_markup("H_{2}");
+        assert_eq!(via_markup.len(), 2);
+        assert_eq!(via_markup[0].ch, 'H');
+        assert_eq!(via_markup[1].role, ScriptRole::Subscript);
+    }
+
+    #[test]
+    fn star_label_scripts_via_markup() {
+        // Bare underscore is literal (``my_name``-safe).
+        assert_eq!(
+            compose_label(&split_label("R_1"), LabelSide::East),
+            "R_1"
+        );
+        assert_eq!(
+            compose_label(&split_label("my_name"), LabelSide::East),
+            "my_name"
+        );
+        assert_eq!(
+            compose_label(&split_label("$R_1$"), LabelSide::East),
+            "R₁"
+        );
+        assert_eq!(
+            compose_label(&split_label("R^2"), LabelSide::East),
+            "R²"
+        );
+        assert_eq!(
+            compose_label(&split_label("R^{2+}"), LabelSide::East),
+            "R²⁺"
+        );
+        assert_eq!(
+            compose_label(&split_label(r"$\alpha$"), LabelSide::East),
+            "α"
+        );
+        assert_eq!(
+            compose_label(&split_label("**R**"), LabelSide::East),
+            "R"
+        );
+        let pl = place_label("$R_1$", 0.0, 0.0, LabelSide::East, FONT_PX, FaceStyle::Regular);
+        assert_eq!(pl.text, "R₁");
+        assert!(!pl.path_d.is_empty());
+        // West anchors on R (not the subscript digit).
+        let west = place_label("$R_1$", 0.0, 0.0, LabelSide::West, FONT_PX, FaceStyle::Regular);
+        assert_eq!(west.text, "R₁");
+        assert!(west.origin_x < 0.0 || west.origin_x.abs() < FONT_PX);
     }
 
     #[test]

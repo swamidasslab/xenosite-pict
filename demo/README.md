@@ -1,26 +1,17 @@
-# xpict browser demo (GitHub Pages)
+# xpict browser demo (source)
 
-Interactive demo: two SMILES inputs, query aligned to template, plus paint
-options (`color`, `mark_atoms`, `mark_bonds`, `atom_shade`, `bond_shade`).
+Interactive JS demo: two SMILES, query aligned to template, paint options.
+
+**Published** on the docs site under **`/js/demo/`** (not the Pages root).
 
 ## Local
 
 ```bash
-# from repo root
 bash scripts/build_pages.sh
-# default output: demo/_site — or pass a path:
-# bash scripts/build_pages.sh _site
 cd demo/_site && python3 -m http.server 8765
-# open http://127.0.0.1:8765/
+# open http://127.0.0.1:8765/js/demo/
 ```
 
-## Publish
+Docs home: http://127.0.0.1:8765/
 
-Every push to `main` deploys via
-[`.github/workflows/pages.yml`](../.github/workflows/pages.yml)
-(also `workflow_dispatch`). Not tag-gated.
-
-Enable **Settings → Pages → Source: GitHub Actions** once in the repo.
-
-Live URL (after first deploy):
-https://swamidasslab.github.io/xenosite-pict/
+See [`site/README.md`](../site/README.md) for the full Pages layout.

@@ -1,6 +1,6 @@
 //! Concentric plot-dot shading (xenopict `PlotDot` semantics).
 //!
-//! Keep in sync with `src/xpict/draw/plotdot.py`.
+//! Keep in sync with `python/xpict/draw/plotdot.py`.
 
 /// One disk before paint: radius fraction in `[0, 1]`, color stop in `[-1, 1]`.
 #[derive(Debug, Clone, Copy, PartialEq)]

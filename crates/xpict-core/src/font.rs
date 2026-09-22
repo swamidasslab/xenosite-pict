@@ -21,12 +21,13 @@ use crate::metrics::{SCRIPT_SCALE, STAR_FRAC};
 const BEZIER_STEPS: usize = 8;
 
 const FONT_REGULAR: &[u8] =
-    include_bytes!("../../../src/xpict/data/fonts/LiberationSans-Regular.ttf");
-const FONT_BOLD: &[u8] = include_bytes!("../../../src/xpict/data/fonts/LiberationSans-Bold.ttf");
+    include_bytes!("../../../python/xpict/data/fonts/LiberationSans-Regular.ttf");
+const FONT_BOLD: &[u8] =
+    include_bytes!("../../../python/xpict/data/fonts/LiberationSans-Bold.ttf");
 const FONT_ITALIC: &[u8] =
-    include_bytes!("../../../src/xpict/data/fonts/LiberationSans-Italic.ttf");
+    include_bytes!("../../../python/xpict/data/fonts/LiberationSans-Italic.ttf");
 const FONT_BOLD_ITALIC: &[u8] =
-    include_bytes!("../../../src/xpict/data/fonts/LiberationSans-BoldItalic.ttf");
+    include_bytes!("../../../python/xpict/data/fonts/LiberationSans-BoldItalic.ttf");
 
 /// Liberation Sans face variant.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -288,11 +289,12 @@ pub enum ScriptRole {
     Superscript,
 }
 
-/// One chem-label glyph with an optional script role.
+/// One chem-label glyph with script role and face (markup bold/italic).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ChemGlyph {
     pub ch: char,
     pub role: ScriptRole,
+    pub face: FaceStyle,
 }
 
 fn script_cache() -> &'static Mutex<HashMap<(char, FaceStyle, ScriptRole), (Option<Shape>, f64)>> {
@@ -380,6 +382,10 @@ pub fn outline_star_em(style: FaceStyle) -> (Shape, f64) {
 
 /// Outline a chem glyph run in em space (+Y up). Returns `(shape, advance_em)`.
 ///
+/// Each glyph uses its own [`ChemGlyph::face`]. `style` is a fallback metrics
+/// face (cap-height for script shifts) when the run is empty of faces — callers
+/// usually pass the molecule default.
+///
 /// Subscripts drop by ~⅓ cap-height; superscripts rise by ~½ (RDKit-ish).
 pub fn outline_chem_run_em(glyphs: &[ChemGlyph], style: FaceStyle) -> (Option<Shape>, f64) {
     if glyphs.is_empty() {
@@ -387,20 +393,21 @@ pub fn outline_chem_run_em(glyphs: &[ChemGlyph], style: FaceStyle) -> (Option<Sh
     }
     // Lone ``*`` → custom star.
     if glyphs.len() == 1 && glyphs[0].ch == '*' && glyphs[0].role == ScriptRole::Normal {
-        let (s, adv) = outline_star_em(style);
+        let (s, adv) = outline_star_em(glyphs[0].face);
         return (if s.is_empty() { None } else { Some(s) }, adv);
     }
-    let face_m = face_metrics(style);
+    let metrics_face = glyphs.first().map(|g| g.face).unwrap_or(style);
+    let face_m = face_metrics(metrics_face);
     let sub_dy = -0.33 * face_m.cap_height;
     let super_dy = 0.50 * face_m.cap_height;
     let mut pen_x = 0.0;
     let mut acc: Option<Shape> = None;
     for g in glyphs {
         let (piece, adv) = if g.ch == '*' && g.role == ScriptRole::Normal {
-            let (s, a) = outline_star_em(style);
+            let (s, a) = outline_star_em(g.face);
             (Some(s), a)
         } else {
-            outline_glyph_em(g.ch, style, g.role)
+            outline_glyph_em(g.ch, g.face, g.role)
         };
         let dy = match g.role {
             ScriptRole::Normal => 0.0,
@@ -472,6 +479,7 @@ pub fn compile_text_shapes(
         .map(|ch| ChemGlyph {
             ch,
             role: ScriptRole::Normal,
+            face: style,
         })
         .collect();
     compile_chem_shapes(&glyphs, x, y, font_size, anchor, style)
@@ -617,14 +625,17 @@ mod tests {
             ChemGlyph {
                 ch: 'N',
                 role: ScriptRole::Normal,
+                face: FaceStyle::Regular,
             },
             ChemGlyph {
                 ch: '2',
                 role: ScriptRole::Subscript,
+                face: FaceStyle::Regular,
             },
             ChemGlyph {
                 ch: '+',
                 role: ScriptRole::Superscript,
+                face: FaceStyle::Regular,
             },
         ];
         let (shape, adv) = outline_chem_run_em(&glyphs, FaceStyle::Regular);
@@ -643,6 +654,7 @@ mod tests {
         let star_run = [ChemGlyph {
             ch: '*',
             role: ScriptRole::Normal,
+            face: FaceStyle::Regular,
         }];
         let (s, _) = outline_chem_run_em(&star_run, FaceStyle::Regular);
         assert!(s.unwrap().area() > 0.0);
@@ -660,10 +672,12 @@ mod tests {
             ChemGlyph {
                 ch: '\u{10FFFF}',
                 role: ScriptRole::Normal,
+                face: FaceStyle::Regular,
             },
             ChemGlyph {
                 ch: '*',
                 role: ScriptRole::Normal,
+                face: FaceStyle::Regular,
             },
         ];
         let (shape, adv) = outline_chem_run_em(&glyphs, FaceStyle::Regular);

@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Install — xpict</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,650&family=Source+Sans+3:wght@400;600&family=Source+Code+Pro:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./assets/site.css" />
+  </head>
+  <body>
+    <div class="atmosphere" aria-hidden="true"></div>
+    <nav class="site-nav" aria-label="Site">
+      <a class="mark" href="./">xpict</a>
+      <a href="./api.html">API</a>
+      <a href="./install.html" aria-current="page">Install</a>
+      <a href="./js/">JavaScript</a>
+      <a href="./python/">Python</a>
+      <a href="./rust/">Rust</a>
+      <span class="grow"></span>
+      <a class="ext" href="https://github.com/swamidasslab/xenosite-pict"
+        >GitHub</a
+      >
+    </nav>
+
+    <main class="wrap">
+      <h1>Install</h1>
+      <p class="muted">
+        Publishing setup (tokens, trusted publishing, tags) lives in the repo
+        as <code>docs/publish.md</code>.
+      </p>
+
+      <h2>JavaScript</h2>
+      <p>
+        Package <code>@swamidasslab/xpict</code> on GitHub Packages. In
+        <code>.npmrc</code>:
+      </p>
+      <pre><code>@swamidasslab:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=${NPM_TOKEN}</code></pre>
+      <pre><code>npm install @swamidasslab/xpict</code></pre>
+      <p>
+        Tag <code>js/v*</code> or run <strong>Publish JS package</strong> in
+        Actions. Interactive demo:
+        <a href="./js/demo/">/js/demo/</a>.
+      </p>
+
+      <h2>Python</h2>
+      <pre><code>uv sync --extra rdkit
+# or: pip install xpict[rdkit]  (once on PyPI)</code></pre>
+      <p>
+        Native extension via maturin (<code>xpict-py</code> →
+        <code>xpict._native</code>). RDKit is an optional extra for layout.
+      </p>
+
+      <h2>Rust</h2>
+      <pre><code># Cargo.toml
+xpict = "0.1"           # public API (needs system RDKit)
+# or paint-only:
+xpict-core = "0.1"</code></pre>
+      <p>
+        Publish <code>xpict-core</code> first, then <code>xpict</code>. System
+        RDKit + Boost required to build the public crate. See language page
+        <a href="./rust/">Rust</a>.
+      </p>
+    </main>
+
+    <footer class="site-foot">
+      <p><a href="./">← Home</a></p>
+    </footer>
+  </body>
+</html>

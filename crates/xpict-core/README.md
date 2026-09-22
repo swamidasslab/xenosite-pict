@@ -1,6 +1,6 @@
 # xpict-core
 
-Shared **depiction algorithms** for xpict. Python (`src/xpict/`) remains the
+Shared **depiction algorithms** for xpict. Python (`python/xpict/`) remains the
 algorithm lab and the working engine. As pieces stabilize, move them here so
 Python (PyO3) and JS (WASM) share one implementation.
 
@@ -66,7 +66,7 @@ JS and Python CI jobs **`needs: [rust]`** — Pages / publish call the same work
 
 | Edge | Crate | Consumer |
 | --- | --- | --- |
-| Python | `crates/xpict-py` → `xpict._native` | `src/xpict/native_bridge.py` |
+| Python | `crates/xpict-py` → `xpict._native` | `python/xpict/native_bridge.py` |
 | JS | `crates/xpict-wasm` → `js/src/wasm/` | `js/src/native.ts` |
 
 ```bash

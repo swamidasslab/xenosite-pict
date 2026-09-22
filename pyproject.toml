@@ -45,7 +45,7 @@ build-backend = "maturin"
 
 [tool.maturin]
 manifest-path = "crates/xpict-py/Cargo.toml"
-python-source = "src"
+python-source = "python"
 module-name = "xpict._native"
 include = ["schema/**", "js/**", "docs/**"]
 
@@ -59,7 +59,7 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["python"]
 
 [tool.ruff]
 line-length = 100
@@ -71,7 +71,7 @@ select = ["E", "F", "I", "UP"]
 ignore = ["E501"]
 
 [tool.pyright]
-include = ["src"]
+include = ["python"]
 # Typecheck against the oldest supported runtime.
 pythonVersion = "3.11"
 typeCheckingMode = "strict"

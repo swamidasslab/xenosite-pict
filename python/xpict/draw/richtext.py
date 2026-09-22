@@ -3,7 +3,12 @@
 Not a typesetting engine. Symbol macros expand to Unicode matched to the
 bundled Liberation Sans faces. Emphasis becomes span flags on those runs;
 :mod:`xpict.draw.glyphs` compiles the same spans to glyph shapes
-everywhere (atom labels, captions, edge labels).
+everywhere (captions, edge labels).
+
+**Atom / star labels** paint through the Rust dialect in
+``xpict-core::markup`` (same grammar: ``$R_1$``, ``R^2``, ``\\alpha``,
+``**bold**`` / ``*italic*``; bare ``_`` is literal outside ``$…$``). See
+``docs/label-markup.md``. Keep this module aligned when adding symbols.
 
 Symbols (examples)::
 

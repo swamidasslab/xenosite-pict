@@ -1,0 +1,96 @@
+# Publish xpict to PyPI (Trusted Publishing / API token).
+#
+# Triggers:
+#   - tag py/v*  (e.g. py/v0.1.5) → builds wheels + sdist, publishes
+#   - workflow_dispatch → same, optional dry_run
+#
+# PyPI Trusted Publishing should point at this workflow filename: pypi.yml
+# Package name: xpict (source under python/xpict/, not under xenosite).
+
+name: pypi
+
+on:
+  push:
+    tags:
+      - "py/v*"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build only (do not publish)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: pypi-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
+
+  build-and-publish:
+    needs: checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Set version from tag
+        if: startsWith(github.ref, 'refs/tags/py/v')
+        run: |
+          VER="${GITHUB_REF_NAME#py/v}"
+          echo "Publishing version $VER"
+          # Keep pyproject version in sync with the tag for the build.
+          python3 - <<PY
+          from pathlib import Path
+          import re
+          p = Path("pyproject.toml")
+          text = p.read_text()
+          text, n = re.subn(
+              r'(?m)^version = "[^"]+"',
+              f'version = "{VER}"',
+              text,
+              count=1,
+          )
+          assert n == 1, "pyproject version line not found"
+          p.write_text(text)
+          PY
+
+      - name: Build wheels (manylinux) + sdist
+        uses: PyO3/maturin-action@v1
+        with:
+          command: build
+          args: --release --out dist --find-interpreter
+          manylinux: auto
+          # maturin reads python-source=python from pyproject.toml
+
+      - name: List artifacts
+        run: ls -la dist
+
+      - name: Publish to PyPI
+        if: ${{ !inputs.dry_run }}
+        uses: PyO3/maturin-action@v1
+        with:
+          command: publish
+          args: --skip-existing dist/*
+        env:
+          # Prefer Trusted Publishing (OIDC). Fallback token if configured.
+          MATURIN_PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}

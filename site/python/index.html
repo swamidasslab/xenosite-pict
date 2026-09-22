@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Python — xpict</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,650&family=Source+Sans+3:wght@400;600&family=Source+Code+Pro:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../assets/site.css" />
+  </head>
+  <body>
+    <div class="atmosphere" aria-hidden="true"></div>
+    <nav class="site-nav" aria-label="Site">
+      <a class="mark" href="../">xpict</a>
+      <a href="../api.html">API</a>
+      <a href="../install.html">Install</a>
+      <a href="../js/">JavaScript</a>
+      <a href="./" aria-current="page">Python</a>
+      <a href="../rust/">Rust</a>
+      <span class="grow"></span>
+      <a class="ext" href="https://github.com/swamidasslab/xenosite-pict"
+        >GitHub</a
+      >
+    </nav>
+
+    <main class="wrap">
+      <h1>Python</h1>
+      <p class="hero-lede">
+        Package <code>xpict</code> on PyPI — source under
+        <code>python/xpict/</code> (own tree, not nested in xenosite). Pydantic
+        live contracts <code>MolSpec</code> / <code>DepictSpec</code>, paint via
+        Rust <code>_native.depict_molecule</code>, RDKit as an optional layout
+        extra.
+      </p>
+
+      <h2>Install</h2>
+      <pre><code>uv sync --extra rdkit
+./scripts/build_bindings.sh py</code></pre>
+      <p class="muted">
+        Publish workflow: <code>.github/workflows/pypi.yml</code> (tag
+        <code>py/v*</code>).
+      </p>
+
+      <h2>Live contracts</h2>
+      <pre><code>from xpict import DepictSpec, MolSpec
+
+doc = DepictSpec.model_validate({
+    "molecules": [
+        {"smiles": "CCO", "mark_atoms": [2]},
+        {"smiles": "CCCO", "align_to": 0},
+    ]
+})</code></pre>
+      <p class="muted">
+        Full nested <code>PictSpec</code> remains under
+        <code>xpict.future</code> for design — not the publish surface.
+      </p>
+
+      <h2>Label markup</h2>
+      <p>
+        Star / chem labels share one Rust dialect:
+        <code>$R_1$</code>, <code>R^2</code>, <code>\alpha</code>,
+        <code>**bold**</code> / <code>*italic*</code>. Bare
+        <code>my_name</code> stays literal. See
+        <a
+          href="https://github.com/swamidasslab/xenosite-pict/blob/main/docs/label-markup.md"
+          >label-markup.md</a
+        >.
+      </p>
+
+      <h2>Lab engine</h2>
+      <p>
+        <code>Pict(backend="rdkit").render(…)</code> still exercises multi-mol
+        / diagram paths used in tests and POCs while the public client settles
+        on <code>mol</code> / <code>render</code> / <code>to_svg</code>.
+      </p>
+    </main>
+
+    <footer class="site-foot">
+      <p><a href="../">← Home</a></p>
+    </footer>
+  </body>
+</html>

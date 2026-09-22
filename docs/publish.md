@@ -89,29 +89,30 @@ Do **not** make `xpict-py` or `xpict-wasm` depend on the crates.io `xpict` packa
 
 ---
 
-## 3. Python — PyPI
+## 3. Python — PyPI (`xpict`)
 
-Built with **maturin** (`pyproject.toml` → `crates/xpict-py`).
+Package name **`xpict`**. Source lives under **`python/xpict/`** (own tree,
+parallel to `js/` — not nested under xenosite). Built with **maturin**
+(`pyproject.toml` → `crates/xpict-py`).
+
+Workflow: [`.github/workflows/pypi.yml`](../.github/workflows/pypi.yml)
+(filename required for PyPI Trusted Publishing as configured).
+
+```bash
+git tag py/v0.1.5
+git push origin py/v0.1.5
+```
 
 ### One-time setup
 
-1. Create a PyPI project `xpict` (or reserved name) under the lab account.
-2. Prefer **Trusted Publishing**: PyPI → project → Publishing → add this GitHub repo / workflow environment.
-3. Or store `PYPI_API_TOKEN` as a repo secret.
+1. Create a PyPI project `xpict` under the lab account.
+2. Prefer **Trusted Publishing**: PyPI → project → Publishing → this GitHub
+   repo, workflow **`pypi.yml`**, environment as configured on PyPI.
+3. Or store `PYPI_API_TOKEN` as a repo secret (maturin fallback).
 
-### Suggested workflow (not checked in yet)
-
-```yaml
-# on tag py/v*
-- uses: PyO3/maturin-action@v1
-  with:
-    command: publish
-    args: --skip-existing
-  env:
-    MATURIN_PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
-```
-
-Publish **abi3 or per-version wheels** for 3.11–3.13 (matches `requires-python`). Optional extras `rdkit` / `indigo` stay PyPI metadata only — layout backends at the language edge.
+Publish **abi3 or per-version wheels** for 3.11–3.13 (matches `requires-python`).
+Optional extras `rdkit` / `indigo` stay PyPI metadata only — layout backends at
+the language edge.
 
 Local check:
 

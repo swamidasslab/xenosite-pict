@@ -1,6 +1,6 @@
 //! Bond strokes: skeleton centerlines, multi-bond offsets, stereo, joins.
 //!
-//! Keep in sync with `src/xpict/draw/bonds.py`.
+//! Keep in sync with `python/xpict/draw/bonds.py`.
 
 use std::collections::HashMap;
 

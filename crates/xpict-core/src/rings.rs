@@ -3,7 +3,7 @@
 //! Layout backends own coordinates. This module only supplies drawing helpers:
 //! which bonds sit in small rings, and unit normals toward the ring centroid
 //! so Kekulé offsets stay short and inside (not the acyclic extend-onto-singles
-//! path). Mirrors `src/xpict/draw/rings.py`.
+//! path). Mirrors `python/xpict/draw/rings.py`.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
