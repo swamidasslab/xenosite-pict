@@ -54,6 +54,39 @@ def test_forward_arrow_has_shaft_and_head():
     assert any(getattr(p, "cls", None) and "label" in (p.cls or "") for p in prims)
 
 
+def test_filled_arrow_head_halo_covers_stroke_tip():
+    """Stroked fill triangles need ink past the geometric tip (stroke radius)."""
+    from xpict.draw.drawn import _as_shape
+    from xpict.draw.halo import halo_from_shapes
+    from xpict.draw.metrics import HALO_GAP_PX
+    from xpict.draw.paths import filled_arrow_head_d, ink_from_path_prim, path_coords
+    from xpict.draw.scene_builder import _overlay_halo_jobs
+
+    tip = (100.0, 50.0)
+    ux, uy = 1.0, 0.0
+    head = PathPrim(
+        d=filled_arrow_head_d(tip[0], tip[1], ux, uy, size=9.0),
+        stroke="#222",
+        fill="#222",
+        stroke_width=1.0,
+        cls="edge edge-0 head",
+    )
+    ink = ink_from_path_prim(head)
+    assert ink is not None
+    # Stroke expands ink past the path vertex (half-open contains → probe inside).
+    assert ink.contains(tip[0] + ux * 0.25, tip[1] + uy * 0.25)
+    assert ink.bounds[2] > tip[0]  # xmax past geometric tip
+
+    jobs = _overlay_halo_jobs([head])
+    assert len(jobs) == 1
+    halo = halo_from_shapes(_as_shape(jobs[0][0]), jobs[0][1])
+    assert halo is not None
+    # Soft air past the painted tip (stroke/2 + most of HALO_GAP).
+    assert halo.contains(tip[0] + ux * (0.5 + 0.5 * HALO_GAP_PX), tip[1])
+    for x, y in path_coords(head.d)[:3]:
+        assert halo.contains(x, y)
+
+
 def test_dashed_and_open_and_equilibrium():
     a = Viewport(id="A", x=0, y=0, width=40, height=40)
     b = Viewport(id="B", x=140, y=20, width=40, height=40)

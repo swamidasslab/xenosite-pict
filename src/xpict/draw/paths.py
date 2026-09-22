@@ -98,13 +98,24 @@ def shift_path_d(d: str, dx: float, dy: float) -> str:
 
 
 def ink_from_path_prim(p: PathPrim) -> Shape | CapsuleInk | None:
-    """Approximate a stroked/filled PathPrim as ink for haloing."""
+    """Approximate a stroked/filled PathPrim as ink for haloing.
+
+    Filled paths (arrow heads, wedges) grow by half the stroke so the ink
+    matches the painted footprint — SVG stroke is centered on the fill edge.
+    """
     pts = path_coords(p.d)
     if not pts:
         return None
     if p.fill not in (None, "none") and len(pts) >= 3:
         poly = Shape.from_ring(pts)
-        return None if poly.is_empty else poly
+        if poly.is_empty:
+            return None
+        sw = float(p.stroke_width or 0.0)
+        if p.stroke not in (None, "none") and sw > 0:
+            grown = poly.buffer(0.5 * sw)
+            if not grown.is_empty:
+                return grown
+        return poly
     radius = max(p.stroke_width, STROKE_PX) * 0.5
     return path_polyline_shape(pts, radius)
 
