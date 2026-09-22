@@ -1,13 +1,11 @@
 /**
  * Scene JSON → SVG string (thin serializer matching Python ``scene_to_svg``).
  *
- * Text primitives emit ``<text>`` for now (glyph outlining stays Python/Rust).
+ * Scene already holds absolute drawing units (Rust depict bakes stem-scaled
+ * stroke widths). This layer only emits compact numbers (2 decimal places).
  *
- * ``stroke_width`` on paths/circles is in **stem units** (`1` = default bond
- * ink). Absolute SVG px = stem × [`STROKE_PX`].
+ * Text primitives emit ``<text>`` for now (glyph outlining stays Python/Rust).
  */
-
-import { strokeWidthPx } from "../metrics.js";
 
 export type TextAnchor = "start" | "middle" | "end";
 
@@ -17,7 +15,6 @@ export type ScenePrimitive =
       d: string;
       stroke?: string | null;
       fill?: string | null;
-      /** Stem units (`1` = default bond ink). Omit for default. */
       stroke_width?: number;
       opacity?: number;
       stroke_dasharray?: string | null;
@@ -31,7 +28,6 @@ export type ScenePrimitive =
       r: number;
       fill?: string | null;
       stroke?: string | null;
-      /** Stem units (`1` = default bond ink). Omit for default. */
       stroke_width?: number;
       opacity?: number;
       cls?: string | null;
@@ -77,10 +73,19 @@ function esc(s: string): string {
     .replace(/>/g, "&gt;");
 }
 
+/** Compact SVG number: 2 decimal places, trim trailing zeros. */
 function fmt(n: number): string {
   if (!Number.isFinite(n)) return "0";
-  const t = Math.round(n * 1e4) / 1e4;
-  return String(t);
+  const t = Math.round(n * 100) / 100;
+  if (Object.is(t, -0)) return "0";
+  const s = String(t);
+  return s;
+}
+
+const PATH_NUM = /[-+]?(?:\d+\.\d*|\.\d+|\d+)(?:[eE][-+]?\d+)?/g;
+
+function fmtPathD(d: string): string {
+  return d.replace(PATH_NUM, (m) => fmt(Number(m)));
 }
 
 function attr(name: string, value: string | number | null | undefined): string {
@@ -93,10 +98,10 @@ function renderPrimitive(p: ScenePrimitive): string {
   if (p.kind === "path") {
     return (
       `<path` +
-      attr("d", p.d) +
+      attr("d", fmtPathD(p.d)) +
       attr("fill", p.fill ?? "none") +
       attr("stroke", p.stroke ?? "none") +
-      attr("stroke-width", strokeWidthPx(p.stroke_width)) +
+      attr("stroke-width", p.stroke_width ?? 1.5) +
       attr("stroke-linecap", p.stroke_linecap ?? "round") +
       attr("stroke-linejoin", "round") +
       attr("opacity", p.opacity ?? 1) +
@@ -113,12 +118,7 @@ function renderPrimitive(p: ScenePrimitive): string {
       attr("r", fmt(p.r)) +
       attr("fill", p.fill ?? "none") +
       attr("stroke", p.stroke) +
-      attr(
-        "stroke-width",
-        p.stroke !== undefined && p.stroke !== null
-          ? strokeWidthPx(p.stroke_width)
-          : undefined
-      ) +
+      attr("stroke-width", p.stroke !== undefined ? p.stroke_width ?? 1.5 : undefined) +
       attr("opacity", p.opacity ?? 1) +
       attr("class", p.cls) +
       `/>`
@@ -139,7 +139,10 @@ function renderPrimitive(p: ScenePrimitive): string {
   );
 }
 
-function renderViewportLayers(vp: SceneViewport, names: string[]): string {
+function renderViewportLayers(
+  vp: SceneViewport,
+  names: string[]
+): string {
   const want = new Set(names);
   const chunks: string[] = [];
   for (const layer of vp.layers) {

@@ -69,7 +69,7 @@ def test_filled_path_ink_buffers_stroke_growth():
         d=filled_arrow_head_d(tip[0], tip[1], ux, uy, size=9.0),
         stroke="#222",
         fill="#222",
-        stroke_width=1.0,  # stem units → STROKE_PX drawing ink
+        stroke_width=1.0,
         cls="bond bond-wedge-up",
     )
     ink = ink_from_path_prim(stroked)

@@ -14,11 +14,8 @@ from xpict.structure import cx_atom_labels
 
 
 def _backend() -> str:
-    try:
-        Pict(backend="indigo").layout({"molecules": [{"smiles": "C"}]})
-        return "indigo"
-    except Exception:
-        return "native"
+    """MVP layout backend (indigo is out of scope for now)."""
+    return "native"
 
 
 def test_cx_atom_labels_parse():
@@ -69,10 +66,8 @@ def test_star_name_from_cxsmiles_native():
     assert "R1" in svg
 
 
+@pytest.mark.skip(reason="indigo not in MVP")
 def test_indigo_star_and_charge():
-    backend = _backend()
-    if backend != "indigo":
-        pytest.skip("indigo not installed")
     lay = Pict(backend="indigo").layout({"molecules": [{"smiles": "*C"}]}).molecules[0]
     assert any(a.element == "*" and a.label for a in lay.atoms)
     lay2 = Pict(backend="indigo").layout({"molecules": [{"smiles": "[NH4+]"}]}).molecules[0]
@@ -81,10 +76,8 @@ def test_indigo_star_and_charge():
     assert "radical" in svg
 
 
+@pytest.mark.skip(reason="indigo not in MVP")
 def test_indigo_cx_star_name():
-    backend = _backend()
-    if backend != "indigo":
-        pytest.skip("indigo not installed")
     lay = (
         Pict(backend="indigo")
         .layout({"molecules": [{"cxsmiles": "*C1ccccc1 |$R1;;;;;$|"}]})

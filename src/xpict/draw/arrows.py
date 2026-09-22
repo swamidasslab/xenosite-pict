@@ -7,7 +7,6 @@ from collections.abc import Sequence
 
 from xpict.contracts.scene import PathPrim, Primitive, TextPrim, Viewport
 from xpict.contracts.spec import EdgeArrow, EdgeSpec
-from xpict.draw.metrics import STROKE_PX
 
 _DEFAULT_COLOR = "#222"
 _DEFAULT_WIDTH = 1.6
@@ -15,12 +14,6 @@ _HEAD = 9.0
 _GAP = 6.0
 _DASH = "6 4"
 _EQ_SEP = 3.2
-
-
-def _stem(px: float) -> float:
-    if px == 0.0:
-        return 0.0
-    return px / STROKE_PX
 
 
 def _vp_center(vp: Viewport) -> tuple[float, float]:
@@ -149,7 +142,7 @@ def _shaft_poly(
         d=_path_d(pts),
         stroke=color,
         fill="none",
-        stroke_width=_stem(width),
+        stroke_width=width,
         stroke_dasharray=_DASH if dashed else None,
         cls=cls,
     )
@@ -199,7 +192,7 @@ def _open_head(
         ),
         stroke=color,
         fill="none",
-        stroke_width=_stem(width),
+        stroke_width=width,
         cls=cls,
     )
 
@@ -231,7 +224,7 @@ def _harpoon_poly(
             ),
             stroke=color,
             fill="none",
-            stroke_width=_stem(width),
+            stroke_width=width,
             cls=f"{cls} harpoon",
         )
     )

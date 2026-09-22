@@ -101,11 +101,8 @@ def test_ring_double_offset_distance_is_full_offset_px():
 
 
 def _backend() -> str:
-    try:
-        Pict(backend="indigo").layout({"molecules": [{"smiles": "C"}]})
-        return "indigo"
-    except Exception:
-        return "native"
+    """MVP layout backend (indigo is out of scope for now)."""
+    return "native"
 
 
 def test_rendered_ring_doubles_sit_inside():

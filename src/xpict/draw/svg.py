@@ -25,28 +25,39 @@ from xpict.contracts.scene import (
     Viewport,
 )
 from xpict.draw.glyphs import compile_text_path_d
-from xpict.draw.metrics import STROKE_PX
 from xpict.draw.richtext import StyledText
 
 _SVG_ROOT_ATTR = re.compile(r"<svg\b([^>]*)>", re.IGNORECASE | re.DOTALL)
 _SVG_ATTR = re.compile(r'([\w:-]+)="([^"]*)"')
+# Path `d` numbers (and any float noise on attrs) → compact 2dp on emit.
+_SVG_NUM = re.compile(r"[-+]?(?:\d+\.\d*|\.\d+|\d+)(?:[eE][-+]?\d+)?")
 
 
-def _stroke_px(stem_units: float) -> str:
-    """Render Scene stem units → SVG drawing px (``× STROKE_PX``)."""
-    return f"{stem_units * STROKE_PX:g}"
+def _fmt_num(value: float) -> str:
+    """Drawing units → SVG text: 2 decimal places, trim trailing zeros."""
+    if value != value:  # NaN
+        return "0"
+    s = f"{value:.2f}"
+    if "." in s:
+        s = s.rstrip("0").rstrip(".")
+    return s or "0"
+
+
+def _fmt_path_d(d: str) -> str:
+    """Round every number in a path `d` to 2dp (Scene may keep full floats)."""
+    return _SVG_NUM.sub(lambda m: _fmt_num(float(m.group(0))), d)
 
 
 def _render_primitive(parent: Element, prim: Primitive) -> None:
     if isinstance(prim, PathPrim):
         attrs = {
-            "d": prim.d,
+            "d": _fmt_path_d(prim.d),
             "fill": prim.fill or "none",
             "stroke": prim.stroke or "none",
-            "stroke-width": _stroke_px(prim.stroke_width),
+            "stroke-width": _fmt_num(prim.stroke_width),
             "stroke-linecap": prim.stroke_linecap or "round",
             "stroke-linejoin": "round",
-            "opacity": str(prim.opacity),
+            "opacity": _fmt_num(prim.opacity),
         }
         if prim.stroke_dasharray:
             attrs["stroke-dasharray"] = prim.stroke_dasharray
@@ -55,15 +66,15 @@ def _render_primitive(parent: Element, prim: Primitive) -> None:
         SubElement(parent, "path", attrs)
     elif isinstance(prim, CirclePrim):
         attrs = {
-            "cx": f"{prim.cx:.2f}",
-            "cy": f"{prim.cy:.2f}",
-            "r": f"{prim.r:.2f}",
-            "opacity": str(prim.opacity),
+            "cx": _fmt_num(prim.cx),
+            "cy": _fmt_num(prim.cy),
+            "r": _fmt_num(prim.r),
+            "opacity": _fmt_num(prim.opacity),
             "fill": prim.fill or "none",
         }
         if prim.stroke:
             attrs["stroke"] = prim.stroke
-            attrs["stroke-width"] = _stroke_px(prim.stroke_width)
+            attrs["stroke-width"] = _fmt_num(prim.stroke_width)
         if prim.cls:
             attrs["class"] = prim.cls
         SubElement(parent, "circle", attrs)
@@ -80,7 +91,7 @@ def _render_primitive(parent: Element, prim: Primitive) -> None:
         if not d:
             return
         attrs = {
-            "d": d,
+            "d": _fmt_path_d(d),
             "fill": prim.fill,
             "stroke": "none",
             "opacity": "1",
@@ -108,7 +119,12 @@ def _render_viewport(
     if not prims:
         return
     g = SubElement(
-        parent, "g", {"class": "xpict-mol", "transform": f"translate({vp.x},{vp.y})"}
+        parent,
+        "g",
+        {
+            "class": "xpict-mol",
+            "transform": f"translate({_fmt_num(vp.x)},{_fmt_num(vp.y)})",
+        },
     )
     if vp.id:
         g.set("data-id", vp.id)
@@ -119,8 +135,8 @@ def _render_viewport(
 
 
 def _fmt_user(value: float) -> str:
-    """Format a user-unit length (viewBox / geometry), trimming float noise."""
-    return f"{value:.4f}".rstrip("0").rstrip(".") or "0"
+    """Format a user-unit length (viewBox / width / height) to 2dp."""
+    return _fmt_num(value)
 
 
 def _strip_xml_decl(svg: str) -> str:

@@ -12,11 +12,8 @@ from xpict.align_rdkit import RdkitAligner, rdkit_available
 
 
 def _backend() -> str:
-    try:
-        Pict(backend="indigo").layout({"molecules": [{"smiles": "C"}]})
-        return "indigo"
-    except Exception:
-        return "native"
+    """MVP layout backend (indigo is out of scope for now)."""
+    return "native"
 
 
 def _layout(smiles: str):
@@ -85,10 +82,7 @@ def test_reflection_keeps_smiles_chirality():
     from rdkit.Geometry import Point3D
 
     smiles = "C[C@H](O)Cl"
-    try:
-        original = Pict(backend="indigo").layout({"molecules": [{"smiles": smiles}]}).molecules[0]
-    except Exception:
-        original = Pict(backend="native").layout({"molecules": [{"smiles": smiles}]}).molecules[0]
+    original = Pict(backend="native").layout({"molecules": [{"smiles": smiles}]}).molecules[0]
     mirror = original.model_copy(
         update={"atoms": [a.model_copy(update={"y": -a.y}) for a in original.atoms]}
     )

@@ -34,13 +34,6 @@ _STROKE = STROKE_PX
 _WEDGE_HALF = WEDGE_HALF_PX
 
 
-def _stem(px: float) -> float:
-    """Absolute drawing-px → Scene stem units (1 = default bond ink)."""
-    if px == 0.0:
-        return 0.0
-    return px / STROKE_PX
-
-
 def depict_order(order: float) -> float:
     """Normalize engine bond orders for 2D depiction.
 
@@ -72,7 +65,7 @@ def _line(
     return PathPrim(
         d=f"M {x1:.2f} {y1:.2f} L {x2:.2f} {y2:.2f}",
         stroke="#111",
-        stroke_width=_stem(width),
+        stroke_width=width,
         stroke_linecap="round",
         cls=cls,
     )
@@ -113,7 +106,7 @@ def solid_wedge(
         d=f"M {x1:.2f} {y1:.2f} L {ax:.2f} {ay:.2f} L {bx:.2f} {by:.2f} Z",
         stroke="#111",
         fill="#111",
-        stroke_width=_stem(0.6),
+        stroke_width=0.6,
         stroke_linecap="round",
         cls="bond bond-wedge-up",
     )
@@ -166,7 +159,7 @@ def wavy_bond(x1: float, y1: float, x2: float, y2: float, *, amp: float | None =
     return PathPrim(
         d=" ".join(parts),
         stroke="#111",
-        stroke_width=_stem(_STROKE),
+        stroke_width=_STROKE,
         stroke_linecap="round",
         fill="none",
         cls="bond bond-either",
