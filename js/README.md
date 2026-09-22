@@ -1,11 +1,11 @@
-# @swamidasslab/xpict (TypeScript)
+# @xenosite/xpict (TypeScript)
 
 MVP client for [xenosite.org](https://xenosite.org). Published to **npmjs.org**
 — see [`docs/npm-xenosite.md`](../docs/npm-xenosite.md) and
 [`docs/publish.md`](../docs/publish.md).
 
 ```ts
-import { xpict } from "@swamidasslab/xpict";
+import { xpict } from "@xenosite/xpict";
 
 const mol = xpict.mol("c1ccccc1");
 const rendered = await xpict.render(mol);

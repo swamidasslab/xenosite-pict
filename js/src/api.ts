@@ -3,7 +3,7 @@
  * RDKit stays hidden (auto script in browser / npm on Node).
  *
  * ```ts
- * import { xpict } from "@swamidasslab/xpict";
+ * import { xpict } from "@xenosite/xpict";
  *
  * const mol = xpict.mol("CCCC");
  * const rendered = await xpict.render(mol);

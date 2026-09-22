@@ -193,7 +193,7 @@ jobs:
         with:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
-          scope: "@swamidasslab"
+          scope: "@xenosite"
           cache: npm
           cache-dependency-path: js/package-lock.json
       - run: npm ci

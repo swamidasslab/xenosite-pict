@@ -54,7 +54,7 @@ Do **not** tag `js/v0.2.0` alone — it will fail the patch-only gate.
 
 ## 1. JavaScript (patch) — npmjs.org
 
-Package: **`@swamidasslab/xpict`** on the public npm registry.
+Package: **`@xenosite/xpict`** on the public npm registry.
 
 ```bash
 # Z must be >= 1. In-tree major.minor must already match others.
@@ -64,19 +64,21 @@ git push origin js/v0.1.5
 
 ### One-time setup
 
-1. Create an [npmjs.org](https://www.npmjs.com) user (or org).
-2. Claim / create the **`@swamidasslab`** scope and grant this account publish rights
+1. Create an [npmjs.org](https://www.npmjs.com) user (or org **`xenosite`**).
+2. Claim / create the **`@xenosite`** scope and grant this account publish rights
    (org: add the publishing user as a member with publish permission).
+   Prefer this scope so it stays aligned if the GitHub repo moves under a
+   `xenosite` org later.
 3. npm → Access Tokens → **Automation** token (or Granular with publish for
-   `@swamidasslab/xpict`).
+   `@xenosite/xpict`).
 4. GitHub repo **Settings → Secrets and variables → Actions** →
    **`NPM_TOKEN`** = that token.
-5. First publish creates https://www.npmjs.com/package/@swamidasslab/xpict
+5. First publish creates https://www.npmjs.com/package/@xenosite/xpict
 
 Consumers:
 
 ```bash
-npm install @swamidasslab/xpict
+npm install @xenosite/xpict
 ```
 
 No GitHub Packages `.npmrc` is required. xenosite.org should depend on the

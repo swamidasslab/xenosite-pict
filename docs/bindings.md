@@ -11,7 +11,7 @@ the same function set.
               ┌──────────────┼──────────────┬──────────────────┐
               ▼              ▼              ▼                  ▼
      crates/xpict-py  crates/xpict-wasm  crates/xpict    (JS npm package)
-     (PyO3 / maturin)  (wasm-bindgen)   (RDKit layout     (@swamidasslab/xpict)
+     (PyO3 / maturin)  (wasm-bindgen)   (RDKit layout     (@xenosite/xpict)
                                            + public API)     RDKit.js + wasm
 ```
 
@@ -37,7 +37,7 @@ cargo test -p xpict
 
 | | Python | JavaScript (MVP) | Native Rust |
 | --- | --- | --- | --- |
-| Package | `xpict` | `@swamidasslab/xpict` | crates.io `xpict` |
+| Package | `xpict` | `@xenosite/xpict` | crates.io `xpict` |
 | Public API | `Mol` / `render` / `to_svg` (client) | `xpict.mol` / `render` / `toSvg` / `depict` | same + `depict` batch stub |
 | Paint ABI | `_native.depict_molecule` | wasm `depictMolecule` (internal) | `xpict_core::depict_molecule` |
 | Init | (import extension) | auto on first `render` | link-time RDKit |

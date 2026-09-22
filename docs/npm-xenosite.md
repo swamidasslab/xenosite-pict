@@ -1,7 +1,7 @@
-# `@swamidasslab/xpict` for xenosite.org
+# `@xenosite/xpict` for xenosite.org
 
 The website installs the WASM/TS package from the **public npm registry**
-([npmjs.org](https://www.npmjs.com) scope `@swamidasslab`).
+([npmjs.org](https://www.npmjs.com) scope `@xenosite`).
 
 Full registry setup (npm / crates.io / PyPI): [`publish.md`](publish.md).
 
@@ -13,24 +13,24 @@ git push origin js/v0.1.1
 ```
 
 Or **Actions → Publish JS package → Run workflow**.  
-Requires repo secret **`NPM_TOKEN`** (npm Automation token for `@swamidasslab`).
+Requires repo secret **`NPM_TOKEN`** (npm Automation token for `@xenosite`).
 
 ## Install
 
 No GitHub Packages `.npmrc` needed:
 
 ```bash
-npm install @swamidasslab/xpict
+npm install @xenosite/xpict
 ```
 
 ```json
-{ "dependencies": { "@swamidasslab/xpict": "^0.1.0" } }
+{ "dependencies": { "@xenosite/xpict": "^0.1.0" } }
 ```
 
 ## Public API
 
 ```ts
-import { xpict } from "@swamidasslab/xpict";
+import { xpict } from "@xenosite/xpict";
 
 const mol = xpict.mol("c1ccccc1");
 const rendered = await xpict.render(mol, {

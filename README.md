@@ -8,7 +8,7 @@ Import / package names:
 
 | Language | Package |
 | --- | --- |
-| JS/TS | [`@swamidasslab/xpict`](docs/npm-xenosite.md) (npmjs.org) |
+| JS/TS | [`@xenosite/xpict`](docs/npm-xenosite.md) (npmjs.org) |
 | Python | `xpict` (PyPI — [`docs/publish.md`](docs/publish.md); source in `python/`) |
 | Rust | `xpict` on crates.io (depends on `xpict-core`; see publish doc) |
 
@@ -23,7 +23,7 @@ Three calls — same idea in every language:
 3. **`toSvg(scene)`** — scene JSON → SVG string  
 
 ```ts
-import { xpict } from "@swamidasslab/xpict";
+import { xpict } from "@xenosite/xpict";
 
 const mol = xpict.mol("c1ccccc1");
 const rendered = await xpict.render(mol, { mark_atoms: [0], color: "#0b6e4f" });

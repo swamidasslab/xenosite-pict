@@ -1,11 +1,11 @@
-# Publish @swamidasslab/xpict to the public npm registry (npmjs.org).
+# Publish @xenosite/xpict to the public npm registry (npmjs.org).
 #
 # Triggers:
 #   - tag js/v*  (e.g. js/v0.1.1) → sets version from tag and publishes
 #   - workflow_dispatch → publishes package.json version as-is
 #
-# One-time: npmjs.org org/user owns scope @swamidasslab; repo secret NPM_TOKEN
-# (Automation). Consumers: npm install @swamidasslab/xpict (no .npmrc).
+# One-time: npmjs.org org/user owns scope @xenosite; repo secret NPM_TOKEN
+# (Automation). Consumers: npm install @xenosite/xpict (no .npmrc).
 #
 # Gated on CI (Rust test+coverage, strict tsc, pyright, pytest).
 
@@ -65,7 +65,7 @@ jobs:
         with:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
-          scope: "@swamidasslab"
+          scope: "@xenosite"
           cache: npm
           cache-dependency-path: js/package-lock.json
 
@@ -101,7 +101,7 @@ jobs:
         if: ${{ github.event_name != 'workflow_dispatch' || !inputs.dry_run }}
         run: |
           if [[ -z "${NODE_AUTH_TOKEN:-}" ]]; then
-            echo "NPM_TOKEN secret required (npm Automation token with publish rights for @swamidasslab)" >&2
+            echo "NPM_TOKEN secret required (npm Automation token with publish rights for @xenosite)" >&2
             exit 1
           fi
           npm publish --access public

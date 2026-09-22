@@ -1,7 +1,7 @@
 # Migration path: xpict on xenosite.org (client-side)
 
 **Goal:** replace server-side xenopict SVGs on [xenosite.org](https://xenosite.org)
-with **`@swamidasslab/xpict` in the browser** (npmjs.org), ASAP.
+with **`@xenosite/xpict` in the browser** (npmjs.org), ASAP.
 
 **MVP product:** one molecule — Kekulé depiction, atom/bond **circles**, atom/bond
 **shading**, backbone/label **color**, **alignment**. Not multi-mol / ELK scenes.
@@ -81,7 +81,7 @@ xenosite today already embeds depictions as **data-URI `<img>`** with
    - **Python:** existing `align_rdkit` / `diagram.align`.
    - Rust Kabsch / `rigid_align_coords` remains for Indigo / no-RDKit only.
 
-6. **Publish `@swamidasslab/xpict`** to npmjs.org for the xenosite app
+6. **Publish `@xenosite/xpict`** to npmjs.org for the xenosite app
    bundler — see [`npm-xenosite.md`](npm-xenosite.md).
    Keep API: `xpict.mol` / `xpict.render` / `xpict.toSvg` (scene JSON → SVG).
 

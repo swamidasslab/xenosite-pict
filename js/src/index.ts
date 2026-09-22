@@ -1,5 +1,5 @@
 /**
- * `@swamidasslab/xpict` — MVP client for xenosite.org.
+ * `@xenosite/xpict` — MVP client for xenosite.org.
  *
  * Public: ``xpict.mol`` / ``xpict.render`` / ``xpict.toSvg`` / ``xpict.depict``.
  */
