@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use crate::bonds::{bond_strokes, join_centered_multibonds, DrawnBond};
 use crate::labels::{self, place_backbone};
-use crate::metrics::{BOND_PX, FONT_PX, MARK_FRAC, PAD_PX, SHADE_FRAC, STROKE_PX};
+use crate::metrics::{BOND_PX, FONT_PX, MARK_FRAC, PAD_PX, SHADE_FRAC};
 use crate::plotdot::PlotDot;
 use crate::rings::{bond_interior_normals, find_sssr};
 use crate::scene::{
@@ -361,7 +361,7 @@ fn paint_marks(
             r,
             fill: Some("none".into()),
             stroke: Some("#c44".into()),
-            stroke_width: STROKE_PX,
+            stroke_width: 1.0,
             opacity: 0.85,
             class: Some(format!("atom-{ai} mark")),
         });
@@ -385,7 +385,7 @@ fn paint_marks(
             ),
             stroke: Some("#c44".into()),
             fill: Some("none".into()),
-            stroke_width: crate::metrics::HALO_STROKE,
+            stroke_width: 2.0,
             opacity: 0.35,
             stroke_dasharray: None,
             stroke_linecap: Some("round".into()),

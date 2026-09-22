@@ -83,9 +83,11 @@ def test_triple_offsets_are_symmetric():
 
 
 def test_stroke_is_fraction_of_bond():
+    """Scene ABI: stroke_width is stem units (1.0); px = STROKE_FRAC × bond."""
     strokes = bond_strokes(0, 0, BOND_PX, 0, 1.0)
     assert strokes.skeleton is not None
-    assert strokes.skeleton.stroke_width == pytest.approx(STROKE_FRAC * BOND_PX, rel=0.02)
+    assert strokes.skeleton.stroke_width == pytest.approx(1.0, abs=0.001)
+    assert STROKE_FRAC * BOND_PX == pytest.approx(STROKE_PX, abs=0.001)
     assert strokes.skeleton.stroke_linecap == "round"
 
 
@@ -98,7 +100,8 @@ def test_stroke_matches_label_stem():
     assert HALO_STROKE == pytest.approx(2 * STROKE_PX, abs=0.001)
     strokes = bond_strokes(0, 0, BOND_PX, 0, 1.0)
     assert strokes.skeleton is not None
-    assert strokes.skeleton.stroke_width == pytest.approx(stem, abs=0.01)
+    # Scene keeps stem units; renderer × STROKE_PX → absolute stem px.
+    assert strokes.skeleton.stroke_width == pytest.approx(1.0, abs=0.001)
 
 
 def test_wedge_fat_end_width():
@@ -120,6 +123,7 @@ def test_hash_count_scales_with_length():
 
 
 def test_indigo_and_native_bonds_same_pixel_length():
+    _backend()
     indigo = Pict(backend="indigo").layout({"molecules": [{"smiles": "CCO"}]}).molecules[0]
     native = Pict(backend="native").layout({"molecules": [{"smiles": "CCO"}]}).molecules[0]
     _, iw, _ = normalize_coords(indigo)

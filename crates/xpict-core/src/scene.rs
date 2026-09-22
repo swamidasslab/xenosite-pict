@@ -44,7 +44,10 @@ pub enum Primitive {
         stroke: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         fill: Option<String>,
-        #[serde(default = "default_stroke_width")]
+        #[serde(
+            default = "default_stroke_width",
+            skip_serializing_if = "is_default_stroke_width"
+        )]
         stroke_width: f64,
         #[serde(default = "default_opacity")]
         opacity: f64,
@@ -63,7 +66,10 @@ pub enum Primitive {
         fill: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         stroke: Option<String>,
-        #[serde(default = "default_stroke_width")]
+        #[serde(
+            default = "default_stroke_width",
+            skip_serializing_if = "is_default_stroke_width"
+        )]
         stroke_width: f64,
         #[serde(default = "default_opacity")]
         opacity: f64,
@@ -88,7 +94,13 @@ pub enum Primitive {
 }
 
 fn default_stroke_width() -> f64 {
-    1.5
+    // Stem units: 1.0 = default bond ink ([`crate::metrics::STROKE_PX`]).
+    // Scene JSON keeps these units; the SVG renderer multiplies by STROKE_PX.
+    // Clients should leave this at 1.0 or omit it (not hard-code absolute px).
+    1.0
+}
+fn is_default_stroke_width(w: &f64) -> bool {
+    (*w - 1.0).abs() < 1e-12
 }
 fn default_opacity() -> f64 {
     1.0
@@ -250,7 +262,7 @@ mod tests {
                         d: "M 0 0 L 20 0".into(),
                         stroke: Some("#111".into()),
                         fill: Some("none".into()),
-                        stroke_width: 0.84,
+                        stroke_width: 1.0,
                         opacity: 1.0,
                         stroke_dasharray: None,
                         stroke_linecap: Some("round".into()),

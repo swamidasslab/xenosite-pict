@@ -19,7 +19,9 @@ class PathPrim(StrictModel):
     d: str
     stroke: str | None = "#000"
     fill: str | None = "none"
-    stroke_width: float = 1.5
+    # Stem units: 1.0 = default bond ink (STROKE_PX). Scene JSON keeps these;
+    # the SVG renderer multiplies by STROKE_PX.
+    stroke_width: float = 1.0
     opacity: float = 1.0
     stroke_dasharray: str | None = None
     stroke_linecap: Literal["butt", "round", "square"] | None = None
@@ -33,6 +35,7 @@ class CirclePrim(StrictModel):
     r: float
     fill: str | None = None
     stroke: str | None = None
+    # Stem units (same as PathPrim); SVG renderer × STROKE_PX.
     stroke_width: float = 1.0
     opacity: float = 1.0
     cls: str | None = None

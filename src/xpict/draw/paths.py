@@ -111,13 +111,14 @@ def ink_from_path_prim(p: PathPrim) -> Shape | CapsuleInk | None:
         poly = Shape.from_ring(pts)
         if poly.is_empty:
             return None
-        sw = float(p.stroke_width or 0.0)
+        # PathPrim.stroke_width is stem units; ink geometry wants drawing px.
+        sw = float(p.stroke_width or 0.0) * STROKE_PX
         if p.stroke not in (None, "none") and sw > 0:
             grown = poly.buffer(0.5 * sw)
             if not grown.is_empty:
                 return grown
         return poly
-    radius = max(p.stroke_width, STROKE_PX) * 0.5
+    radius = max(float(p.stroke_width or 0.0), 1.0) * STROKE_PX * 0.5
     return path_polyline_shape(pts, radius)
 
 

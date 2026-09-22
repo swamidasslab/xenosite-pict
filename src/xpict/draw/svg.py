@@ -25,10 +25,16 @@ from xpict.contracts.scene import (
     Viewport,
 )
 from xpict.draw.glyphs import compile_text_path_d
+from xpict.draw.metrics import STROKE_PX
 from xpict.draw.richtext import StyledText
 
 _SVG_ROOT_ATTR = re.compile(r"<svg\b([^>]*)>", re.IGNORECASE | re.DOTALL)
 _SVG_ATTR = re.compile(r'([\w:-]+)="([^"]*)"')
+
+
+def _stroke_px(stem_units: float) -> str:
+    """Render Scene stem units → SVG drawing px (``× STROKE_PX``)."""
+    return f"{stem_units * STROKE_PX:g}"
 
 
 def _render_primitive(parent: Element, prim: Primitive) -> None:
@@ -37,7 +43,7 @@ def _render_primitive(parent: Element, prim: Primitive) -> None:
             "d": prim.d,
             "fill": prim.fill or "none",
             "stroke": prim.stroke or "none",
-            "stroke-width": str(prim.stroke_width),
+            "stroke-width": _stroke_px(prim.stroke_width),
             "stroke-linecap": prim.stroke_linecap or "round",
             "stroke-linejoin": "round",
             "opacity": str(prim.opacity),
@@ -57,7 +63,7 @@ def _render_primitive(parent: Element, prim: Primitive) -> None:
         }
         if prim.stroke:
             attrs["stroke"] = prim.stroke
-            attrs["stroke-width"] = str(prim.stroke_width)
+            attrs["stroke-width"] = _stroke_px(prim.stroke_width)
         if prim.cls:
             attrs["class"] = prim.cls
         SubElement(parent, "circle", attrs)

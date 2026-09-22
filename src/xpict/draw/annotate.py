@@ -25,9 +25,16 @@ from xpict.draw.metrics import (
     ANNOT_PAD_PX,
     ANNOT_STROKE_PX,
     LABEL_GAP_PX,
+    STROKE_PX,
 )
 from xpict.draw.paths import filled_arrow_head_d, oval_d, polyline_d, rect_d
 from xpict.draw.text_metrics import measure_text, text_box
+
+
+def _stem(px: float) -> float:
+    if px == 0.0:
+        return 0.0
+    return px / STROKE_PX
 from xpict.native_bridge import Shape
 
 if TYPE_CHECKING:
@@ -147,7 +154,7 @@ def _arrow_drawn(
                 d=polyline_d([start, base]),
                 stroke=color,
                 fill="none",
-                stroke_width=stroke,
+                stroke_width=_stem(stroke),
                 cls="annot-arrow-shaft",
             )
         )
@@ -184,7 +191,7 @@ def _draw_region(ann: AnnotationSpec, pts: Sequence[tuple[float, float]], *, col
                 d=rect_d(xmin, ymin, xmax, ymax),
                 stroke=color,
                 fill="none",
-                stroke_width=stroke,
+                stroke_width=_stem(stroke),
                 opacity=0.9,
                 cls="annot-box",
             )
@@ -212,7 +219,7 @@ def _draw_region(ann: AnnotationSpec, pts: Sequence[tuple[float, float]], *, col
                 d=oval_d(cx, cy, rx, ry),
                 stroke=color,
                 fill="none",
-                stroke_width=stroke,
+                stroke_width=_stem(stroke),
                 opacity=0.9,
                 cls="annot-oval",
             )
@@ -232,7 +239,7 @@ def _draw_region(ann: AnnotationSpec, pts: Sequence[tuple[float, float]], *, col
                 d=d,
                 stroke=color,
                 fill="none",
-                stroke_width=stroke,
+                stroke_width=_stem(stroke),
                 opacity=0.9,
                 cls="annot-spline",
             )
@@ -323,7 +330,7 @@ def _draw_callout(
                 r=r,
                 fill="none",
                 stroke=color,
-                stroke_width=ANNOT_STROKE_PX,
+                stroke_width=_stem(ANNOT_STROKE_PX),
                 opacity=0.9,
                 cls="annot-mark",
             )

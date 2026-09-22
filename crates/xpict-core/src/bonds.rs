@@ -108,6 +108,9 @@ fn line_path(
 }
 
 /// One SVG stroke before it becomes a [`Primitive`].
+///
+/// `stroke_width` here is in **drawing px**. [`StrokePath::to_primitive`]
+/// converts to stem units (`1.0` = [`STROKE_PX`]) for the Scene ABI.
 #[derive(Debug, Clone, PartialEq)]
 pub struct StrokePath {
     pub d: String,
@@ -120,11 +123,17 @@ pub struct StrokePath {
 
 impl StrokePath {
     pub fn to_primitive(&self) -> Primitive {
+        // Scene ABI: stroke_width is multiples of the font-stem bond ink.
+        let stem_units = if self.stroke_width == 0.0 {
+            0.0
+        } else {
+            self.stroke_width / STROKE_PX
+        };
         Primitive::Path {
             d: self.d.clone(),
             stroke: Some(self.stroke.clone()),
             fill: self.fill.clone().or_else(|| Some("none".into())),
-            stroke_width: self.stroke_width,
+            stroke_width: stem_units,
             opacity: 1.0,
             stroke_dasharray: None,
             stroke_linecap: self.stroke_linecap.clone(),

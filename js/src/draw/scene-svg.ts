@@ -2,7 +2,12 @@
  * Scene JSON → SVG string (thin serializer matching Python ``scene_to_svg``).
  *
  * Text primitives emit ``<text>`` for now (glyph outlining stays Python/Rust).
+ *
+ * ``stroke_width`` on paths/circles is in **stem units** (`1` = default bond
+ * ink). Absolute SVG px = stem × [`STROKE_PX`].
  */
+
+import { strokeWidthPx } from "../metrics.js";
 
 export type TextAnchor = "start" | "middle" | "end";
 
@@ -12,6 +17,7 @@ export type ScenePrimitive =
       d: string;
       stroke?: string | null;
       fill?: string | null;
+      /** Stem units (`1` = default bond ink). Omit for default. */
       stroke_width?: number;
       opacity?: number;
       stroke_dasharray?: string | null;
@@ -25,6 +31,7 @@ export type ScenePrimitive =
       r: number;
       fill?: string | null;
       stroke?: string | null;
+      /** Stem units (`1` = default bond ink). Omit for default. */
       stroke_width?: number;
       opacity?: number;
       cls?: string | null;
@@ -89,7 +96,7 @@ function renderPrimitive(p: ScenePrimitive): string {
       attr("d", p.d) +
       attr("fill", p.fill ?? "none") +
       attr("stroke", p.stroke ?? "none") +
-      attr("stroke-width", p.stroke_width ?? 1.5) +
+      attr("stroke-width", strokeWidthPx(p.stroke_width)) +
       attr("stroke-linecap", p.stroke_linecap ?? "round") +
       attr("stroke-linejoin", "round") +
       attr("opacity", p.opacity ?? 1) +
@@ -106,7 +113,12 @@ function renderPrimitive(p: ScenePrimitive): string {
       attr("r", fmt(p.r)) +
       attr("fill", p.fill ?? "none") +
       attr("stroke", p.stroke) +
-      attr("stroke-width", p.stroke !== undefined ? p.stroke_width ?? 1.5 : undefined) +
+      attr(
+        "stroke-width",
+        p.stroke !== undefined && p.stroke !== null
+          ? strokeWidthPx(p.stroke_width)
+          : undefined
+      ) +
       attr("opacity", p.opacity ?? 1) +
       attr("class", p.cls) +
       `/>`
@@ -127,10 +139,7 @@ function renderPrimitive(p: ScenePrimitive): string {
   );
 }
 
-function renderViewportLayers(
-  vp: SceneViewport,
-  names: string[]
-): string {
+function renderViewportLayers(vp: SceneViewport, names: string[]): string {
   const want = new Set(names);
   const chunks: string[] = [];
   for (const layer of vp.layers) {

@@ -370,7 +370,8 @@ class BondsDrawable(Drawable):
                 ink = ink_from_path_prim(p)
                 if ink is None:
                     continue
-                ink_r = max(p.stroke_width, STROKE_PX) * 0.5
+                # PathPrim.stroke_width is stem units; ink radius is drawing px.
+                ink_r = max(float(p.stroke_width), 1.0) * STROKE_PX * 0.5
                 dist = max(HALO_GAP_PX, 0.25 * HALO_STROKE - ink_r)
                 drawn.ink.append(ink)
                 drawn.ink_dists.append(dist)
@@ -485,7 +486,7 @@ class MarkDrawable(Drawable):
                     d=path,
                     stroke=color,
                     fill=color,
-                    stroke_width=1.5,
+                    stroke_width=1.5 / STROKE_PX,
                     opacity=0.25,
                     cls="substructure-mark",
                 )
@@ -505,7 +506,7 @@ class MarkDrawable(Drawable):
                         r=r,
                         fill="none",
                         stroke=color,
-                        stroke_width=STROKE_PX,
+                        stroke_width=1.0,
                         opacity=0.85,
                         cls=f"atom-{ai} mark",
                     )
@@ -521,7 +522,7 @@ class MarkDrawable(Drawable):
                     PathPrim(
                         d=polyline_d([(x1, y1), (x2, y2)]),
                         stroke=color,
-                        stroke_width=HALO_STROKE,
+                        stroke_width=HALO_STROKE / STROKE_PX,
                         opacity=0.35,
                         cls=f"bond-mark atom-{a} atom-{b}",
                     )
