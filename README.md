@@ -8,7 +8,7 @@ Import / package names:
 
 | Language | Package |
 | --- | --- |
-| JS/TS | [`@swamidasslab/xpict`](docs/npm-xenosite.md) (GitHub Packages) |
+| JS/TS | [`@swamidasslab/xpict`](docs/npm-xenosite.md) (npmjs.org) |
 | Python | `xpict` (PyPI — [`docs/publish.md`](docs/publish.md); source in `python/`) |
 | Rust | `xpict` on crates.io (depends on `xpict-core`; see publish doc) |
 

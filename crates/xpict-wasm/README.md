@@ -19,7 +19,7 @@ From the repo root:
 wasm-pack build crates/xpict-wasm --target web --out-dir ../../js/pkg --out-name xpict_core
 ```
 
-JS imports from `@swamidasslab/xpict` → `dist/` + `dist/wasm/` (GitHub Packages).
+JS imports from `@swamidasslab/xpict` → `dist/` + `dist/wasm/` (npmjs.org).
 
 ## Adding exports
 

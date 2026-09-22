@@ -1,17 +1,12 @@
-# Publish @swamidasslab/xpict to GitHub Packages (for xenosite.org CI/app).
+# Publish @swamidasslab/xpict to the public npm registry (npmjs.org).
 #
 # Triggers:
 #   - tag js/v*  (e.g. js/v0.1.1) → sets version from tag and publishes
 #   - workflow_dispatch → publishes package.json version as-is
 #
-# Consumers (xenosite):
-#   .npmrc:
-#     @swamidasslab:registry=https://npm.pkg.github.com
-#     //npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}
-#   package.json:
-#     "@swamidasslab/xpict": "^0.1.0"
+# One-time: npmjs.org org/user owns scope @swamidasslab; repo secret NPM_TOKEN
+# (Automation). Consumers: npm install @swamidasslab/xpict (no .npmrc).
 #
-# Published with publishConfig.access=public (unrestricted GitHub Package).
 # Gated on CI (Rust test+coverage, strict tsc, pyright, pytest).
 
 name: Publish JS package
@@ -29,7 +24,6 @@ on:
 
 permissions:
   contents: read
-  packages: write
 
 concurrency:
   group: publish-js-${{ github.ref }}
@@ -70,7 +64,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
-          registry-url: "https://npm.pkg.github.com"
+          registry-url: "https://registry.npmjs.org"
           scope: "@swamidasslab"
           cache: npm
           cache-dependency-path: js/package-lock.json
@@ -103,8 +97,13 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
         run: npm pack
 
-      - name: Publish to GitHub Packages
+      - name: Publish to npmjs.org
         if: ${{ github.event_name != 'workflow_dispatch' || !inputs.dry_run }}
-        run: npm publish
+        run: |
+          if [[ -z "${NODE_AUTH_TOKEN:-}" ]]; then
+            echo "NPM_TOKEN secret required (npm Automation token with publish rights for @swamidasslab)" >&2
+            exit 1
+          fi
+          npm publish --access public
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

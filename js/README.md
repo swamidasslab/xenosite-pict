@@ -1,7 +1,7 @@
 # @swamidasslab/xpict (TypeScript)
 
-MVP client for [xenosite.org](https://xenosite.org). Published to GitHub
-Packages — see [`docs/npm-xenosite.md`](../docs/npm-xenosite.md) and
+MVP client for [xenosite.org](https://xenosite.org). Published to **npmjs.org**
+— see [`docs/npm-xenosite.md`](../docs/npm-xenosite.md) and
 [`docs/publish.md`](../docs/publish.md).
 
 ```ts

@@ -1,7 +1,7 @@
 # `@swamidasslab/xpict` for xenosite.org
 
-The website installs the WASM/TS package from **GitHub Packages** (scope must
-match the GitHub org: `swamidasslab`).
+The website installs the WASM/TS package from the **public npm registry**
+([npmjs.org](https://www.npmjs.com) scope `@swamidasslab`).
 
 Full registry setup (npm / crates.io / PyPI): [`publish.md`](publish.md).
 
@@ -12,15 +12,15 @@ git tag js/v0.1.1
 git push origin js/v0.1.1
 ```
 
-Or **Actions → Publish JS package → Run workflow**.
+Or **Actions → Publish JS package → Run workflow**.  
+Requires repo secret **`NPM_TOKEN`** (npm Automation token for `@swamidasslab`).
 
 ## Install
 
-`.npmrc`:
+No GitHub Packages `.npmrc` needed:
 
-```
-@swamidasslab:registry=https://npm.pkg.github.com
-//npm.pkg.github.com/:_authToken=${NPM_TOKEN}
+```bash
+npm install @swamidasslab/xpict
 ```
 
 ```json

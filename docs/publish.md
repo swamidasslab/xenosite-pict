@@ -52,7 +52,9 @@ Do **not** tag `js/v0.2.0` alone — it will fail the patch-only gate.
 
 ---
 
-## 1. JavaScript (patch)
+## 1. JavaScript (patch) — npmjs.org
+
+Package: **`@swamidasslab/xpict`** on the public npm registry.
 
 ```bash
 # Z must be >= 1. In-tree major.minor must already match others.
@@ -60,24 +62,25 @@ git tag js/v0.1.5
 git push origin js/v0.1.5
 ```
 
-**One-time / org setup (if not already):**
+### One-time setup
 
-1. Repo lives under the `swamidasslab` GitHub org (scope must match).
-2. Workflow permission `packages: write` (already set).
-3. Package visibility: `publishConfig.access=public` in `js/package.json` (already set).
-4. Consumers need a token that can **read** org packages:
+1. Create an [npmjs.org](https://www.npmjs.com) user (or org).
+2. Claim / create the **`@swamidasslab`** scope and grant this account publish rights
+   (org: add the publishing user as a member with publish permission).
+3. npm → Access Tokens → **Automation** token (or Granular with publish for
+   `@swamidasslab/xpict`).
+4. GitHub repo **Settings → Secrets and variables → Actions** →
+   **`NPM_TOKEN`** = that token.
+5. First publish creates https://www.npmjs.com/package/@swamidasslab/xpict
 
-   ```
-   @swamidasslab:registry=https://npm.pkg.github.com
-   //npm.pkg.github.com/:_authToken=${NPM_TOKEN}
-   ```
+Consumers:
 
-**Optional — also publish to the public npmjs.org registry** (so no GitHub token is required for install):
+```bash
+npm install @swamidasslab/xpict
+```
 
-1. Create an npmjs.org org / user; claim `@swamidasslab` if available, or change the package name.
-2. Add an `NPM_TOKEN` (Automation) secret on this repo.
-3. Duplicate or extend the publish job with `registry-url: https://registry.npmjs.org` and `NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}`.
-4. Keep GitHub Packages as the xenosite CI source of truth until npmjs is verified.
+No GitHub Packages `.npmrc` is required. xenosite.org should depend on the
+npmjs package the same way.
 
 ---
 
