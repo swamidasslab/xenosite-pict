@@ -52,7 +52,7 @@ pub enum Primitive {
         stroke_dasharray: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         stroke_linecap: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing_if = "Option::is_none", rename = "cls")]
         class: Option<String>,
     },
     Circle {
@@ -67,7 +67,7 @@ pub enum Primitive {
         stroke_width: f64,
         #[serde(default = "default_opacity")]
         opacity: f64,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing_if = "Option::is_none", rename = "cls")]
         class: Option<String>,
     },
     /// Logical text; serializers outline to glyph paths (Liberation) or emit
@@ -82,7 +82,7 @@ pub enum Primitive {
         font_size: f64,
         #[serde(default = "default_anchor")]
         anchor: TextAnchor,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing_if = "Option::is_none", rename = "cls")]
         class: Option<String>,
     },
 }

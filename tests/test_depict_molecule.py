@@ -74,7 +74,7 @@ def test_depict_acetone_centered_double_offsets():
     offsets = [
         p
         for p in bonds["primitives"]
-        if "bond-offset" in (p.get("class") or "")
+        if "bond-offset" in (p.get("cls") or "")
     ]
     assert len(offsets) >= 2
     assert all(p.get("stroke") == "#336699" for p in bonds["primitives"])
@@ -141,6 +141,6 @@ def test_rust_acetone_double_has_joined_offsets():
 
     scene = json.loads(_native.depict_molecule(json.dumps(mol)))
     bonds = next(l for l in scene["viewports"][0]["layers"] if l["name"] == "bonds")
-    offsets = [p for p in bonds["primitives"] if "bond-offset" in (p.get("class") or "")]
+    offsets = [p for p in bonds["primitives"] if "bond-offset" in (p.get("cls") or "")]
     assert len(offsets) >= 2
     assert OFFSET_PX == pytest.approx(_native.OFFSET_PX)
