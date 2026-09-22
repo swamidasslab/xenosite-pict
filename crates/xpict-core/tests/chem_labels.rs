@@ -166,5 +166,89 @@ fn bold_base_ors_with_markup_italic() {
 #[test]
 fn escapes_round_trip_as_literals() {
     assert_eq!(chars(r"\_\*"), "_*");
+    assert_eq!(chars(r"R\^2"), "R^2");
+    assert!(roles(r"R\^2").iter().all(|(_, r)| *r == ScriptRole::Normal));
     assert_eq!(compose_label(&split_label(r"R\_1"), LabelSide::East), "R_1");
+}
+
+#[test]
+fn style_cmd_aliases_and_nested_scripts() {
+    for cmd in [r"\textbf{Et}", r"\mathbf{Et}", r"\bf{Et}"] {
+        let g = parse_label_markup(cmd, FaceStyle::Regular);
+        assert!(g.iter().all(|x| x.face == FaceStyle::Bold), "{cmd}");
+        assert_eq!(g.iter().map(|x| x.ch).collect::<String>(), "Et");
+    }
+    for cmd in [r"\textit{cis}", r"\mathit{cis}", r"\emph{cis}", r"\it{cis}"] {
+        let g = parse_label_markup(cmd, FaceStyle::Regular);
+        assert!(g.iter().all(|x| x.face == FaceStyle::Italic), "{cmd}");
+    }
+    let nested = parse_label_markup(r"\textbf{R^2}", FaceStyle::Regular);
+    assert_eq!(nested[0].ch, 'R');
+    assert_eq!(nested[0].face, FaceStyle::Bold);
+    assert_eq!(nested[0].role, ScriptRole::Normal);
+    assert_eq!(nested[1].ch, '2');
+    assert_eq!(nested[1].role, ScriptRole::Superscript);
+    assert_eq!(nested[1].face, FaceStyle::Bold);
+}
+
+#[test]
+fn bold_r_caret_compose_and_place() {
+    assert_eq!(compose_label(&split_label("**R**^2"), LabelSide::East), "R²");
+    let pl = place_label("**R**^2", 0.0, 0.0, LabelSide::East, FONT_PX, FaceStyle::Regular);
+    assert_eq!(pl.text, "R²");
+    assert!(!pl.path_d.is_empty());
+}
+
+#[test]
+fn bold_face_changes_oh_outline_not_text() {
+    let regular = place_label("OH", 10.0, 10.0, LabelSide::East, FONT_PX, FaceStyle::Regular);
+    let bold = place_label("OH", 10.0, 10.0, LabelSide::East, FONT_PX, FaceStyle::Bold);
+    assert_eq!(regular.text, bold.text);
+    assert_ne!(
+        regular.path_d, bold.path_d,
+        "bold Liberation stem must change glyph path ink"
+    );
+}
+
+#[test]
+fn charge_outside_math_dollars() {
+    let parts = split_label("$R$+");
+    assert_eq!(parts.center, "$R$");
+    assert_eq!(parts.charge, 1);
+    assert_eq!(compose_label(&parts, LabelSide::East), "R⁺");
+}
+
+#[test]
+fn backbone_places_bold_markup_and_glca() {
+    use xpict_core::labels::{place_backbone, AtomIn, BondIn};
+
+    let atoms = vec![
+        AtomIn {
+            x: 0.0,
+            y: 0.0,
+            label: None,
+        },
+        AtomIn {
+            x: 30.0,
+            y: 0.0,
+            label: Some("**R**".into()),
+        },
+        AtomIn {
+            x: 0.0,
+            y: 30.0,
+            label: Some("GlcA".into()),
+        },
+    ];
+    let bonds = vec![
+        BondIn { begin: 0, end: 1 },
+        BondIn { begin: 0, end: 2 },
+    ];
+    let (ends, labels) = place_backbone(&atoms, &bonds, FONT_PX, FaceStyle::Regular);
+    assert_eq!(ends.len(), 2);
+    let r = labels[1].as_ref().expect("**R**");
+    assert_eq!(r.text, "R");
+    assert!(!r.path_d.is_empty());
+    let glc = labels[2].as_ref().expect("GlcA");
+    assert_eq!(glc.text, "GlcA");
+    assert!(!glc.path_d.is_empty());
 }

@@ -7,6 +7,17 @@ use xpict_core::depict_molecule;
 use xpict_core::scene::{AtomIn, BondIn, LayerName, MoleculeIn, Primitive, Scene};
 
 fn atom(index: i32, element: &str, x: f64, y: f64, label: Option<&str>) -> AtomIn {
+    atom_charged(index, element, x, y, label, 0)
+}
+
+fn atom_charged(
+    index: i32,
+    element: &str,
+    x: f64,
+    y: f64,
+    label: Option<&str>,
+    charge: i32,
+) -> AtomIn {
     AtomIn {
         index,
         element: Some(element.into()),
@@ -14,8 +25,25 @@ fn atom(index: i32, element: &str, x: f64, y: f64, label: Option<&str>) -> AtomI
         x,
         y,
         label: label.map(str::to_string),
-        charge: 0,
+        charge,
     }
+}
+
+fn label_path_d(scene: &Scene, needle: &str) -> Option<String> {
+    scene.viewports[0]
+        .layers
+        .iter()
+        .find(|l| l.name == LayerName::Labels)?
+        .primitives
+        .iter()
+        .find_map(|p| match p {
+            Primitive::Path {
+                data_text: Some(t),
+                d,
+                ..
+            } if t == needle || t.contains(needle) => Some(d.clone()),
+            _ => None,
+        })
 }
 
 fn bond(index: i32, begin: i32, end: i32, order: f64) -> BondIn {
@@ -294,4 +322,93 @@ fn kabsch_identity_and_rigid_align_smoke() {
     // After align, first mapped point lands on template.
     assert!((out[0].1 - 0.0).abs() < 1e-6);
     assert!((out[0].2 - 0.0).abs() < 1e-6);
+}
+
+#[test]
+fn west_oh_flips_to_ho_in_scene() {
+    // Neighbor east of O → West orientation → "HO".
+    let mol = MoleculeIn {
+        id: None,
+        atoms: vec![
+            atom(0, "C", 40.0, 0.0, None),
+            atom(1, "O", 0.0, 0.0, Some("OH")),
+        ],
+        bonds: vec![bond(0, 0, 1, 1.0)],
+        color: None,
+        atom_shade: None,
+        bond_shade: None,
+        mark_atoms: vec![],
+        mark_bonds: vec![],
+        bold_labels: false,
+    };
+    let texts = label_texts(&depict_molecule(&mol));
+    assert!(
+        texts.iter().any(|t| t == "HO"),
+        "expected west-flipped HO, got {texts:?}"
+    );
+}
+
+#[test]
+fn bold_labels_change_oh_path_ink() {
+    let mut mol = MoleculeIn {
+        id: None,
+        atoms: vec![
+            atom(0, "C", 0.0, 0.0, None),
+            atom(1, "O", 20.0, 0.0, Some("OH")),
+        ],
+        bonds: vec![bond(0, 0, 1, 1.0)],
+        color: None,
+        atom_shade: None,
+        bond_shade: None,
+        mark_atoms: vec![],
+        mark_bonds: vec![],
+        bold_labels: false,
+    };
+    let thin = depict_molecule(&mol);
+    mol.bold_labels = true;
+    let thick = depict_molecule(&mol);
+    let d_thin = label_path_d(&thin, "OH").or_else(|| label_path_d(&thin, "HO"));
+    let d_thick = label_path_d(&thick, "OH").or_else(|| label_path_d(&thick, "HO"));
+    assert!(d_thin.is_some() && d_thick.is_some());
+    assert_ne!(
+        d_thin, d_thick,
+        "bold_labels must thicken label glyph outlines, not only bonds"
+    );
+}
+
+#[test]
+fn formal_charge_on_nh2_and_silent_carbon() {
+    let mol = MoleculeIn {
+        id: None,
+        atoms: vec![
+            atom_charged(0, "C", 0.0, 0.0, None, 1),
+            atom_charged(1, "N", 20.0, 0.0, Some("NH2"), 1),
+            atom_charged(2, "N", 40.0, 0.0, Some("N+"), 1),
+        ],
+        bonds: vec![bond(0, 0, 1, 1.0), bond(1, 1, 2, 1.0)],
+        color: None,
+        atom_shade: None,
+        bond_shade: None,
+        mark_atoms: vec![],
+        mark_bonds: vec![],
+        bold_labels: false,
+    };
+    let texts = label_texts(&depict_molecule(&mol));
+    assert!(
+        texts.iter().any(|t| t.contains('C') && (t.contains('⁺') || t.contains('+'))),
+        "charged C should show C⁺, got {texts:?}"
+    );
+    assert!(
+        texts.iter().any(|t| t.contains('₂') && (t.contains('⁺') || t.contains('+'))),
+        "NH2+charge → NH₂⁺, got {texts:?}"
+    );
+    // Label already has +; AtomIn.charge must not double it.
+    assert!(
+        texts.iter().any(|t| t == "N⁺" || t == "N+"),
+        "N+ must not become N++, got {texts:?}"
+    );
+    assert!(
+        texts.iter().all(|t| !t.contains("++") && !t.contains("⁺⁺")),
+        "no double charge, got {texts:?}"
+    );
 }
