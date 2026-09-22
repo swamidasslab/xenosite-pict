@@ -46,14 +46,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+          shared-key: pyright
+
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.12"
           enable-cache: true
 
-      - name: Sync Python deps (dev)
-        run: uv sync --group dev
+      - name: Sync Python deps (dev + rdkit)
+        # RDKit is optional at runtime but required for pyright on rdkit_* modules.
+        run: uv sync --group dev --extra rdkit
 
       - name: Strict pyright
         run: uv run pyright
@@ -84,6 +94,9 @@ jobs:
           enable-cache: true
 
       - name: Sync Python deps (dev + rdkit)
+        # abi3-py311 + forward-compat lets the extension build on 3.14.
+        env:
+          PYO3_USE_ABI3_FORWARD_COMPATIBILITY: "1"
         run: uv sync --group dev --extra rdkit
 
       - name: Pytest
