@@ -85,6 +85,7 @@ export interface MolNode extends NodeBase {
   marks?: MarkSpec[];
   annotations?: AnnotationSpec[];
   shade?: ShadeSpec;
+  /** Ink color for backbone bonds and atom labels (CSS). Default `#111`. */
   color?: string;
 }
 
@@ -179,6 +180,7 @@ export interface MoleculeSpec {
   /** Callouts, region shapes (box/oval/spline), and labels. */
   annotations?: AnnotationSpec[];
   shade?: ShadeSpec;
+  /** Ink color for backbone bonds and atom labels (CSS). Default `#111`. */
   color?: string;
 }
 

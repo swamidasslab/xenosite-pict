@@ -385,6 +385,8 @@ class AtomLabelsDrawable(Drawable):
     the atom; traveling H flips ``OH``→``HO`` on the west side).
     """
 
+    color: str = "#111"
+
     def draw(self, ctx: MolContext) -> Drawn | None:
         drawn = Drawn(layer="labels", halo=True, halo_cls="halo label-halo")
         for i, atom in enumerate(ctx.layout.atoms):
@@ -428,7 +430,7 @@ class AtomLabelsDrawable(Drawable):
                             cx=cx,
                             cy=cy,
                             r=RADICAL_DOT_R,
-                            fill="#111",
+                            fill=self.color,
                             stroke="none",
                             opacity=1.0,
                             cls=f"atom-{atom.index} radical",
@@ -446,6 +448,7 @@ class AtomLabelsDrawable(Drawable):
                     y=placed.y,
                     text=placed.text,
                     font_size=FONT_PX,
+                    fill=self.color,
                     anchor="start",
                     cls=f"atom-{atom.index} label",
                 )
@@ -533,6 +536,8 @@ class CaptionDrawable(Drawable):
     Captions are drawn but do not opt into the document halo by default.
     """
 
+    color: str = "#111"
+
     def draw(self, ctx: MolContext) -> Drawn | None:
         pack = ctx.label_pack
         if pack is None or not pack.text:
@@ -544,7 +549,7 @@ class CaptionDrawable(Drawable):
                 y=pack.y,
                 text=pack.text,
                 font_size=pack.font_size,
-                fill="#222",
+                fill=self.color,
                 anchor=pack.anchor,
                 cls="mol-label",
             )
@@ -570,18 +575,19 @@ class AnnotationDrawable(Drawable):
 
 def molecule_drawables(mol_spec: MoleculeSpec) -> list[Drawable]:
     """Ordered drawables for one molecule (shade → bonds → labels → marks → annots → caption)."""
+    ink = mol_spec.color or "#111"
     out: list[Drawable] = []
     if mol_spec.shade is not None:
         out.append(ShadeDrawable(mol_spec.shade))
-    out.append(BondsDrawable(color=mol_spec.color or "#111"))
-    out.append(AtomLabelsDrawable())
+    out.append(BondsDrawable(color=ink))
+    out.append(AtomLabelsDrawable(color=ink))
     for mark in mol_spec.marks:
         out.append(MarkDrawable(mark))
     for ann in ring_attachment_annotations(mol_spec):
         out.append(AnnotationDrawable(ann))
     for ann in mol_spec.annotations:
         out.append(AnnotationDrawable(ann))
-    out.append(CaptionDrawable())
+    out.append(CaptionDrawable(color=ink))
     return out
 
 

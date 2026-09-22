@@ -13,6 +13,7 @@ Python (PyO3) and JS (WASM) share one implementation.
 | Standard Kekulé depiction (skeleton, doubles/triples, wedges, labels, halo) | Python working; Rust partial (`bonds`, `labels`, `geom`, `font`) |
 | Circling atoms / bonds (publication marks) | Python `MarkDrawable`; Rust port TBD |
 | Shading atoms / bonds (plot-dot disks) | Rust `plotdot` + Python shade paint |
+| Backbone / label ink color (`MoleculeSpec.color`) | ✅ Python (bonds + labels + caption); on `MoleculeIn` ABI |
 | Alignment | RDKit template align at language edges; Rust rigid/fake align for Indigo |
 
 Caller supplies SVG-space coords (+ optional shade scores / mark indices).

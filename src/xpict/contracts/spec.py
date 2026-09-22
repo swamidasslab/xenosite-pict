@@ -335,7 +335,10 @@ class MoleculeSpec(StrictModel):
         ),
     )
     shade: ShadeSpec | None = None
-    color: str | None = Field(default=None, description="Bond/backbone color override")
+    color: str | None = Field(
+        default=None,
+        description="Ink color for backbone bonds and atom labels (CSS color)",
+    )
 
     @model_validator(mode="before")
     @classmethod

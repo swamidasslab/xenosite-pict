@@ -4,7 +4,7 @@
 with **`@xenosite/xpict` in the browser**, ASAP.
 
 **MVP product:** one molecule — Kekulé depiction, atom/bond **circles**, atom/bond
-**shading**, **alignment**. Not multi-mol / ELK scenes.
+**shading**, backbone/label **color**, **alignment**. Not multi-mol / ELK scenes.
 
 ```
   @rdkit/rdkit (coords + template align)

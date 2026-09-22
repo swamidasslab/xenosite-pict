@@ -175,6 +175,9 @@ pub struct MoleculeIn {
     pub id: Option<String>,
     pub atoms: Vec<AtomIn>,
     pub bonds: Vec<BondIn>,
+    /// Ink color for backbone bonds and atom labels (CSS). Default ``#111``.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
     /// Per-atom shade scores (same order as [`Self::atoms`]); omit if unshaded.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub atom_shade: Option<Vec<f64>>,

@@ -97,8 +97,8 @@ Python synthesizes the ELK graph in `diagram/elk.py` and calls native only
 ## Scene document (shared depict → thin serializers)
 
 **MVP:** single-molecule depiction with **marks** (circle atoms/bonds),
-**shading** (plot-dot disks), and **alignment** (RDKit at edges; Rust rigid
-helpers). Not multi-mol / ELK scenes.
+**shading** (plot-dot disks), backbone/label **color**, and **alignment**
+(RDKit at edges; Rust rigid helpers). Not multi-mol / ELK scenes.
 
 ```
   RDKit / Indigo / native  (+ align)
