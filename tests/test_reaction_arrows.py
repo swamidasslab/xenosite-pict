@@ -7,9 +7,9 @@ import warnings
 import pytest
 
 from xpict import Pict, render
+from xpict.future.nodes import PictSpec
 from xpict.contracts.scene import PathPrim, Viewport
-from xpict.contracts.nodes import PictSpec
-from xpict.contracts.spec import EdgeArrow, EdgeSpec
+from xpict.future.spec import EdgeArrow, EdgeSpec
 from xpict.diagram.elk import elk_graph, layout_diagram
 from xpict.draw.arrows import diagram_overlays, edge_anchors, edge_primitives
 from xpict.draw.scene_builder import build_scene
@@ -97,9 +97,7 @@ def test_diagram_arrows_do_not_opt_into_document_halo():
             ],
             "diagram": {
                 "kind": "reaction",
-                "edges": [
-                    {"source": "A", "target": "B", "label": "ADH", "arrow": "forward"}
-                ],
+                "edges": [{"source": "A", "target": "B", "label": "ADH", "arrow": "forward"}],
             },
             "halo": True,
         }
@@ -108,9 +106,7 @@ def test_diagram_arrows_do_not_opt_into_document_halo():
     layouts = pict.layout(doc).molecules
     scene = build_scene(layouts, doc.molecules, doc)
     assert any(isinstance(p, PathPrim) and "head" in (p.cls or "") for p in scene.overlays)
-    assert any(
-        getattr(p, "cls", None) and "label" in (p.cls or "") for p in scene.overlays
-    )
+    assert any(getattr(p, "cls", None) and "label" in (p.cls or "") for p in scene.overlays)
     # Halo matches molecule opt-ins only (no overlay ink).
     expected = Halo()
     for layout, ms, vp in zip(layouts, doc.molecules, scene.viewports, strict=True):
@@ -129,9 +125,7 @@ def test_molecule_caption_does_not_opt_into_document_halo():
     bare = PictSpec.model_validate({"molecules": [{"smiles": "CCO"}], "halo": True})
     titled = PictSpec.model_validate(
         {
-            "molecules": [
-                {"smiles": "CCO", "label": {"text": "ethanol", "pos": "bottom"}}
-            ],
+            "molecules": [{"smiles": "CCO", "label": {"text": "ethanol", "pos": "bottom"}}],
             "halo": True,
         }
     )
@@ -155,16 +149,10 @@ def test_dashed_and_open_and_equilibrium():
     dashed = edge_primitives(
         EdgeSpec(source="A", target="B", arrow=EdgeArrow.forward, dashed=True), a, b
     )
-    assert any(
-        isinstance(p, PathPrim) and p.stroke_dasharray for p in dashed
-    )
-    open_p = edge_primitives(
-        EdgeSpec(source="A", target="B", arrow=EdgeArrow.open), a, b
-    )
+    assert any(isinstance(p, PathPrim) and p.stroke_dasharray for p in dashed)
+    open_p = edge_primitives(EdgeSpec(source="A", target="B", arrow=EdgeArrow.open), a, b)
     assert any(isinstance(p, PathPrim) and (p.fill in (None, "none")) for p in open_p)
-    eq = edge_primitives(
-        EdgeSpec(source="A", target="B", arrow=EdgeArrow.equilibrium), a, b
-    )
+    eq = edge_primitives(EdgeSpec(source="A", target="B", arrow=EdgeArrow.equilibrium), a, b)
     assert len([p for p in eq if isinstance(p, PathPrim)]) >= 4
 
 
@@ -354,9 +342,7 @@ def test_branched_reaction_uses_elk_routes():
         diagram_height=place.height,
     )
     # Multi-segment path data (orthogonal route).
-    assert any(
-        isinstance(p, PathPrim) and p.d.count("L") >= 2 for p in scene.overlays
-    )
+    assert any(isinstance(p, PathPrim) and p.d.count("L") >= 2 for p in scene.overlays)
     svg = render(doc, backend="native")
     assert "pict-overlays" in svg
     assert "ADH" in svg and "CYP" in svg and "side" in svg

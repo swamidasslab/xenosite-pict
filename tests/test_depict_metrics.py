@@ -143,9 +143,9 @@ def test_hetero_labels_include_implicit_h():
     lay = Pict(backend=backend).layout({"molecules": [{"smiles": "CCO"}]}).molecules[0]
     oxy = next(a for a in lay.atoms if a.element == "O")
     assert oxy.label == "OH"
-    nitro = Pict(backend=backend).layout(
-        {"molecules": [{"smiles": "C[C@H](N)C(=O)O"}]}
-    ).molecules[0]
+    nitro = (
+        Pict(backend=backend).layout({"molecules": [{"smiles": "C[C@H](N)C(=O)O"}]}).molecules[0]
+    )
     nitrogen = next(a for a in nitro.atoms if a.element == "N")
     assert nitrogen.label == "NH2"
     svg = render({"molecules": [{"smiles": "CCO"}]}, backend=backend)

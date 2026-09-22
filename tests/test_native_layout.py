@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import math
 
-import pytest
-
 from xpict import Pict, render
 from xpict.backends.native_smiles import parse_organic_smiles
 from xpict.draw.rings import (
@@ -167,6 +165,7 @@ def test_terminal_flip_reduces_clash_on_crowded_ring():
     )
     # Bond length is 1.5; non-bonded pairs should stay above ~0.85× that.
     assert min_nb > 1.2
+
 
 def _same_side_of_double(lay, a: int, b: int, sub_a: int, sub_b: int) -> bool:
     pos = {x.index: (x.x, x.y) for x in lay.atoms}

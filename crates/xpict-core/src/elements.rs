@@ -63,5 +63,8 @@ mod tests {
         assert_eq!(atomic_number("fe"), Some(26));
         assert_eq!(atomic_number("R"), Some(0));
         assert_eq!(atomic_number("nope"), None);
+        assert_eq!(atomic_number(""), None);
+        assert_eq!(atomic_number("   "), None);
+        assert_eq!(atomic_number("*"), Some(0));
     }
 }

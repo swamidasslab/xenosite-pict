@@ -23,6 +23,4 @@ def test_mol_color_tints_bonds_and_labels():
 def test_default_ink_is_near_black():
     svg = render({"molecules": [{"smiles": "CCO"}]}, backend="native")
     assert 'stroke="#111"' in svg
-    assert re.search(
-        r'data-text="OH"[^>]*fill="#111"|fill="#111"[^>]*data-text="OH"', svg
-    )
+    assert re.search(r'data-text="OH"[^>]*fill="#111"|fill="#111"[^>]*data-text="OH"', svg)

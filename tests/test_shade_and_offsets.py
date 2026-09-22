@@ -51,13 +51,14 @@ def test_svg_shade_uses_xenosite_not_homemade_pink():
         },
         backend="native",
     )
-    fills = re.findall(r'class="shade"[^>]*fill="(rgb\([^"]+\))"|fill="(rgb\([^"]+\))"[^>]*class="shade"', svg)
+    fills = re.findall(
+        r'class="shade"[^>]*fill="(rgb\([^"]+\))"|fill="(rgb\([^"]+\))"[^>]*class="shade"', svg
+    )
     flat = [a or b for a, b in fills]
     assert flat
     # Homemade pink was rgb(255,k,k). xenosite mid tones are not pink.
     assert any(
-        not (f.startswith("rgb(255,") and f.count(",") == 2 and "255,255" not in f)
-        for f in flat
+        not (f.startswith("rgb(255,") and f.count(",") == 2 and "255,255" not in f) for f in flat
     )
     assert any("rgb(0," in f or ",0," in f or f.startswith("rgb(0") for f in flat) or any(
         int(re.findall(r"\d+", f)[2]) > int(re.findall(r"\d+", f)[0]) for f in flat
@@ -87,9 +88,7 @@ def test_multi_bond_offset_ignores_label_shortening():
     assert stub_len >= 2.0 * OFFSET_PX
     assert multi_bond_offset(stub_len) == pytest.approx(OFFSET_PX)
     strokes = bond_strokes(0.0, 0.0, stub_len, 0.0, 2.0)
-    ys = sorted(
-        float(re.findall(r"[ML]\s+[-\d.]+\s+([-\d.]+)", p.d)[0]) for p in strokes.offsets
-    )
+    ys = sorted(float(re.findall(r"[ML]\s+[-\d.]+\s+([-\d.]+)", p.d)[0]) for p in strokes.offsets)
     assert ys[1] - ys[0] == pytest.approx(OFFSET_PX, abs=0.05)
 
 

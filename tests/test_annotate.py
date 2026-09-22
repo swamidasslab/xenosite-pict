@@ -7,17 +7,16 @@ import re
 import pytest
 
 from xpict import render
-from xpict.contracts.nodes import PictSpec
-from xpict.contracts.spec import (
-    AnnotKind,
+from xpict.future.nodes import PictSpec
+from xpict.future.spec import (
     AnnotationSpec,
+    AnnotKind,
     AnnotPrefer,
-    MoleculeSpec,
 )
 from xpict.draw.annotate import draw_annotations
 from xpict.draw.collision import CollisionGrid
 from xpict.draw.metrics import COLLISION_CELL_PX
-from xpict.draw.scene_builder import build_scene, molecule_to_viewport
+from xpict.draw.scene_builder import build_scene
 
 
 def test_annotation_spec_requires_target():
@@ -75,9 +74,7 @@ def test_region_kinds_emit_paths():
                 "molecules": [
                     {
                         "smiles": "c1ccccc1",
-                        "annotations": [
-                            {"kind": kind, "atoms": [0, 1, 2], "color": "#c44"}
-                        ],
+                        "annotations": [{"kind": kind, "atoms": [0, 1, 2], "color": "#c44"}],
                     }
                 ]
             },
@@ -126,9 +123,7 @@ def test_annotations_land_on_marks_layer():
     layouts = pict.layout(spec).molecules
     scene = build_scene(layouts, spec.molecules, spec.to_legacy())
     marks = next(layer for layer in scene.viewports[0].layers if layer.name == "marks")
-    assert any(
-        getattr(p, "cls", None) and "annot" in (p.cls or "") for p in marks.primitives
-    )
+    assert any(getattr(p, "cls", None) and "annot" in (p.cls or "") for p in marks.primitives)
 
 
 def test_draw_annotations_stamps_grid():
@@ -142,9 +137,7 @@ def test_draw_annotations_stamps_grid():
         label="A",
         prefer=AnnotPrefer.right,
     )
-    drawn = draw_annotations(
-        [ann], atom_pos=atom_pos, coords=coords, grid=grid
-    )
+    drawn = draw_annotations([ann], atom_pos=atom_pos, coords=coords, grid=grid)
     assert drawn.primitives
     assert drawn.boxes
     # Second callout should avoid the first label box.

@@ -8,15 +8,17 @@ the same function set.
                     │  xpict-core     │
                     │  (pure Rust)    │
                     └────────┬────────┘
-              ┌──────────────┼──────────────┐
-              ▼                             ▼
-     crates/xpict-py              crates/xpict-wasm
-     (PyO3 / maturin)             (wasm-bindgen)
-              ▼                             ▼
-     xpict._native                js/src/wasm/xpict_core.*
-              ▼                             ▼
-     native_bridge.py             js/src/native.ts
+              ┌──────────────┼──────────────┬──────────────────┐
+              ▼              ▼              ▼                  ▼
+     crates/xpict-py  crates/xpict-wasm  crates/xpict    (JS npm package)
+     (PyO3 / maturin)  (wasm-bindgen)   (RDKit layout     (@xenosite/xpict)
+                                           + public API)     RDKit.js + wasm
 ```
+
+`crates/xpict` is the **native Rust** public package (mirrors JS/Python
+`mol` / `render` / `to_svg`). It depends on crates.io `rdkit` for parse + a
+local Depictor FFI for 2D/align. It is **not** linked into `xpict-py` or
+`xpict-wasm`, so RDKit stays out of those artifacts.
 
 ## One-shot setup
 
@@ -28,17 +30,23 @@ uv sync --group dev
 # Verify
 pytest tests/test_native_rust.py -q
 cd js && npm test
+cargo test -p xpict-core
+# optional native package (system RDKit):
+cargo test -p xpict
 ```
 
-| | Python | JavaScript (MVP) |
-| --- | --- | --- |
-| Package | `xpict` | `@swamidasslab/xpict` (GitHub Packages) |
-| Public API | `_native.*` + Python draw | `xpict.mol` / `render` / `toSvg` |
-| Paint ABI | `_native.depict_molecule` | wasm `depictMolecule` (internal) |
-| Init | (import extension) | auto on first `render` |
+| | Python | JavaScript (MVP) | Native Rust |
+| --- | --- | --- | --- |
+| Package | `xpict` | `@xenosite/xpict` | crates.io `xpict` |
+| Public API | `Mol` / `render` / `to_svg` (client) | `xpict.mol` / `render` / `toSvg` / `depict` | same + `depict` batch stub |
+| Paint ABI | `_native.depict_molecule` | wasm `depictMolecule` (internal) | `xpict_core::depict_molecule` |
+| Init | (import extension) | auto on first `render` | link-time RDKit |
+
+**Publish / registries:** [`publish.md`](publish.md).
 
 Python keeps the full `_native` surface (offsets, plotdots, halos, ELK, …).
 JS MVP wasm only binds `depictMolecule`; RDKit layout/align stay in TS.
+The native `crates/xpict` package is **not** linked into py/wasm.
 
 ## Adding a shared export
 
@@ -62,7 +70,7 @@ of fontTools/Shapely.
 
 Crates to prefer when filling stubs: **`ttf-parser`/`skrifa`** (fonts),
 **`geo` + `i_overlay`** (boolean + buffer). Keep Liberation files under
-`src/xpict/data/fonts/` (or `crates/xpict-core/fonts/`) so both bindings share bytes.
+`python/xpict/data/fonts/` (or `crates/xpict-core/fonts/`) so both bindings share bytes.
 
 ## Coords + alignment (RDKit at the edges, Rust for shared math)
 
@@ -73,6 +81,7 @@ Crates to prefer when filling stubs: **`ttf-parser`/`skrifa`** (fonts),
 | --- | --- | --- | --- |
 | Python | `backend="rdkit"` (`xpict[rdkit]`) | `align_rdkit.RdkitAligner` | Draw / rigid helpers via `_native` |
 | Browser | `xpict.mol` / `render` / `toSvg` | RDKit align (hidden) | `scene` JSON → string |
+| Native Rust | crates.io `rdkit` + `crates/xpict` Depictor FFI | `generateDepictionMatching2DStructure` | `xpict-core` paint → SVG |
 
 **Indigo alternate:** `backend="indigo"` + **fake/rigid align** in Rust only
 (no RDKit template). Rigid-only also when RDKit is absent.

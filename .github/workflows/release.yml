@@ -1,0 +1,247 @@
+# All-or-none product release (major/minor, or coordinated same version).
+#
+# Triggers:
+#   - tag release/v*  (e.g. release/v0.2.0) → publish core, rust, js, python
+#   - workflow_dispatch → version + optional dry_run
+#
+# Language-only tags (js/v*, py/v*, …) cannot ship X.Y.0 — see docs/publish.md.
+
+name: release
+
+on:
+  push:
+    tags:
+      - "release/v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Semver to publish on every surface (e.g. 0.2.0)"
+        required: true
+        type: string
+      dry_run:
+        description: "Build / dry-run only (do not publish)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
+
+  meta:
+    needs: checks
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      dry_run: ${{ steps.v.outputs.dry_run }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        run: |
+          if [[ "${GITHUB_REF_NAME:-}" == release/v* ]]; then
+            VER="${GITHUB_REF_NAME#release/v}"
+            DRY=false
+          else
+            VER="${{ inputs.version }}"
+            DRY="${{ inputs.dry_run }}"
+          fi
+          bash scripts/check_version_policy.sh --product "$VER"
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          echo "dry_run=$DRY" >> "$GITHUB_OUTPUT"
+          echo "Product release $VER (dry_run=$DRY)"
+
+  bump:
+    needs: meta
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set all package versions to ${{ needs.meta.outputs.version }}
+        run: |
+          VER="${{ needs.meta.outputs.version }}"
+          python3 - <<'PY'
+          import json, re
+          from pathlib import Path
+          import os
+          ver = os.environ["VER"]
+
+          def set_toml_version(path: Path) -> None:
+              text = path.read_text()
+              text, n = re.subn(r'(?m)^version = "[^"]+"', f'version = "{ver}"', text, count=1)
+              assert n == 1, path
+              path.write_text(text)
+
+          pkg = Path("js/package.json")
+          data = json.loads(pkg.read_text())
+          data["version"] = ver
+          pkg.write_text(json.dumps(data, indent=2) + "\n")
+
+          set_toml_version(Path("pyproject.toml"))
+          for name in ("xpict-core", "xpict", "xpict-py", "xpict-wasm"):
+              set_toml_version(Path(f"crates/{name}/Cargo.toml"))
+
+          # Keep xpict → xpict-core version dep aligned.
+          dep = Path("crates/xpict/Cargo.toml")
+          t = dep.read_text()
+          t, n = re.subn(
+              r'(xpict-core = \{ path = "[^"]+", version = ")[^"]+(")',
+              rf"\g<1>{ver}\2",
+              t,
+              count=1,
+          )
+          assert n == 1
+          dep.write_text(t)
+          print(f"all packages → {ver}")
+          PY
+        env:
+          VER: ${{ needs.meta.outputs.version }}
+      - name: Upload versioned tree
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-tree
+          path: |
+            js/package.json
+            pyproject.toml
+            crates/xpict-core/Cargo.toml
+            crates/xpict/Cargo.toml
+            crates/xpict-py/Cargo.toml
+            crates/xpict-wasm/Cargo.toml
+
+  publish-core:
+    needs: [meta, bump]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-tree
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+      - name: Publish xpict-core
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          DRY: ${{ needs.meta.outputs.dry_run }}
+        run: |
+          if [[ "$DRY" == "true" ]]; then
+            cargo publish -p xpict-core --dry-run --allow-dirty
+          else
+            test -n "${CARGO_REGISTRY_TOKEN:-}" || { echo "CARGO_REGISTRY_TOKEN required" >&2; exit 1; }
+            cargo publish -p xpict-core --allow-dirty
+          fi
+
+  publish-rust:
+    needs: [meta, bump, publish-core]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-tree
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+      - name: Install RDKit
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y librdkit-dev librdkit1 libboost-all-dev g++
+      - name: Publish xpict
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          CPLUS_INCLUDE_PATH: ${{ github.workspace }}/crates/xpict/compat/rdkit
+          DRY: ${{ needs.meta.outputs.dry_run }}
+        run: |
+          if [[ "$DRY" == "true" ]]; then
+            cargo publish -p xpict --dry-run --allow-dirty
+          else
+            test -n "${CARGO_REGISTRY_TOKEN:-}" || { echo "CARGO_REGISTRY_TOKEN required" >&2; exit 1; }
+            cargo publish -p xpict --allow-dirty
+          fi
+
+  publish-js:
+    needs: [meta, bump]
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: js
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-tree
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+      - name: Install wasm-pack
+        run: |
+          if ! command -v wasm-pack >/dev/null 2>&1; then
+            curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+            echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          fi
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+          scope: "@xenosite"
+          cache: npm
+          cache-dependency-path: js/package-lock.json
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - run: npm test
+      - name: Publish JS
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          DRY: ${{ needs.meta.outputs.dry_run }}
+        run: |
+          if [[ "$DRY" == "true" ]]; then
+            npm pack
+          else
+            if [[ -z "${NODE_AUTH_TOKEN:-}" ]]; then
+              echo "NPM_TOKEN secret required" >&2
+              exit 1
+            fi
+            npm publish --access public
+          fi
+
+  # Same platform matrix as pypi.yml (Linux/macOS/Windows × x86_64+ARM).
+  wheels-py:
+    needs: [meta, bump]
+    uses: ./.github/workflows/build-python-wheels.yml
+    with:
+      version_tree_artifact: release-tree
+
+  publish-py:
+    needs: [meta, wheels-py]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download wheels + sdist
+        uses: actions/download-artifact@v4
+        with:
+          pattern: wheels-*
+          merge-multiple: true
+          path: dist
+      - name: List artifacts
+        run: ls -la dist
+      - name: Publish PyPI
+        if: needs.meta.outputs.dry_run != 'true'
+        uses: PyO3/maturin-action@v1
+        with:
+          command: upload
+          args: --skip-existing dist/*
+        env:
+          MATURIN_PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+      - name: Dry-run note
+        if: needs.meta.outputs.dry_run == 'true'
+        run: echo "dry_run: skipped PyPI publish"

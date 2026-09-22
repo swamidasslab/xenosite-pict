@@ -153,9 +153,21 @@ const both = await xpict.render(xpict.mol("*C* |$R1;;R2;$|"));
   }
 }
 
+// Batch stub: mol list → Rendered[]
+const batch = await xpict.depict({
+  molecules: [
+    { smiles: "CCO", mark_atoms: [2] },
+    { smiles: "CCCO", align_to: 0 },
+  ],
+});
+if (batch.length !== 2) throw new Error(`depict length ${batch.length}`);
+if (batch[0]!.molecule.atoms.length !== 3) throw new Error("depict[0] atoms");
+if (batch[1]!.molecule.atoms.length !== 4) throw new Error("depict[1] atoms");
+
 console.log("api smoke ok", {
   svgBytes: svg.length,
   alignToMol: xpict.toSvg(alignedToMol.scene).length,
   alignToRendered: xpict.toSvg(alignedToRendered.scene).length,
+  depictBatch: batch.length,
   serverSide: typeof document === "undefined",
 });

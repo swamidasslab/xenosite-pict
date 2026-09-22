@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from xpict.contracts.nodes import PictSpec
+from xpict.future.nodes import PictSpec
 from xpict.export_schema import minify_json_schema
 
 
@@ -25,8 +25,7 @@ def test_minify_reduces_size_and_shares_children():
     assert "ContainerCommon" in defs
     mol = defs["MolNode"]
     assert any(
-        isinstance(x, dict) and x.get("$ref") == "#/$defs/NodeCommon"
-        for x in mol.get("allOf", [])
+        isinstance(x, dict) and x.get("$ref") == "#/$defs/NodeCommon" for x in mol.get("allOf", [])
     )
     blob = json.dumps(mini)
     assert blob.count("#/$defs/NodeCommon") >= 1

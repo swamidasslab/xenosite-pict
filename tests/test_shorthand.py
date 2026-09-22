@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from xpict.contracts.nodes import PictSpec, compress_pict, expand_pict
-from xpict.contracts.spec import LabelPos, LabelSpec
-from xpict.contracts.shorthand import (
+from xpict.future.nodes import PictSpec, compress_pict, expand_pict
+from xpict.future.shorthand import (
     LABEL_DEFAULTS,
     compress_label,
     compress_pict_input,
@@ -15,6 +14,7 @@ from xpict.contracts.shorthand import (
     map_dicts,
     map_tree,
 )
+from xpict.future.spec import LabelPos, LabelSpec
 
 
 def test_expand_shorthand_string_and_partial_dict():
@@ -26,18 +26,18 @@ def test_expand_shorthand_string_and_partial_dict():
         "text": "ethanol",
         "pos": "bottom",
     }
-    assert expand_shorthand(
-        {"text": "ethanol", "pos": "top"}, LABEL_DEFAULTS
-    ) == {"text": "ethanol", "pos": "top"}
+    assert expand_shorthand({"text": "ethanol", "pos": "top"}, LABEL_DEFAULTS) == {
+        "text": "ethanol",
+        "pos": "top",
+    }
 
 
 def test_compress_shorthand_drops_defaults():
-    assert compress_shorthand(
-        {"text": "ethanol", "pos": "bottom"}, LABEL_DEFAULTS
-    ) == "ethanol"
-    assert compress_shorthand(
-        {"text": "ethanol", "pos": "top"}, LABEL_DEFAULTS
-    ) == {"text": "ethanol", "pos": "top"}
+    assert compress_shorthand({"text": "ethanol", "pos": "bottom"}, LABEL_DEFAULTS) == "ethanol"
+    assert compress_shorthand({"text": "ethanol", "pos": "top"}, LABEL_DEFAULTS) == {
+        "text": "ethanol",
+        "pos": "top",
+    }
     assert compress_label({"text": "x", "pos": "bottom"}) == "x"
 
 
@@ -76,16 +76,12 @@ def test_expand_pict_input_aliases_title_and_expands_label():
 
 
 def test_pictspec_validates_to_expanded_label():
-    doc = PictSpec.model_validate(
-        {"molecules": [{"smiles": "CCO", "label": "ethanol"}]}
-    )
+    doc = PictSpec.model_validate({"molecules": [{"smiles": "CCO", "label": "ethanol"}]})
     assert isinstance(doc.molecules[0].label, LabelSpec)
     assert doc.molecules[0].label.text == "ethanol"
     assert doc.molecules[0].label.pos is LabelPos.bottom
 
-    doc2 = expand_pict(
-        {"molecules": [{"smiles": "CCO", "label": {"text": "x", "pos": "left"}}]}
-    )
+    doc2 = expand_pict({"molecules": [{"smiles": "CCO", "label": {"text": "x", "pos": "left"}}]})
     assert doc2.molecules[0].label.pos is LabelPos.left
 
     compressed = compress_pict(doc)

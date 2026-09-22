@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>JavaScript — xpict</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,650&family=Source+Sans+3:wght@400;600&family=Source+Code+Pro:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../assets/site.css" />
+  </head>
+  <body>
+    <div class="atmosphere" aria-hidden="true"></div>
+    <nav class="site-nav" aria-label="Site">
+      <a class="mark" href="../">xpict</a>
+      <a href="../api.html">API</a>
+      <a href="../install.html">Install</a>
+      <a href="./" aria-current="page">JavaScript</a>
+      <a href="../python/">Python</a>
+      <a href="../rust/">Rust</a>
+      <span class="grow"></span>
+      <a class="ext" href="https://github.com/swamidasslab/xenosite-pict"
+        >GitHub</a
+      >
+    </nav>
+
+    <main class="wrap">
+      <h1>JavaScript</h1>
+      <p class="hero-lede">
+        <code>@xenosite/xpict</code> — declarative molecule depiction for
+        publication-quality SVG on the web (and Node). RDKit.js at the layout
+        edge; shared Rust paint via WASM.
+      </p>
+      <div class="hero-cta">
+        <a class="btn primary" href="./demo/">Open align demo</a>
+        <a class="btn ghost" href="../api.html#js">API examples</a>
+      </div>
+
+      <h2>Quick start</h2>
+      <pre><code>import { xpict } from "@xenosite/xpict";
+
+const mol = xpict.mol("c1ccccc1");
+const rendered = await xpict.render(mol);
+const svg = xpict.toSvg(rendered.scene);</code></pre>
+
+      <h2>Browser demo</h2>
+      <p>
+        Interactive two-molecule align / paint playground lives under this
+        section:
+        <a href="./demo/"><strong>/js/demo/</strong></a>
+        (template + query SMILES, marks, shade, star labels).
+      </p>
+
+      <h2>Package</h2>
+      <ul>
+        <li>Registry: npmjs.org (<code>@xenosite/xpict</code>)</li>
+        <li>Publish: tag <code>js/v*</code> or Actions workflow</li>
+        <li>Surface: <code>mol</code> / <code>render</code> / <code>toSvg</code> / <code>depict</code></li>
+      </ul>
+
+      <h2>Label markup</h2>
+      <p>
+        Same Rust dialect as Python/native:
+        <code>$R_1$</code>, <code>R^2</code>, <code>\alpha</code>,
+        <code>**bold**</code> / <code>*italic*</code>. Bare underscores stay
+        literal (<code>my_name</code>). Docs:
+        <a href="https://github.com/swamidasslab/xenosite-pict/blob/main/docs/label-markup.md"
+          >label-markup.md</a
+        >.
+      </p>
+    </main>
+
+    <footer class="site-foot">
+      <p><a href="../">← Home</a></p>
+    </footer>
+  </body>
+</html>

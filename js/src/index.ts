@@ -1,7 +1,7 @@
 /**
- * `@swamidasslab/xpict` — MVP client for xenosite.org.
+ * `@xenosite/xpict` — MVP client for xenosite.org.
  *
- * Public: ``xpict.mol`` / ``xpict.render`` / ``xpict.toSvg`` (+ types).
+ * Public: ``xpict.mol`` / ``xpict.render`` / ``xpict.toSvg`` / ``xpict.depict``.
  */
 
 export { xpict } from "./api.js";
@@ -10,6 +10,8 @@ export type {
   Rendered,
   AlignTarget,
   MolRenderOptions,
+  MolSpec,
+  DepictSpec,
   SvgAtom,
   SvgBond,
   Scene,

@@ -5,17 +5,15 @@ from __future__ import annotations
 import pytest
 
 from xpict import render
-from xpict.contracts.nodes import (
+from xpict.future.nodes import (
     ArrowNode,
     GridNode,
     MolNode,
     PictSpec,
     ReactionNode,
-    TableNode,
-    flatten_to_legacy,
     lift_legacy,
 )
-from xpict.contracts.spec import EdgeArrow
+from xpict.future.spec import EdgeArrow
 
 
 def test_legacy_single_mol_lifts_to_mol_root():
@@ -34,9 +32,7 @@ def test_legacy_reaction_lifts_to_reaction_container():
             ],
             "diagram": {
                 "kind": "reaction",
-                "edges": [
-                    {"source": "a", "target": "b", "label": "MeI", "arrow": "forward"}
-                ],
+                "edges": [{"source": "a", "target": "b", "label": "MeI", "arrow": "forward"}],
             },
         }
     )

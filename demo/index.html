@@ -11,15 +11,28 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="./demo.css" />
+    <link rel="stylesheet" href="../../assets/site.css" />
   </head>
   <body>
     <div class="atmosphere" aria-hidden="true"></div>
+    <nav class="site-nav" aria-label="Site">
+      <a class="mark" href="../../">xpict</a>
+      <a href="../../api.html">API</a>
+      <a href="../../install.html">Install</a>
+      <a href="../">JavaScript</a>
+      <a href="../../python/">Python</a>
+      <a href="../../rust/">Rust</a>
+      <span class="grow"></span>
+      <a class="ext" href="https://github.com/swamidasslab/xenosite-pict"
+        >GitHub</a
+      >
+    </nav>
     <header class="hero">
       <p class="brand">xpict</p>
       <h1>Align two molecules</h1>
       <p class="lede">
-        Enter SMILES for a template and a query. The query is laid out with
-        RDKit against the template, then painted to SVG.
+        JavaScript demo — enter SMILES for a template and a query. The query
+        is laid out with RDKit against the template, then painted to SVG.
       </p>
     </header>
 
@@ -160,8 +173,10 @@
     <footer class="foot">
       <p>
         <code>xpict.mol</code> · <code>render</code> · <code>toSvg</code> —
+        <a href="../">JS docs</a> ·
+        <a href="../../">all languages</a> ·
         <a href="https://github.com/swamidasslab/xenosite-pict"
-          >swamidasslab/xenosite-pict</a
+          >GitHub</a
         >
       </p>
     </footer>

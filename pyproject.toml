@@ -1,22 +1,36 @@
 [project]
 name = "xpict"
 version = "0.1.4"
-description = "Declarative, publication-quality small-molecule depiction for Python and the web"
+description = "Declarative molecule depiction for publication-quality vector graphics (Python; also Rust and JS)"
 readme = "README.md"
 license = { text = "MIT" }
 authors = [
   { name = "S. Joshua Swamidass", email = "swamidass@gmail.com" },
 ]
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.14"
+keywords = [
+  "chemistry",
+  "molecule",
+  "depiction",
+  "svg",
+  "rdkit",
+  "smiles",
+  "xenosite",
+]
 dependencies = [
   "pydantic>=2.7",
+  "typing_extensions>=4.12",
 ]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Science/Research",
   "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
   "Topic :: Scientific/Engineering :: Chemistry",
+  "Topic :: Scientific/Engineering :: Visualization",
 ]
 
 [project.optional-dependencies]
@@ -29,8 +43,12 @@ indigo = [
 all = ["xpict[rdkit,indigo]"]
 
 [project.urls]
-Homepage = "https://github.com/swamidasslab/xenosite-pict"
+Homepage = "https://swamidasslab.github.io/xenosite-pict/"
+Documentation = "https://swamidasslab.github.io/xenosite-pict/"
 Repository = "https://github.com/swamidasslab/xenosite-pict"
+Issues = "https://github.com/swamidasslab/xenosite-pict/issues"
+Changelog = "https://github.com/swamidasslab/xenosite-pict/releases"
+"Future PictSpec" = "https://github.com/swamidasslab/xenosite-pict/tree/main/python/xpict/future"
 
 [project.scripts]
 xpict-export-schema = "xpict.export_schema:main"
@@ -41,7 +59,7 @@ build-backend = "maturin"
 
 [tool.maturin]
 manifest-path = "crates/xpict-py/Cargo.toml"
-python-source = "src"
+python-source = "python"
 module-name = "xpict._native"
 include = ["schema/**", "js/**", "docs/**"]
 
@@ -50,16 +68,34 @@ dev = [
   "pytest>=8.0",
   "ruff>=0.6",
   "maturin>=1.4,<2.0",
+  "pyright>=1.1.414",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["python"]
 
 [tool.ruff]
 line-length = 100
+# Minimum supported; CI matrix covers 3.11–3.13 (3.14 blocked on PyO3).
 target-version = "py311"
 
 [tool.ruff.lint]
-select = ["E", "F", "I"]
+select = ["E", "F", "I", "UP"]
 ignore = ["E501"]
+
+[tool.pyright]
+include = ["python"]
+# Typecheck against the oldest supported runtime.
+pythonVersion = "3.11"
+typeCheckingMode = "strict"
+venvPath = "."
+venv = ".venv"
+# Untyped chem deps (rdkit/indigo) and gradual typing: keep other strict rules.
+reportUnknownVariableType = false
+reportUnknownMemberType = false
+reportUnknownArgumentType = false
+reportUnknownParameterType = false
+reportUnknownLambdaType = false
+reportMissingTypeStubs = false
+reportMissingParameterType = false

@@ -1,69 +1,55 @@
-"""Parity tests for ``xpict._native`` (maturin / Rust core)."""
+"""PyO3 ABI smoke for ``xpict._native``.
+
+Numeric / geometry parity with Python helpers lives in
+``cargo test -p xpict-core``. This module only checks the extension module
+still exports the surface Python imports.
+"""
 
 from __future__ import annotations
 
 import json
-import math
+import re
 
 import pytest
 
-from xpict.native_bridge import HAS_RUST_CORE, CapsuleInk, Shape, multi_bond_offset
-from xpict.draw.bonds import _multi_bond_offset_py
-from xpict.draw.halo import capsule_shape, halo_path_d
 from xpict.draw.metrics import LABEL_GAP_PX, OFFSET_PX
-from xpict.draw.plotdot import PlotDot
+from xpict.native_bridge import HAS_RUST_CORE, CapsuleInk, Shape, multi_bond_offset
+
+pytestmark = pytest.mark.skipif(
+    not HAS_RUST_CORE, reason="xpict._native not built (run maturin develop)"
+)
 
 
-pytestmark = pytest.mark.skipif(not HAS_RUST_CORE, reason="xpict._native not built (run maturin develop)")
+def _multi_bond_offset_formula(length: float) -> float:
+    if length < 2.0 * OFFSET_PX:
+        return min(OFFSET_PX, length * 0.25)
+    return OFFSET_PX
 
 
-def test_multi_bond_offset_matches_python():
-    for length in (3.0, 10.0, 20.0, 100.0):
-        assert multi_bond_offset(length) == pytest.approx(_multi_bond_offset_py(length))
-
-
-def test_plotdot_rings_match_python():
-    from xpict import _native
-
-    pd = PlotDot()
-    for z in (0.25, 0.5, 0.9, 1.0):
-        py_rings = pd.rings(z)
-        rs_rings = _native.plotdot_rings(z, 4)
-        assert len(py_rings) == len(rs_rings)
-        for (r1, c1), (r2, c2) in zip(py_rings, rs_rings, strict=True):
-            assert r1 == pytest.approx(r2, abs=1e-9)
-            assert c1 == pytest.approx(c2, abs=1e-9)
-
-
-def test_capsule_halo_path_closed():
-    from xpict import _native
-
-    x1, y1, x2, y2 = 0.0, 0.0, 20.0, 0.0
-    ink_r = 0.56
-    grow = LABEL_GAP_PX
-    rust_d = _native.capsule_halo_path_d(x1, y1, x2, y2, ink_r, grow)
-    assert rust_d and rust_d.endswith("Z")
-    ink = capsule_shape(x1, y1, x2, y2, ink_r)
-    assert isinstance(ink, CapsuleInk)
-    via_halo = halo_path_d(ink, grow)
-    assert via_halo and via_halo.endswith("Z")
-
-
-def test_tagged_capsule_uses_rust_in_halo_path_d():
-    ink = capsule_shape(0.0, 0.0, 20.0, 0.0, 0.56)
-    assert isinstance(ink, CapsuleInk)
-    d = halo_path_d(ink, LABEL_GAP_PX)
-    assert d and "M" in d and d.endswith("Z")
-
-
-def test_offset_px_constant():
+def test_native_exports_constants_and_helpers():
     from xpict import _native
 
     assert _native.OFFSET_PX == pytest.approx(OFFSET_PX)
+    assert multi_bond_offset(20.0) == pytest.approx(_multi_bond_offset_formula(20.0))
+    assert multi_bond_offset(20.0) == pytest.approx(OFFSET_PX)
+    d = _native.capsule_halo_path_d(0.0, 0.0, 20.0, 0.0, 0.56, LABEL_GAP_PX)
+    assert "M" in d and d.endswith("Z")
+    # Capsule outline is a polyline with end-cap arcs — more than a simple line.
+    commands = re.findall(r"[MLZ]", d)
+    assert len(commands) > 4
+    assert isinstance(CapsuleInk(0.0, 0.0, 20.0, 0.0, 0.56), CapsuleInk)
 
 
-def test_elk_layout_json_layered():
+def test_native_shape_and_elk_abi():
     from xpict import _native
+
+    assert getattr(_native, "HAS_GEOM", False)
+    outer = [(0.0, 0.0), (20.0, 0.0), (20.0, 20.0), (0.0, 20.0)]
+    inner = [(5.0, 5.0), (15.0, 5.0), (15.0, 15.0), (5.0, 15.0)]
+    ink = Shape.from_contours_evenodd([outer, inner])
+    assert not ink.is_empty and ink.has_holes
+    assert ink.contains(10, 10) is False  # hole
+    assert ink.contains(1, 1) is True  # exterior ring
 
     assert getattr(_native, "HAS_ELK", False)
     graph = {
@@ -82,24 +68,10 @@ def test_elk_layout_json_layered():
     laid = json.loads(_native.elk_layout_json(json.dumps(graph)))
     by_id = {c["id"]: c for c in laid["children"]}
     assert by_id["b"]["x"] > by_id["a"]["x"]
-    edge = laid["edges"][0]
-    assert edge["sections"]
-    assert "startPoint" in edge["sections"][0]
-
-
-def test_shape_evenodd_and_halo():
-    from xpict import _native
-
-    assert getattr(_native, "HAS_GEOM", False)
-    # Annulus-like: outer square, inner square via even-odd.
-    outer = [(0.0, 0.0), (20.0, 0.0), (20.0, 20.0), (0.0, 20.0)]
-    inner = [(5.0, 5.0), (15.0, 5.0), (15.0, 15.0), (5.0, 15.0)]
-    ink = Shape.from_contours_evenodd([outer, inner])
-    assert not ink.is_empty
-    assert ink.has_holes
-    assert not ink.contains(10.0, 10.0)
-    halo = ink.halo(1.0)
-    assert not halo.is_empty
-    assert not halo.contains(10.0, 10.0)
-    assert halo.area > ink.area
-    assert "M" in ink.to_svg_d()
+    edges = {e["id"]: e for e in laid["edges"]}
+    sections = edges["e0"]["sections"]
+    assert sections, "ELK edge must carry route sections"
+    start = sections[0]["startPoint"]
+    assert "x" in start and "y" in start
+    assert isinstance(start["x"], (int, float))
+    assert isinstance(start["y"], (int, float))

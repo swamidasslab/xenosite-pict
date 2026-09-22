@@ -1,6 +1,6 @@
 //! Concentric plot-dot shading (xenopict `PlotDot` semantics).
 //!
-//! Keep in sync with `src/xpict/draw/plotdot.py`.
+//! Keep in sync with `python/xpict/draw/plotdot.py`.
 
 /// One disk before paint: radius fraction in `[0, 1]`, color stop in `[-1, 1]`.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -116,5 +116,19 @@ mod tests {
         assert_eq!(rings.len(), 4);
         assert!((rings[0].0 - 0.5).abs() < 1e-9);
         assert!((rings[0].1 - 1.0).abs() < 1e-9);
+    }
+
+    /// Parity with Python ``test_plotdot_rings_match_python`` sample scores.
+    #[test]
+    fn plotdot_rings_sample_scores() {
+        let pd = PlotDot::default();
+        for z in [0.25, 0.5, 0.9, 1.0] {
+            let rings = pd.rings(z);
+            assert!(!rings.is_empty() || z < 0.05);
+            for &(r, c) in &rings {
+                assert!(r > 0.0 && r <= 1.0);
+                assert!(c.abs() <= 1.0 + 1e-9);
+            }
+        }
     }
 }

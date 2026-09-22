@@ -1,6 +1,6 @@
 //! Depiction proportions (xenopict / RDKit house style).
 //!
-//! Keep in sync with `src/xpict/draw/metrics.py`.
+//! Keep in sync with `python/xpict/draw/metrics.py`.
 
 /// xenopict `Xenopict.scale` / xenosite depiction `"scale": 20`.
 pub const SCALE: f64 = 20.0;

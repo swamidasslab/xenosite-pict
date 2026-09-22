@@ -3,7 +3,9 @@ name = "xpict-py"
 version = "0.1.4"
 edition.workspace = true
 license.workspace = true
+authors.workspace = true
 repository.workspace = true
+homepage.workspace = true
 rust-version.workspace = true
 description = "PyO3 bindings for xpict-core"
 
@@ -12,7 +14,8 @@ name = "xpict_native"
 crate-type = ["cdylib"]
 
 [dependencies]
-pyo3 = { version = "0.22", features = ["extension-module"] }
+# abi3-py311 → one wheel per OS/arch for all CPython ≥3.11 (matches requires-python).
+pyo3 = { version = "0.22", features = ["extension-module", "abi3-py311"] }
 serde_json = "1"
 xpict-core = { path = "../xpict-core" }
 

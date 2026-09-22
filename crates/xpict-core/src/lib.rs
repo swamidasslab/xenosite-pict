@@ -1,6 +1,6 @@
 //! Shared depiction core for **xpict**.
 //!
-//! Python under `src/xpict/` is still the working engine. This crate holds
+//! Python under `python/xpict/` is still the working engine. This crate holds
 //! algorithms we are ready to share with PyO3 and WASM — start small, move
 //! modules as they stabilize. See the crate `README.md` for the migration
 //! rule.
@@ -18,6 +18,8 @@ pub mod font;
 pub mod geom;
 #[cfg(feature = "font")]
 pub mod labels;
+#[cfg(feature = "font")]
+pub mod markup;
 pub mod metrics;
 pub mod plotdot;
 pub mod rings;
@@ -39,6 +41,8 @@ pub use labels::{
     compose_label, label_side, place_backbone, place_label, shorten_bond, split_label, AtomIn,
     BondIn, BondOut, LabelParts, LabelSide, PlacedLabel,
 };
+#[cfg(feature = "font")]
+pub use markup::parse_label_markup;
 pub use metrics::{BOND_PX, OFFSET_FRAC, OFFSET_PX, SCALE, SHADE_FRAC, STROKE_PX};
 pub use plotdot::{PlotDot, ShadeDisk};
 pub use rings::{apply_ring_interiors, bond_interior_normals, find_sssr, Ring};

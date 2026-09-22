@@ -86,13 +86,11 @@ def test_stereo_up_replaces_skeleton():
 
 def test_layout_sets_wedge_stereo():
     backend = _backend()
-    layout = (
-        Pict(backend=backend)
-        .layout({"molecules": [{"smiles": "C[C@H](O)Cl"}]})
-        .molecules[0]
-    )
+    layout = Pict(backend=backend).layout({"molecules": [{"smiles": "C[C@H](O)Cl"}]}).molecules[0]
     stereos = {b.stereo for b in layout.bonds if b.stereo and b.stereo != "none"}
-    assert stereos & {"up", "down"}, f"expected wedge stereo, got {[b.stereo for b in layout.bonds]}"
+    assert stereos & {"up", "down"}, (
+        f"expected wedge stereo, got {[b.stereo for b in layout.bonds]}"
+    )
 
 
 def test_chiral_molecule_svg_contains_wedge_or_hash():
@@ -169,7 +167,7 @@ def test_two_singles_meet_and_clip_the_double():
 def test_two_singles_double_ends_lie_on_singles_acetone():
     """Acetone: each C=O stroke end sits on a methyl single."""
     from xpict.backends import get_backend
-    from xpict.contracts.nodes import expand_pict
+    from xpict.future.nodes import expand_pict
     from xpict.draw.drawable import normalize_coords
     from xpict.draw.metrics import shared_coord_scale
 
@@ -201,9 +199,9 @@ def test_two_singles_double_ends_lie_on_singles_acetone():
     strokes = bond_strokes(dbl.x1, dbl.y1, dbl.x2, dbl.y2, 2.0, trims=dbl.trims)
     for path in strokes.offsets:
         x, y = _pts(path.d)[0]
-        assert any(
-            _on_line(x, y, s.x1, s.y1, s.x2, s.y2) for s in singles
-        ), f"end ({x:.2f},{y:.2f}) not on a single"
+        assert any(_on_line(x, y, s.x1, s.y1, s.x2, s.y2) for s in singles), (
+            f"end ({x:.2f},{y:.2f}) not on a single"
+        )
 
 
 def test_far_end_single_joins_too():
@@ -235,9 +233,7 @@ def test_acute_two_singles_still_land_on_lines():
     strokes = bond_strokes(0, 0, 20, 0, 2.0, trims=bonds[0].trims)
     for path in strokes.offsets:
         x, y = _pts(path.d)[0]
-        assert _on_line(x, y, 0.0, 0.0, -18.0, 4.0) or _on_line(
-            x, y, 0.0, 0.0, -18.0, -4.0
-        )
+        assert _on_line(x, y, 0.0, 0.0, -18.0, 4.0) or _on_line(x, y, 0.0, 0.0, -18.0, -4.0)
         assert x < -0.2
 
 

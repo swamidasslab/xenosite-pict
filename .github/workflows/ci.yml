@@ -1,0 +1,175 @@
+# Deploy gates: Rust tests/coverage first; JS and Python both need it.
+#
+# Rust:   cargo test + llvm-cov on xpict-core (≥97% lines; push to 100%)
+# JS:     tsc --strict
+# Python: pytest on 3.11–3.13 (Linux) + native smoke on macos/windows;
+#         pyright runs on the single 3.12 + rdkit job (optional import resolve)
+# RDKit:  prebuilt PyPI wheel only on Linux 3.12 (pytest + pyright); elsewhere
+#         RDKit tests skip via importorskip/skipif
+# PyPI wheels (all arches): see build-python-wheels.yml / pypi.yml / release.yml
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    name: Rust test + coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+          shared-key: rust-cov
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: cargo test -p xpict-core
+        run: cargo test -p xpict-core
+
+      - name: Version policy (major.minor lockstep)
+        run: bash scripts/check_version_policy.sh
+
+      - name: llvm-cov (line floor)
+        run: |
+          cargo llvm-cov -p xpict-core --lcov --output-path lcov.info \
+            --fail-under-lines "${RUST_COV_MIN}"
+        env:
+          # Remaining misses are mostly Liberation TTF dead arms / defensive joins.
+          RUST_COV_MIN: "97"
+
+      - name: Upload lcov
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xpict-core-lcov
+          path: lcov.info
+
+  js:
+    name: JS strict tsc
+    needs: [rust]
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: js
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: js/package-lock.json
+
+      - name: Install JS deps
+        run: npm ci
+
+      - name: Strict TypeScript check
+        run: npm run check
+
+      - name: Strict TypeScript check (pocs)
+        run: npm run check:pocs
+
+  python-test:
+    name: Python pytest ${{ matrix.python-version }}${{ matrix.with_rdkit && ' + rdkit + pyright' || '' }}
+    needs: [rust]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - python-version: "3.11"
+            with_rdkit: false
+          # Single CI env with the prebuilt PyPI rdkit wheel: pytest (incl.
+          # RDKit tests) + pyright. Other jobs skip RDKit tests.
+          - python-version: "3.12"
+            with_rdkit: true
+          - python-version: "3.13"
+            with_rdkit: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+          shared-key: py-${{ matrix.python-version }}${{ matrix.with_rdkit && '-rdkit' || '' }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+
+      - name: Sync Python deps (dev${{ matrix.with_rdkit && ' + rdkit' || '' }})
+        run: |
+          if [ "${{ matrix.with_rdkit }}" = "true" ]; then
+            uv sync --group dev --extra rdkit
+          else
+            uv sync --group dev
+          fi
+
+      - name: Confirm RDKit import
+        if: matrix.with_rdkit
+        run: uv run python -c "import rdkit; print('rdkit', rdkit.__version__)"
+
+      - name: Strict pyright
+        if: matrix.with_rdkit
+        run: uv run pyright
+
+      - name: Pytest
+        run: uv run pytest -q
+
+  # Smoke: abi3 extension builds and tests on Apple Silicon + Windows x64.
+  # No RDKit here — skip RDKit tests; Linux 3.12 job covers them.
+  python-native-smoke:
+    name: Python native smoke (${{ matrix.os }})
+    needs: [rust]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+          shared-key: py-smoke-${{ matrix.os }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Sync Python deps (dev)
+        run: uv sync --group dev
+
+      - name: Pytest
+        run: uv run pytest -q

@@ -7,7 +7,6 @@ import pytest
 from xpict import Pict, render
 from xpict.backends.base import get_backend
 
-
 rdkit = pytest.importorskip("rdkit")
 
 

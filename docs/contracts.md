@@ -1,26 +1,45 @@
 # Contracts
 
-Pydantic models in `xpict.contracts` are the **source of truth**. Build/export writes portable JSON Schema to `schema/`:
+## Live (shipped)
 
-- `xpict.schema.json` — declarative input (`PictSpec`)
-- `layout.schema.json` — backend layout result
-- `scene.schema.json` — drawable scene graph
+Pydantic under ``xpict.contracts`` — what the public package implements today:
+
+| Model | Role |
+| --- | --- |
+| ``MolSpec`` / ``DepictSpec`` | Batch document: mol list → ``Rendered[]`` |
+| ``Scene`` (+ primitives) | Paint ABI (Rust / JS / Python serializers) |
+| ``MoleculeLayout`` / ``LayoutResult`` | Backend layout result |
+
+JSON Schema (committed):
+
+- ``schema/xpict.schema.json`` — **live** ``DepictSpec``
+- ``schema/scene.schema.json`` — scene graph
+- ``schema/layout.schema.json`` — layout result
 
 ```bash
 uv run xpict-export-schema
 ```
 
-`js/` and any future engine should validate against these schemas. Engines are interchangeable implementations.
+Language clients: ``mol`` / ``render`` / ``toSvg`` / ``depict`` (see root README).
+
+## Future (design / refinement)
+
+Full nested ``PictSpec`` (groups, reactions, annotations, shorthand, diagram
+chrome) lives in ``xpict.future`` and ``schema/future/xpict.schema.json``.
+**Comments and design PRs on that tree are welcome** — open a GitHub issue and
+link those paths.
+
+Import as ``from xpict.future import PictSpec, MoleculeSpec, …``. Lab code
+(``Pict``, POCs, nested-schema tests) still uses these models; they are **not**
+the publish surface until features land in ``contracts``.
+
+See ``python/xpict/future/README.md`` and ``CONTRIBUTING.md``.
 
 ## Runtime vs document
 
-- **In the document:** molecules (smiles / cxsmiles / esmiles / molfile), marks, shade, diagram kind, ELK options, sizes.
-- **Runtime only:** `backend`, output `format` (`svg` | `html`).
+- **In a live ``MolSpec``:** structure string, marks, shade, color, star labels, align index.  
+- **Runtime only:** layout backend (RDKit / Indigo / native), output format where applicable.
 
 ## Partial backend support
 
-If a backend cannot honor an option, it must `warnings.warn(..., PictBackendWarning)` and continue best-effort.
-
-## Composition with Vega / HoloViews
-
-Emit SVG/HTML fragments; compose as sibling views. Vega has no molecule-mark plugin API — do not embed as a Vega mark type.
+If a backend cannot honor an option, it must ``warnings.warn(..., PictBackendWarning)`` and continue best-effort.

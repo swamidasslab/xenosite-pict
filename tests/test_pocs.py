@@ -3,16 +3,11 @@
 from __future__ import annotations
 
 import json
-import shutil
 import warnings
-from pathlib import Path
-
-import pytest
 
 from xpict import Pict, render
-from xpict.contracts.nodes import PictSpec
+from xpict.future.nodes import PictSpec
 from xpict.diagram.elk import elk_graph, elk_graph_json, layout_diagram
-from xpict.warnings import PictBackendWarning
 
 
 def _chem_backend() -> str:

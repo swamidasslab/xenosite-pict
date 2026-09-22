@@ -21,12 +21,13 @@ use crate::metrics::{SCRIPT_SCALE, STAR_FRAC};
 const BEZIER_STEPS: usize = 8;
 
 const FONT_REGULAR: &[u8] =
-    include_bytes!("../../../src/xpict/data/fonts/LiberationSans-Regular.ttf");
-const FONT_BOLD: &[u8] = include_bytes!("../../../src/xpict/data/fonts/LiberationSans-Bold.ttf");
+    include_bytes!("../../../python/xpict/data/fonts/LiberationSans-Regular.ttf");
+const FONT_BOLD: &[u8] =
+    include_bytes!("../../../python/xpict/data/fonts/LiberationSans-Bold.ttf");
 const FONT_ITALIC: &[u8] =
-    include_bytes!("../../../src/xpict/data/fonts/LiberationSans-Italic.ttf");
+    include_bytes!("../../../python/xpict/data/fonts/LiberationSans-Italic.ttf");
 const FONT_BOLD_ITALIC: &[u8] =
-    include_bytes!("../../../src/xpict/data/fonts/LiberationSans-BoldItalic.ttf");
+    include_bytes!("../../../python/xpict/data/fonts/LiberationSans-BoldItalic.ttf");
 
 /// Liberation Sans face variant.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -288,11 +289,12 @@ pub enum ScriptRole {
     Superscript,
 }
 
-/// One chem-label glyph with an optional script role.
+/// One chem-label glyph with script role and face (markup bold/italic).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ChemGlyph {
     pub ch: char,
     pub role: ScriptRole,
+    pub face: FaceStyle,
 }
 
 fn script_cache() -> &'static Mutex<HashMap<(char, FaceStyle, ScriptRole), (Option<Shape>, f64)>> {
@@ -380,6 +382,10 @@ pub fn outline_star_em(style: FaceStyle) -> (Shape, f64) {
 
 /// Outline a chem glyph run in em space (+Y up). Returns `(shape, advance_em)`.
 ///
+/// Each glyph uses its own [`ChemGlyph::face`]. `style` is a fallback metrics
+/// face (cap-height for script shifts) when the run is empty of faces — callers
+/// usually pass the molecule default.
+///
 /// Subscripts drop by ~⅓ cap-height; superscripts rise by ~½ (RDKit-ish).
 pub fn outline_chem_run_em(glyphs: &[ChemGlyph], style: FaceStyle) -> (Option<Shape>, f64) {
     if glyphs.is_empty() {
@@ -387,20 +393,21 @@ pub fn outline_chem_run_em(glyphs: &[ChemGlyph], style: FaceStyle) -> (Option<Sh
     }
     // Lone ``*`` → custom star.
     if glyphs.len() == 1 && glyphs[0].ch == '*' && glyphs[0].role == ScriptRole::Normal {
-        let (s, adv) = outline_star_em(style);
+        let (s, adv) = outline_star_em(glyphs[0].face);
         return (if s.is_empty() { None } else { Some(s) }, adv);
     }
-    let face_m = face_metrics(style);
+    let metrics_face = glyphs.first().map(|g| g.face).unwrap_or(style);
+    let face_m = face_metrics(metrics_face);
     let sub_dy = -0.33 * face_m.cap_height;
     let super_dy = 0.50 * face_m.cap_height;
     let mut pen_x = 0.0;
     let mut acc: Option<Shape> = None;
     for g in glyphs {
         let (piece, adv) = if g.ch == '*' && g.role == ScriptRole::Normal {
-            let (s, a) = outline_star_em(style);
+            let (s, a) = outline_star_em(g.face);
             (Some(s), a)
         } else {
-            outline_glyph_em(g.ch, style, g.role)
+            outline_glyph_em(g.ch, g.face, g.role)
         };
         let dy = match g.role {
             ScriptRole::Normal => 0.0,
@@ -472,6 +479,7 @@ pub fn compile_text_shapes(
         .map(|ch| ChemGlyph {
             ch,
             role: ScriptRole::Normal,
+            face: style,
         })
         .collect();
     compile_chem_shapes(&glyphs, x, y, font_size, anchor, style)
@@ -570,5 +578,151 @@ mod tests {
         assert!(height > 1.7 * face.cap_height);
         assert!(height < 2.3 * face.cap_height);
         let _ = STAR_FRAC;
+    }
+
+    #[test]
+    fn face_style_flags_and_variants() {
+        assert_eq!(FaceStyle::from_flags(false, false), FaceStyle::Regular);
+        assert_eq!(FaceStyle::from_flags(true, false), FaceStyle::Bold);
+        assert_eq!(FaceStyle::from_flags(false, true), FaceStyle::Italic);
+        assert_eq!(FaceStyle::from_flags(true, true), FaceStyle::BoldItalic);
+        for style in [
+            FaceStyle::Bold,
+            FaceStyle::Italic,
+            FaceStyle::BoldItalic,
+        ] {
+            let m = face_metrics(style);
+            assert_eq!(m.upem, 2048.0);
+            assert!(m.stem_em > 0.05);
+        }
+    }
+
+    #[test]
+    fn glyph_metrics_missing_and_empty_ink() {
+        let missing = glyph_metrics('\u{10FFFF}', FaceStyle::Regular).unwrap();
+        assert!(!missing.has_ink());
+        assert_eq!(missing.ink_width(), 0.0);
+        assert_eq!(missing.ink_height(), 0.0);
+        assert!(missing.advance > 0.0);
+
+        let (none, adv) = outline_run_em("", FaceStyle::Regular);
+        assert!(none.is_none());
+        assert_eq!(adv, 0.0);
+
+        // Unknown scalar advances without contours.
+        let (shape, adv2) = outline_run_em("\u{10FFFF}", FaceStyle::Regular);
+        assert!(shape.is_none());
+        assert!(adv2 > 0.0);
+    }
+
+    #[test]
+    fn chem_run_scripts_anchors_and_empty() {
+        assert!(outline_chem_run_em(&[], FaceStyle::Regular).0.is_none());
+        assert!(compile_chem_shapes(&[], 0.0, 0.0, FONT_PX, "middle", FaceStyle::Regular).is_none());
+        assert!(compile_text_shapes("", 0.0, 0.0, FONT_PX, "middle", FaceStyle::Regular).is_none());
+
+        let glyphs = [
+            ChemGlyph {
+                ch: 'N',
+                role: ScriptRole::Normal,
+                face: FaceStyle::Regular,
+            },
+            ChemGlyph {
+                ch: '2',
+                role: ScriptRole::Subscript,
+                face: FaceStyle::Regular,
+            },
+            ChemGlyph {
+                ch: '+',
+                role: ScriptRole::Superscript,
+                face: FaceStyle::Regular,
+            },
+        ];
+        let (shape, adv) = outline_chem_run_em(&glyphs, FaceStyle::Regular);
+        assert!(shape.is_some());
+        assert!(adv > 0.0);
+
+        let start = compile_chem_shapes(&glyphs, 50.0, 20.0, FONT_PX, "start", FaceStyle::Regular)
+            .expect("start");
+        let end = compile_chem_shapes(&glyphs, 50.0, 20.0, FONT_PX, "end", FaceStyle::Regular)
+            .expect("end");
+        let mid = compile_chem_shapes(&glyphs, 50.0, 20.0, FONT_PX, "middle", FaceStyle::Regular)
+            .expect("mid");
+        assert!(!start.is_empty() && !end.is_empty() && !mid.is_empty());
+
+        // Star mixed into a chem run.
+        let star_run = [ChemGlyph {
+            ch: '*',
+            role: ScriptRole::Normal,
+            face: FaceStyle::Regular,
+        }];
+        let (s, _) = outline_chem_run_em(&star_run, FaceStyle::Regular);
+        assert!(s.unwrap().area() > 0.0);
+    }
+
+    #[test]
+    fn script_cache_hit_and_missing_in_chem_run() {
+        let a = outline_glyph_em('2', FaceStyle::Regular, ScriptRole::Subscript);
+        let b = outline_glyph_em('2', FaceStyle::Regular, ScriptRole::Subscript);
+        assert_eq!(a.1, b.1);
+        assert!(a.0.is_some());
+
+        // Missing scalar + star in one run (skips empty piece, keeps star).
+        let glyphs = [
+            ChemGlyph {
+                ch: '\u{10FFFF}',
+                role: ScriptRole::Normal,
+                face: FaceStyle::Regular,
+            },
+            ChemGlyph {
+                ch: '*',
+                role: ScriptRole::Normal,
+                face: FaceStyle::Regular,
+            },
+        ];
+        let (shape, adv) = outline_chem_run_em(&glyphs, FaceStyle::Regular);
+        assert!(shape.is_some());
+        assert!(adv > 0.0);
+
+        // Missing-only chem glyph (None shape, positive advance).
+        let miss = outline_glyph_em('\u{10FFFF}', FaceStyle::Bold, ScriptRole::Normal);
+        assert!(miss.0.is_none());
+        assert!(miss.1 > 0.0);
+    }
+
+    #[test]
+    fn contour_collector_cubic_curve_to() {
+        // Liberation outlines are quadratic-only; exercise the cubic arm directly.
+        let mut c = ContourCollector::new();
+        c.move_to(0.0, 0.0);
+        c.curve_to(10.0, 0.0, 10.0, 10.0, 0.0, 10.0);
+        c.close();
+        assert_eq!(c.contours.len(), 1);
+        assert_eq!(
+            c.contours[0].len(),
+            1 + BEZIER_STEPS,
+            "move_to + one sample per Bezier step"
+        );
+        // Midpoint sample at t=0.5 (step BEZIER_STEPS/2).
+        let t = 0.5;
+        let mt = 1.0 - t;
+        let expected = (
+            mt * mt * mt * 0.0
+                + 3.0 * mt * mt * t * 10.0
+                + 3.0 * mt * t * t * 10.0
+                + t * t * t * 0.0,
+            mt * mt * mt * 0.0
+                + 3.0 * mt * mt * t * 0.0
+                + 3.0 * mt * t * t * 10.0
+                + t * t * t * 10.0,
+        );
+        let mid_idx = BEZIER_STEPS / 2;
+        let (mx, my) = c.contours[0][mid_idx];
+        assert!(
+            (mx - expected.0).abs() < 1e-9 && (my - expected.1).abs() < 1e-9,
+            "midpoint ({mx}, {my}) vs cubic@0.5 ({}, {})",
+            expected.0,
+            expected.1
+        );
     }
 }

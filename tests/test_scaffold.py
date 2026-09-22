@@ -6,16 +6,12 @@ import json
 import warnings
 from pathlib import Path
 
-import pytest
-
 from xpict import Pict, PictBackendWarning, PictSpec, render
 from xpict.export_schema import export_schemas
 
 
 def test_pictspec_accepts_smiles_and_cxsmiles():
-    s = PictSpec.model_validate(
-        {"molecules": [{"smiles": "CCO"}, {"cxsmiles": "CCO |$;;OH$|"}]}
-    )
+    s = PictSpec.model_validate({"molecules": [{"smiles": "CCO"}, {"cxsmiles": "CCO |$;;OH$|"}]})
     assert s.molecules[0].smiles == "CCO"
     assert s.molecules[1].cxsmiles is not None
 
@@ -54,11 +50,18 @@ def test_export_schemas(tmp_path: Path):
     written = export_schemas(tmp_path)
     assert "xpict.schema.json" in written
     data = json.loads(written["xpict.schema.json"].read_text())
-    # Nested root is a discriminated union ($defs + oneOf / anyOf)
-    assert "$defs" in data or "properties" in data or "oneOf" in data or "anyOf" in data
+    # Live schema is DepictSpec (mol list subset).
+    assert data.get("title") == "DepictSpec" or "MolSpec" in json.dumps(data)
     blob = json.dumps(data)
     assert "cxsmiles" in blob
-    assert '"mol"' in blob or "MolNode" in blob
+    assert "MolSpec" in blob
+    assert "mark_atoms" in blob
+    # Full nested PictSpec is under schema/future/.
+    assert "future/xpict.schema.json" in written
+    future = json.loads(written["future/xpict.schema.json"].read_text())
+    future_blob = json.dumps(future)
+    assert "MolNode" in future_blob
+    assert "$defs" in future
 
 
 def test_unsupported_option_warns():

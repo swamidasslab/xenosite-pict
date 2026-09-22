@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>API — xpict</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,650&family=Source+Sans+3:wght@400;600&family=Source+Code+Pro:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./assets/site.css" />
+  </head>
+  <body>
+    <div class="atmosphere" aria-hidden="true"></div>
+    <nav class="site-nav" aria-label="Site">
+      <a class="mark" href="./">xpict</a>
+      <a href="./api.html" aria-current="page">API</a>
+      <a href="./install.html">Install</a>
+      <a href="./js/">JavaScript</a>
+      <a href="./python/">Python</a>
+      <a href="./rust/">Rust</a>
+      <span class="grow"></span>
+      <a class="ext" href="https://github.com/swamidasslab/xenosite-pict"
+        >GitHub</a
+      >
+    </nav>
+
+    <main class="wrap">
+      <h1>Public API</h1>
+      <p class="muted">
+        Cross-language surface. Nested <code>PictSpec</code> diagrams are not
+        part of this MVP — see <code>xpict.future</code> in the repo.
+      </p>
+
+      <div data-tabs>
+        <div class="tabs" role="tablist" aria-label="Language">
+          <button type="button" data-tab="js" aria-selected="true">
+            JavaScript
+          </button>
+          <button type="button" data-tab="py">Python</button>
+          <button type="button" data-tab="rs">Rust</button>
+        </div>
+
+        <div data-panel="js" class="panel">
+          <pre><code>import { xpict } from "@xenosite/xpict";
+
+const mol = xpict.mol("c1ccccc1");
+const rendered = await xpict.render(mol, {
+  mark_atoms: [0],
+  color: "#0b6e4f",
+});
+const svg = xpict.toSvg(rendered.scene);
+
+const aligned = await xpict.render(xpict.mol("Cc1ccccc1"), {
+  align_to: mol,
+});
+
+const batch = await xpict.depict({
+  molecules: [
+    { smiles: "CCO", mark_atoms: [2] },
+    { smiles: "CCCO", align_to: 0 },
+  ],
+});</code></pre>
+        </div>
+
+        <div data-panel="py" class="panel" hidden>
+          <pre><code># Method style (preferred when client is available):
+# Mol.from_source("CCO").render(mark_atoms=[2]).to_svg()
+
+from xpict.contracts import DepictSpec, MolSpec
+
+doc = DepictSpec.model_validate({
+    "molecules": [
+        {"smiles": "CCO", "mark_atoms": [2]},
+        {"smiles": "CCCO", "align_to": 0},
+    ]
+})
+# Layout + paint via language client / Pict lab path</code></pre>
+        </div>
+
+        <div data-panel="rs" class="panel" hidden>
+          <pre><code>use xpict::{depict, mol, DepictSpec, MolRenderOptions, MolSpec};
+
+let mut m = mol("CCO")?;
+let rendered = m.render(MolRenderOptions {
+    mark_atoms: Some(vec![2]),
+    ..Default::default()
+})?;
+let svg = rendered.to_svg();
+
+let batch = depict(&amp;DepictSpec {
+    molecules: vec![
+        MolSpec {
+            smiles: Some("CCO".into()),
+            mark_atoms: Some(vec![2]),
+            ..Default::default()
+        },
+        MolSpec {
+            smiles: Some("CCCO".into()),
+            align_to: Some(0),
+            ..Default::default()
+        },
+    ],
+})?;</code></pre>
+        </div>
+      </div>
+
+      <h2>Render options</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Option</th>
+            <th>Effect</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>color</code></td>
+            <td>Backbone / label ink</td>
+          </tr>
+          <tr>
+            <td><code>mark_atoms</code> / <code>mark_bonds</code></td>
+            <td>Publication circles</td>
+          </tr>
+          <tr>
+            <td><code>atom_shade</code> / <code>bond_shade</code></td>
+            <td>Plot-dot shading scores</td>
+          </tr>
+          <tr>
+            <td><code>star_labels</code></td>
+            <td>
+              Labels for <code>*</code> (encounter order); else CXSMILES
+              <code>|$…$|</code> by index
+            </td>
+          </tr>
+          <tr>
+            <td><code>bold_labels</code></td>
+            <td>Bold Liberation + stem-keyed stroke</td>
+          </tr>
+          <tr>
+            <td><code>align_to</code></td>
+            <td>
+              Template pose (Mol/Rendered in JS·Py; molblock / batch index in
+              Rust·depict)
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </main>
+
+    <footer class="site-foot">
+      <p><a href="./">← Home</a></p>
+    </footer>
+    <script src="./assets/site.js"></script>
+  </body>
+</html>
