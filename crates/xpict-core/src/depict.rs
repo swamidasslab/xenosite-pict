@@ -460,8 +460,39 @@ fn paint_marks(
     dx: f64,
     dy: f64,
 ) -> Vec<Primitive> {
+    use crate::geom::{capsule_polygon, polygon_to_svg_d};
+    use crate::metrics::{MARK_HALO_OPACITY, MARK_HALO_STROKE_PX, MARK_OPACITY, MARK_STROKE_PX};
+
     let mut out = Vec::new();
     let r = BOND_PX * MARK_FRAC;
+    const MARK_HALO_COLOR: &str = "#555";
+    let color = "#c44";
+
+    // Bond capsules (outline path `d`) — xenopict buffers the bond at mark radius.
+    let mut bond_capsules: Vec<(i32, i32, String)> = Vec::new();
+    for &(a, b) in &mol.mark_bonds {
+        let Some(&ia) = by_index.get(&a) else {
+            continue;
+        };
+        let Some(&ib) = by_index.get(&b) else {
+            continue;
+        };
+        let a0 = &mol.atoms[ia];
+        let a1 = &mol.atoms[ib];
+        let d = polygon_to_svg_d(&capsule_polygon(
+            a0.x + dx,
+            a0.y + dy,
+            a1.x + dx,
+            a1.y + dy,
+            r,
+            8,
+        ));
+        if !d.is_empty() {
+            bond_capsules.push((a, b, d));
+        }
+    }
+
+    // Halo underlay first (xenopict `<use href="#mark">`: #555, scale*0.2, 0.45).
     for &ai in &mol.mark_atoms {
         let Some(&i) = by_index.get(&ai) else {
             continue;
@@ -472,33 +503,49 @@ fn paint_marks(
             cy: a.y + dy,
             r,
             fill: Some("none".into()),
-            stroke: Some("#c44".into()),
-            stroke_width: STROKE_PX,
-            opacity: 0.85,
+            stroke: Some(MARK_HALO_COLOR.into()),
+            stroke_width: MARK_HALO_STROKE_PX,
+            opacity: MARK_HALO_OPACITY,
+            class: Some(format!("atom-{ai} mark-halo")),
+        });
+    }
+    for (a, b, d) in &bond_capsules {
+        out.push(Primitive::Path {
+            d: d.clone(),
+            stroke: Some(MARK_HALO_COLOR.into()),
+            fill: Some("none".into()),
+            stroke_width: MARK_HALO_STROKE_PX,
+            opacity: MARK_HALO_OPACITY,
+            stroke_dasharray: None,
+            stroke_linecap: Some("round".into()),
+            class: Some(format!("bond-mark-halo atom-{a} atom-{b}")),
+        });
+    }
+
+    // Mark ink (xenopict mark group: fill none, stroke-width scale*0.1, opacity 0.7).
+    for &ai in &mol.mark_atoms {
+        let Some(&i) = by_index.get(&ai) else {
+            continue;
+        };
+        let a = &mol.atoms[i];
+        out.push(Primitive::Circle {
+            cx: a.x + dx,
+            cy: a.y + dy,
+            r,
+            fill: Some("none".into()),
+            stroke: Some(color.into()),
+            stroke_width: MARK_STROKE_PX,
+            opacity: MARK_OPACITY,
             class: Some(format!("atom-{ai} mark")),
         });
     }
-    for &(a, b) in &mol.mark_bonds {
-        let Some(&ia) = by_index.get(&a) else {
-            continue;
-        };
-        let Some(&ib) = by_index.get(&b) else {
-            continue;
-        };
-        let a0 = &mol.atoms[ia];
-        let a1 = &mol.atoms[ib];
+    for (a, b, d) in bond_capsules {
         out.push(Primitive::Path {
-            d: format!(
-                "M {:.2} {:.2} L {:.2} {:.2}",
-                a0.x + dx,
-                a0.y + dy,
-                a1.x + dx,
-                a1.y + dy
-            ),
-            stroke: Some("#c44".into()),
+            d,
+            stroke: Some(color.into()),
             fill: Some("none".into()),
-            stroke_width: crate::metrics::HALO_STROKE,
-            opacity: 0.35,
+            stroke_width: MARK_STROKE_PX,
+            opacity: MARK_OPACITY,
             stroke_dasharray: None,
             stroke_linecap: Some("round".into()),
             class: Some(format!("bond-mark atom-{a} atom-{b}")),
@@ -823,6 +870,67 @@ mod tests {
             (max_r - BOND_PX * 0.8).abs() < 0.05 || max_r < BOND_PX * 0.8 + 0.05,
             "expected ≤0.8×bond when both atom+bond shaded, got {max_r}"
         );
+    }
+
+    #[test]
+    fn mark_circles_match_xenopict_style() {
+        let mut mol = ethanol();
+        mol.mark_atoms = vec![1];
+        mol.mark_bonds = vec![(0, 1)];
+        let scene = depict_molecule(&mol);
+        let marks = scene.viewports[0]
+            .layers
+            .iter()
+            .find(|l| l.name == LayerName::Marks)
+            .expect("marks");
+        let atom = marks.primitives.iter().find_map(|p| match p {
+            Primitive::Circle {
+                r,
+                stroke_width,
+                opacity,
+                class: Some(c),
+                stroke: Some(s),
+                ..
+            } if c.contains(" mark") && !c.contains("halo") => {
+                Some((*r, *stroke_width, *opacity, s.clone()))
+            }
+            _ => None,
+        });
+        let (r, sw, op, _) = atom.expect("atom mark");
+        assert!((r - BOND_PX).abs() < 1e-9, "mark radius = scale");
+        assert!(
+            (sw - BOND_PX * 0.1).abs() < 1e-9,
+            "mark stroke = scale*0.1, got {sw}"
+        );
+        assert!((op - 0.7).abs() < 1e-9);
+        let halo = marks.primitives.iter().any(|p| match p {
+            Primitive::Circle {
+                stroke: Some(s),
+                stroke_width,
+                opacity,
+                class: Some(c),
+                ..
+            } => c.contains("mark-halo") && s == "#555" && (*stroke_width - BOND_PX * 0.2).abs() < 1e-9 && (*opacity - 0.45).abs() < 1e-9,
+            _ => false,
+        });
+        assert!(halo, "expected #555 mark halo underlay");
+        let bond = marks.primitives.iter().any(|p| match p {
+            Primitive::Path {
+                d,
+                stroke_width,
+                opacity,
+                class: Some(c),
+                ..
+            } => {
+                c.contains("bond-mark")
+                    && !c.contains("halo")
+                    && d.contains('Z')
+                    && (*stroke_width - BOND_PX * 0.1).abs() < 1e-9
+                    && (*opacity - 0.7).abs() < 1e-9
+            }
+            _ => false,
+        });
+        assert!(bond, "bond mark should be a closed capsule outline");
     }
 
     #[test]
