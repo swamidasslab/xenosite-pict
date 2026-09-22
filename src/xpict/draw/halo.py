@@ -2,7 +2,7 @@
 
 One entry point — :func:`halo_from_shapes` — grows a white knockout around any
 ink geometry (glyph fills, bond capsules, mark rings, …). Counters in letters
-like ``O`` / ``A`` stay open so the halo does not fill those circles.
+like ``O`` / ``A`` stay open at the center; outline offset keeps an inner rim.
 """
 
 from __future__ import annotations
@@ -17,8 +17,7 @@ def halo_from_shapes(
 ) -> Shape | None:
     """Grow a knockout around ``ink`` shapes.
 
-    ``dist`` defaults to ``LABEL_GAP_PX``. Interior counters (the hole in
-    ``O``, ring marks, …) are punched back out so the halo stays hollow there.
+    ``dist`` defaults to ``LABEL_GAP_PX``. Halo is simplify then offset.
     """
     if ink is None or ink.is_empty:
         return None

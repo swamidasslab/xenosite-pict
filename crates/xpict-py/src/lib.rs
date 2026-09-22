@@ -234,8 +234,8 @@ impl PyShape {
         Self::wrap(self.inner.halo(dist))
     }
 
-    fn simplify(&self, tolerance: f64) -> Self {
-        Self::wrap(self.inner.simplify(tolerance))
+    fn simplify(&self) -> Self {
+        Self::wrap(self.inner.simplify())
     }
 
     #[getter]

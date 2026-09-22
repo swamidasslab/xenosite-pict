@@ -16,9 +16,16 @@ def test_halo_preserves_o_counter():
     assert ink.has_holes
     halo = halo_from_shapes(ink, LABEL_GAP_PX)
     assert halo is not None and not halo.is_empty
-    # Center of O should not be covered by the white halo.
     cx, cy = ink.centroid
+    # Center of O stays open…
     assert not halo.contains(cx, cy)
+    # …but the offset inner rim (just inside the ink hole) is haloed.
+    for step in (i * 0.25 for i in range(1, 40)):
+        if ink.contains(cx + step, cy):
+            assert halo.contains(cx + step - LABEL_GAP_PX * 0.5, cy)
+            break
+    else:
+        raise AssertionError("expected ink ring around O centroid")
 
 
 def test_halo_global_off_emits_no_halo():

@@ -160,28 +160,51 @@ mod tests {
         assert!(!ink.contains(10.0, 10.0));
         let halo = ink.halo(1.0);
         assert!(!halo.is_empty());
+        // Center stays open…
         assert!(!halo.contains(10.0, 10.0));
+        // …but the offset inner rim is covered (just inside the original hole).
+        assert!(halo.contains(10.0 + 3.2, 10.0));
         assert!(halo.area() > 0.0);
     }
 
     #[cfg(feature = "geom")]
     #[test]
-    fn simplify_before_halo_drops_dense_vertices() {
-        let dense: Vec<(f64, f64)> = (0..120)
+    fn lib_simplify_drops_collinear_then_halo_keeps_o_hole() {
+        // Mid-edge points are collinear — i_overlay simplify should drop them.
+        let ring = vec![
+            (0.0, 0.0),
+            (5.0, 0.0),
+            (10.0, 0.0),
+            (10.0, 5.0),
+            (10.0, 10.0),
+            (0.0, 10.0),
+            (0.0, 5.0),
+        ];
+        let ink = Shape::from_ring(&ring);
+        let simplified = ink.simplify();
+        assert!(simplified.point_count() < ink.point_count());
+
+        let outer: Vec<(f64, f64)> = (0..24)
             .map(|i| {
-                let t = TAU * i as f64 / 120.0;
+                let t = TAU * i as f64 / 24.0;
                 (20.0 + 10.0 * t.cos(), 20.0 + 10.0 * t.sin())
             })
             .collect();
-        let ink = Shape::from_ring(&dense);
-        assert!(ink.point_count() >= 100);
-        let simplified = ink.simplify(0.5);
-        assert!(simplified.point_count() < ink.point_count() / 2);
-        let halo = ink.halo(2.0);
+        let inner: Vec<(f64, f64)> = (0..24)
+            .map(|i| {
+                let t = TAU * i as f64 / 24.0;
+                (20.0 + 5.0 * t.cos(), 20.0 + 5.0 * t.sin())
+            })
+            .collect();
+        let ring = Shape::from_contours_evenodd(&[outer, inner]);
+        assert!(ring.has_holes());
+        let cleaned = ring.simplify();
+        assert!(cleaned.has_holes());
+        let halo = ring.halo(1.5);
         assert!(!halo.is_empty());
-        assert!(halo.area() > ink.area());
-        // Halo ring should not cover the disk center.
-        assert!(!halo.contains(20.0, 20.0) || !ink.has_holes());
+        assert!(!halo.contains(20.0, 20.0));
+        assert!(halo.contains(20.0 + 4.0, 20.0)); // inner rim
+        assert!(halo.area() > ring.area());
     }
 
     #[cfg(feature = "geom")]
