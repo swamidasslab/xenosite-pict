@@ -571,4 +571,119 @@ mod tests {
         assert!(height < 2.3 * face.cap_height);
         let _ = STAR_FRAC;
     }
+
+    #[test]
+    fn face_style_flags_and_variants() {
+        assert_eq!(FaceStyle::from_flags(false, false), FaceStyle::Regular);
+        assert_eq!(FaceStyle::from_flags(true, false), FaceStyle::Bold);
+        assert_eq!(FaceStyle::from_flags(false, true), FaceStyle::Italic);
+        assert_eq!(FaceStyle::from_flags(true, true), FaceStyle::BoldItalic);
+        for style in [
+            FaceStyle::Bold,
+            FaceStyle::Italic,
+            FaceStyle::BoldItalic,
+        ] {
+            let m = face_metrics(style);
+            assert_eq!(m.upem, 2048.0);
+            assert!(m.stem_em > 0.05);
+        }
+    }
+
+    #[test]
+    fn glyph_metrics_missing_and_empty_ink() {
+        let missing = glyph_metrics('\u{10FFFF}', FaceStyle::Regular).unwrap();
+        assert!(!missing.has_ink());
+        assert_eq!(missing.ink_width(), 0.0);
+        assert_eq!(missing.ink_height(), 0.0);
+        assert!(missing.advance > 0.0);
+
+        let (none, adv) = outline_run_em("", FaceStyle::Regular);
+        assert!(none.is_none());
+        assert_eq!(adv, 0.0);
+
+        // Unknown scalar advances without contours.
+        let (shape, adv2) = outline_run_em("\u{10FFFF}", FaceStyle::Regular);
+        assert!(shape.is_none());
+        assert!(adv2 > 0.0);
+    }
+
+    #[test]
+    fn chem_run_scripts_anchors_and_empty() {
+        assert!(outline_chem_run_em(&[], FaceStyle::Regular).0.is_none());
+        assert!(compile_chem_shapes(&[], 0.0, 0.0, FONT_PX, "middle", FaceStyle::Regular).is_none());
+        assert!(compile_text_shapes("", 0.0, 0.0, FONT_PX, "middle", FaceStyle::Regular).is_none());
+
+        let glyphs = [
+            ChemGlyph {
+                ch: 'N',
+                role: ScriptRole::Normal,
+            },
+            ChemGlyph {
+                ch: '2',
+                role: ScriptRole::Subscript,
+            },
+            ChemGlyph {
+                ch: '+',
+                role: ScriptRole::Superscript,
+            },
+        ];
+        let (shape, adv) = outline_chem_run_em(&glyphs, FaceStyle::Regular);
+        assert!(shape.is_some());
+        assert!(adv > 0.0);
+
+        let start = compile_chem_shapes(&glyphs, 50.0, 20.0, FONT_PX, "start", FaceStyle::Regular)
+            .expect("start");
+        let end = compile_chem_shapes(&glyphs, 50.0, 20.0, FONT_PX, "end", FaceStyle::Regular)
+            .expect("end");
+        let mid = compile_chem_shapes(&glyphs, 50.0, 20.0, FONT_PX, "middle", FaceStyle::Regular)
+            .expect("mid");
+        assert!(!start.is_empty() && !end.is_empty() && !mid.is_empty());
+
+        // Star mixed into a chem run.
+        let star_run = [ChemGlyph {
+            ch: '*',
+            role: ScriptRole::Normal,
+        }];
+        let (s, _) = outline_chem_run_em(&star_run, FaceStyle::Regular);
+        assert!(s.unwrap().area() > 0.0);
+    }
+
+    #[test]
+    fn script_cache_hit_and_missing_in_chem_run() {
+        let a = outline_glyph_em('2', FaceStyle::Regular, ScriptRole::Subscript);
+        let b = outline_glyph_em('2', FaceStyle::Regular, ScriptRole::Subscript);
+        assert_eq!(a.1, b.1);
+        assert!(a.0.is_some());
+
+        // Missing scalar + star in one run (skips empty piece, keeps star).
+        let glyphs = [
+            ChemGlyph {
+                ch: '\u{10FFFF}',
+                role: ScriptRole::Normal,
+            },
+            ChemGlyph {
+                ch: '*',
+                role: ScriptRole::Normal,
+            },
+        ];
+        let (shape, adv) = outline_chem_run_em(&glyphs, FaceStyle::Regular);
+        assert!(shape.is_some());
+        assert!(adv > 0.0);
+
+        // Missing-only chem glyph (None shape, positive advance).
+        let miss = outline_glyph_em('\u{10FFFF}', FaceStyle::Bold, ScriptRole::Normal);
+        assert!(miss.0.is_none());
+        assert!(miss.1 > 0.0);
+    }
+
+    #[test]
+    fn contour_collector_cubic_curve_to() {
+        // Liberation outlines are quadratic-only; exercise the cubic arm directly.
+        let mut c = ContourCollector::new();
+        c.move_to(0.0, 0.0);
+        c.curve_to(10.0, 0.0, 10.0, 10.0, 0.0, 10.0);
+        c.close();
+        assert_eq!(c.contours.len(), 1);
+        assert!(c.contours[0].len() > 4);
+    }
 }

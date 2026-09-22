@@ -939,4 +939,187 @@ mod tests {
         assert_eq!(pl.text, "*");
         assert!(!pl.path_d.is_empty());
     }
+
+    #[test]
+    fn split_empty_charges_and_non_h_suffix() {
+        let empty = split_label("  ");
+        assert!(empty.center.is_empty());
+        assert_eq!(empty.charge, 0);
+
+        let fe = split_label("Fe3+");
+        assert_eq!(fe.center, "Fe");
+        assert_eq!(fe.charge, 3);
+        assert!(fe.traveling.is_empty());
+
+        let n2 = split_label("N2+");
+        assert_eq!(n2.center, "N");
+        assert_eq!(n2.charge, 2);
+
+        let multi = split_label("O++");
+        assert_eq!(multi.center, "O");
+        assert_eq!(multi.charge, 2);
+
+        // Trailing junk after H → whole body is center (NHAc).
+        let nhac = split_label("NHAc");
+        assert_eq!(nhac.center, "NHAc");
+        assert!(nhac.traveling.is_empty());
+    }
+
+    #[test]
+    fn label_side_degree0_and_vertical_degree1() {
+        assert_eq!(
+            label_side_for((0.0, 0.0), &[], Some("O")),
+            LabelSide::West
+        );
+        assert_eq!(
+            label_side_for((0.0, 0.0), &[], Some("C")),
+            LabelSide::East
+        );
+        // Degree-1 steep vertical → forced East (RDKit).
+        assert_eq!(
+            label_side((0.0, 0.0), &[(0.0, 20.0)]),
+            LabelSide::East
+        );
+    }
+
+    #[test]
+    fn label_side_degree3_keeps_north_south() {
+        // Three neighbors with a near-vertical bond.
+        let side = label_side(
+            (0.0, 0.0),
+            &[(10.0, 2.0), (-10.0, 2.0), (0.0, 15.0)],
+        );
+        assert_eq!(side, LabelSide::North);
+
+        let south = label_side(
+            (0.0, 0.0),
+            &[(10.0, -2.0), (-10.0, -2.0), (0.0, -15.0)],
+        );
+        assert_eq!(south, LabelSide::South);
+    }
+
+    #[test]
+    fn north_south_nh2_stacks_and_compose_charge() {
+        let north = place_label("NH2", 50.0, 50.0, LabelSide::North, FONT_PX, FaceStyle::Regular);
+        let south = place_label("NH2", 50.0, 50.0, LabelSide::South, FONT_PX, FaceStyle::Regular);
+        assert!(north.path_d.contains('M'));
+        assert!(south.path_d.contains('M'));
+        assert_eq!(north.text, "NH₂");
+        let ink = label_ink_shape(&north, FONT_PX, FaceStyle::Regular);
+        assert!(ink.is_some());
+
+        let parts = split_label("Fe2+");
+        assert_eq!(compose_label(&parts, LabelSide::East), "Fe²⁺");
+        let west_abbr = place_label("GlcA", 0.0, 0.0, LabelSide::West, FONT_PX, FaceStyle::Regular);
+        assert!(!west_abbr.path_d.is_empty());
+    }
+
+    #[test]
+    fn shorten_bond_collapse_and_oob_backbone() {
+        let (x1, y1, x2, y2) = shorten_bond(0.0, 0.0, 5.0, 0.0, 4.0, 4.0);
+        assert!((x1 - 2.5).abs() < 1e-9);
+        assert!((x2 - 2.5).abs() < 1e-9);
+        assert!((y1 - y2).abs() < 1e-9);
+
+        let atoms = vec![AtomIn {
+            x: 0.0,
+            y: 0.0,
+            label: Some("O".into()),
+        }];
+        let bonds = vec![BondIn { begin: 0, end: 9 }];
+        let (out, labels) = place_backbone(&atoms, &bonds, FONT_PX, FaceStyle::Regular);
+        assert!(labels[0].is_some());
+        assert_eq!(out[0].x1, 0.0);
+        assert_eq!(out[0].x2, 0.0);
+    }
+
+    #[test]
+    fn charged_west_oh_and_empty_label_skipped() {
+        let pl = place_label("OH+", 10.0, 10.0, LabelSide::West, FONT_PX, FaceStyle::Regular);
+        assert!(pl.text.contains('⁺') || pl.text.contains('+'));
+        assert!(!pl.path_d.is_empty());
+
+        let atoms = vec![
+            AtomIn {
+                x: 0.0,
+                y: 0.0,
+                label: Some("   ".into()),
+            },
+            AtomIn {
+                x: 20.0,
+                y: 0.0,
+                label: None,
+            },
+        ];
+        let (_, labels) = place_backbone(
+            &atoms,
+            &[BondIn { begin: 0, end: 1 }],
+            FONT_PX,
+            FaceStyle::Regular,
+        );
+        assert!(labels[0].is_none());
+        assert!(labels[1].is_none());
+    }
+
+    #[test]
+    fn script_digits_and_empty_place() {
+        // Charge magnitude 10 → superscript digits 1,0; NH9 → subscript 9.
+        let fe = split_label("Fe10+");
+        assert_eq!(fe.charge, 10);
+        let text = compose_label(&fe, LabelSide::East);
+        assert!(text.contains('¹') && text.contains('⁰') && text.contains('⁺'));
+
+        let nh9 = compose_label(&split_label("NH9"), LabelSide::East);
+        assert!(nh9.contains('₉'));
+
+        // Other script digits via high H-count / charge.
+        let nh3 = compose_label(&split_label("NH3"), LabelSide::East);
+        assert!(nh3.contains('₃'));
+        let fe4 = compose_label(&split_label("Fe4+"), LabelSide::East);
+        assert!(fe4.contains('⁴'));
+
+        // Sweep remaining script digit arms used by H-counts / charges.
+        for (raw, needle) in [
+            ("NH4", '₄'),
+            ("NH5", '₅'),
+            ("NH6", '₆'),
+            ("NH7", '₇'),
+            ("NH8", '₈'),
+            ("Fe5+", '⁵'),
+            ("Fe6+", '⁶'),
+            ("Fe7+", '⁷'),
+            ("Fe8+", '⁸'),
+            ("Fe9+", '⁹'),
+        ] {
+            let t = compose_label(&split_label(raw), LabelSide::East);
+            assert!(t.contains(needle), "{raw} → {t}");
+        }
+
+        let empty = place_label("", 0.0, 0.0, LabelSide::East, FONT_PX, FaceStyle::Regular);
+        assert!(empty.path_d.is_empty());
+        assert!(empty.text.is_empty());
+    }
+
+    #[test]
+    fn degree3_near_vertical_bond_angles() {
+        // ~85° and ~-85° bonds exercise the atan degree windows.
+        let north = label_side(
+            (0.0, 0.0),
+            &[
+                (1.0, 10.0),  // near vertical south neighbor sum → North
+                (8.0, 1.0),
+                (-8.0, 1.0),
+            ],
+        );
+        assert_eq!(north, LabelSide::North);
+        let south = label_side(
+            (0.0, 0.0),
+            &[
+                (1.0, -10.0),
+                (8.0, -1.0),
+                (-8.0, -1.0),
+            ],
+        );
+        assert_eq!(south, LabelSide::South);
+    }
 }

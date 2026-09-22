@@ -4,7 +4,7 @@
 # Source: demo/  (assembled with built ESM + wasm under pkg/)
 #
 # Runs on every push to main (and manual dispatch) — not tag-gated.
-# Deploy is gated on CI (strict tsc + pyright + pytest).
+# Deploy is gated on CI (Rust test+coverage, strict tsc, pyright, pytest).
 
 name: Deploy demo to GitHub Pages
 

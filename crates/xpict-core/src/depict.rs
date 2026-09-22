@@ -1051,4 +1051,365 @@ mod tests {
         assert_eq!(back.viewports[0].id.as_deref(), Some("acetone"));
         assert!(!back.viewports[0].layers.is_empty());
     }
+
+    /// Parity: Python ``test_depict_molecule_ethanol_two_bonds``.
+    #[test]
+    fn ethanol_viewport_id_and_two_bonds() {
+        let scene = depict_molecule(&ethanol());
+        assert_eq!(scene.viewports[0].id.as_deref(), Some("etoh"));
+        let bonds = scene.viewports[0]
+            .layers
+            .iter()
+            .find(|l| l.name == LayerName::Bonds)
+            .expect("bonds");
+        assert_eq!(bonds.primitives.len(), 2);
+        assert!(scene.width > 0.0 && scene.height > 0.0);
+    }
+
+    /// Parity: Python ``test_depict_acetone_centered_double_offsets`` + joined offsets.
+    #[test]
+    fn acetone_joined_offsets_and_color() {
+        let scene = depict_molecule(&acetone());
+        let bonds = scene.viewports[0]
+            .layers
+            .iter()
+            .find(|l| l.name == LayerName::Bonds)
+            .expect("bonds");
+        let offsets: Vec<_> = bonds
+            .primitives
+            .iter()
+            .filter(|p| match p {
+                Primitive::Path { class: Some(c), .. } => c.contains("bond-offset"),
+                _ => false,
+            })
+            .collect();
+        assert!(offsets.len() >= 2);
+        assert!(bonds.primitives.iter().all(|p| match p {
+            Primitive::Path {
+                stroke: Some(s), ..
+            } => s == "#336699",
+            _ => true,
+        }));
+        assert!((crate::metrics::OFFSET_PX - 3.0).abs() < 1e-9);
+    }
+
+    /// Parity: Python ``test_depict_marks_and_shade_layers``.
+    #[test]
+    fn marks_and_shade_co_o_fixture() {
+        let mol = MoleculeIn {
+            id: None,
+            atoms: vec![
+                atom(0, "C", 0.0, 0.0, None),
+                atom(1, "O", 20.0, 0.0, Some("O")),
+            ],
+            bonds: vec![BondIn {
+                index: 0,
+                begin: 0,
+                end: 1,
+                order: 1.0,
+                stereo: None,
+                interior: None,
+            }],
+            color: None,
+            atom_shade: Some(vec![0.0, 0.85]),
+            bond_shade: None,
+            mark_atoms: vec![1],
+            mark_bonds: vec![],
+            bold_labels: false,
+        };
+        let scene = depict_molecule(&mol);
+        let names: std::collections::HashSet<_> = scene.viewports[0]
+            .layers
+            .iter()
+            .map(|l| l.name)
+            .collect();
+        assert!(names.contains(&LayerName::Shading));
+        assert!(names.contains(&LayerName::Bonds));
+        assert!(names.contains(&LayerName::Marks));
+    }
+
+    #[test]
+    fn empty_molecule_and_hetero_auto_label() {
+        let empty = MoleculeIn {
+            id: Some("empty".into()),
+            atoms: vec![],
+            bonds: vec![],
+            color: None,
+            atom_shade: None,
+            bond_shade: None,
+            mark_atoms: vec![],
+            mark_bonds: vec![],
+            bold_labels: false,
+        };
+        let scene = depict_molecule(&empty);
+        assert_eq!(scene.viewports[0].id.as_deref(), Some("empty"));
+        assert!(scene.viewports[0].layers.is_empty());
+
+        // Heteroatom without explicit label still gets a glyph path.
+        let mol = MoleculeIn {
+            id: None,
+            atoms: vec![
+                atom(0, "C", 0.0, 0.0, None),
+                atom(1, "N", 20.0, 0.0, None),
+            ],
+            bonds: vec![BondIn {
+                index: 0,
+                begin: 0,
+                end: 1,
+                order: 1.0,
+                stereo: None,
+                interior: None,
+            }],
+            color: None,
+            atom_shade: None,
+            bond_shade: None,
+            mark_atoms: vec![],
+            mark_bonds: vec![],
+            bold_labels: false,
+        };
+        let scene = depict_molecule(&mol);
+        let labels = scene.viewports[0]
+            .layers
+            .iter()
+            .find(|l| l.name == LayerName::Labels)
+            .expect("labels");
+        assert!(labels.primitives.iter().any(|p| match p {
+            Primitive::Path {
+                data_text: Some(t),
+                ..
+            } => t == "N",
+            _ => false,
+        }));
+    }
+
+    #[test]
+    fn charged_label_and_empty_label_string() {
+        let mut charged = atom(0, "N", 0.0, 0.0, Some("N"));
+        charged.charge = 1;
+        let mut anion = atom(1, "O", 20.0, 0.0, None);
+        anion.charge = -2;
+        let blank = AtomIn {
+            index: 2,
+            element: Some("C".into()),
+            z: None,
+            x: 40.0,
+            y: 0.0,
+            label: Some("  ".into()),
+            charge: 0,
+        };
+        let mol = MoleculeIn {
+            id: None,
+            atoms: vec![charged, anion, blank],
+            bonds: vec![
+                BondIn {
+                    index: 0,
+                    begin: 0,
+                    end: 1,
+                    order: 1.0,
+                    stereo: None,
+                    interior: None,
+                },
+                BondIn {
+                    index: 1,
+                    begin: 1,
+                    end: 2,
+                    order: 1.0,
+                    stereo: None,
+                    interior: None,
+                },
+            ],
+            color: None,
+            atom_shade: None,
+            bond_shade: None,
+            mark_atoms: vec![],
+            mark_bonds: vec![],
+            bold_labels: false,
+        };
+        let scene = depict_molecule(&mol);
+        let labels = scene.viewports[0]
+            .layers
+            .iter()
+            .find(|l| l.name == LayerName::Labels)
+            .expect("labels");
+        let texts: Vec<_> = labels
+            .primitives
+            .iter()
+            .filter_map(|p| match p {
+                Primitive::Path {
+                    data_text: Some(t),
+                    ..
+                } => Some(t.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert!(texts.iter().any(|t| t.contains('⁺') || t.contains('+')));
+        assert!(texts.iter().any(|t| t.contains('⁻') || t.contains('−') || t.contains('-')));
+    }
+
+    #[test]
+    fn north_south_label_grows_canvas() {
+        // Degree-2 steep neighbors → North/South orientation for NH2.
+        let mol = MoleculeIn {
+            id: None,
+            atoms: vec![
+                atom(0, "C", 0.0, 20.0, None),
+                atom(1, "C", 0.0, -20.0, None),
+                atom(2, "N", 0.0, 0.0, Some("NH2")),
+            ],
+            bonds: vec![
+                BondIn {
+                    index: 0,
+                    begin: 2,
+                    end: 0,
+                    order: 1.0,
+                    stereo: None,
+                    interior: None,
+                },
+                BondIn {
+                    index: 1,
+                    begin: 2,
+                    end: 1,
+                    order: 1.0,
+                    stereo: None,
+                    interior: None,
+                },
+            ],
+            color: None,
+            atom_shade: None,
+            bond_shade: None,
+            mark_atoms: vec![],
+            mark_bonds: vec![],
+            bold_labels: false,
+        };
+        let scene = depict_molecule(&mol);
+        assert!(scene.height > PAD_PX * 2.0);
+        let labels = scene.viewports[0]
+            .layers
+            .iter()
+            .find(|l| l.name == LayerName::Labels)
+            .expect("labels");
+        assert!(!labels.primitives.is_empty());
+    }
+
+    #[test]
+    fn shade_negative_and_diverging() {
+        let mut mol = ethanol();
+        mol.atom_shade = Some(vec![-0.8, -0.2, 0.0]);
+        let scene = depict_molecule(&mol);
+        assert!(scene.viewports[0]
+            .layers
+            .iter()
+            .any(|l| l.name == LayerName::Shading));
+
+        mol.atom_shade = Some(vec![-0.9, 0.0, 0.9]);
+        let scene2 = depict_molecule(&mol);
+        let shade = scene2.viewports[0]
+            .layers
+            .iter()
+            .find(|l| l.name == LayerName::Shading)
+            .expect("shading");
+        assert!(!shade.primitives.is_empty());
+    }
+
+    #[test]
+    fn skips_bonds_and_marks_with_missing_indices() {
+        let mut mol = ethanol();
+        mol.bonds.push(BondIn {
+            index: 99,
+            begin: 0,
+            end: 999,
+            order: 1.0,
+            stereo: None,
+            interior: None,
+        });
+        mol.mark_atoms = vec![2, 999];
+        mol.mark_bonds = vec![(0, 1), (0, 999)];
+        let scene = depict_molecule(&mol);
+        let marks = scene.viewports[0]
+            .layers
+            .iter()
+            .find(|l| l.name == LayerName::Marks)
+            .expect("marks");
+        // Valid atom mark + bond mark only (missing indices skipped).
+        assert!(marks.primitives.len() >= 2);
+    }
+
+    #[test]
+    fn wedge_stereo_fills_halo_from_polygon() {
+        let mol = MoleculeIn {
+            id: None,
+            atoms: vec![atom(0, "C", 0.0, 0.0, None), atom(1, "C", 20.0, 0.0, None)],
+            bonds: vec![BondIn {
+                index: 0,
+                begin: 0,
+                end: 1,
+                order: 1.0,
+                stereo: Some("up".into()),
+                interior: None,
+            }],
+            color: None,
+            atom_shade: Some(vec![0.5, 0.5]),
+            bond_shade: None,
+            mark_atoms: vec![],
+            mark_bonds: vec![],
+            bold_labels: false,
+        };
+        let scene = depict_molecule(&mol);
+        assert!(!scene.halo.is_empty());
+        let bonds = scene.viewports[0]
+            .layers
+            .iter()
+            .find(|l| l.name == LayerName::Bonds)
+            .expect("bonds");
+        assert!(bonds.primitives.iter().any(|p| match p {
+            Primitive::Path { class: Some(c), .. } => c.contains("wedge"),
+            _ => false,
+        }));
+    }
+
+    #[test]
+    fn shade_bond_only_and_tiny_scores_filtered() {
+        let mut mol = ethanol();
+        mol.atom_shade = None;
+        mol.bond_shade = Some(vec![0.9, 0.01]);
+        let scene = depict_molecule(&mol);
+        let shade = scene.viewports[0]
+            .layers
+            .iter()
+            .find(|l| l.name == LayerName::Shading)
+            .expect("shading");
+        assert!(!shade.primitives.is_empty());
+
+        // Near-zero-only scores: either no shading layer or only filtered disks.
+        mol.bond_shade = Some(vec![0.0, 0.0]);
+        mol.atom_shade = Some(vec![0.0, 0.0, 0.0]);
+        let scene2 = depict_molecule(&mol);
+        let shade2 = scene2.viewports[0]
+            .layers
+            .iter()
+            .find(|l| l.name == LayerName::Shading);
+        assert!(
+            shade2.is_none() || shade2.unwrap().primitives.is_empty(),
+            "expected no shade disks for zero scores"
+        );
+    }
+
+    #[test]
+    fn shade_skips_bond_with_unknown_endpoints() {
+        let mut mol = ethanol();
+        mol.bond_shade = Some(vec![0.8, 0.8, 0.8]);
+        mol.bonds.push(BondIn {
+            index: 50,
+            begin: 0,
+            end: 999,
+            order: 1.0,
+            stereo: None,
+            interior: None,
+        });
+        let scene = depict_molecule(&mol);
+        assert!(scene.viewports[0]
+            .layers
+            .iter()
+            .any(|l| l.name == LayerName::Shading));
+    }
 }

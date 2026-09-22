@@ -12,6 +12,7 @@
 #     "@swamidasslab/xpict": "^0.1.0"
 #
 # Published with publishConfig.access=public (unrestricted GitHub Package).
+# Gated on CI (Rust test+coverage, strict tsc, pyright, pytest).
 
 name: Publish JS package
 

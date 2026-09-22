@@ -216,4 +216,34 @@ mod tests {
             assert!((y - v).abs() < 1e-6);
         }
     }
+
+    #[test]
+    fn default_transform_is_identity() {
+        let xf = RigidTransform::default();
+        assert!((xf.cos - 1.0).abs() < 1e-12);
+        assert!(xf.sin.abs() < 1e-12);
+        assert!(xf.tx.abs() < 1e-12 && xf.ty.abs() < 1e-12);
+        assert!((xf.det - 1.0).abs() < 1e-12);
+        let pts = [(1.0, 2.0), (3.0, -4.0)];
+        assert_eq!(xf.apply_all(&pts), pts.to_vec());
+    }
+
+    #[test]
+    fn kabsch_empty_is_identity() {
+        let xf = kabsch_2d(&[], &[], true);
+        assert!((xf.cos - 1.0).abs() < 1e-12);
+        assert!(xf.det > 0.0);
+    }
+
+    #[test]
+    fn rigid_align_skips_missing_pairs_and_empty_mapping() {
+        let template = vec![(0, 0.0, 0.0), (1, 10.0, 0.0)];
+        let other = vec![(0, 1.0, 1.0), (1, 11.0, 1.0)];
+        // Missing other / template indices are skipped → no pairs → identity.
+        let (out, xf) = rigid_align_coords(&template, &other, &[(9, 0), (0, 9)]);
+        assert_eq!(out, other);
+        assert!((xf.cos - 1.0).abs() < 1e-12);
+        let (out2, _) = rigid_align_coords(&template, &other, &[]);
+        assert_eq!(out2, other);
+    }
 }

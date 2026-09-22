@@ -232,4 +232,105 @@ mod tests {
         assert!(a > 0.0, "exterior should be CCW, got {a}");
         assert!(s.buffer(1.0).area() > s.area());
     }
+
+    #[test]
+    fn polygon_and_halo_guards() {
+        assert!(polygon_to_svg_d(&[(0.0, 0.0), (1.0, 0.0)]).is_empty());
+        assert!(circle_polygon(0.0, 0.0, 0.0, 8).is_empty());
+        assert!(circle_polygon(0.0, 0.0, -1.0, 8).is_empty());
+        assert!(capsule_polygon(0.0, 0.0, 10.0, 0.0, 0.0, 8).is_empty());
+        // Degenerate segment → disk at the tip.
+        let disk = capsule_polygon(1.0, 2.0, 1.0, 2.0, 3.0, 8);
+        assert!(disk.len() >= 3);
+        assert!(capsule_halo_path_d(0.0, 0.0, 10.0, 0.0, 1.0, 0.0).is_none());
+        assert!(capsule_halo_path_d(0.0, 0.0, 10.0, 0.0, -1.0, 1.0).is_none());
+        assert!(disk_halo_path_d(0.0, 0.0, 1.0, 0.0).is_none());
+        assert!(disk_halo_path_d(0.0, 0.0, -0.1, 1.0).is_none());
+        let d = disk_halo_path_d(0.0, 0.0, 1.0, 2.0).unwrap();
+        assert!(d.ends_with('Z'));
+    }
+
+    /// Parity with Python ``test_shape_evenodd_and_halo`` (square annulus).
+    #[cfg(feature = "geom")]
+    #[test]
+    fn shape_evenodd_square_annulus_and_halo() {
+        let outer = vec![(0.0, 0.0), (20.0, 0.0), (20.0, 20.0), (0.0, 20.0)];
+        let inner = vec![(5.0, 5.0), (15.0, 5.0), (15.0, 15.0), (5.0, 15.0)];
+        let ink = Shape::from_contours_evenodd(&[outer, inner]);
+        assert!(!ink.is_empty());
+        assert!(ink.has_holes());
+        assert!(!ink.contains(10.0, 10.0));
+        let halo = ink.halo(1.0);
+        assert!(!halo.is_empty());
+        assert!(!halo.contains(10.0, 10.0));
+        assert!(halo.area() > ink.area());
+        assert!(ink.to_svg_d().contains('M'));
+    }
+
+    /// Parity with Python ``test_capsule_halo_path_closed`` / OFFSET_PX constant.
+    #[test]
+    fn capsule_halo_closed_and_offset_px() {
+        use crate::metrics::{LABEL_GAP_PX, OFFSET_PX};
+        let d = capsule_halo_path_d(0.0, 0.0, 20.0, 0.0, 0.56, LABEL_GAP_PX).unwrap();
+        assert!(d.ends_with('Z'));
+        assert!((OFFSET_PX - 3.0).abs() < 1e-9);
+    }
+
+    #[cfg(feature = "geom")]
+    #[test]
+    fn shape_ops_cover_buffers_booleans_and_empty() {
+        assert!(Shape::empty().is_empty());
+        assert!(Shape::from_ring(&[(0.0, 0.0), (1.0, 0.0)]).is_empty());
+        assert!(Shape::from_contours_evenodd(&[vec![(0.0, 0.0), (1.0, 0.0)]]).is_empty());
+        assert!(Shape::from_contours_evenodd(&[]).is_empty());
+
+        let a = Shape::disk(0.0, 0.0, 5.0, 12);
+        let b = Shape::disk(8.0, 0.0, 5.0, 12);
+        assert!(!a.union(&Shape::empty()).is_empty());
+        assert!(!Shape::empty().union(&a).is_empty());
+        assert!(Shape::empty().difference(&a).is_empty());
+        assert!(!a.difference(&Shape::empty()).is_empty());
+        let diff = a.difference(&b);
+        assert!(!diff.is_empty());
+        let x = a.xor(&b);
+        assert!(!x.is_empty());
+        assert_eq!(a.buffer(0.0).point_count(), a.point_count());
+        assert!(Shape::empty().simplify().is_empty());
+        assert!(Shape::empty().halo(1.0).is_empty());
+        assert!(a.halo(0.0).is_empty());
+
+        assert!(Shape::polyline_buffer(&[], 1.0).is_empty());
+        assert!(Shape::polyline_buffer(&[(0.0, 0.0)], 1.0).is_empty());
+        assert!(Shape::polyline_buffer(&[(0.0, 0.0), (10.0, 0.0)], 0.0).is_empty());
+        let cap = Shape::polyline_buffer(&[(0.0, 0.0), (10.0, 0.0)], 1.0);
+        assert!(!cap.is_empty());
+        let poly = Shape::polyline_buffer(&[(0.0, 0.0), (10.0, 0.0), (10.0, 10.0)], 1.5);
+        assert!(!poly.is_empty());
+
+        let multi = Shape::multipoint_buffer(&[(0.0, 0.0), (20.0, 0.0)], 2.0);
+        assert!(!multi.is_empty());
+
+        assert!(Shape::annular(0.0, 0.0, 0.0, 1.0).is_empty());
+        assert!(Shape::annular(0.0, 0.0, 5.0, 0.0).is_empty());
+        let ring = Shape::annular(0.0, 0.0, 10.0, 2.0);
+        assert!(!ring.is_empty());
+        assert!(ring.has_holes() || ring.area() > 0.0);
+        // Stroke wider than diameter → filled disk (no hole).
+        let fat = Shape::annular(0.0, 0.0, 1.0, 4.0);
+        assert!(!fat.is_empty());
+
+        let moved = a.translate(3.0, -2.0);
+        let c = moved.centroid().unwrap();
+        assert!((c.0 - 3.0).abs() < 0.5);
+        assert!((c.1 + 2.0).abs() < 0.5);
+        let flipped = a.scale(-1.0, 1.0, 0.0, 0.0);
+        assert!(!flipped.is_empty());
+        assert!(a.contains(0.0, 0.0));
+        assert!(!a.contains(100.0, 100.0));
+
+        // horizontal_span_at: disk mid-height has positive width; miss → 0.
+        let span = a.horizontal_span_at(0.0);
+        assert!(span > 5.0);
+        assert_eq!(a.horizontal_span_at(1000.0), 0.0);
+    }
 }

@@ -57,7 +57,10 @@ parity CI. Bonds / marks / shade already in core.
 ```bash
 cargo test -p xpict-core
 cargo clippy -p xpict-core -- -D warnings
+./scripts/rust_coverage.sh          # llvm-cov; CI floor is 97% lines
 ```
+
+JS and Python CI jobs **`needs: [rust]`** — Pages / publish call the same workflow.
 
 ## Python (PyO3) and JS (WASM)
 

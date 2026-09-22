@@ -1088,4 +1088,124 @@ mod tests {
         let y = path_ys(&strokes.offsets[0].d);
         assert!(y < -1.0);
     }
+
+    /// Parity with Python ``test_multi_bond_offset_matches_python``.
+    #[test]
+    fn multi_bond_offset_lengths() {
+        for length in [3.0, 10.0, 20.0, 100.0] {
+            let got = multi_bond_offset(length);
+            let expected = if length < 2.0 * OFFSET_PX {
+                OFFSET_PX.min(length * 0.25)
+            } else {
+                OFFSET_PX
+            };
+            assert!((got - expected).abs() < 1e-12, "len={length}");
+        }
+        // Degenerate stub shorter than 2×OFFSET.
+        let short = multi_bond_offset(2.0);
+        assert!((short - OFFSET_PX.min(0.5)).abs() < 1e-12);
+    }
+
+    #[test]
+    fn depict_order_maps_aromatic_and_indigo() {
+        assert!((depict_order(1.5) - 1.0).abs() < 1e-12);
+        assert!((depict_order(4.0) - 1.0).abs() < 1e-12);
+        assert!((depict_order(2.0) - 2.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn shorten_collapses_when_gaps_eat_length() {
+        let (x1, y1, x2, y2) = shorten(0.0, 0.0, 10.0, 0.0, 6.0, 6.0);
+        assert!((x1 - 5.0).abs() < 1e-9);
+        assert!((x2 - 5.0).abs() < 1e-9);
+        assert!((y1 - y2).abs() < 1e-9);
+    }
+
+    #[test]
+    fn stereo_down_and_public_stereo_helpers() {
+        let strokes = bond_strokes(0.0, 0.0, 40.0, 0.0, 1.0, None, Some("down"), None, None);
+        assert!(strokes.skeleton.is_none());
+        assert!(!strokes.stereo.is_empty());
+        assert!(strokes.stereo[0].class.contains("wedge-down"));
+
+        let wavy = wavy_bond(0.0, 0.0, 20.0, 0.0, None, 5);
+        assert!(wavy.class.contains("bond-either"));
+        let crossed = crossed_double(0.0, 0.0, 20.0, 0.0, None);
+        assert!(crossed.iter().any(|p| p.class.contains("either-cross")));
+    }
+
+    #[test]
+    fn bond_paths_and_filled_wedge_recolor() {
+        let paths = bond_paths(0.0, 0.0, 20.0, 0.0, 1.0, None, None);
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].class.contains("skeleton"));
+
+        let wedge = solid_wedge(0.0, 0.0, 10.0, 0.0, None).with_color("#c00");
+        assert_eq!(wedge.stroke, "#c00");
+        assert_eq!(wedge.fill.as_deref(), Some("#c00"));
+        let prim = wedge.to_primitive();
+        match prim {
+            crate::scene::Primitive::Path {
+                fill: Some(f),
+                stroke: Some(s),
+                ..
+            } => {
+                assert_eq!(f, "#c00");
+                assert_eq!(s, "#c00");
+            }
+            _ => panic!("expected path"),
+        }
+    }
+
+    #[test]
+    fn interior_triple_emits_two_side_offsets() {
+        let strokes = bond_strokes(
+            0.0,
+            0.0,
+            30.0,
+            0.0,
+            3.0,
+            Some((0.0, 1.0)),
+            None,
+            None,
+            None,
+        );
+        assert!(strokes.skeleton.is_some());
+        assert_eq!(strokes.offsets.len(), 2);
+    }
+
+    #[test]
+    fn centered_multi_skips_stereo_up() {
+        let mut b = DrawnBond::new(0, 0, 1, 0.0, 0.0, 20.0, 0.0, 2.0);
+        b.stereo = Some("up".into());
+        // join should ignore stereo multi; no trims set.
+        let mut bonds = vec![b, DrawnBond::new(1, 0, 2, 0.0, 0.0, -10.0, 10.0, 1.0)];
+        join_centered_multibonds(&mut bonds);
+        assert!(bonds[0].trims.is_none());
+    }
+
+    #[test]
+    fn join_moves_single_when_atom_is_bond_end() {
+        // Single oriented so atom is `end` (end_flag == 1) → updates x2/y2.
+        let mut bonds = vec![
+            DrawnBond::new(0, 0, 1, 0.0, 0.0, 20.0, 0.0, 2.0),
+            DrawnBond::new(1, 2, 0, -10.0, 10.0, 0.0, 0.0, 1.0),
+        ];
+        join_centered_multibonds(&mut bonds);
+        assert!(bonds[1].y2 < -0.5 || bonds[1].y2 > 0.5 || bonds[0].trims.is_some());
+        // End attached at atom 0 should have moved off the atom along the single.
+        assert!((bonds[1].x2 - 0.0).abs() > 0.01 || (bonds[1].y2 - 0.0).abs() > 0.01);
+    }
+
+    #[test]
+    fn large_trims_are_scaled_to_fit() {
+        let trims = (vec![8.0, 8.0], vec![8.0, 8.0]); // sum 16 > 0.9*20
+        let strokes = bond_strokes(0.0, 0.0, 20.0, 0.0, 2.0, None, None, Some(&trims), None);
+        assert_eq!(strokes.offsets.len(), 2);
+        for p in &strokes.offsets {
+            let pts = path_pts(&p.d);
+            let len = ((pts[1].0 - pts[0].0).powi(2) + (pts[1].1 - pts[0].1).powi(2)).sqrt();
+            assert!(len < 20.0 * 0.95, "scaled trim length {len}");
+        }
+    }
 }

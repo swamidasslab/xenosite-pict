@@ -307,4 +307,159 @@ mod tests {
             assert!(b.interior.is_some(), "bond {} missing interior", b.index);
         }
     }
+
+    fn ethanol_chain() -> MoleculeIn {
+        MoleculeIn {
+            id: Some("etoh".into()),
+            atoms: vec![
+                AtomIn {
+                    index: 0,
+                    element: Some("C".into()),
+                    z: None,
+                    x: 0.0,
+                    y: 0.0,
+                    label: None,
+                    charge: 0,
+                },
+                AtomIn {
+                    index: 1,
+                    element: Some("C".into()),
+                    z: None,
+                    x: 20.0,
+                    y: 0.0,
+                    label: None,
+                    charge: 0,
+                },
+                AtomIn {
+                    index: 2,
+                    element: Some("O".into()),
+                    z: None,
+                    x: 30.0,
+                    y: 10.0,
+                    label: Some("OH".into()),
+                    charge: 0,
+                },
+            ],
+            bonds: vec![
+                SceneBond {
+                    index: 0,
+                    begin: 0,
+                    end: 1,
+                    order: 1.0,
+                    stereo: None,
+                    interior: None,
+                },
+                SceneBond {
+                    index: 1,
+                    begin: 1,
+                    end: 2,
+                    order: 1.0,
+                    stereo: None,
+                    interior: None,
+                },
+            ],
+            color: None,
+            atom_shade: None,
+            bond_shade: None,
+            mark_atoms: vec![],
+            mark_bonds: vec![],
+            bold_labels: false,
+        }
+    }
+
+    #[test]
+    fn acyclic_find_sssr_empty_and_apply_is_noop() {
+        let mut mol = ethanol_chain();
+        assert!(find_sssr(&mol, 8).is_empty());
+        apply_ring_interiors(&mut mol);
+        assert!(mol.bonds.iter().all(|b| b.interior.is_none()));
+
+        let empty = MoleculeIn {
+            id: None,
+            atoms: vec![],
+            bonds: vec![],
+            color: None,
+            atom_shade: None,
+            bond_shade: None,
+            mark_atoms: vec![],
+            mark_bonds: vec![],
+            bold_labels: false,
+        };
+        assert!(find_sssr(&empty, 8).is_empty());
+    }
+
+    #[test]
+    fn naphthalene_sssr_has_two_hexagons() {
+        // Two fused hexagons sharing edge 0–1; atoms 6..=9 are reflections of 2..=5.
+        let mut atoms = Vec::new();
+        for i in 0..6 {
+            let ang = std::f64::consts::PI / 2.0 + i as f64 * std::f64::consts::TAU / 6.0;
+            atoms.push(AtomIn {
+                index: i,
+                element: Some("C".into()),
+                z: None,
+                x: 20.0 * ang.cos(),
+                y: 20.0 * ang.sin(),
+                label: None,
+                charge: 0,
+            });
+        }
+        let mx = 0.5 * (atoms[0].x + atoms[1].x);
+        let my = 0.5 * (atoms[0].y + atoms[1].y);
+        let reflected: Vec<(f64, f64)> = (2..6)
+            .map(|i| {
+                let a = &atoms[i as usize];
+                (mx - (a.x - mx), my - (a.y - my))
+            })
+            .collect();
+        for (k, &(x, y)) in reflected.iter().enumerate() {
+            atoms.push(AtomIn {
+                index: 6 + k as i32,
+                element: Some("C".into()),
+                z: None,
+                x,
+                y,
+                label: None,
+                charge: 0,
+            });
+        }
+        let mut bonds = Vec::new();
+        let mut bi = 0i32;
+        for i in 0..6 {
+            bonds.push(SceneBond {
+                index: bi,
+                begin: i,
+                end: (i + 1) % 6,
+                order: 1.0,
+                stereo: None,
+                interior: None,
+            });
+            bi += 1;
+        }
+        for &(a, b) in &[(1, 6), (6, 7), (7, 8), (8, 9), (9, 0)] {
+            bonds.push(SceneBond {
+                index: bi,
+                begin: a,
+                end: b,
+                order: 1.0,
+                stereo: None,
+                interior: None,
+            });
+            bi += 1;
+        }
+        let mol = MoleculeIn {
+            id: Some("naph".into()),
+            atoms,
+            bonds,
+            color: None,
+            atom_shade: None,
+            bond_shade: None,
+            mark_atoms: vec![],
+            mark_bonds: vec![],
+            bold_labels: false,
+        };
+        let rings = find_sssr(&mol, 8);
+        assert_eq!(rings.len(), 2, "expected two hexagons, got {:?}", rings);
+        assert!(rings.iter().all(|r| r.size() == 6));
+    }
 }

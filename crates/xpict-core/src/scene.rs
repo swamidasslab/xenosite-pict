@@ -275,4 +275,106 @@ mod tests {
         assert_eq!(back.width, 70.0);
         assert_eq!(back.viewports[0].layers[0].primitives.len(), 1);
     }
+
+    #[test]
+    fn primitive_defaults_via_partial_json() {
+        // serde default fns (stroke_width / opacity / fill / font_size / anchor).
+        let path: Primitive = serde_json::from_str(r#"{"kind":"path","d":"M 0 0 L 1 0"}"#).unwrap();
+        match path {
+            Primitive::Path {
+                stroke_width,
+                opacity,
+                ..
+            } => {
+                assert!((stroke_width - 1.5).abs() < 1e-12);
+                assert!((opacity - 1.0).abs() < 1e-12);
+            }
+            _ => panic!("expected path"),
+        }
+        let circle: Primitive =
+            serde_json::from_str(r#"{"kind":"circle","cx":0,"cy":0,"r":1}"#).unwrap();
+        match circle {
+            Primitive::Circle {
+                stroke_width,
+                opacity,
+                ..
+            } => {
+                assert!((stroke_width - 1.5).abs() < 1e-12);
+                assert!((opacity - 1.0).abs() < 1e-12);
+            }
+            _ => panic!("expected circle"),
+        }
+        let text: Primitive =
+            serde_json::from_str(r#"{"kind":"text","x":0,"y":0,"text":"C"}"#).unwrap();
+        match text {
+            Primitive::Text {
+                fill,
+                font_size,
+                anchor,
+                ..
+            } => {
+                assert_eq!(fill, "#000");
+                assert!((font_size - 12.0).abs() < 1e-12);
+                assert_eq!(anchor, TextAnchor::Middle);
+            }
+            _ => panic!("expected text"),
+        }
+    }
+
+    #[test]
+    fn atom_symbol_resolves_element_z_and_fallback() {
+        let with_el = AtomIn {
+            index: 0,
+            element: Some("N".into()),
+            z: Some(6),
+            x: 0.0,
+            y: 0.0,
+            label: None,
+            charge: 0,
+        };
+        assert_eq!(with_el.symbol(), "N");
+
+        let empty_el = AtomIn {
+            index: 1,
+            element: Some(String::new()),
+            z: Some(8),
+            x: 0.0,
+            y: 0.0,
+            label: None,
+            charge: 0,
+        };
+        assert_eq!(empty_el.symbol(), "O");
+
+        let z_only = AtomIn {
+            index: 2,
+            element: None,
+            z: Some(7),
+            x: 0.0,
+            y: 0.0,
+            label: None,
+            charge: 0,
+        };
+        assert_eq!(z_only.symbol(), "N");
+
+        let bare = AtomIn {
+            index: 3,
+            element: None,
+            z: None,
+            x: 0.0,
+            y: 0.0,
+            label: None,
+            charge: 0,
+        };
+        assert_eq!(bare.symbol(), "C");
+    }
+
+    #[test]
+    fn scene_empty_has_no_viewports() {
+        let s = Scene::empty(100.0, 80.0);
+        assert_eq!(s.width, 100.0);
+        assert_eq!(s.height, 80.0);
+        assert!(s.viewports.is_empty());
+        assert!(s.overlays.is_empty());
+        assert!(s.halo.is_empty());
+    }
 }

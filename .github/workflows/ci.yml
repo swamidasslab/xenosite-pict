@@ -1,7 +1,8 @@
-# Deploy gates: strict typecheck + tests before merge / pages / publish.
+# Deploy gates: Rust tests/coverage first; JS and Python both need it.
 #
+# Rust:   cargo test + llvm-cov on xpict-core (≥97% lines; push to 100%)
 # JS:     tsc --strict
-# Python: pyright (typeCheckingMode=strict) + pytest on 3.11–3.13
+# Python: pyright (strict) + pytest on 3.11–3.13
 
 name: CI
 
@@ -16,8 +17,47 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  rust:
+    name: Rust test + coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+          shared-key: rust-cov
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: cargo test -p xpict-core
+        run: cargo test -p xpict-core
+
+      - name: llvm-cov (line floor)
+        run: |
+          cargo llvm-cov -p xpict-core --lcov --output-path lcov.info \
+            --fail-under-lines "${RUST_COV_MIN}"
+        env:
+          # Remaining misses are mostly Liberation TTF dead arms / defensive joins.
+          RUST_COV_MIN: "97"
+
+      - name: Upload lcov
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xpict-core-lcov
+          path: lcov.info
+
   js:
     name: JS strict tsc
+    needs: [rust]
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -42,6 +82,7 @@ jobs:
 
   python-typecheck:
     name: Python strict pyright
+    needs: [rust]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -62,7 +103,6 @@ jobs:
           enable-cache: true
 
       - name: Sync Python deps (dev + rdkit)
-        # RDKit is optional at runtime but required for pyright on rdkit_* modules.
         run: uv sync --group dev --extra rdkit
 
       - name: Strict pyright
@@ -70,6 +110,7 @@ jobs:
 
   python-test:
     name: Python pytest ${{ matrix.python-version }}
+    needs: [rust]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
