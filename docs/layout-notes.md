@@ -57,16 +57,41 @@ bundle. Keep Python as the algorithm lab until skeleton → offsets → wedges a
 the native layout quality bar are demonstrated — then port, don’t invent twice.
 
 **Incremental path:** workspace crate [`crates/xpict-core`](../crates/xpict-core)
-holds shared pure algorithms (`metrics`, `plotdot`, `bonds`, …). Stubs mark
-where Shapely (`geom`) and fontTools (`font`) will land. Migrate after Python
-parity tests exist; do not invent depiction rules only in Rust.
+holds shared pure algorithms. **Priority ports** (remove Python-only ship deps and
+unify JS):
+
+| Module | Today | Target crates | Why first |
+| --- | --- | --- | --- |
+| `geom` | Shapely buffer/union/holes | `geo` + `i_overlay` (or Clipper) | Halos, glyph counters, annotate |
+| `font` | fontTools + Liberation TTFs | `ttf-parser` / `skrifa` | Atom labels / captions → SVG paths |
+| `metrics` / `plotdot` / `bonds` | Done (partial) | — | Already in core + bindings |
+
+Capsule/disk halos already call Rust. Glyph `halo_from_shapes` / label outlines
+should move next so JS never needs Shapely or fontTools.
+
+Migrate after Python parity tests exist; do not invent depiction rules only in Rust.
+
+### Alignment: RDKit (Python + WASM), not a layout backend
+
+`diagram.align` / `align_layouts` already prefers **RDKit template alignment**
+when installed (`align_rdkit.py`); rigid Kabsch is the fallback. That is the
+right long-term **aligner** to invest in:
+
+* Python: `rdkit` extra (already)
+* Browser: `@rdkit/rdkit` MinimalLib WASM — same chem semantics as Python RDKit
+* Not a replacement for Indigo/native **coordinate generation** of the reference mol
+
+Do **not** add RDKit as a general layout backend ladder. Use it where it already
+wins and is dual-platform: **alignment** (and as an algorithm reference for
+native layout).
 
 ### Transitional layout coords
 
-1. **Indigo** — the one transitional layout engine (WASM for `js/` too).
-2. **native** — must grow from toy stub → proven depictor; that is the real goal.
+1. **Indigo** — transitional **layout** engine (2D coords) while native matures; WASM available for `js/` too.
+2. **native** — must grow from stub → proven depictor; that is the real layout goal.
+3. **RDKit** — **alignment** (Py + WASM), not product layout.
 
-RDKit / CoordGen / CDK remain **algorithm references**, not installed layout backends.
+CoordGen / CDK remain **algorithm references**, not installed layout backends.
 
 ## Drawing model (own SVG)
 

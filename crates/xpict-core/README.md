@@ -47,7 +47,10 @@ cargo clippy -p xpict-core -- -D warnings
 ```
 
 See [`docs/bindings.md`](../../docs/bindings.md). Keep both binding crates in sync when
-adding exports. Glyphs still use fontTools + Shapely on Python until ported.
+adding exports.
+
+**Priority:** finish `geom` (Shapely stand-in) and `font` (Liberation outlines) in
+this crate so Python can drop those deps and JS does not reimplement them.
 
 ## LLM-assisted ports (no Rust required to start)
 

@@ -49,4 +49,30 @@ JS `plotdotDisks` takes `coords: [x,y][]`; the wasm layer flattens to
 3. Expose via `native_bridge.py` and `js/src/native.ts`  
 4. Parity test in Python; `js/src/native.smoke.mjs` for a quick wasm check  
 
-See also [`crates/xpict-core/README.md`](../crates/xpict-core/README.md).
+## Roadmap: kill Shapely / fontTools on the ship path
+
+Unifying Py + JS means **fonts and geometry live in Rust**, not parallel JS ports
+of fontTools/Shapely.
+
+| Step | Work | Exit criteria |
+| --- | --- | --- |
+| 1 | Capsule / disk halo SVG paths | Done (`geom` + bindings) |
+| 2 | Polygon buffer + difference (glyph counters) | `halo_from_shapes` / `O` hole tests via `_native` |
+| 3 | Liberation Sans outlines → path `d` + advances | `label_outline` / caption glyphs via Rust |
+| 4 | Python draw calls only `native_bridge` for ink/text | `shapely` / `fonttools` optional or build-only |
+| 5 | JS `native.ts` exposes the same glyph/halo APIs | Browser labels match Python gallery |
+
+Crates to prefer when filling stubs: **`ttf-parser`/`skrifa`** (fonts),
+**`geo` + `i_overlay`** (boolean + buffer). Keep Liberation files under
+`src/xpict/data/fonts/` (or `crates/xpict-core/fonts/`) so both bindings share bytes.
+
+## Alignment (RDKit on both sides)
+
+Layout coords stay Indigo/native. **Molecule alignment** should standardize on RDKit:
+
+| Runtime | Package |
+| --- | --- |
+| Python | `xpict[rdkit]` → `align_rdkit.RdkitAligner` |
+| Browser | `@rdkit/rdkit` MinimalLib WASM (wire in `js/` next to Indigo layout stub) |
+
+Rigid Kabsch remains when RDKit is absent. See `docs/layout-notes.md`.

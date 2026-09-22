@@ -1,7 +1,12 @@
-//! Geometry for halos and ink (Shapely stand-in for simple shapes).
+//! Geometry for halos and ink (Shapely stand-in).
 //!
-//! Keep in sync with `src/xpict/draw/halo.py` for capsules and disks.
-//! Glyph unions / counters still use Shapely in Python until ported.
+//! **Partial port.** Capsule/disk halo SVG paths are live (see below). Still in
+//! Python/Shapely: glyph contour XOR, `halo_from_shapes` counter punch,
+//! annotate buffers, multi-point polylines.
+//!
+//! Next: polygon `buffer` + `difference`/`union` via `geo` + `i_overlay` (or
+//! Clipper) so label knockouts and `O` counters share one implementation across
+//! PyO3 and WASM — then Shapely can leave the runtime dependency set.
 
 /// Closed polygon as SVG path `d` (absolute M/L/Z).
 pub fn polygon_to_svg_d(ring: &[(f64, f64)]) -> String {

@@ -14,19 +14,19 @@ Scaffold in progress. Language-neutral JSON contracts (Pydantic → generated JS
 
 **Shared Rust core:** `crates/xpict-core` with **Python** (`xpict._native` / PyO3) and **JS** (wasm-bindgen → `js/src/native.ts`) bindings. Same callable surface on both sides — see [`docs/bindings.md`](docs/bindings.md).
 
+**Next unify:** move **font** (Liberation outlines) and **geometry** (Shapely buffers / unions / counters) into `xpict-core`. That drops Python-only deps from the ship path and gives JS the same label/halo behavior without a second stack. Capsule/disk halos already call Rust; glyphs are next.
+
 ```bash
 ./scripts/build_bindings.sh all   # maturin + wasm-pack
 pytest tests/test_native_rust.py
-cd js && npm run check
+cd js && npm test
 ```
 
-Glyph labels still use fontTools + Shapely on Python until `geom`/`font` move fully.
+**Layout coords (transitional):** **Indigo** for 2D coords while native matures. **Alignment** (`diagram.align`): prefer **RDKit** — template align exists in Python (`rdkit`) and in the browser (`@rdkit/rdkit` MinimalLib WASM). Rigid Kabsch remains the no-RDKit fallback. Chematic-as-layout stays out of the product path.
 
-**Layout coords (transitional):** **Indigo only** while native matures. No multi-backend ladder (RDKit / Open Babel / Chematic-as-layout are out of the product path). Native stub remains for tests without Indigo.
+**Multi-molecule diagrams:** ELK via **jsrun** (embedded V8 + vendored elkjs) — no Node required. Grid/row fallback if ELK fails.
 
-**Multi-molecule diagrams:** ELK via **jsrun** (embedded V8 + vendored elkjs) — no Node required. Grid/row fallback if ELK fails. Optional `diagram.align` runs a **pure-Python** connected-MCS + Kabsch frame alignment (no NetworkX).
-
-**Core deps stay slim:** `pydantic` + `jsrun` only (portable). Indigo / Chematic are extras.
+**Core deps (target):** `pydantic` + `jsrun` + Rust extension. Shapely / fontTools become build-time-only once `geom`/`font` finish moving. Indigo / RDKit / Chematic stay **extras**.
 
 **Outputs:** SVG (default); HTML with embedded SVG for responsive pages.
 
