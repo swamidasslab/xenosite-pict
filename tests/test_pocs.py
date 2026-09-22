@@ -16,11 +16,8 @@ from xpict.warnings import PictBackendWarning
 
 
 def _chem_backend() -> str:
-    try:
-        Pict(backend="indigo").layout({"molecules": [{"smiles": "CCO"}]})
-        return "indigo"
-    except Exception:
-        pytest.skip("indigo not installed")
+    """MVP layout backend (indigo is out of scope for now)."""
+    return "native"
 
 
 def test_own_svg_has_bonds_and_labels():

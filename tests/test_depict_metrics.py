@@ -24,18 +24,14 @@ from xpict.draw.metrics import (
     STROKE_FRAC,
     STROKE_PX,
     WEDGE_WIDTH_FRAC,
-    coord_scale,
     hash_count,
 )
 from xpict.draw.scene_builder import normalize_coords
 
 
 def _backend() -> str:
-    try:
-        Pict(backend="indigo").layout({"molecules": [{"smiles": "C"}]})
-        return "indigo"
-    except Exception:
-        pytest.skip("indigo not installed")
+    """MVP layout backend (indigo is out of scope for now)."""
+    return "native"
 
 
 def _path_ys(d: str) -> list[float]:
@@ -119,16 +115,6 @@ def test_hash_count_scales_with_length():
     assert len(full) >= 8
 
 
-def test_indigo_and_native_bonds_same_pixel_length():
-    indigo = Pict(backend="indigo").layout({"molecules": [{"smiles": "CCO"}]}).molecules[0]
-    native = Pict(backend="native").layout({"molecules": [{"smiles": "CCO"}]}).molecules[0]
-    _, iw, _ = normalize_coords(indigo)
-    _, nw, _ = normalize_coords(native)
-    # Both ethanol chains are two bonds; widths should be close (label pad dominates).
-    assert abs(iw - nw) / max(iw, nw) < 0.25
-    assert coord_scale(indigo) * 1.0 == pytest.approx(BOND_PX, rel=0.05)
-
-
 def test_svg_uses_reference_font_and_butt_bonds():
     svg = render({"molecules": [{"smiles": "CC(=O)C"}]}, backend="native")
     # Labels are glyph paths from Liberation Sans (data-text carries the run).
@@ -138,7 +124,7 @@ def test_svg_uses_reference_font_and_butt_bonds():
     assert "bond-offset" in svg
 
 
-def test_indigo_hetero_labels_include_implicit_h():
+def test_hetero_labels_include_implicit_h():
     backend = _backend()
     lay = Pict(backend=backend).layout({"molecules": [{"smiles": "CCO"}]}).molecules[0]
     oxy = next(a for a in lay.atoms if a.element == "O")
@@ -152,7 +138,7 @@ def test_indigo_hetero_labels_include_implicit_h():
     assert "OH" in svg
 
 
-def test_indigo_anion_is_not_a_radical_dot():
+def test_anion_is_not_a_radical_dot():
     backend = _backend()
     lay = Pict(backend=backend).layout({"molecules": [{"smiles": "[O-]"}]}).molecules[0]
     assert lay.atoms[0].charge == -1
@@ -173,10 +159,6 @@ def test_wedge_and_hash_and_wavy_and_crossed_in_svg():
     backend = _backend()
     up = render({"molecules": [{"smiles": "C[C@H](O)Cl"}]}, backend=backend)
     assert "bond-wedge" in up
-    # Either single: unspecified stereo on a chiral-looking atom isn't easy in
-    # SMILES; draw via bond_strokes already unit-tested. Crossed double:
-    # Indigo may not emit either on CC=CC. Check proline / alanine hash or wedge
-    # and a native either bond path.
     ala = render({"molecules": [{"smiles": "C[C@H](N)C(=O)O"}]}, backend=backend)
     assert "wedge-up" in ala or "wedge-down" in ala
     wavy = wavy_bond(0, 0, BOND_PX, 0)
@@ -192,7 +174,7 @@ def test_radical_dot_still_drawn():
     assert "CH3" in svg or "C" in svg
 
 
-def test_mean_bond_scale_indigo():
+def test_mean_bond_scale_native():
     backend = _backend()
     lay = Pict(backend=backend).layout({"molecules": [{"smiles": "c1ccccc1"}]}).molecules[0]
     coords, _, _ = normalize_coords(lay)

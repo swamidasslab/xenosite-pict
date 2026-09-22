@@ -58,11 +58,8 @@ HARD_CASES: list[dict] = [
 
 
 def _chem_backend() -> str:
-    try:
-        Pict(backend="indigo").layout({"molecules": [{"smiles": "CCO"}]})
-        return "indigo"
-    except Exception:
-        return "native"
+    """MVP layout backend (indigo is out of scope for now)."""
+    return "native"
 
 
 def _bond_stroke_counts(svg: str) -> Counter[str]:

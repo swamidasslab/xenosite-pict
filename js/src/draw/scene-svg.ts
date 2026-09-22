@@ -1,6 +1,9 @@
 /**
  * Scene JSON → SVG string (thin serializer matching Python ``scene_to_svg``).
  *
+ * Scene already holds absolute drawing units (Rust depict bakes stem-scaled
+ * stroke widths). This layer only emits compact numbers (2 decimal places).
+ *
  * Text primitives emit ``<text>`` for now (glyph outlining stays Python/Rust).
  */
 
@@ -70,10 +73,19 @@ function esc(s: string): string {
     .replace(/>/g, "&gt;");
 }
 
+/** Compact SVG number: 2 decimal places, trim trailing zeros. */
 function fmt(n: number): string {
   if (!Number.isFinite(n)) return "0";
-  const t = Math.round(n * 1e4) / 1e4;
-  return String(t);
+  const t = Math.round(n * 100) / 100;
+  if (Object.is(t, -0)) return "0";
+  const s = String(t);
+  return s;
+}
+
+const PATH_NUM = /[-+]?(?:\d+\.\d*|\.\d+|\d+)(?:[eE][-+]?\d+)?/g;
+
+function fmtPathD(d: string): string {
+  return d.replace(PATH_NUM, (m) => fmt(Number(m)));
 }
 
 function attr(name: string, value: string | number | null | undefined): string {
@@ -86,7 +98,7 @@ function renderPrimitive(p: ScenePrimitive): string {
   if (p.kind === "path") {
     return (
       `<path` +
-      attr("d", p.d) +
+      attr("d", fmtPathD(p.d)) +
       attr("fill", p.fill ?? "none") +
       attr("stroke", p.stroke ?? "none") +
       attr("stroke-width", p.stroke_width ?? 1.5) +

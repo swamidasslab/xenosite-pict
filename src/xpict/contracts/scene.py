@@ -19,6 +19,7 @@ class PathPrim(StrictModel):
     d: str
     stroke: str | None = "#000"
     fill: str | None = "none"
+    # Absolute drawing px (Rust depict bakes stem-scaled bond ink as STROKE_PX).
     stroke_width: float = 1.5
     opacity: float = 1.0
     stroke_dasharray: str | None = None
@@ -33,6 +34,7 @@ class CirclePrim(StrictModel):
     r: float
     fill: str | None = None
     stroke: str | None = None
+    # Absolute drawing px (same as PathPrim).
     stroke_width: float = 1.0
     opacity: float = 1.0
     cls: str | None = None

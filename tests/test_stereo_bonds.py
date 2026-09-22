@@ -19,11 +19,8 @@ from xpict.draw.metrics import OFFSET_PX
 
 
 def _backend() -> str:
-    try:
-        Pict(backend="indigo").layout({"molecules": [{"smiles": "CCO"}]})
-        return "indigo"
-    except Exception:
-        pytest.skip("indigo not installed")
+    """MVP layout backend (indigo is out of scope for now)."""
+    return "native"
 
 
 def test_skeleton_then_offset_for_double():
@@ -87,7 +84,7 @@ def test_stereo_up_replaces_skeleton():
     assert strokes.stereo and "wedge-up" in (strokes.stereo[0].cls or "")
 
 
-def test_indigo_layout_sets_wedge_stereo():
+def test_layout_sets_wedge_stereo():
     backend = _backend()
     layout = (
         Pict(backend=backend)
