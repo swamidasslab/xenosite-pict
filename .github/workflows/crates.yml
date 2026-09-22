@@ -73,8 +73,8 @@ jobs:
           echo "version=$VER" >> "$GITHUB_OUTPUT"
           echo "Publishing $CRATE@$VER"
 
-      - name: Version policy (major.minor lockstep)
-        run: bash scripts/check_version_policy.sh "${{ steps.meta.outputs.version }}"
+      - name: Version policy (major.minor lockstep; patch-only tag)
+        run: bash scripts/check_version_policy.sh --patch-only "${{ steps.meta.outputs.version }}"
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable

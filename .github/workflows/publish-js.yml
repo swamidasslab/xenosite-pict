@@ -92,7 +92,7 @@ jobs:
         run: |
           VER="${GITHUB_REF_NAME#js/v}"
           echo "Publishing version $VER"
-          bash ../scripts/check_version_policy.sh "$VER"
+          bash ../scripts/check_version_policy.sh --patch-only "$VER"
           npm version "$VER" --no-git-tag-version --allow-same-version
 
       - name: Version policy (workflow_dispatch)

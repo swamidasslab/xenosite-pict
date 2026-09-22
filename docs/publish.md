@@ -4,23 +4,23 @@
 
 | Axis | Rule |
 | --- | --- |
-| **major.minor** | Lockstep across JS, Python, and Rust (`xpict` + `xpict-core`) |
-| **patch** | Language-specific — tag and publish one surface at a time |
+| **major / minor** | **All-or-none** — one `release/vX.Y.0` publishes JS + Python + Rust |
+| **major.minor in-tree** | Lockstep across JS, Python, `xpict`, `xpict-core` |
+| **patch** | Language-specific — `js/v*`, `py/v*`, `rust-core/v*`, `rust/v*` |
 
-Shared paint / public API changes → bump **minor** (or major) on **every**
-package in-tree, then tag each language. Packaging-only or language-edge fixes
-→ bump that language’s **patch** only (`js/v0.1.8` while Python stays `0.1.4`
-is fine as long as both are `0.1.x`).
+Language tags **cannot** ship `X.Y.0` (rejected by
+`scripts/check_version_policy.sh --patch-only`). Cut minors/majors only via
+`release/v*`.
+
+| Intent | Tag | Workflow |
+| --- | --- | --- |
+| Product cut (all surfaces) | `release/v0.2.0` | [`release.yml`](../.github/workflows/release.yml) |
+| JS patch only | `js/v0.1.5` (`Z≥1`) | [`publish-js.yml`](../.github/workflows/publish-js.yml) |
+| Python patch only | `py/v0.1.5` | [`pypi.yml`](../.github/workflows/pypi.yml) |
+| `xpict-core` patch | `rust-core/v0.1.5` | [`crates.yml`](../.github/workflows/crates.yml) |
+| Rust `xpict` patch | `rust/v0.1.5` | [`crates.yml`](../.github/workflows/crates.yml) |
 
 CI runs [`scripts/check_version_policy.sh`](../scripts/check_version_policy.sh).
-Publish workflows re-check that the tag’s `X.Y` matches the in-tree lockstep line.
-
-| Package | Registry | Tag | Workflow |
-| --- | --- | --- | --- |
-| `@swamidasslab/xpict` | GitHub Packages (npm) | `js/v*` | [`publish-js.yml`](../.github/workflows/publish-js.yml) |
-| `xpict` (Python) | PyPI | `py/v*` | [`pypi.yml`](../.github/workflows/pypi.yml) |
-| `xpict-core` | crates.io | `rust-core/v*` | [`crates.yml`](../.github/workflows/crates.yml) |
-| `xpict` (Rust) | crates.io | `rust/v*` | [`crates.yml`](../.github/workflows/crates.yml) |
 
 The **public API** to document and version is the single-molecule client:
 
@@ -30,11 +30,32 @@ The **public API** to document and version is the single-molecule client:
 
 ---
 
-## 1. JavaScript
+## 0. Major / minor (all-or-none)
+
+1. Bump **every** package to the new `X.Y.0` in one PR:
+   `js/package.json`, `pyproject.toml`, `crates/xpict-core`, `crates/xpict`
+   (and `xpict-py` / `xpict-wasm` for workspace consistency).
+2. `bash scripts/check_version_policy.sh`
+3. Merge; CI green.
+4. Tag and push:
+
+   ```bash
+   git tag release/v0.2.0
+   git push origin release/v0.2.0
+   ```
+
+5. [`release.yml`](../.github/workflows/release.yml) publishes **xpict-core →
+   xpict → JS → Python** at that version (or Actions → **release** workflow
+   dispatch).
+
+Do **not** tag `js/v0.2.0` alone — it will fail the patch-only gate.
+
+---
+
+## 1. JavaScript (patch)
 
 ```bash
-# Patch (JS only) — in-tree major.minor must already match others:
-# edit js/package.json patch, commit, then:
+# Z must be >= 1. In-tree major.minor must already match others.
 git tag js/v0.1.5
 git push origin js/v0.1.5
 ```
@@ -60,10 +81,9 @@ git push origin js/v0.1.5
 
 ---
 
-## 2. Rust — crates.io (`xpict-core` then `xpict`)
+## 2. Rust patches — crates.io
 
-Publish **`xpict-core` first**, then **`xpict`**. Workspace path deps carry a
-`version` for crates.io:
+Publish **`xpict-core` first**, then **`xpict`** when both need a patch.
 
 ```toml
 xpict-core = { path = "../xpict-core", version = "0.1.4" }
@@ -71,16 +91,15 @@ xpict-core = { path = "../xpict-core", version = "0.1.4" }
 
 ```bash
 git tag rust-core/v0.1.5 && git push origin rust-core/v0.1.5
-# after core is on crates.io:
 git tag rust/v0.1.5 && git push origin rust/v0.1.5
 ```
 
 ### One-time setup
 
 1. Create a [crates.io](https://crates.io) account (GitHub login).
-2. Confirm crate names are free (`xpict`, `xpict-core`). If taken, rename before first publish.
-3. Add repo secret `CARGO_REGISTRY_TOKEN`, or Trusted Publishing for `crates.yml`.
-4. Local dry-run (needs system RDKit for `xpict`, not for `xpict-core`):
+2. Confirm crate names are free (`xpict`, `xpict-core`).
+3. Add repo secret `CARGO_REGISTRY_TOKEN` (used by `crates.yml` and `release.yml`).
+4. Local dry-run:
 
    ```bash
    cargo publish -p xpict-core --dry-run
@@ -89,15 +108,13 @@ git tag rust/v0.1.5 && git push origin rust/v0.1.5
 
 `xpict` **requires system RDKit + Boost** at compile time (see `crates/xpict/README.md`).
 
-Do **not** make `xpict-py` or `xpict-wasm` depend on the crates.io `xpict`
-package — only on `xpict-core`.
+Do **not** make `xpict-py` / `xpict-wasm` depend on crates.io `xpict` — only `xpict-core`.
 
 ---
 
-## 3. Python — PyPI (`xpict`)
+## 3. Python patch — PyPI
 
-Source under **`python/xpict/`**. Workflow filename **`pypi.yml`** (PyPI Trusted
-Publishing).
+Source under **`python/xpict/`**. Workflow filename **`pypi.yml`**.
 
 ```bash
 git tag py/v0.1.5
@@ -106,9 +123,9 @@ git push origin py/v0.1.5
 
 ### One-time setup
 
-1. Create a PyPI project `xpict` under the lab account.
-2. Trusted Publishing → this repo, workflow **`pypi.yml`**.
-3. Or store `PYPI_API_TOKEN` as a repo secret.
+1. Create a PyPI project `xpict`.
+2. Trusted Publishing → this repo, workflow **`pypi.yml`** (and allow `release.yml` if using OIDC there too).
+3. Or `PYPI_API_TOKEN` repo secret.
 
 ```bash
 uv sync --extra rdkit
@@ -117,25 +134,7 @@ uv run maturin build --release -m crates/xpict-py/Cargo.toml
 
 ---
 
-## 4. Cutting a minor/major (all languages)
-
-1. Bump **major.minor** (and usually reset patch to `0`) in
-   `js/package.json`, `pyproject.toml`, `crates/xpict-core`, `crates/xpict`
-   (and `xpict-py` / `xpict-wasm` for workspace consistency).
-2. Run `bash scripts/check_version_policy.sh`.
-3. Tag and push each surface you ship (`js/v0.2.0`, `py/v0.2.0`,
-   `rust-core/v0.2.0`, `rust/v0.2.0`) — order: core before native `xpict`.
-4. Confirm CI green on the commit you tag.
-5. Update consumer pins (e.g. xenosite.org) after registries show the new version.
-
-### Patch (one language)
-
-1. Bump only that package’s patch (keep the same `X.Y`).
-2. Tag only that surface (`js/v…` / `py/v…` / `rust-core/v…` / `rust/v…`).
-
----
-
-## 5. Public API vs future declarative tree
+## 4. Public API vs future declarative tree
 
 **Ship / document now:** `mol` / `render` / `toSvg` (+ batch stub
 `depict({ molecules: [...] }) → Rendered[]`). Live Pydantic is
@@ -143,5 +142,4 @@ uv run maturin build --release -m crates/xpict-py/Cargo.toml
 `schema/xpict.schema.json`.
 
 **Not the publish surface yet:** nested `PictSpec` under `xpict.future` /
-`schema/future/` — keep refining there; promote fields into `contracts` as
-paint support lands.
+`schema/future/`.
