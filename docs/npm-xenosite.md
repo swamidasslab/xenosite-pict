@@ -3,6 +3,8 @@
 The website installs the WASM/TS package from **GitHub Packages** (scope must
 match the GitHub org: `swamidasslab`).
 
+Full registry setup (npm / crates.io / PyPI): [`publish.md`](publish.md).
+
 ## Publish (this repo)
 
 ```bash
@@ -25,21 +27,36 @@ Or **Actions → Publish JS package → Run workflow**.
 { "dependencies": { "@swamidasslab/xpict": "^0.1.0" } }
 ```
 
-## App usage
+## Public API
 
 ```ts
 import { xpict } from "@swamidasslab/xpict";
 
 const mol = xpict.mol("c1ccccc1");
-const rendered = await xpict.render(mol);
+const rendered = await xpict.render(mol, {
+  mark_atoms: [0],
+  color: "#0b6e4f",
+});
 // tweak rendered.scene, then:
 const svg = xpict.toSvg(rendered.scene);
 
 const aligned = await xpict.render(xpict.mol("Cc1ccccc1"), {
   align_to: mol, // or align_to: rendered
-  mark_atoms: [0],
+});
+
+// Batch stub (mol list → Rendered[]) — expandable toward full PictSpec
+const batch = await xpict.depict({
+  molecules: [
+    { smiles: "CCO", mark_atoms: [2] },
+    { smiles: "CCCO", align_to: 0 },
+  ],
 });
 ```
 
-Public surface: `xpict.mol` / `xpict.render` / `xpict.toSvg` only.
+Surface: `xpict.mol` / `xpict.render` / `xpict.toSvg` / `xpict.depict`.  
 RDKit + wasm init on first render. Works in Node and the browser.
+
+**Supported `render` options today:** `color`, `mark_atoms`, `mark_bonds`,
+`atom_shade`, `bond_shade`, `star_labels`, `bold_labels`, `align_to`, `id`.
+
+Nested diagrams / ELK / reaction chrome are **not** this package’s public MVP.

@@ -90,6 +90,32 @@ export type MolRenderOptions = {
   align_to?: AlignTarget;
 };
 
+/**
+ * One molecule in the batch ``depict`` stub (expandable toward full PictSpec).
+ * ``align_to`` is an index into **earlier** entries in the same document.
+ */
+export type MolSpec = {
+  smiles?: string;
+  source?: string;
+  molfile?: string;
+  cxsmiles?: string;
+  id?: string;
+  color?: string;
+  atom_shade?: number[];
+  bond_shade?: number[];
+  mark_atoms?: number[];
+  mark_bonds?: Array<[number, number]>;
+  star_labels?: Array<string | null>;
+  bold_labels?: boolean;
+  /** Index of an earlier molecule in this document to align onto. */
+  align_to?: number;
+};
+
+/** Limited declarative document: mol list in → ``Rendered[]`` out. */
+export type DepictSpec = {
+  molecules: MolSpec[];
+};
+
 let readyPromise: Promise<void> | null = null;
 
 /** Internal: load RDKit + wasm once (from first render). */
@@ -290,10 +316,56 @@ async function render(
   };
 }
 
-/** Public lib namespace — three functions only. */
+function structureFromSpec(entry: MolSpec): string {
+  const raw =
+    entry.molfile?.trim() ||
+    entry.cxsmiles?.trim() ||
+    entry.smiles?.trim() ||
+    entry.source?.trim() ||
+    "";
+  if (!raw) {
+    throw new Error("MolSpec needs smiles, cxsmiles, molfile, or source");
+  }
+  return raw;
+}
+
+/**
+ * Batch stub: ``{ molecules: [...] }`` → ``Rendered[]``.
+ * ``align_to`` is an index into earlier entries (not a Mol/Rendered object).
+ */
+async function depict(spec: DepictSpec): Promise<Rendered[]> {
+  const out: Rendered[] = [];
+  for (let i = 0; i < spec.molecules.length; i++) {
+    const entry = spec.molecules[i]!;
+    const m = mol(structureFromSpec(entry));
+    if (entry.align_to !== undefined && entry.align_to >= i) {
+      throw new Error(
+        `molecules[${i}].align_to=${entry.align_to} must refer to an earlier entry`
+      );
+    }
+    const opts: MolRenderOptions = {
+      id: entry.id,
+      color: entry.color,
+      atom_shade: entry.atom_shade,
+      bond_shade: entry.bond_shade,
+      mark_atoms: entry.mark_atoms,
+      mark_bonds: entry.mark_bonds,
+      star_labels: entry.star_labels,
+      bold_labels: entry.bold_labels,
+      align_to:
+        entry.align_to !== undefined ? out[entry.align_to] : undefined,
+    };
+    out.push(await render(m, opts));
+  }
+  return out;
+}
+
+/** Public lib namespace. */
 export const xpict = {
   mol,
   render,
   /** Scene JSON → SVG string (tweak ``rendered.scene`` first if needed). */
   toSvg: sceneToSvg,
+  /** Mol-list document → ``Rendered[]`` (stub toward full PictSpec). */
+  depict,
 } as const;

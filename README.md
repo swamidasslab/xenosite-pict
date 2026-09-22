@@ -1,76 +1,119 @@
 # xpict
 
-Declarative, publication-quality small-molecule depiction for Python and the web.
+Publication-quality small-molecule depiction for **JavaScript**, **Python**, and
+**native Rust**. Shared paint lives in Rust (`xpict-core`); each language owns
+RDKit layout at its edge.
 
-Import path: `xpict`
+Import / package names:
 
-## Status
+| Language | Package |
+| --- | --- |
+| JS/TS | [`@swamidasslab/xpict`](docs/npm-xenosite.md) (GitHub Packages) |
+| Python | `xpict` (PyPI — publish setup in [`docs/publish.md`](docs/publish.md)) |
+| Rust | `xpict` on crates.io (depends on `xpict-core`; see publish doc) |
 
-Scaffold in progress. Language-neutral JSON contracts (Pydantic → generated JSON Schema) with Python and `js/` engines.
+## Public API (shipped)
 
-**Depiction:** Hard — follow CDK / RDKit / Indigo / CoordGen; don’t invent. Own SVG (skeleton → offsets → stereo). Long-term goal: a **native** depictor proven on a hard-case gallery.
+Three calls — same idea in every language:
 
-**Ship path:** client-side on [xenosite.org](https://xenosite.org) via WASM —
-[`docs/migration-xenosite.md`](docs/migration-xenosite.md). Package for the site:
-[`@swamidasslab/xpict`](docs/npm-xenosite.md) on GitHub Packages.
+1. **`mol(source)`** — SMILES / CXSMILES / molfile → input handle  
+2. **`render(mol, opts?)`** — layout + paint → **`Rendered`** (editable `scene`, coords, frame)  
+3. **`toSvg(scene)`** — scene JSON → SVG string  
 
-**Browser demo (GitHub Pages):** two SMILES + align + paint options —
-[`demo/`](demo/) → https://swamidasslab.github.io/xenosite-pict/
+```ts
+import { xpict } from "@swamidasslab/xpict";
 
-**Focus now — RDKit at the language edges:**
-- **2D coords** via Python `rdkit` / JS `@rdkit/rdkit` (`backend="rdkit"`, auto-picked when installed)
-- **Alignment** via the same RDKit packages (template depict); maps/coords then into Rust for shared math
-- **No RDKit inside `xpict-core` / WASM**
+const mol = xpict.mol("c1ccccc1");
+const rendered = await xpict.render(mol, { mark_atoms: [0], color: "#0b6e4f" });
+const svg = xpict.toSvg(rendered.scene);
 
-**Alternate:** **Indigo** layout (`backend="indigo"`) + **fake/rigid align** in Rust (no RDKit template). Chematic is out.
+const aligned = await xpict.render(xpict.mol("Cc1ccccc1"), { align_to: mol });
+```
 
-**Shared Rust core:** fonts/geometry/draw helpers — see [`docs/bindings.md`](docs/bindings.md).
+```python
+# Preferred (objects/methods) — see client when merged:
+# Mol.from_source("CCO").render(mark_atoms=[2]).to_svg()
+from xpict import Pict  # multi-mol / legacy document path still available
+```
+
+```rust
+use xpict::{mol, MolRenderOptions};
+
+let mut m = mol("CCO")?;
+let rendered = m.render(MolRenderOptions {
+    mark_atoms: Some(vec![2]),
+    ..Default::default()
+})?;
+let svg = rendered.to_svg();
+```
+
+### Options available today
+
+| Option | Effect |
+| --- | --- |
+| `color` | Backbone / label ink |
+| `mark_atoms` / `mark_bonds` | Publication circles |
+| `atom_shade` / `bond_shade` | Plot-dot shading scores |
+| `star_labels` | Labels for `*` atoms (encounter order); else CXSMILES `|$…$|` by index |
+| `bold_labels` | Bold Liberation + thicker stem-keyed strokes |
+| `align_to` | Template pose (`Mol` / `Rendered` in JS·Py; molblock string in Rust) |
+| `id` | Optional molecule id on the paint ABI |
+
+**Not in the public MVP yet:** nested diagrams, ELK placement, reaction/network
+chrome, captions/annotations as first-class document nodes. Those remain
+in-tree (`PictSpec`, Python `Pict`) as the long-term model.
+
+### Batch stub (expandable seam)
+
+A thin declarative document that only knows **lists of mols** with the options
+above, and returns a **language-level list of `Rendered`**:
+
+```ts
+const results = await xpict.depict({
+  molecules: [
+    { smiles: "CCO", mark_atoms: [2] },
+    { smiles: "CCCO", align_to: 0 }, // index into earlier entries
+  ],
+});
+// results: Rendered[]
+```
+
+Same shape in Rust (`xpict::depict`) and documented for Python. This is the
+stub to grow toward full `PictSpec` without blocking shipping.
+
+## Demo
+
+Browser demo (GitHub Pages): [`demo/`](demo/) →
+https://swamidasslab.github.io/xenosite-pict/
+
+## Install / build (dev)
 
 ```bash
 ./scripts/build_bindings.sh all
 uv sync --extra rdkit
-pytest tests/test_native_rust.py tests/test_rdkit_backend.py
 cd js && npm test
+cargo test -p xpict-core
+# native Rust package (needs system RDKit):
+cargo test -p xpict
 ```
 
-**Multi-molecule diagrams:** ELK via native **`elkrs`** (`_native.elk_layout_json`).
-Grid/row if ELK fails. **jsrun / vendored elkjs removed.**
+## Architecture (short)
 
-**Core deps:** `pydantic` + Rust extension (`geom`/`font`/`elk`). RDKit / Indigo stay
-**language-edge extras**.
-
-**Outputs:** SVG (default); HTML with embedded SVG for responsive pages.
-
-## Quick start
-
-```python
-from xpict import Pict, render
-
-# prefers rdkit when installed, else native
-svg = Pict().render({"molecules": [{"smiles": "CCO"}]})
-svg = Pict(backend="rdkit").render({"molecules": [{"smiles": "c1ccccc1O"}]})
-# alternate layout + rigid align only:
-svg = Pict(backend="indigo").render({"molecules": [{"smiles": "CCO"}]})
+```
+  RDKit (language edge)          xpict-core (no RDKit)
+  2D coords + template align  →  depict_molecule → Scene
+                                      ↓
+                              toSvg / scene_to_svg
 ```
 
-Input formats per molecule: `smiles`, `cxsmiles`, `esmiles`, or `molfile`.
+- **`xpict-core`** — shared paint (bonds, marks, shade, labels, halo)  
+- **`xpict-py` / `xpict-wasm`** — bindings to core only (no RDKit)  
+- **`crates/xpict`** — native Rust public crate (crates.io `rdkit` + Depictor FFI)  
+- **JS / Python clients** — RDKit layout + call into core  
 
-Backend is runtime config (not in the JSON document). Unsupported options emit `PictBackendWarning`.
-
-## Install
-
-```bash
-uv sync
-uv sync --extra rdkit    # 2D layout + template alignment (focus)
-uv sync --extra indigo   # alternate layout
-uv sync --extra all
-```
-
-Export JSON Schema (committed under `schema/`):
-
-```bash
-uv run xpict-export-schema
-```
+Details: [`docs/bindings.md`](docs/bindings.md) · shipping to xenosite:
+[`docs/migration-xenosite.md`](docs/migration-xenosite.md) · **publish setup**:
+[`docs/publish.md`](docs/publish.md).
 
 ## License
 

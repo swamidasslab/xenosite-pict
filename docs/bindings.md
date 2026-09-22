@@ -30,17 +30,23 @@ uv sync --group dev
 # Verify
 pytest tests/test_native_rust.py -q
 cd js && npm test
+cargo test -p xpict-core
+# optional native package (system RDKit):
+cargo test -p xpict
 ```
 
-| | Python | JavaScript (MVP) |
-| --- | --- | --- |
-| Package | `xpict` | `@swamidasslab/xpict` (GitHub Packages) |
-| Public API | `_native.*` + Python draw | `xpict.mol` / `render` / `toSvg` |
-| Paint ABI | `_native.depict_molecule` | wasm `depictMolecule` (internal) |
-| Init | (import extension) | auto on first `render` |
+| | Python | JavaScript (MVP) | Native Rust |
+| --- | --- | --- | --- |
+| Package | `xpict` | `@swamidasslab/xpict` | crates.io `xpict` |
+| Public API | `Mol` / `render` / `to_svg` (client) | `xpict.mol` / `render` / `toSvg` / `depict` | same + `depict` batch stub |
+| Paint ABI | `_native.depict_molecule` | wasm `depictMolecule` (internal) | `xpict_core::depict_molecule` |
+| Init | (import extension) | auto on first `render` | link-time RDKit |
+
+**Publish / registries:** [`publish.md`](publish.md).
 
 Python keeps the full `_native` surface (offsets, plotdots, halos, ELK, …).
 JS MVP wasm only binds `depictMolecule`; RDKit layout/align stay in TS.
+The native `crates/xpict` package is **not** linked into py/wasm.
 
 ## Adding a shared export
 

@@ -1,65 +1,57 @@
-# xpict
+# xpict (native Rust)
 
-Public Rust API for molecule depiction — mirrors the JS (`xpict.mol` /
-`render` / `toSvg`) and Python (`Mol` / `Rendered`) clients.
+Public Rust API mirroring JS/Python: **`mol` / `render` / `to_svg`**, plus a
+batch stub **`depict({ molecules }) → Vec<Rendered>`**.
 
-**Layout** uses the crates.io [`rdkit`](https://crates.io/crates/rdkit) package
-(SMILES / molblock) plus a small local C++ bridge for
-`RDDepict::compute2DCoords` / `generateDepictionMatching2DStructure` and bond
-iteration (not yet exposed by high-level `rdkit`). **Paint** is
-[`xpict-core`](../xpict-core) (`depict_molecule` → scene → SVG).
-
-This crate is a **separate workspace member**. It is **not** a dependency of
-`xpict-py` or `xpict-wasm`, so RDKit stays out of the Python extension and the
-browser WASM blob.
+**Layout** uses crates.io [`rdkit`](https://crates.io/crates/rdkit) plus a
+local Depictor FFI. **Paint** is [`xpict-core`](../xpict-core). This crate is
+**not** a dependency of `xpict-py` / `xpict-wasm`.
 
 ## Usage
 
 ```rust
-use xpict::{mol, MolRenderOptions};
+use xpict::{depict, mol, DepictSpec, MolRenderOptions, MolSpec};
 
 fn main() -> Result<(), xpict::Error> {
     let mut m = mol("CCO")?;
-    let rendered = m.render(MolRenderOptions::default())?;
+    let rendered = m.render(MolRenderOptions {
+        mark_atoms: Some(vec![2]),
+        ..Default::default()
+    })?;
     println!("{}", rendered.to_svg());
+
+    let batch = depict(&DepictSpec {
+        molecules: vec![
+            MolSpec {
+                smiles: Some("CCO".into()),
+                mark_atoms: Some(vec![2]),
+                ..Default::default()
+            },
+            MolSpec {
+                smiles: Some("CCCO".into()),
+                align_to: Some(0),
+                ..Default::default()
+            },
+        ],
+    })?;
+    assert_eq!(batch.len(), 2);
     Ok(())
 }
 ```
 
-Align onto a prior pose:
-
-```rust
-use xpict::{mol, MolRenderOptions};
-
-let mut ethanol = mol("CCO")?;
-let home = ethanol.render(MolRenderOptions::default())?;
-let mut propanol = mol("CCCO")?;
-let aligned = propanol.render(MolRenderOptions {
-    align_to: Some(home.frame().to_string()),
-    ..Default::default()
-})?;
-```
-
 ## System requirements
 
-- RDKit C++ libraries + headers (e.g. Ubuntu `librdkit-dev`, or the prebuilt
-  archives documented by [`rdkit`](https://crates.io/crates/rdkit))
-- Boost (serialization) headers/libs
-- A C++17 compiler (`g++`)
-
-Ubuntu 24.04 `librdkit-dev` **202309** is missing `GraphMol/FileParsers/FileWriters.h`
-(expected by `rdkit-sys` 0.4.x). This crate ships a compatibility shim under
-`compat/rdkit/`; point `CPLUS_INCLUDE_PATH` at it before building (or use
-`.cargo/config.toml` in this repo).
+- RDKit C++ + Boost (e.g. Ubuntu `librdkit-dev`, `libboost-dev`)
+- C++17 (`g++`)
+- Ubuntu 202309: use the shipped `compat/rdkit` `FileWriters.h` shim
+  (`CPLUS_INCLUDE_PATH` — see repo `.cargo/config.toml`)
 
 ```bash
-export CPLUS_INCLUDE_PATH="$(pwd)/crates/xpict/compat/rdkit${CPLUS_INCLUDE_PATH:+:$CPLUS_INCLUDE_PATH}"
-export CXX=g++
 cargo test -p xpict
 ```
 
-## Workspace note
+## Publish
 
-Root `Cargo.toml` lists this package as a member but keeps
-`default-members = ["crates/xpict-core"]` so plain `cargo test` / CI coverage
-does not require system RDKit.
+See [`docs/publish.md`](../../docs/publish.md). Publish **`xpict-core` first**,
+then this crate. Not part of default workspace members / CI coverage (no RDKit
+on that job).

@@ -38,6 +38,7 @@ Python stays the algorithm lab and CI truth; the **ship path for xenosite is WAS
 | `depict_molecule(MoleculeIn) → Scene` | ✅ Rust + Py + WASM (bonds/marks/shade; labels/halo next) |
 | JS Scene → SVG / data-URI `<img>` | ✅ `sceneToSvg` / `draw().imgDataUri` |
 | Browser RDKit layout + align | ✅ `xpict.mol` / `xpict.render({ align_to })` (RDKit hidden; Node too) |
+| Batch stub `depict({ molecules })` | ✅ JS + native Rust (`align_to` by index → `Rendered[]`) |
 | Multi-mol / ELK | post-MVP (ignore for this track) |
 
 xenosite today already embeds depictions as **data-URI `<img>`** with

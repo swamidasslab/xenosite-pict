@@ -4,27 +4,35 @@
 //! Depictor FFI for 2D coords / template align. Paint is [`xpict_core`].
 //!
 //! ```ignore
-//! use xpict::{mol, render, to_svg};
+//! use xpict::{mol, MolRenderOptions};
 //!
-//! let m = mol("CCO")?;
-//! let rendered = render(&m, Default::default())?;
-//! let svg = to_svg(&rendered.scene);
+//! let mut m = mol("CCO")?;
+//! let rendered = m.render(MolRenderOptions::default())?;
+//! let svg = rendered.to_svg();
 //! ```
 //!
-//! Prefer method style:
+//! Batch stub (list of mols → list of [`Rendered`]):
 //!
 //! ```ignore
-//! let svg = xpict::Mol::from_source("c1ccccc1")?.render(Default::default())?.to_svg();
+//! use xpict::{depict, DepictSpec, MolSpec};
+//! let out = depict(&DepictSpec {
+//!     molecules: vec![
+//!         MolSpec { smiles: Some("CCO".into()), mark_atoms: Some(vec![2]), ..Default::default() },
+//!         MolSpec { smiles: Some("CCCO".into()), align_to: Some(0), ..Default::default() },
+//!     ],
+//! })?;
 //! ```
 
 #![allow(clippy::module_name_repetitions)]
 
 mod cxsmiles;
+mod depict_spec;
 mod ffi;
 mod layout;
 mod svg;
 
 pub use cxsmiles::{cx_atom_labels, smiles_base};
+pub use depict_spec::{depict, DepictSpec, MolSpec};
 pub use layout::{layout_with_rdkit, sanitize_dummy_molblock, source_to_molblock};
 pub use svg::scene_to_svg;
 pub use xpict_core::scene::{AtomIn, BondIn, MoleculeIn, Scene};

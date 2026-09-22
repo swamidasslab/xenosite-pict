@@ -77,6 +77,30 @@ fn align_to_rendered_pose() {
 }
 
 #[test]
+fn depict_batch_align_by_index() {
+    use xpict::{depict, DepictSpec, MolSpec};
+    let out = depict(&DepictSpec {
+        molecules: vec![
+            MolSpec {
+                smiles: Some("CCO".into()),
+                mark_atoms: Some(vec![2]),
+                ..Default::default()
+            },
+            MolSpec {
+                smiles: Some("CCCO".into()),
+                align_to: Some(0),
+                ..Default::default()
+            },
+        ],
+    })
+    .unwrap();
+    assert_eq!(out.len(), 2);
+    assert_eq!(out[0].molecule.atoms.len(), 3);
+    assert_eq!(out[1].molecule.atoms.len(), 4);
+    assert!(!out[0].to_svg().is_empty());
+}
+
+#[test]
 fn empty_source_errors() {
     let err = Mol::from_source("   ").unwrap_err();
     assert!(matches!(err, Error::EmptySource));
