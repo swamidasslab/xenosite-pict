@@ -1,5 +1,7 @@
 build/
 /target/
+src/xpict/_native*.so
+src/xpict/_native*.pyd
 .coverage
 dist/
 .DS_Store

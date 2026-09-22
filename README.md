@@ -12,7 +12,14 @@ Scaffold in progress. Language-neutral JSON contracts (Pydantic → generated JS
 
 **Chem stack (likely):** Chematic (or similar) for **perception** (aromaticity, SSSR, stereo — small Rust); **our** drawing. Chematic depict coords are not good enough. If we settle there, shipping depiction as a **Rust** crate (Py + WASM) is the natural fit — prove the draw/layout model in Python first.
 
-**Shared Rust core:** `crates/xpict-core` — pure algorithms move here as they stabilize (metrics, plotdot, bond helpers first; geom/font stubs next). Python stays the lab; PyO3 + WASM bindings come later. See `crates/xpict-core/README.md`.
+**Shared Rust core:** `crates/xpict-core` + PyO3 module `xpict._native` (`crates/xpict-py`). Bond offset, plotdot, and capsule/disk halos can call Rust when the extension is built:
+
+```bash
+uv sync --group dev
+maturin develop --manifest-path crates/xpict-py/Cargo.toml
+```
+
+Glyph labels still use fontTools + Shapely. See `crates/xpict-core/README.md`.
 
 **Layout coords (transitional):** **Indigo only** while native matures. No multi-backend ladder (RDKit / Open Babel / Chematic-as-layout are out of the product path). Native stub remains for tests without Indigo.
 

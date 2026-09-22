@@ -35,7 +35,20 @@ cargo test -p xpict-core
 cargo clippy -p xpict-core -- -D warnings
 ```
 
-FFI features (`pyo3`, `wasm-bindgen`) will be additive; the default build stays
+## Python (PyO3)
+
+Bindings live in `crates/xpict-py` → import `xpict._native` after:
+
+```bash
+uv sync --group dev
+maturin develop --manifest-path crates/xpict-py/Cargo.toml
+```
+
+Python calls Rust via `xpict.native_bridge` (capsule/disk halos, plotdot,
+bond offset). **Glyphs** still use fontTools + Shapely; only simple ink uses
+Rust geometry today.
+
+FFI features (`wasm-bindgen`) will be additive; the default `rlib` stays
 dependency-light.
 
 ## LLM-assisted ports (no Rust required to start)

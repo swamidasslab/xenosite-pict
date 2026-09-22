@@ -13,6 +13,12 @@ from shapely.ops import unary_union
 
 from xpict.draw.glyphs import geom_to_svg_d
 from xpict.draw.metrics import LABEL_GAP_PX
+from xpict.native_bridge import (
+    CapsuleInk,
+    DiskInk,
+    HAS_RUST_CORE,
+    halo_path_d_for_ink,
+)
 
 
 def _polygons(geom: BaseGeometry) -> list[Polygon]:
@@ -64,11 +70,16 @@ def halo_from_shapes(
 
 
 def halo_path_d(
-    ink: BaseGeometry | None,
+    ink: BaseGeometry | CapsuleInk | DiskInk | None,
     dist: float | None = None,
 ) -> str | None:
     """SVG path ``d`` for :func:`halo_from_shapes`."""
-    halo = halo_from_shapes(ink, dist)
+    radius = LABEL_GAP_PX if dist is None else dist
+    if ink is not None and radius > 0:
+        fast = halo_path_d_for_ink(ink, radius)
+        if fast:
+            return fast
+    halo = halo_from_shapes(ink, dist)  # type: ignore[arg-type]
     if halo is None or halo.is_empty:
         return None
     d = geom_to_svg_d(halo)
@@ -81,10 +92,12 @@ def capsule_shape(
     x2: float,
     y2: float,
     radius: float,
-) -> BaseGeometry | None:
+) -> BaseGeometry | CapsuleInk | None:
     """Filled capsule (segment thickened by ``radius``) as ink geometry."""
     if radius <= 0:
         return None
+    if HAS_RUST_CORE:
+        return CapsuleInk(x1, y1, x2, y2, radius)
     if abs(x2 - x1) < 1e-12 and abs(y2 - y1) < 1e-12:
         return Point(x1, y1).buffer(radius, quad_segs=8)
     return LineString([(x1, y1), (x2, y2)]).buffer(radius, quad_segs=8, cap_style=1)
@@ -107,9 +120,11 @@ def circle_ring_shape(
     return outer
 
 
-def disk_shape(cx: float, cy: float, r: float) -> BaseGeometry | None:
+def disk_shape(cx: float, cy: float, r: float) -> BaseGeometry | DiskInk | None:
     if r <= 0:
         return None
+    if HAS_RUST_CORE:
+        return DiskInk(cx, cy, r)
     return Point(cx, cy).buffer(r, quad_segs=12)
 
 

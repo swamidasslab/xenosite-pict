@@ -15,5 +15,6 @@ pub mod plotdot;
 pub mod rings;
 
 pub use bonds::{centered_displacements, multi_bond_offset};
+pub use geom::{capsule_halo_path_d, disk_halo_path_d, polygon_to_svg_d};
 pub use metrics::{BOND_PX, OFFSET_FRAC, OFFSET_PX, SHADE_FRAC, STROKE_PX};
 pub use plotdot::{PlotDot, ShadeDisk};

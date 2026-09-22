@@ -176,17 +176,24 @@ def _offset_gap(length: float, *, chain: bool) -> float:
     return min(px, length * 0.22)
 
 
-def multi_bond_offset(length: float) -> float:
-    """Parallel spacing for double/triple strokes (RDKit ``multipleBondOffset``).
-
-    Always prefer ``OFFSET_PX`` (``OFFSET_FRAC × BOND_PX``). Do **not** scale
-    the offset down to the post-label stroke length — heteroatom insets would
-    collapse carbonyl spacing and make doubles look glued together. Only shrink
-    for degenerate stubs shorter than two offset widths.
-    """
+def _multi_bond_offset_py(length: float) -> float:
+    """Python fallback (mirrors ``xpict-core::bonds``)."""
     if length < 2.0 * OFFSET_PX:
         return min(OFFSET_PX, length * 0.25)
     return OFFSET_PX
+
+
+def multi_bond_offset(length: float) -> float:
+    """Parallel spacing for double/triple strokes (RDKit ``multipleBondOffset``).
+
+    Uses ``xpict._native`` when built; otherwise Python fallback.
+    """
+    try:
+        from xpict import _native
+
+        return float(_native.multi_bond_offset(length))
+    except ImportError:
+        return _multi_bond_offset_py(length)
 
 
 # Shallow angles make the mitre run away along the bond. ~20° off the axis.
