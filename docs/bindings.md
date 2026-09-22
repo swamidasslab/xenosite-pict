@@ -80,3 +80,16 @@ Crates to prefer when filling stubs: **`ttf-parser`/`skrifa`** (fonts),
 (no RDKit template). Rigid-only also when RDKit is absent.
 
 See `docs/layout-notes.md`.
+
+## Diagram layout (ELK → elkrs)
+
+Network / reaction viewport placement moves into Rust via **`elkrs`**
+(`xpict-core` feature `elk`, default on for the lib / PyO3):
+
+| Edge | API |
+| --- | --- |
+| Python | `_native.elk_layout_json(graph_json) -> str` |
+| JS / WASM | still npm `elkjs` — `xpict-wasm` builds with `default-features = false` so ELK does not inflate the depict blob (~2.8 MB if enabled) |
+
+Python synthesizes the ELK graph in `diagram/elk.py` and prefers the native
+call; jsrun+vendored elkjs stays as fallback until the extension is universal.

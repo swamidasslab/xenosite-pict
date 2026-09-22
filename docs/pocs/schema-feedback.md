@@ -39,11 +39,10 @@ Captured while implementing own-SVG drawing, marks/shade, and ELK placement. The
    Node width/height come from normalized molecule bounds. Changing scale/padding changes ELK spacing.  
    → Either freeze draw scale as a contract constant or put `scale`/`padding` on PictSpec so layout and draw agree.
 
-9. **Python ELK path** — **done via jsrun**  
-   ELK runs through vendored elkjs inside **jsrun** (embedded V8). No Node on the
-   host. Prefer jsrun over `mini-racer`/`py-mini-racer` (elk fake-worker /
-   `Atomics.waitAsync` gaps). Grid/row remain fallbacks. Do not put
-   `engine: elkjs|jar` in PictSpec.
+9. **Python ELK path** — **moving to elkrs**  
+   Prefer native **`elkrs`** via `xpict._native.elk_layout_json`. jsrun+vendored
+   elkjs remains a transitional fallback. Grid/row stay pure-Python. Optional
+   later: drop jsrun from core deps once the extension is always built.
 
 ## Drawing / scene (trickle-back)
 

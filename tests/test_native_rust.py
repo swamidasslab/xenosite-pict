@@ -65,3 +65,30 @@ def test_offset_px_constant():
     from xpict import _native
 
     assert _native.OFFSET_PX == pytest.approx(OFFSET_PX)
+
+
+def test_elk_layout_json_layered():
+    import json
+
+    from xpict import _native
+
+    assert getattr(_native, "HAS_ELK", False)
+    graph = {
+        "id": "root",
+        "layoutOptions": {
+            "elk.algorithm": "layered",
+            "elk.direction": "RIGHT",
+            "elk.edgeRouting": "ORTHOGONAL",
+        },
+        "children": [
+            {"id": "a", "width": 40.0, "height": 30.0},
+            {"id": "b", "width": 40.0, "height": 30.0},
+        ],
+        "edges": [{"id": "e0", "sources": ["a"], "targets": ["b"]}],
+    }
+    laid = json.loads(_native.elk_layout_json(json.dumps(graph)))
+    by_id = {c["id"]: c for c in laid["children"]}
+    assert by_id["b"]["x"] > by_id["a"]["x"]
+    edge = laid["edges"][0]
+    assert edge["sections"]
+    assert "startPoint" in edge["sections"][0]

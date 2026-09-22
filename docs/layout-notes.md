@@ -192,11 +192,26 @@ coords; keep Indigo available as alternate; keep growing native.
 ## ELK for multi-mol diagrams
 
 Metabolic networks / reaction schemes use **ELK** for viewport placement (not
-chemical MCS alignment). Python runs vendored elkjs inside **jsrun** (embedded
-V8) — no Node subprocess. (`mini-racer` / legacy `py-mini-racer` were tried;
-elk’s fake-worker path needs `Atomics.waitAsync` plumbing that jsrun already
-handles.) Grid/row stay pure-Python fallbacks. Browser `js/` can keep elkjs
-directly.
+chemical MCS alignment).
+
+**Decision: move to `elkrs` (native Rust).** Prefer the crates.io crate
+[`elkrs`](https://crates.io/crates/elkrs) (byte-exact ELK 0.11.0 port,
+`create_elk().layout_json`) inside `xpict-core` (feature `elk`, on by default).
+That drops the heavy **jsrun** (~20 MB V8 wheel) + **1.6 MB** vendored elkjs
+from the Python ship path once the extension is built. Same ELK JSON the
+Python synthesizer already builds; edge `sections` / orthogonal bends stay.
+
+| Runtime | Path |
+| --- | --- |
+| Python | `_native.elk_layout_json` (elkrs) → fallback jsrun+elkjs → row/grid |
+| Browser | npm `elkjs` for now; WASM keeps `xpict-core` **without** `elk` so the |
+|  | depict blob stays ~64 KB. Optional later: enable `elk` + `elkLayoutJson` |
+| Not chosen | `openedges/elk-rs` npm (elkjs drop-in) — only if we stay JS-first |
+
+Caveats: `elkrs` is young (0.1.x) but claims full algorithm coverage + pixel
+goldens; needs **Rust ≥ 1.85** (transitive `edition2024`). Grid/row remain
+pure fallbacks. Enabling `elk` in `xpict-wasm` grows the release blob to
+~2.8 MB — wait until browser drops npm elkjs.
 
 `diagram.kind: reaction` widens ELK node/edge spacing and falls back to a
 vertically-centered row with extra gap for arrow shafts. `layout_diagram_ex`

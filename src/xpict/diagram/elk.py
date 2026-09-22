@@ -1,7 +1,8 @@
-"""ELK diagram placement via elkjs in jsrun (embedded V8), with grid/row fallback.
+"""ELK diagram placement via native elkrs (Rust) or elkjs in jsrun, with grid/row fallback.
 
-No Node subprocess. Vendored ``elk-api.js`` + ``elk-worker.min.js`` load into a
-cached jsrun Runtime. See ``docs/layout-notes.md``.
+Preferred path: ``xpict._native.elk_layout_json`` (elkrs). Fallback: vendored
+elkjs inside jsrun (embedded V8). Grid/row stay pure-Python. See
+``docs/layout-notes.md``.
 """
 
 from __future__ import annotations
@@ -99,7 +100,7 @@ def _ensure_elk_runtime():
             from jsrun import Runtime
         except ImportError as e:
             raise ImportError(
-                "ELK layout requires jsrun. It is a core dependency of xpict."
+                "ELK layout requires jsrun when the Rust elkrs binding is unavailable."
             ) from e
 
         api_path = _VENDOR / "elk-api.js"
@@ -312,22 +313,9 @@ def _edge_path_from_elk(edge: dict) -> list[tuple[float, float]] | None:
     return path if len(path) >= 2 else None
 
 
-def _elkjs_placement(
-    layouts: Sequence[MoleculeLayout], spec: LegacyPictSpec | object
-) -> DiagramPlacement | None:
-    """Run elkjs inside jsrun when available; include edge bend routes."""
-    spec = _flat(spec)
-    graph = elk_graph(layouts, spec)
-    try:
-        laid = _run_async(_elk_layout_async(graph))
-    except Exception as exc:
-        warnings.warn(
-            f"elkjs (jsrun) layout failed ({exc}); falling back.",
-            PictBackendWarning,
-            stacklevel=3,
-        )
-        return None
-
+def _placement_from_laid(
+    layouts: Sequence[MoleculeLayout], spec: LegacyPictSpec, laid: dict
+) -> DiagramPlacement:
     by_id = {c["id"]: c for c in laid.get("children", [])}
     positions: list[tuple[float, float]] = []
     for i, L in enumerate(layouts):
@@ -351,6 +339,58 @@ def _elkjs_placement(
     )
 
 
+def _elkrs_placement(
+    layouts: Sequence[MoleculeLayout], spec: LegacyPictSpec
+) -> DiagramPlacement | None:
+    """Native elkrs via ``xpict._native`` when the extension is built."""
+    try:
+        from xpict import _native
+    except ImportError:
+        return None
+    layout_fn = getattr(_native, "elk_layout_json", None)
+    if layout_fn is None:
+        return None
+    graph = elk_graph(layouts, spec)
+    try:
+        laid = json.loads(layout_fn(json.dumps(graph)))
+    except Exception as exc:
+        warnings.warn(
+            f"elkrs (native) layout failed ({exc}); trying jsrun fallback.",
+            PictBackendWarning,
+            stacklevel=3,
+        )
+        return None
+    return _placement_from_laid(layouts, spec, laid)
+
+
+def _elkjs_placement(
+    layouts: Sequence[MoleculeLayout], spec: LegacyPictSpec | object
+) -> DiagramPlacement | None:
+    """Run elkjs inside jsrun when available; include edge bend routes."""
+    spec = _flat(spec)
+    graph = elk_graph(layouts, spec)
+    try:
+        laid = _run_async(_elk_layout_async(graph))
+    except Exception as exc:
+        warnings.warn(
+            f"elkjs (jsrun) layout failed ({exc}); falling back.",
+            PictBackendWarning,
+            stacklevel=3,
+        )
+        return None
+    return _placement_from_laid(layouts, spec, laid)
+
+
+def _elk_placement(
+    layouts: Sequence[MoleculeLayout], spec: LegacyPictSpec
+) -> DiagramPlacement | None:
+    """Prefer native elkrs; fall back to jsrun+elkjs."""
+    native = _elkrs_placement(layouts, spec)
+    if native is not None:
+        return native
+    return _elkjs_placement(layouts, spec)
+
+
 def layout_diagram_ex(
     layouts: Sequence[MoleculeLayout], spec: LegacyPictSpec | object
 ) -> DiagramPlacement:
@@ -362,11 +402,12 @@ def layout_diagram_ex(
     sizes = _viewport_sizes(layouts, spec)
     kind = spec.diagram.kind
     if kind in {DiagramKind.network, DiagramKind.reaction}:
-        elk = _elkjs_placement(layouts, spec)
+        elk = _elk_placement(layouts, spec)
         if elk is not None:
             return elk
         warnings.warn(
-            "ELK (jsrun) unavailable; using row layout for network/reaction diagrams.",
+            "ELK unavailable (native elkrs and jsrun both failed); "
+            "using row layout for network/reaction diagrams.",
             PictBackendWarning,
             stacklevel=3,
         )

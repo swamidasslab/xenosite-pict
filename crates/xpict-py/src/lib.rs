@@ -62,6 +62,12 @@ fn disk_halo_path_d(cx: f64, cy: f64, ink_radius: f64, grow: f64) -> Option<Stri
     geom::disk_halo_path_d(cx, cy, ink_radius, grow)
 }
 
+/// Lay out an ELK JSON graph; returns laid-out JSON (native elkrs).
+#[pyfunction]
+fn elk_layout_json(graph_json: &str) -> PyResult<String> {
+    xpict_core::elk_layout_json(graph_json).map_err(pyo3::exceptions::PyRuntimeError::new_err)
+}
+
 #[pymodule]
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(multi_bond_offset, m)?)?;
@@ -70,10 +76,12 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(plotdot_disks, m)?)?;
     m.add_function(wrap_pyfunction!(capsule_halo_path_d, m)?)?;
     m.add_function(wrap_pyfunction!(disk_halo_path_d, m)?)?;
+    m.add_function(wrap_pyfunction!(elk_layout_json, m)?)?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     m.add("BOND_PX", metrics::BOND_PX)?;
     m.add("OFFSET_PX", metrics::OFFSET_PX)?;
     m.add("STROKE_PX", metrics::STROKE_PX)?;
     m.add("SHADE_FRAC", metrics::SHADE_FRAC)?;
+    m.add("HAS_ELK", true)?;
     Ok(())
 }

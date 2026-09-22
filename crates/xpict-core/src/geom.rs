@@ -36,6 +36,7 @@ pub fn circle_polygon(cx: f64, cy: f64, radius: f64, quad_segs: u32) -> Vec<(f64
 }
 
 /// Semicircle on a round cap at `tip`; `u` points along the segment into the cap.
+#[allow(clippy::too_many_arguments)]
 fn cap_arc(
     tip_x: f64,
     tip_y: f64,

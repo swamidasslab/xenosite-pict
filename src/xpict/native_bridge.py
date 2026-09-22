@@ -66,6 +66,16 @@ def disk_halo_path_d(cx: float, cy: float, ink_radius: float, grow: float) -> st
     return _rust.disk_halo_path_d(cx, cy, ink_radius, grow)
 
 
+def elk_layout_json(graph_json: str) -> str | None:
+    """Native elkrs layout; ``None`` if the extension is missing or has no ELK."""
+    if _rust is None:
+        return None
+    fn = getattr(_rust, "elk_layout_json", None)
+    if fn is None:
+        return None
+    return str(fn(graph_json))
+
+
 def halo_path_d_for_ink(ink: InkGeometry, dist: float) -> str | None:
     """Rust fast path for tagged ink; ``None`` → caller uses Shapely."""
     if isinstance(ink, CapsuleInk):

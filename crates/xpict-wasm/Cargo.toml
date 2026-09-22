@@ -13,7 +13,9 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 wasm-bindgen = "0.2"
-xpict-core = { path = "../xpict-core" }
+# Diagram ELK stays on npm elkjs for now — enabling core `elk` balloons the
+# wasm to ~2.8 MB. Python already uses elkrs via xpict-py.
+xpict-core = { path = "../xpict-core", default-features = false }
 
 [lints]
 workspace = true

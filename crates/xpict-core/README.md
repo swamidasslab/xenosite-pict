@@ -11,13 +11,16 @@ Python (PyO3) and JS (WASM) share one implementation.
 | `metrics` | Bond / stroke / offset fractions | `draw/metrics.py` |
 | `plotdot` | Concentric shade disks (xenopict) | `draw/plotdot.py` |
 | `bonds` | Multi-bond offset helpers | `draw/bonds.py` (partial) |
+| `elk` | Multi-mol diagram placement (elkrs) | `diagram/elk.py` |
 | `geom` *(stub)* | Buffer / union / counters (Shapely) | `draw/halo.py`, `glyphs.py` |
 | `font` *(stub)* | Liberation outlines + advances | `draw/font_face.py`, `glyphs.py` |
 | `rings` *(stub)* | SSSR helpers, interior normals | `draw/rings.py` |
 
-**Not** in this crate (yet or ever as invent-your-own): layout backends,
-Indigo/RDKit wrappers, ELK, or PictSpec JSON parsing — those stay at the
-language edges.
+**Not** in this crate (yet or ever as invent-your-own): chem layout backends
+(Indigo/RDKit wrappers) or PictSpec JSON parsing — those stay at the language
+edges. **ELK** is an exception: diagram graph layout is pure geometry, so it
+lives here via **`elkrs`** (feature `elk`, default on) and drops Python’s
+jsrun+elkjs dependency.
 
 ## Migration rule
 

@@ -99,7 +99,7 @@ def test_network_layout_positions_length():
     assert len(positions) == 3
 
 
-def test_elk_jsrun_places_network():
+def test_elk_places_network():
     doc = PictSpec.model_validate(
         {
             "molecules": [
@@ -119,5 +119,5 @@ def test_elk_jsrun_places_network():
     layouts = Pict(backend="native").layout(doc).molecules
     positions = layout_diagram(layouts, doc)
     assert len(positions) == 3
-    # jsrun+elkjs should separate nodes (not all stacked at origin).
+    # elkrs (or jsrun fallback) should separate nodes (not all stacked at origin).
     assert len({(round(x, 1), round(y, 1)) for x, y in positions}) >= 2
