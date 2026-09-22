@@ -45,13 +45,11 @@ pub const MARK_STROKE_FRAC: f64 = 0.1;
 pub const MARK_HALO_STROKE_FRAC: f64 = 0.2;
 pub const MARK_OPACITY: f64 = 0.7;
 pub const MARK_HALO_OPACITY: f64 = 0.45;
-/// xenopict mark ink stroke color.
+/// xenopict mark halo `<use stroke="#555">`.
 ///
-/// The mark `<g>` sets stroke-width/opacity but no stroke color, so only the
-/// `#555` halo `<use>` is visible. Use the same gray for ink so we match what
-/// xenopict actually paints (not black, and never `mol.color`).
-pub const MARK_INK_COLOR: &str = "#555";
-/// xenopict mark halo `<use stroke>`.
+/// Mark ink has stroke-width/opacity but **no** stroke color (xenopict leaves
+/// that for host CSS on `.mark`). Xpict does not style by class: the visible
+/// ring is this baked halo attribute; ink stays uncolored.
 pub const MARK_HALO_COLOR: &str = "#555";
 /// RDKit ``DrawText::SUBS_SCALE`` / ``SUPER_SCALE`` for H-counts and charges.
 pub const SCRIPT_SCALE: f64 = 0.66;

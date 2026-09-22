@@ -73,10 +73,10 @@ MARK_STROKE_FRAC = 0.1
 MARK_HALO_STROKE_FRAC = 0.2
 MARK_OPACITY = 0.7
 MARK_HALO_OPACITY = 0.45
+# xenopict mark halo <use stroke="#555">. Mark ink has width/opacity but no
+# stroke color (host CSS on `.mark` may add one). Xpict does not style by
+# class: the visible ring is this baked halo attribute.
 MARK_HALO_COLOR = "#555"
-# xenopict mark ink: the mark <g> has no stroke color, so only the #555 halo
-# <use> is visible. Same gray for ink (not black / not backbone color).
-MARK_INK_COLOR = "#555"
 # RDKit DrawText::SUBS_SCALE / SUPER_SCALE for H-counts and charges.
 SCRIPT_SCALE = 0.66
 # Dummy / R-group ``*`` height as a multiple of Liberation cap-height (~2× letters).

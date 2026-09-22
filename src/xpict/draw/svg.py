@@ -53,12 +53,13 @@ def _render_primitive(parent: Element, prim: Primitive) -> None:
         attrs = {
             "d": _fmt_path_d(prim.d),
             "fill": prim.fill or "none",
-            "stroke": prim.stroke or "none",
             "stroke-width": _fmt_num(prim.stroke_width),
             "stroke-linecap": prim.stroke_linecap or "round",
             "stroke-linejoin": "round",
             "opacity": _fmt_num(prim.opacity),
         }
+        if prim.stroke:
+            attrs["stroke"] = prim.stroke
         if prim.stroke_dasharray:
             attrs["stroke-dasharray"] = prim.stroke_dasharray
         if prim.cls:
@@ -73,10 +74,10 @@ def _render_primitive(parent: Element, prim: Primitive) -> None:
             "r": _fmt_num(prim.r),
             "opacity": _fmt_num(prim.opacity),
             "fill": prim.fill or "none",
+            "stroke-width": _fmt_num(prim.stroke_width),
         }
         if prim.stroke:
             attrs["stroke"] = prim.stroke
-            attrs["stroke-width"] = _fmt_num(prim.stroke_width)
         if prim.cls:
             attrs["class"] = prim.cls
         SubElement(parent, "circle", attrs)
