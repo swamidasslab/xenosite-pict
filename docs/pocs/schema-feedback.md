@@ -47,10 +47,10 @@ Captured while implementing own-SVG drawing, marks/shade, and ELK placement. The
 
 ## Drawing / scene (trickle-back)
 
-10. **Native depictor vs multi-backend; Chematic for perception**  
+10. **Native depictor; Indigo alternate; no Chematic**  
     Depiction is hard — always review CDK / RDKit / Indigo / CoordGen before changing layout or draw code.  
-    Product path: **native** layout+draw proven on the hard-case gallery; **Indigo only** as transitional layout. Chematic is a strong candidate for **perception** (aromaticity, SSSR, stereo flags — small Rust, RDKit-like) but **not** for publication coords (their depictions suck). Own the SVG.  
-    **If** we settle on Chematic for perception, a **Rust depiction crate** (Python + WASM) is the coherent ship stack — shared molecule graph, small browser bundle. Prove algorithms in the Python POC first; do not bake a multi-engine layout ladder into PictSpec. See `docs/layout-notes.md`.
+    Product path: **native** layout+draw proven on the hard-case gallery; **Indigo** as optional alternate layout backend. Own the SVG. Perception stays in-house (native/Rust) — Chematic is not used.  
+    Shared depiction algorithms move into **`xpict-core`** (Python + WASM). Prove in Python first; do not bake a multi-engine layout ladder into PictSpec. See `docs/layout-notes.md`.
 
 11. **Ring / chain / stereo algorithms are depictor-owned practice**  
     Regular polygons, 120° zig-zag chains, partner distribution, wedges/hashes belong in layout (native target, backends for now). The drawer: skeleton centerlines → offset doubles/triples → stereo wedges. Bridged/cage systems cannot have every SSSR face forced regular — `HARD_RING_CASES`. Do not add a PictSpec field that promises “all rings regular.”

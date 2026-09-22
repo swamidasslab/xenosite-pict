@@ -1,7 +1,7 @@
 """Minimal organic SMILES → topology for the native layout lab.
 
 Enough for derisk gallery molecules (alkanes, aromatics, fused/bridged rings,
-common heteroatoms). Not a full OpenSMILES implementation — Chematic/Indigo
+common heteroatoms). Not a full OpenSMILES implementation — Indigo remains
 remain the production parsers; this exists so native *layout* algorithms can
 be exercised without a chem engine.
 """

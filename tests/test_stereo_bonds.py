@@ -16,7 +16,6 @@ from xpict.draw.bonds import (
     solid_wedge,
 )
 from xpict.draw.metrics import OFFSET_PX
-from xpict.perception import chematic_available, perceive_smiles
 
 
 def _backend() -> str:
@@ -179,13 +178,3 @@ def test_far_end_single_joins_too():
     for path in strokes.offsets:
         end = _pts(path.d)[1]
         assert _on_line(end[0], end[1], bonds[1].x1, bonds[1].y1, 30.0, -10.0)
-
-
-def test_chematic_perception_optional():
-    if not chematic_available():
-        pytest.skip("chematic not installed")
-    mol = perceive_smiles("c1ccccc1")
-    assert mol.engine == "chematic"
-    assert len(mol.atoms) == 6
-    assert any(b.aromatic or b.order == 1.5 for b in mol.bonds) or len(mol.bonds) == 6
-    assert any("perception only" in w for w in mol.warnings)

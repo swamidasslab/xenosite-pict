@@ -17,44 +17,31 @@ that as the guide:
 Hard cases (bridged cages, congested chains, stereo centers, macrocycles) are the
 test of quality — not benzene.
 
-## Strategic target: native depictor, proven — Indigo only while getting there
+## Strategic target: native depictor; Indigo as alternate backend
 
 **If** an internal (`native`) layout + draw stack is *demonstrably* good enough,
 we do not need a multi-engine layout ladder.
 
 “Good enough” is **not** assumed. It must be shown on a growing hard-case gallery
 (rings, chains, stereo, collisions) side-by-side with Indigo / RDKit / CDK-quality
-*references* (read their sources; we do not ship them as layout backends).
+*references* (read their sources; we do not ship a multi-backend ladder).
 
 Until that bar is cleared:
 
 1. Learn algorithms from Indigo / RDKit / CoordGen / CDK (read their sources).
 2. Own the **drawing** path now (skeleton → offsets → wedges; our SVG).
 3. Grow **native layout** toward those algorithms (rings → chains → stereo placement).
-4. Keep **one** transitional layout engine — **Indigo** — for real coords in POCs and
-   demos. No RDKit / Open Babel / Chematic layout backends in the product path.
+4. Keep **Indigo** as an **optional alternate layout backend** (`backend="indigo"`)
+   for demos and comparison — not the product default. No RDKit / Open Babel
+   layout backends. **Chematic is out** (no perception extra, no layout).
 
-After native wins the gallery, Indigo shrinks to optional parse/emergency fallback.
+Default backend is **native**. Perception (SSSR, aromaticity, stereo flags) stays
+in our stack (native / Rust over time), not a third-party chem kernel.
 
-### Chematic for perception (not depiction)
-
-Split the problem:
-
-| Layer | Job | Chematic? |
-| --- | --- | --- |
-| **Perception** | Parse, SSSR, aromaticity/Kekulé, stereo flags, valence | Strong candidate — Rust, small install, RDKit-like aromaticity (`chematic-perception`), no C++/conda |
-| **2D coordinates** | Rings, chains, collisions, templates | Weak today — their depict coords suck; do not trust as publication layout |
-| **Drawing** | Skeleton → offsets → wedges → SVG | **Ours** — always |
-
-So Chematic is a plausible **default chem kernel** for perception while we own drawing and grow native layout (Indigo transitional). Using Chematic’s SVG/layout as the product surface would be a mistake.
-
-Validate perception against RDKit on hard aromatics / stereo before promoting it; treat their `depict_*` path as throwaway.
-
-**If** we settle on Chematic for perception, implementing **our** depiction in
-**Rust** (crate next to Chematic, Python + WASM bindings) is the natural ship
-stack: one molecule graph, no FFI tax between perceive and draw, small browser
-bundle. Keep Python as the algorithm lab until skeleton → offsets → wedges and
-the native layout quality bar are demonstrated — then port, don’t invent twice.
+Shipping depiction as **Rust** (`xpict-core` + PyO3 + WASM) is the dual-language
+path — prove algorithms in Python, then port. Keep Python as the algorithm lab
+until skeleton → offsets → wedges and the native layout quality bar are
+demonstrated — then port, don’t invent twice.
 
 **Incremental path:** workspace crate [`crates/xpict-core`](../crates/xpict-core)
 holds shared pure algorithms. **Priority ports** (remove Python-only ship deps and
@@ -90,10 +77,10 @@ Rust helpers → gets aligned layouts back. Same Rust for both runtimes.
 Do **not** add RDKit as a general layout backend ladder. Use it where it already
 wins at the edges: **alignment** (and as an algorithm reference for native layout).
 
-### Transitional layout coords
+### Layout backends
 
-1. **Indigo** — transitional **layout** engine (2D coords) while native matures; WASM available for `js/` too.
-2. **native** — must grow from stub → proven depictor; that is the real layout goal.
+1. **native** — default; grow to proven depictor (product goal).
+2. **Indigo** — **alternate** optional layout (`xpict[indigo]`, `backend="indigo"`).
 3. **RDKit** — **alignment only**, called from Python/JS themselves — not linked into Rust.
 
 CoordGen / CDK remain **algorithm references**, not installed layout backends.
@@ -208,8 +195,8 @@ coords for those molecules:
 - [~] Stereo — tetrahedral `@`/`@@` wedges (parity heuristic); E/Z from `/` `\` enforced on native coords
 - [x] Side-by-side gallery vs Indigo on the same SMILES set (`poc-e-*`)
 
-Until that checklist is green, keep **Indigo** as the transitional layout engine.
-After it is green, Indigo shrinks to optional parse/emergency fallback.
+Until that checklist is green, keep **Indigo** available as an **alternate**
+backend for side-by-side demos. Default remains **native**.
 
 ## ELK for multi-mol diagrams
 

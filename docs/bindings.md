@@ -68,9 +68,9 @@ Crates to prefer when filling stubs: **`ttf-parser`/`skrifa`** (fonts),
 
 ## Alignment (RDKit at the edges, Rust for shared math)
 
-Layout coords stay Indigo/native. **Molecule alignment** calls RDKit **from each
-language’s own binding** — never via a Rust RDKit crate (that path does not
-compile cleanly to our WASM core).
+Layout coords: **native** (default) or **Indigo** (alternate). **Molecule alignment**
+calls RDKit **from each language’s own binding** — never via a Rust RDKit crate
+(that path does not compile cleanly to our WASM core).
 
 | Runtime | RDKit call site | Then |
 | --- | --- | --- |

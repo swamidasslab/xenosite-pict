@@ -23,15 +23,13 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-# Transitional 2D coords while native depiction matures. Only layout engine we keep.
+# Alternate 2D layout backend (native is default).
 indigo = [
     "epam-indigo>=1.19",
 ]
-# Perception-only optional kernel (not a layout backend).
-chematic = ["chematic>=0.16"]
 # Template alignment only — not a layout backend. Absent ⇒ rigid rotate/translate.
 rdkit = ["rdkit>=2024.3"]
-all = ["xpict[indigo,chematic,rdkit]"]
+all = ["xpict[indigo,rdkit]"]
 
 [project.urls]
 Homepage = "https://github.com/swamidasslab/xenosite-pict"

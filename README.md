@@ -10,7 +10,7 @@ Scaffold in progress. Language-neutral JSON contracts (Pydantic → generated JS
 
 **Depiction:** Hard — follow CDK / RDKit / Indigo / CoordGen; don’t invent. Own SVG (skeleton → offsets → stereo). The product goal is a **native** depictor that is *demonstrably* good enough on a hard-case gallery.
 
-**Chem stack (likely):** Chematic (or similar) for **perception** (aromaticity, SSSR, stereo — small Rust); **our** drawing. Chematic depict coords are not good enough. If we settle there, shipping depiction as a **Rust** crate (Py + WASM) is the natural fit — prove the draw/layout model in Python first.
+**Ship stack:** **our** drawing (+ growing native layout) in Python now, migrating into **`xpict-core` Rust** (PyO3 + WASM) for dual Python/JS. No Chematic.
 
 **Shared Rust core:** `crates/xpict-core` with **Python** (`xpict._native` / PyO3) and **JS** (wasm-bindgen → `js/src/native.ts`) bindings. Same callable surface on both sides — see [`docs/bindings.md`](docs/bindings.md).
 
@@ -22,11 +22,11 @@ pytest tests/test_native_rust.py
 cd js && npm test
 ```
 
-**Layout coords (transitional):** **Indigo** for 2D coords while native matures. **Alignment** (`diagram.align`): each language calls **RDKit its own way** (Python `rdkit`, JS `@rdkit/rdkit`) and passes maps/coords into Rust for shared transform math — **no RDKit inside `xpict-core` / WASM**. Rigid Kabsch remains the no-RDKit fallback. Chematic-as-layout stays out of the product path.
+**Layout backends:** **native** (default). **Indigo** is an optional **alternate** (`xpict[indigo]`, `backend="indigo"`). **Alignment** (`diagram.align`): each language calls **RDKit its own way** (Python `rdkit`, JS `@rdkit/rdkit`) and passes maps/coords into Rust for shared transform math — **no RDKit inside `xpict-core` / WASM**. Rigid Kabsch remains the no-RDKit fallback.
 
 **Multi-molecule diagrams:** ELK via **jsrun** (embedded V8 + vendored elkjs) — no Node required. Grid/row fallback if ELK fails.
 
-**Core deps (target):** `pydantic` + `jsrun` + Rust extension. Shapely / fontTools become build-time-only once `geom`/`font` finish moving. Indigo / RDKit / Chematic stay **language-edge extras**, not Rust crate deps.
+**Core deps (target):** `pydantic` + `jsrun` + Rust extension. Shapely / fontTools become build-time-only once `geom`/`font` finish moving. Indigo / RDKit stay **language-edge extras**, not Rust crate deps.
 
 **Outputs:** SVG (default); HTML with embedded SVG for responsive pages.
 
@@ -35,9 +35,9 @@ cd js && npm test
 ```python
 from xpict import Pict, render
 
+svg = Pict().render({"molecules": [{"smiles": "CCO"}]})  # native default
+# or alternate layout:
 svg = Pict(backend="indigo").render({"molecules": [{"smiles": "CCO"}]})
-# or
-svg = render({"molecules": [{"smiles": "CCO"}]}, backend="native")
 ```
 
 Input formats per molecule: `smiles`, `cxsmiles`, `esmiles`, or `molfile`.
@@ -48,10 +48,9 @@ Backend is runtime config (not in the JSON document). Unsupported options emit `
 
 ```bash
 uv sync
-# transitional layout engine:
-uv sync --extra indigo
-# optional perception kernel (not layout):
-uv sync --extra chematic
+uv sync --extra indigo   # alternate layout backend
+uv sync --extra rdkit    # template alignment
+uv sync --extra all
 ```
 
 Export JSON Schema (committed under `schema/`):

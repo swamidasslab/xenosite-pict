@@ -16,27 +16,6 @@ wheels = [
 ]
 
 [[package]]
-name = "chematic"
-version = "1.0.5"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
-    { name = "numpy", version = "2.5.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/df/16/f9595676d0dc53d04c075ff46a139e3f307513c6f481d623c43b53e841f3/chematic-1.0.5.tar.gz", hash = "sha256:0a5c6f04d0a24878c73cfbb57e33fb1e4e73c18e13f6cfccdfcadc75c9eb46b8", size = 3945792, upload-time = "2026-09-04T23:10:09.873Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/5d/5c/afedd46000c426eac31853856de3cd6303e855f8dbafa384c14980098f25/chematic-1.0.5-cp311-cp311-macosx_10_12_x86_64.whl", hash = "sha256:6d43dae9bafe089fe882cc510060254493d0b226794a2609d0fd0cc1d448fe30", size = 5012118, upload-time = "2026-09-04T23:09:40.109Z" },
-    { url = "https://files.pythonhosted.org/packages/70/b7/3b48e635139acf46e004d90c0e82377bb0e269b53e9ea2b883da90af7bf5/chematic-1.0.5-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:7674b196588f9d55a7e78d004cdab4f3d517ac4c3a880ecb4fb76b4973dd3805", size = 4816568, upload-time = "2026-09-04T23:09:42.17Z" },
-    { url = "https://files.pythonhosted.org/packages/9b/f9/d87ee989d06107d6f915e985bec50bc3fe8f46509369be44476abec17c69/chematic-1.0.5-cp311-cp311-win_amd64.whl", hash = "sha256:d362b4b793adf92d41dfeebdc5ce130f9ae9a15b2fbb43636f411862989293ef", size = 5034873, upload-time = "2026-09-04T23:09:44.13Z" },
-    { url = "https://files.pythonhosted.org/packages/eb/71/e63259b7924ec1b0801fac8f8f9e30f5a71099bce876fdb94538534a0161/chematic-1.0.5-cp312-cp312-macosx_10_12_x86_64.whl", hash = "sha256:561d4ad8fdf94c36e029da96a521b2a6b29310810a04863b6523e7efe5d26f7d", size = 5046694, upload-time = "2026-09-04T23:09:46.233Z" },
-    { url = "https://files.pythonhosted.org/packages/55/e7/daa81d0a43860569cd3d861c5f15cfd822c4cf17ff03460731cca7a5fae1/chematic-1.0.5-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:e0f050d31ff9a04fc06c2ed867b3330d6e3a57d595992e31094333954b3babda", size = 4797299, upload-time = "2026-09-04T23:09:48.203Z" },
-    { url = "https://files.pythonhosted.org/packages/7e/0b/ccb3c8c3b1e38c38c8bad32737d4a68afd8c9d9e14ed1a7155e927e1a193/chematic-1.0.5-cp312-cp312-win_amd64.whl", hash = "sha256:da69fc4dde6caa091bfa7460644c56f87291d7a4f5e79a3a5b91c9eba872ff39", size = 5020279, upload-time = "2026-09-04T23:09:50.432Z" },
-    { url = "https://files.pythonhosted.org/packages/22/68/69fab326aceeb1f075a2c246b96539add0f415e572a122d5851298ec17fc/chematic-1.0.5-cp313-cp313-macosx_10_12_x86_64.whl", hash = "sha256:6db5c35ec10c0476eded0b23e9f0b621813f953a105d5f1cf4b0afb81f1f1bdc", size = 5050497, upload-time = "2026-09-04T23:09:52.439Z" },
-    { url = "https://files.pythonhosted.org/packages/f4/0e/c12be5f126312457f51a9f9aeeabc7973eafb51e91d49768bc0cdd0e12e0/chematic-1.0.5-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:8060669741bcce7889552364a75955ed074cff9f2b196a553ed75a3b993e495d", size = 4797488, upload-time = "2026-09-04T23:09:54.402Z" },
-    { url = "https://files.pythonhosted.org/packages/4e/5f/7f7d12d7b169fde8eec8be0ee6f7f9a9f68246e2676b7582410cf92453a8/chematic-1.0.5-cp313-cp313-win_amd64.whl", hash = "sha256:08dd728b88f0e821b41b8cb6b95b1f7cd12cfc29a1c70423a0387c6df2ae4ae1", size = 5019813, upload-time = "2026-09-04T23:09:56.23Z" },
-]
-
-[[package]]
 name = "colorama"
 version = "0.4.6"
 source = { registry = "https://pypi.org/simple" }
@@ -728,12 +707,8 @@ dependencies = [
 
 [package.optional-dependencies]
 all = [
-    { name = "chematic" },
     { name = "epam-indigo" },
     { name = "rdkit" },
-]
-chematic = [
-    { name = "chematic" },
 ]
 indigo = [
     { name = "epam-indigo" },
@@ -751,16 +726,15 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "chematic", marker = "extra == 'chematic'", specifier = ">=0.16" },
     { name = "epam-indigo", marker = "extra == 'indigo'", specifier = ">=1.19" },
     { name = "fonttools", specifier = ">=4.65.0" },
     { name = "jsrun", specifier = ">=0.1.0" },
     { name = "pydantic", specifier = ">=2.7" },
     { name = "rdkit", marker = "extra == 'rdkit'", specifier = ">=2024.3" },
     { name = "shapely", specifier = ">=2.1.2" },
-    { name = "xpict", extras = ["indigo", "chematic", "rdkit"], marker = "extra == 'all'" },
+    { name = "xpict", extras = ["indigo", "rdkit"], marker = "extra == 'all'" },
 ]
-provides-extras = ["indigo", "chematic", "rdkit", "all"]
+provides-extras = ["indigo", "rdkit", "all"]
 
 [package.metadata.requires-dev]
 dev = [

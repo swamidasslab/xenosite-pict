@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Literal
 
 from xpict.align import align_layouts
-from xpict.backends import BACKEND_PREFERENCE, get_backend
+from xpict.backends import get_backend
 from xpict.contracts.layout import LayoutResult, MoleculeLayout
 from xpict.contracts.nodes import PictSpec, expand_pict
 from xpict.contracts.spec import LegacyPictSpec
@@ -17,23 +17,9 @@ OutputFormat = Literal["svg", "html"]
 
 
 def _resolve_backend_name(requested: str | None) -> str:
-    """Default: Indigo when installed, else native stub.
-
-    Multi-engine preference ladders are intentionally gone — native depiction is
-    the product goal; Indigo is the one transitional layout engine.
-    """
+    """Default: native. Indigo only when requested (alternate backend)."""
     if requested:
         return requested.lower()
-    for name in BACKEND_PREFERENCE:
-        if name == "native":
-            return "native"
-        if name == "indigo":
-            try:
-                import indigo  # noqa: F401
-
-                return "indigo"
-            except ImportError:
-                continue
     return "native"
 
 

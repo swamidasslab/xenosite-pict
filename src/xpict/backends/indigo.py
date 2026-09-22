@@ -1,4 +1,4 @@
-"""Indigo layout backend (preferred when installed)."""
+"""Indigo layout backend (optional alternate to native)."""
 
 from __future__ import annotations
 

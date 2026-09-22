@@ -1,9 +1,9 @@
 """Layout backends.
 
-Transitional coords: **Indigo** only. Goal: **native** depictor proven on the
-hard-case gallery — then Indigo shrinks to optional parse/emergency fallback.
-No RDKit / Open Babel / Chematic **layout** backends; Chematic stays perception-only.
-RDKit is optional and used only for template alignment (``align.select_aligner``).
+**native** is the default / product path. **Indigo** is an optional alternate
+layout backend (``xpict[indigo]``, ``backend="indigo"``).
+RDKit is optional and used only for template alignment (``align.select_aligner``),
+called from Python — not a layout backend. Chematic is not used.
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ from xpict.backends import indigo as _indigo  # noqa: F401
 from xpict.backends import native as _native  # noqa: F401
 from xpict.backends.base import LayoutBackend, get_backend
 
-BACKEND_PREFERENCE = ("indigo", "native")
+# Preference when resolving an explicit unset? Default path uses native first.
+BACKEND_PREFERENCE = ("native", "indigo")
 
 __all__ = ["BACKEND_PREFERENCE", "LayoutBackend", "get_backend"]
