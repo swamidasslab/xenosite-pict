@@ -158,10 +158,30 @@ mod tests {
         assert!(!ink.is_empty());
         assert!(ink.has_holes());
         assert!(!ink.contains(10.0, 10.0));
-        let halo = ink.buffer(1.0);
+        let halo = ink.halo(1.0);
         assert!(!halo.is_empty());
         assert!(!halo.contains(10.0, 10.0));
+        assert!(halo.area() > 0.0);
+    }
+
+    #[cfg(feature = "geom")]
+    #[test]
+    fn simplify_before_halo_drops_dense_vertices() {
+        let dense: Vec<(f64, f64)> = (0..120)
+            .map(|i| {
+                let t = TAU * i as f64 / 120.0;
+                (20.0 + 10.0 * t.cos(), 20.0 + 10.0 * t.sin())
+            })
+            .collect();
+        let ink = Shape::from_ring(&dense);
+        assert!(ink.point_count() >= 100);
+        let simplified = ink.simplify(0.5);
+        assert!(simplified.point_count() < ink.point_count() / 2);
+        let halo = ink.halo(2.0);
+        assert!(!halo.is_empty());
         assert!(halo.area() > ink.area());
+        // Halo ring should not cover the disk center.
+        assert!(!halo.contains(20.0, 20.0) || !ink.has_holes());
     }
 
     #[cfg(feature = "geom")]

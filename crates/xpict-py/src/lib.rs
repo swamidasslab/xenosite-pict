@@ -234,6 +234,15 @@ impl PyShape {
         Self::wrap(self.inner.halo(dist))
     }
 
+    fn simplify(&self, tolerance: f64) -> Self {
+        Self::wrap(self.inner.simplify(tolerance))
+    }
+
+    #[getter]
+    fn point_count(&self) -> usize {
+        self.inner.point_count()
+    }
+
     fn union(&self, other: &Self) -> Self {
         Self::wrap(self.inner.union(&other.inner))
     }

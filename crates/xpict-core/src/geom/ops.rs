@@ -53,6 +53,90 @@ fn signed_area(contour: &Contour) -> f64 {
     0.5 * a
 }
 
+fn perp_dist(p: [f64; 2], a: [f64; 2], b: [f64; 2]) -> f64 {
+    let (ax, ay) = (a[0], a[1]);
+    let (bx, by) = (b[0], b[1]);
+    let (px, py) = (p[0], p[1]);
+    let dx = bx - ax;
+    let dy = by - ay;
+    let len2 = dx * dx + dy * dy;
+    if len2 < 1e-24 {
+        return ((px - ax) * (px - ax) + (py - ay) * (py - ay)).sqrt();
+    }
+    ((px - ax) * dy - (py - ay) * dx).abs() / len2.sqrt()
+}
+
+/// Ramer–Douglas–Peucker on an open polyline (indices inclusive).
+fn rdp_keep(pts: &[[f64; 2]], eps: f64, keep: &mut [bool]) {
+    let n = pts.len();
+    if n < 3 {
+        return;
+    }
+    keep[0] = true;
+    keep[n - 1] = true;
+    let mut stack = vec![(0usize, n - 1)];
+    while let Some((i, j)) = stack.pop() {
+        if j <= i + 1 {
+            continue;
+        }
+        let mut max_d = 0.0;
+        let mut max_i = i;
+        for k in (i + 1)..j {
+            let d = perp_dist(pts[k], pts[i], pts[j]);
+            if d > max_d {
+                max_d = d;
+                max_i = k;
+            }
+        }
+        if max_d > eps {
+            keep[max_i] = true;
+            stack.push((i, max_i));
+            stack.push((max_i, j));
+        }
+    }
+}
+
+/// Simplify a closed contour; keeps ≥3 points and orientation.
+fn simplify_contour(contour: &Contour, eps: f64) -> Contour {
+    if contour.len() < 4 || eps <= 0.0 {
+        return contour.clone();
+    }
+    // Treat as open ring (no duplicated close point).
+    let mut keep = vec![false; contour.len()];
+    rdp_keep(contour, eps, &mut keep);
+    let mut out: Contour = contour
+        .iter()
+        .zip(keep.iter())
+        .filter_map(|(p, k)| if *k { Some(*p) } else { None })
+        .collect();
+    if out.len() < 3 {
+        return contour.clone();
+    }
+    // Preserve winding.
+    if signed_area(&out).signum() != signed_area(contour).signum() && signed_area(contour) != 0.0
+    {
+        out.reverse();
+    }
+    out
+}
+
+fn simplify_shapes(shapes: &[OverlayShape], eps: f64) -> Vec<OverlayShape> {
+    let mut out = Vec::with_capacity(shapes.len());
+    for shape in shapes {
+        let mut simplified: OverlayShape = shape
+            .iter()
+            .map(|c| simplify_contour(c, eps))
+            .filter(|c| c.len() >= 3)
+            .collect();
+        if simplified.is_empty() {
+            continue;
+        }
+        simplified = orient_shape(simplified);
+        out.push(simplified);
+    }
+    out
+}
+
 /// Ensure exterior is CCW and holes CW (i_overlay convention).
 fn orient_shape(mut shape: OverlayShape) -> OverlayShape {
     for (i, contour) in shape.iter_mut().enumerate() {
@@ -215,7 +299,8 @@ impl Shape {
         if self.is_empty() || dist.abs() < 1e-15 {
             return self.clone();
         }
-        let join = LineJoin::Round(dist.abs().max(0.05) * 0.2);
+        // Cheaper round joins: arc step scales with distance.
+        let join = LineJoin::Round((dist.abs() * 0.35).max(0.25));
         let style = OutlineStyle::new(dist).line_join(join);
         let mut out: Vec<OverlayShape> = Vec::new();
         for shape in &self.shapes {
@@ -235,12 +320,37 @@ impl Shape {
         }
     }
 
+    /// Drop near-colinear vertices (Ramer–Douglas–Peucker).
+    pub fn simplify(&self, tolerance: f64) -> Self {
+        if self.is_empty() || tolerance <= 0.0 {
+            return self.clone();
+        }
+        Self {
+            shapes: simplify_shapes(&self.shapes, tolerance),
+        }
+    }
+
+    /// Point count across all contours (debug / profiling).
+    pub fn point_count(&self) -> usize {
+        self.shapes.iter().flat_map(|s| s.iter()).map(|c| c.len()).sum()
+    }
+
     /// Punch interior rings back out of a grown halo (Shapely halo_from_shapes).
+    ///
+    /// Simplifies ink before offset so dense glyph outlines (800+ pts) do not
+    /// dominate buffer cost. Holes are punched from the original rings.
     pub fn halo(&self, dist: f64) -> Self {
         if self.is_empty() || dist <= 0.0 {
             return Self::empty();
         }
-        let grown = self.buffer(dist);
+        // Keep details well below the buffer radius so the outer halo looks smooth.
+        let eps = (dist * 0.35).clamp(0.2, 0.75);
+        let simplified = self.simplify(eps);
+        let grown = if simplified.is_empty() {
+            self.buffer(dist)
+        } else {
+            simplified.buffer(dist)
+        };
         let counters = self.holes_as_shape();
         if counters.is_empty() {
             grown
