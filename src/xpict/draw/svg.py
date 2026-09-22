@@ -98,14 +98,28 @@ def _render_viewport(
             _render_primitive(lg, prim)
 
 
+def _fmt_user(value: float) -> str:
+    """Format a user-unit length (viewBox / geometry), trimming float noise."""
+    return f"{value:.4f}".rstrip("0").rstrip(".") or "0"
+
+
+def _fmt_css_px(value: float) -> str:
+    """Format an intrinsic CSS size so browsers lay the SVG out at content size."""
+    return f"{_fmt_user(value)}px"
+
+
 def scene_to_svg(scene: Scene) -> str:
+    # Explicit px width/height give a stable intrinsic size. viewBox stays in
+    # user units so content scales only when CSS intentionally overrides size.
+    w = _fmt_user(scene.width)
+    h = _fmt_user(scene.height)
     root = Element(
         "svg",
         {
             "xmlns": "http://www.w3.org/2000/svg",
-            "width": str(scene.width),
-            "height": str(scene.height),
-            "viewBox": f"0 0 {scene.width} {scene.height}",
+            "width": _fmt_css_px(scene.width),
+            "height": _fmt_css_px(scene.height),
+            "viewBox": f"0 0 {w} {h}",
             "class": "xpict",
         },
     )
@@ -138,8 +152,23 @@ def scene_to_html(scene: Scene, *, title: str | None = None) -> str:
 <title>{t}</title>
 <style>
   body {{ margin: 0; font-family: system-ui, sans-serif; background: #fafafa; }}
-  .xpict-page {{ max-width: 100%; padding: 1rem; box-sizing: border-box; }}
-  .xpict-page svg {{ max-width: 100%; height: auto; display: block; }}
+  .xpict-page {{ padding: 1rem; box-sizing: border-box; }}
+  /* Honor SVG width/height attrs (intrinsic size). Shrink only if the page is
+     narrower — never stretch separate depictions up to a shared column width. */
+  .xpict-page svg.xpict {{
+    display: inline-block;
+    vertical-align: middle;
+    width: auto;
+    height: auto;
+    max-width: 100%;
+    flex: 0 0 auto;
+  }}
+  .xpict-row {{
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1rem;
+  }}
 </style>
 </head>
 <body>

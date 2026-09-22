@@ -125,7 +125,7 @@ def test_render_emits_centered_mol_label():
     attrs = m.group(1) + m.group(2)
     assert 'data-text="ethanol"' in attrs
     assert "<text" not in svg
-    height = float(re.search(r'height="([0-9.]+)"', svg).group(1))
+    height = float(re.search(r'height="([0-9.]+)(?:px)?"', svg).group(1))
     # Path sits in the lower half (baseline near bottom).
     assert 'd="M ' in attrs or re.search(r'\bd="M ', svg)
 

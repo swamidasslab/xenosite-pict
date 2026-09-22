@@ -565,10 +565,19 @@ def write_gallery(out: Path, backend: str, only: list[Path] | None = None) -> Pa
     padding: 0.75rem;
   }}
   .frame svg {{
-    display: block;
-    max-width: 100%;
+    display: inline-block;
+    vertical-align: middle;
+    width: auto;
     height: auto;
+    max-width: 100%;
+    flex: 0 0 auto;
     background: #fff !important;
+  }}
+  .frame .xpict-row {{
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1rem;
   }}
   .missing {{ color: #a33; }}
   footer {{
