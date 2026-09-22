@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from xpict import _native
 from xpict.contracts.layout import MoleculeLayout
 from xpict.contracts.scene import CirclePrim, Layer, PathPrim, TextPrim, Viewport
-from xpict.contracts.spec import (
+from xpict.future.spec import (
     AnnotationSpec,
     MarkKind,
     MarkSpec,

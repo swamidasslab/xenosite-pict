@@ -20,10 +20,10 @@ from pydantic import (
     model_validator,
 )
 
-from xpict.contracts.shorthand import (
+from xpict.future.shorthand import (
     expand_pict_input,
 )
-from xpict.contracts.spec import (
+from xpict.future.spec import (
     AnnotationSpec,
     AnnotKind,
     AnnotPrefer,
@@ -651,7 +651,7 @@ def expand_pict(spec: PictSpec | LegacyPictSpec | dict[str, Any] | Node) -> Pict
 
 def compress_pict(spec: PictSpec | LegacyPictSpec | dict[str, Any]) -> dict[str, Any]:
     """Dump to JSON-shaped dict (nested). Legacy inputs are lifted first."""
-    from xpict.contracts.shorthand import compress_label
+    from xpict.future.shorthand import compress_label
 
     tree = expand_pict(spec)
     data = tree.model_dump(mode="json")

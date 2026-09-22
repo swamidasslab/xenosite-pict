@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from xpict.backends.base import register, warn_unsupported
 from xpict.contracts.layout import AtomLayout, BondLayout, MoleculeLayout
-from xpict.contracts.spec import MoleculeSpec
+from xpict.future.spec import MoleculeSpec
 from xpict.structure import cx_atom_labels, structure_smiles
 
 

@@ -8,11 +8,13 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
+from xpict.contracts.depict import DepictSpec
 from xpict.contracts.layout import LayoutResult
-from xpict.contracts.nodes import PictSpec
 from xpict.contracts.scene import Scene
+from xpict.future.nodes import PictSpec
 
 _REPO_SCHEMA = Path(__file__).resolve().parents[2] / "schema"
+_FUTURE_SCHEMA = _REPO_SCHEMA / "future"
 
 # Subtrees smaller than this (canonical JSON chars) are not worth extracting.
 _MIN_DEDUPE_CHARS = 120
@@ -290,20 +292,34 @@ def factor_node_common_allof(schema: dict[str, Any]) -> dict[str, Any]:
 
 
 def export_schemas(out_dir: Path | None = None, *, minify: bool = True) -> dict[str, Path]:
+    """Write live schemas under ``schema/`` and the full PictSpec under ``schema/future/``."""
     target = out_dir or schema_dir()
     target.mkdir(parents=True, exist_ok=True)
-    raw = {
-        "xpict.schema.json": factor_node_common_allof(PictSpec.model_json_schema()),
+    future_dir = (out_dir / "future") if out_dir is not None else _FUTURE_SCHEMA
+    future_dir.mkdir(parents=True, exist_ok=True)
+
+    live = {
+        "xpict.schema.json": DepictSpec.model_json_schema(),
         "layout.schema.json": LayoutResult.model_json_schema(),
         "scene.schema.json": Scene.model_json_schema(),
     }
+    future = {
+        "xpict.schema.json": factor_node_common_allof(PictSpec.model_json_schema()),
+    }
+
     written: dict[str, Path] = {}
-    for name, schema in raw.items():
+    for name, schema in live.items():
         if minify:
             schema = minify_json_schema(schema)
         path = target / name
         path.write_text(json.dumps(schema, indent=2) + "\n", encoding="utf-8")
         written[name] = path
+    for name, schema in future.items():
+        if minify:
+            schema = minify_json_schema(schema)
+        path = future_dir / name
+        path.write_text(json.dumps(schema, indent=2) + "\n", encoding="utf-8")
+        written[f"future/{name}"] = path
     return written
 
 
@@ -314,7 +330,7 @@ def main() -> None:
     raw_s = json.dumps(raw, indent=2)
     mini_s = json.dumps(mini, indent=2)
     print(
-        f"xpict.schema.json  raw={len(raw_s.splitlines())} lines / {len(raw_s)} chars  "
+        f"future/xpict.schema.json  raw={len(raw_s.splitlines())} lines / {len(raw_s)} chars  "
         f"→ allOf+minify={len(mini_s.splitlines())} lines / {len(mini_s)} chars  "
         f"({100 * len(mini_s) / len(raw_s):.0f}% of raw)"
     )
@@ -323,6 +339,11 @@ def main() -> None:
     print(json.dumps(mol, indent=2)[:600])
     assert "NodeCommon" in mini["$defs"]
     assert mol.get("allOf")
+    live = minify_json_schema(DepictSpec.model_json_schema())
+    print(
+        f"xpict.schema.json (live DepictSpec)  "
+        f"{len(json.dumps(live, indent=2).splitlines())} lines"
+    )
     for _, path in export_schemas().items():
         print(f"wrote {path}")
 

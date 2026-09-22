@@ -1,208 +1,10 @@
 {
   "$defs": {
-    "AnnotKind": {
-      "description": "How an annotation is drawn.",
-      "enum": [
-        "callout",
-        "box",
-        "oval",
-        "spline"
-      ],
-      "title": "AnnotKind",
-      "type": "string"
-    },
-    "AnnotPrefer": {
-      "description": "Preferred callout placement; collision grid may pick another free slot.",
-      "enum": [
-        "auto",
-        "left",
-        "right",
-        "top",
-        "bottom"
-      ],
-      "title": "AnnotPrefer",
-      "type": "string"
-    },
-    "AnnotationNode": {
-      "title": "AnnotationNode",
-      "allOf": [
-        {
-          "$ref": "#/$defs/NodeCommon"
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "const": "annotation",
-              "default": "annotation",
-              "title": "Type",
-              "type": "string"
-            },
-            "kind": {
-              "$ref": "#/$defs/AnnotKind",
-              "default": "callout"
-            },
-            "atoms": {
-              "anyOf": [
-                {
-                  "items": {
-                    "type": "integer"
-                  },
-                  "type": "array"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "default": null,
-              "title": "Atoms"
-            },
-            "bonds": {
-              "anyOf": [
-                {
-                  "items": {
-                    "maxItems": 2,
-                    "minItems": 2,
-                    "prefixItems": [
-                      {
-                        "type": "integer"
-                      },
-                      {
-                        "type": "integer"
-                      }
-                    ],
-                    "type": "array"
-                  },
-                  "type": "array"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "default": null,
-              "title": "Bonds"
-            },
-            "ring": {
-              "anyOf": [
-                {
-                  "items": {
-                    "type": "integer"
-                  },
-                  "type": "array"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "default": null,
-              "title": "Ring"
-            },
-            "label": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "default": null,
-              "title": "Label"
-            },
-            "color": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "default": null,
-              "title": "Color"
-            },
-            "arrow": {
-              "default": true,
-              "title": "Arrow",
-              "type": "boolean"
-            },
-            "prefer": {
-              "$ref": "#/$defs/AnnotPrefer",
-              "default": "auto"
-            }
-          }
-        }
-      ],
-      "description": "Standalone annotation node (prefer ``mol.annotations`` when targeting a mol).",
-      "unevaluatedProperties": false
-    },
-    "AnnotationSpec": {
+    "MolSpec": {
       "additionalProperties": false,
-      "description": "Molecule annotation with collision-aware label placement.\n\nTargets (use one):\n\n- ``atoms`` \u2014 one atom (callout) or a set (region)\n- ``bonds`` \u2014 bond endpoints as ``[begin, end]`` pairs\n- ``ring`` \u2014 atom indices of a ring (callout at ring center)\n\nKinds:\n\n- ``callout`` \u2014 indicator arrow and/or text next to the target\n- ``box`` / ``oval`` / ``spline`` \u2014 region outline around ``atoms``",
+      "description": "One molecule entry for ``depict`` / single-mol render options.\n\nStructure: pass exactly one of ``smiles``, ``cxsmiles``, ``molfile``, or\n``source`` (alias for any structure string).",
       "properties": {
-        "kind": {
-          "$ref": "#/$defs/AnnotKind",
-          "default": "callout"
-        },
-        "atoms": {
-          "anyOf": [
-            {
-              "items": {
-                "type": "integer"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "0-based atom indices (target or region)",
-          "title": "Atoms"
-        },
-        "bonds": {
-          "anyOf": [
-            {
-              "items": {
-                "maxItems": 2,
-                "minItems": 2,
-                "prefixItems": [
-                  {
-                    "type": "integer"
-                  },
-                  {
-                    "type": "integer"
-                  }
-                ],
-                "type": "array"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "0-based atom-index pairs",
-          "title": "Bonds"
-        },
-        "ring": {
-          "anyOf": [
-            {
-              "items": {
-                "type": "integer"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Ordered atom indices of a ring (callout at centroid)",
-          "title": "Ring"
-        },
-        "label": {
+        "smiles": {
           "anyOf": [
             {
               "type": "string"
@@ -212,10 +14,10 @@
             }
           ],
           "default": null,
-          "description": "Annotation caption (supports light TeX/markdown markup)",
-          "title": "Label"
+          "description": "SMILES string",
+          "title": "Smiles"
         },
-        "color": {
+        "cxsmiles": {
           "anyOf": [
             {
               "type": "string"
@@ -225,127 +27,23 @@
             }
           ],
           "default": null,
-          "description": "Stroke/fill color",
-          "title": "Color"
+          "description": "ChemAxon extended SMILES (CXSMILES)",
+          "title": "Cxsmiles"
         },
-        "arrow": {
-          "default": true,
-          "description": "Draw indicator arrow for callout annotations",
-          "title": "Arrow",
-          "type": "boolean"
-        },
-        "prefer": {
-          "$ref": "#/$defs/AnnotPrefer",
-          "default": "auto",
-          "description": "Preferred callout/label side; grid may choose another free slot"
-        }
-      },
-      "title": "AnnotationSpec",
-      "type": "object"
-    },
-    "ArrowNode": {
-      "title": "ArrowNode",
-      "allOf": [
-        {
-          "$ref": "#/$defs/NodeCommon"
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "const": "arrow",
-              "default": "arrow",
-              "title": "Type",
+        "molfile": {
+          "anyOf": [
+            {
               "type": "string"
             },
-            "arrow": {
-              "$ref": "#/$defs/EdgeArrow",
-              "default": "forward"
-            },
-            "label": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "default": null,
-              "description": "Legacy single edge label; prefer layout.above",
-              "title": "Label"
-            },
-            "role": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "default": null,
-              "title": "Role"
-            },
-            "color": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "default": null,
-              "title": "Color"
-            },
-            "stroke_width": {
-              "anyOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "default": null,
-              "title": "Stroke Width"
-            },
-            "dashed": {
-              "default": false,
-              "title": "Dashed",
-              "type": "boolean"
+            {
+              "type": "null"
             }
-          }
-        }
-      ],
-      "description": "Reaction / diagram arrow between siblings (or via layout.edges).",
-      "unevaluatedProperties": false
-    },
-    "EdgeArrow": {
-      "description": "Arrow head / shaft style for diagram edges.",
-      "enum": [
-        "forward",
-        "equilibrium",
-        "open",
-        "line"
-      ],
-      "title": "EdgeArrow",
-      "type": "string"
-    },
-    "EdgeSpec": {
-      "additionalProperties": false,
-      "description": "Edge between molecule nodes in a network / reaction diagram.",
-      "properties": {
+          ],
+          "default": null,
+          "description": "MDL molblock",
+          "title": "Molfile"
+        },
         "source": {
-          "title": "Source",
-          "type": "string"
-        },
-        "target": {
-          "title": "Target",
-          "type": "string"
-        },
-        "label": {
           "anyOf": [
             {
               "type": "string"
@@ -355,912 +53,9 @@
             }
           ],
           "default": null,
-          "title": "Label"
+          "description": "Structure alias (SMILES / CXSMILES / molfile text)",
+          "title": "Source"
         },
-        "role": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Optional semantic role (e.g. enzyme, inhibits) \u2014 not drawn by default",
-          "title": "Role"
-        },
-        "arrow": {
-          "$ref": "#/$defs/EdgeArrow",
-          "default": "forward"
-        },
-        "color": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Stroke/fill color for the arrow",
-          "title": "Color"
-        },
-        "stroke_width": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Shaft stroke width",
-          "title": "Stroke Width"
-        },
-        "dashed": {
-          "default": false,
-          "description": "Dashed shaft (e.g. hypothetical step)",
-          "title": "Dashed",
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "source",
-        "target"
-      ],
-      "title": "EdgeSpec",
-      "type": "object"
-    },
-    "GridNode": {
-      "title": "GridNode",
-      "allOf": [
-        {
-          "$ref": "#/$defs/ContainerCommon"
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "const": "grid",
-              "default": "grid",
-              "title": "Type",
-              "type": "string"
-            }
-          }
-        }
-      ],
-      "unevaluatedProperties": false
-    },
-    "GroupNode": {
-      "title": "GroupNode",
-      "allOf": [
-        {
-          "$ref": "#/$defs/ContainerCommon"
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "const": "group",
-              "default": "group",
-              "title": "Type",
-              "type": "string"
-            }
-          }
-        }
-      ],
-      "unevaluatedProperties": false
-    },
-    "ImageNode": {
-      "title": "ImageNode",
-      "allOf": [
-        {
-          "$ref": "#/$defs/NodeCommon"
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "const": "image",
-              "default": "image",
-              "title": "Type",
-              "type": "string"
-            },
-            "src": {
-              "title": "Src",
-              "type": "string"
-            },
-            "alt": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "default": null,
-              "title": "Alt"
-            }
-          }
-        }
-      ],
-      "unevaluatedProperties": false
-    },
-    "LayoutSpec": {
-      "additionalProperties": false,
-      "description": "How this node places itself and/or its children.",
-      "properties": {
-        "columns": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Grid columns",
-          "title": "Columns"
-        },
-        "direction": {
-          "anyOf": [
-            {
-              "enum": [
-                "row",
-                "column"
-              ],
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Stack / reaction flow direction",
-          "title": "Direction"
-        },
-        "gap": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Spacing between children",
-          "title": "Gap"
-        },
-        "attach": {
-          "anyOf": [
-            {
-              "enum": [
-                "below",
-                "above",
-                "left",
-                "right"
-              ],
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Where a nested child attaches relative to its parent",
-          "title": "Attach"
-        },
-        "width": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Width"
-        },
-        "height": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Height"
-        },
-        "halo": {
-          "anyOf": [
-            {
-              "type": "boolean"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "White knockout under ink; typically set on the root",
-          "title": "Halo"
-        },
-        "align": {
-          "default": false,
-          "description": "Align later molecules onto the first (legacy diagram.align)",
-          "title": "Align",
-          "type": "boolean"
-        },
-        "elk_options": {
-          "additionalProperties": true,
-          "title": "Elk Options",
-          "type": "object"
-        },
-        "output": {
-          "default": "root",
-          "description": "Render projection: whole tree vs explode children/leaves",
-          "enum": [
-            "root",
-            "children",
-            "leaves",
-            "all"
-          ],
-          "title": "Output",
-          "type": "string"
-        },
-        "label": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "additionalProperties": false,
-              "properties": {
-                "text": {
-                  "type": "string"
-                },
-                "pos": {
-                  "default": "bottom",
-                  "enum": [
-                    "bottom",
-                    "top",
-                    "left",
-                    "right"
-                  ],
-                  "type": "string"
-                }
-              },
-              "required": [
-                "text"
-              ],
-              "type": "object"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Molecule caption (string shorthand or LabelSpec)"
-        },
-        "caption": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Image / panel caption",
-          "title": "Caption"
-        },
-        "above": {
-          "description": "Arrow / edge content above the shaft (text or nodes)",
-          "items": {},
-          "title": "Above",
-          "type": "array"
-        },
-        "below": {
-          "description": "Arrow / edge content below the shaft (text or nodes)",
-          "items": {},
-          "title": "Below",
-          "type": "array"
-        },
-        "edges": {
-          "description": "Explicit edges when children are not a linear reaction walk",
-          "items": {
-            "$ref": "#/$defs/EdgeSpec"
-          },
-          "title": "Edges",
-          "type": "array"
-        }
-      },
-      "title": "LayoutSpec",
-      "type": "object"
-    },
-    "MarkKind": {
-      "enum": [
-        "atoms",
-        "bonds",
-        "substructure"
-      ],
-      "title": "MarkKind",
-      "type": "string"
-    },
-    "MarkSpec": {
-      "additionalProperties": false,
-      "description": "Legacy publication-style mark (circles / bond strokes / hull).\n\nPrefer :class:`AnnotationSpec` for callouts, region shapes, and labels.",
-      "properties": {
-        "kind": {
-          "$ref": "#/$defs/MarkKind",
-          "default": "atoms"
-        },
-        "atoms": {
-          "anyOf": [
-            {
-              "items": {
-                "type": "integer"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "0-based atom indices to mark",
-          "title": "Atoms"
-        },
-        "bonds": {
-          "anyOf": [
-            {
-              "items": {
-                "maxItems": 2,
-                "minItems": 2,
-                "prefixItems": [
-                  {
-                    "type": "integer"
-                  },
-                  {
-                    "type": "integer"
-                  }
-                ],
-                "type": "array"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "0-based atom-index pairs for bonds to mark",
-          "title": "Bonds"
-        },
-        "color": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "CSS color for the mark",
-          "title": "Color"
-        },
-        "label": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Label"
-        }
-      },
-      "title": "MarkSpec",
-      "type": "object"
-    },
-    "MolNode": {
-      "title": "MolNode",
-      "allOf": [
-        {
-          "$ref": "#/$defs/NodeCommon"
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "const": "mol",
-              "default": "mol",
-              "title": "Type",
-              "type": "string"
-            },
-            "smiles": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "default": null,
-              "title": "Smiles"
-            },
-            "cxsmiles": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "default": null,
-              "title": "Cxsmiles"
-            },
-            "esmiles": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "default": null,
-              "title": "Esmiles"
-            },
-            "molfile": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "default": null,
-              "title": "Molfile"
-            },
-            "ids": {
-              "additionalProperties": {
-                "anyOf": [
-                  {
-                    "type": "integer"
-                  },
-                  {
-                    "items": {
-                      "type": "integer"
-                    },
-                    "type": "array"
-                  }
-                ]
-              },
-              "title": "Ids",
-              "type": "object"
-            },
-            "rings": {
-              "additionalProperties": {
-                "items": {
-                  "type": "integer"
-                },
-                "type": "array"
-              },
-              "title": "Rings",
-              "type": "object"
-            },
-            "rgroups": {
-              "anyOf": [
-                {
-                  "items": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "type": "array"
-                },
-                {
-                  "additionalProperties": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "type": "object"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "default": null,
-              "title": "Rgroups"
-            },
-            "ring_attachments": {
-              "items": {
-                "$ref": "#/$defs/RingAttachmentSpec"
-              },
-              "title": "Ring Attachments",
-              "type": "array"
-            },
-            "rtable": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/RTableSpec"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "default": null
-            },
-            "marks": {
-              "items": {
-                "$ref": "#/$defs/MarkSpec"
-              },
-              "title": "Marks",
-              "type": "array"
-            },
-            "annotations": {
-              "items": {
-                "$ref": "#/$defs/AnnotationSpec"
-              },
-              "title": "Annotations",
-              "type": "array"
-            },
-            "shade": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/ShadeSpec"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "default": null
-            },
-            "color": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "default": null,
-              "title": "Color"
-            }
-          }
-        }
-      ],
-      "description": "Molecule object (chemistry payload + optional nested annotations/tables).",
-      "unevaluatedProperties": false
-    },
-    "NetworkNode": {
-      "title": "NetworkNode",
-      "allOf": [
-        {
-          "$ref": "#/$defs/ContainerCommon"
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "const": "network",
-              "default": "network",
-              "title": "Type",
-              "type": "string"
-            }
-          }
-        }
-      ],
-      "unevaluatedProperties": false
-    },
-    "RTableSpec": {
-      "additionalProperties": false,
-      "description": "R-group enumeration table paired with a Markush core.",
-      "properties": {
-        "groups": {
-          "anyOf": [
-            {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Column headers. Default: first-seen rgroup / ring_attachment labels in declaration order.",
-          "title": "Groups"
-        },
-        "rows": {
-          "description": "Table body; each row matches groups length when groups set",
-          "items": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "title": "Rows",
-          "type": "array"
-        }
-      },
-      "title": "RTableSpec",
-      "type": "object"
-    },
-    "ReactionNode": {
-      "title": "ReactionNode",
-      "allOf": [
-        {
-          "$ref": "#/$defs/ContainerCommon"
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "const": "reaction",
-              "default": "reaction",
-              "title": "Type",
-              "type": "string"
-            }
-          }
-        }
-      ],
-      "unevaluatedProperties": false
-    },
-    "RefNode": {
-      "title": "RefNode",
-      "allOf": [
-        {
-          "$ref": "#/$defs/NodeCommon"
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "const": "ref",
-              "default": "ref",
-              "title": "Type",
-              "type": "string"
-            },
-            "ref": {
-              "title": "Ref",
-              "type": "string"
-            }
-          }
-        }
-      ],
-      "description": "Reference to another node by id (sharing).",
-      "unevaluatedProperties": false
-    },
-    "RingAttachmentSpec": {
-      "additionalProperties": false,
-      "description": "Uncertain / ring-centered substituent (Markush ``<r>``-style).\n\n``ring`` is a named ring (see :attr:`MoleculeSpec.rings`) or an explicit\natom-index list. ``label`` is required (duplicate labels across attachments\nare allowed).",
-      "properties": {
-        "ring": {
-          "anyOf": [
-            {
-              "items": {
-                "type": "integer"
-              },
-              "type": "array"
-            },
-            {
-              "type": "string"
-            }
-          ],
-          "description": "Ring name from MoleculeSpec.rings, or ordered atom indices",
-          "title": "Ring"
-        },
-        "label": {
-          "description": "Attachment caption (e.g. R, R\u00b9, X)",
-          "title": "Label",
-          "type": "string"
-        },
-        "prefer": {
-          "$ref": "#/$defs/AnnotPrefer",
-          "default": "auto",
-          "description": "Preferred label side; collision grid may pick another slot"
-        }
-      },
-      "required": [
-        "ring",
-        "label"
-      ],
-      "title": "RingAttachmentSpec",
-      "type": "object"
-    },
-    "ShadeSpec": {
-      "additionalProperties": false,
-      "description": "Continuous per-atom / per-bond scores for colormap shading.",
-      "properties": {
-        "atoms": {
-          "anyOf": [
-            {
-              "items": {
-                "type": "number"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Per-atom scores (same length as atom count)",
-          "title": "Atoms"
-        },
-        "bonds": {
-          "anyOf": [
-            {
-              "items": {
-                "type": "number"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Per-bond scores",
-          "title": "Bonds"
-        },
-        "colormap": {
-          "default": "xenosite",
-          "description": "Named colormap",
-          "title": "Colormap",
-          "type": "string"
-        },
-        "vmin": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Vmin"
-        },
-        "vmax": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Vmax"
-        }
-      },
-      "title": "ShadeSpec",
-      "type": "object"
-    },
-    "StackNode": {
-      "title": "StackNode",
-      "allOf": [
-        {
-          "$ref": "#/$defs/ContainerCommon"
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "const": "stack",
-              "default": "stack",
-              "title": "Type",
-              "type": "string"
-            }
-          }
-        }
-      ],
-      "unevaluatedProperties": false
-    },
-    "TableNode": {
-      "title": "TableNode",
-      "allOf": [
-        {
-          "$ref": "#/$defs/NodeCommon"
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "const": "table",
-              "default": "table",
-              "title": "Type",
-              "type": "string"
-            },
-            "columns": {
-              "anyOf": [
-                {
-                  "items": {
-                    "type": "string"
-                  },
-                  "type": "array"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "default": null,
-              "title": "Columns"
-            },
-            "rows": {
-              "items": {
-                "items": {},
-                "type": "array"
-              },
-              "title": "Rows",
-              "type": "array"
-            }
-          }
-        }
-      ],
-      "description": "Tabular panel; cells may be strings or nested nodes (e.g. mol).",
-      "unevaluatedProperties": false
-    },
-    "TextNode": {
-      "title": "TextNode",
-      "allOf": [
-        {
-          "$ref": "#/$defs/NodeCommon"
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "const": "text",
-              "default": "text",
-              "title": "Type",
-              "type": "string"
-            },
-            "text": {
-              "title": "Text",
-              "type": "string"
-            }
-          }
-        }
-      ],
-      "unevaluatedProperties": false
-    },
-    "NodeCommon": {
-      "title": "NodeCommon",
-      "description": "Fields shared by every figure node (id, panel, layout, meta).",
-      "type": "object",
-      "properties": {
         "id": {
           "anyOf": [
             {
@@ -1271,10 +66,10 @@
             }
           ],
           "default": null,
-          "description": "Optional stable id for refs/edges",
+          "description": "Optional molecule id",
           "title": "Id"
         },
-        "panel": {
+        "color": {
           "anyOf": [
             {
               "type": "string"
@@ -1284,167 +79,148 @@
             }
           ],
           "default": null,
-          "description": "Subfigure tag drawn as (a), (b), \u2026",
-          "title": "Panel"
+          "description": "Ink color for backbone bonds and atom labels (CSS)",
+          "title": "Color"
         },
-        "layout": {
-          "$ref": "#/$defs/LayoutSpec"
-        },
-        "meta": {
-          "additionalProperties": true,
-          "title": "Meta",
-          "type": "object"
-        }
-      }
-    },
-    "ContainerCommon": {
-      "title": "ContainerCommon",
-      "description": "Node that owns nested children (group / grid / stack / reaction / network).",
-      "allOf": [
-        {
-          "$ref": "#/$defs/NodeCommon"
-        },
-        {
-          "type": "object",
-          "properties": {
-            "children": {
-              "description": "Owned nested nodes (same discriminated union as the document root)",
+        "atom_shade": {
+          "anyOf": [
+            {
               "items": {
-                "discriminator": {
-                  "mapping": {
-                    "annotation": "#/$defs/AnnotationNode",
-                    "arrow": "#/$defs/ArrowNode",
-                    "grid": "#/$defs/GridNode",
-                    "group": "#/$defs/GroupNode",
-                    "image": "#/$defs/ImageNode",
-                    "mol": "#/$defs/MolNode",
-                    "network": "#/$defs/NetworkNode",
-                    "reaction": "#/$defs/ReactionNode",
-                    "ref": "#/$defs/RefNode",
-                    "stack": "#/$defs/StackNode",
-                    "table": "#/$defs/TableNode",
-                    "text": "#/$defs/TextNode"
-                  },
-                  "propertyName": "type"
-                },
-                "oneOf": [
+                "type": "number"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Per-atom shade scores (layout encounter order)",
+          "title": "Atom Shade"
+        },
+        "bond_shade": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Per-bond shade scores (layout encounter order)",
+          "title": "Bond Shade"
+        },
+        "mark_atoms": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Atom indices to circle (publication marks)",
+          "title": "Mark Atoms"
+        },
+        "mark_bonds": {
+          "anyOf": [
+            {
+              "items": {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
                   {
-                    "$ref": "#/$defs/MolNode"
+                    "type": "integer"
                   },
                   {
-                    "$ref": "#/$defs/ArrowNode"
+                    "type": "integer"
+                  }
+                ],
+                "type": "array"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Bond endpoint index pairs to mark",
+          "title": "Mark Bonds"
+        },
+        "star_labels": {
+          "anyOf": [
+            {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
                   },
                   {
-                    "$ref": "#/$defs/TextNode"
-                  },
-                  {
-                    "$ref": "#/$defs/ImageNode"
-                  },
-                  {
-                    "$ref": "#/$defs/TableNode"
-                  },
-                  {
-                    "$ref": "#/$defs/RefNode"
-                  },
-                  {
-                    "$ref": "#/$defs/AnnotationNode"
-                  },
-                  {
-                    "$ref": "#/$defs/GroupNode"
-                  },
-                  {
-                    "$ref": "#/$defs/GridNode"
-                  },
-                  {
-                    "$ref": "#/$defs/StackNode"
-                  },
-                  {
-                    "$ref": "#/$defs/ReactionNode"
-                  },
-                  {
-                    "$ref": "#/$defs/NetworkNode"
+                    "type": "null"
                   }
                 ]
               },
-              "title": "Children",
               "type": "array"
+            },
+            {
+              "type": "null"
             }
-          }
+          ],
+          "default": null,
+          "description": "Labels for ``*`` atoms in encounter order; null/empty \u2192 bare star. When omitted, CXSMILES ``|$\u2026$|`` aliases apply by atom index.",
+          "title": "Star Labels"
+        },
+        "bold_labels": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Bold Liberation labels + stem-keyed bond stroke",
+          "title": "Bold Labels"
+        },
+        "align_to": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Index of an earlier molecule in the same ``DepictSpec`` to use as the RDKit alignment template",
+          "title": "Align To"
         }
-      ]
-    },
-    "ArraySchema": {
-      "items": {
-        "maxItems": 2,
-        "minItems": 2,
-        "prefixItems": [
-          {
-            "type": "integer"
-          },
-          {
-            "type": "integer"
-          }
-        ],
-        "type": "array"
       },
+      "title": "MolSpec",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Batch document: ordered mols \u2192 ordered rendered results.",
+  "properties": {
+    "molecules": {
+      "items": {
+        "$ref": "#/$defs/MolSpec"
+      },
+      "title": "Molecules",
       "type": "array"
     }
   },
-  "description": "Canonical depiction document: one nested node tree.\n\nAlso accepts legacy flat ``{molecules, diagram, \u2026}``, which is lifted to a\nnested root on validation. Use :meth:`to_legacy` for the render pipeline.",
-  "discriminator": {
-    "mapping": {
-      "annotation": "#/$defs/AnnotationNode",
-      "arrow": "#/$defs/ArrowNode",
-      "grid": "#/$defs/GridNode",
-      "group": "#/$defs/GroupNode",
-      "image": "#/$defs/ImageNode",
-      "mol": "#/$defs/MolNode",
-      "network": "#/$defs/NetworkNode",
-      "reaction": "#/$defs/ReactionNode",
-      "ref": "#/$defs/RefNode",
-      "stack": "#/$defs/StackNode",
-      "table": "#/$defs/TableNode",
-      "text": "#/$defs/TextNode"
-    },
-    "propertyName": "type"
-  },
-  "oneOf": [
-    {
-      "$ref": "#/$defs/MolNode"
-    },
-    {
-      "$ref": "#/$defs/ArrowNode"
-    },
-    {
-      "$ref": "#/$defs/TextNode"
-    },
-    {
-      "$ref": "#/$defs/ImageNode"
-    },
-    {
-      "$ref": "#/$defs/TableNode"
-    },
-    {
-      "$ref": "#/$defs/RefNode"
-    },
-    {
-      "$ref": "#/$defs/AnnotationNode"
-    },
-    {
-      "$ref": "#/$defs/GroupNode"
-    },
-    {
-      "$ref": "#/$defs/GridNode"
-    },
-    {
-      "$ref": "#/$defs/StackNode"
-    },
-    {
-      "$ref": "#/$defs/ReactionNode"
-    },
-    {
-      "$ref": "#/$defs/NetworkNode"
-    }
-  ],
-  "title": "PictSpec"
+  "title": "DepictSpec",
+  "type": "object"
 }

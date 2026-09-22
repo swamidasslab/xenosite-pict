@@ -6,7 +6,7 @@ import warnings
 from typing import Protocol, runtime_checkable
 
 from xpict.contracts.layout import MoleculeLayout
-from xpict.contracts.spec import MoleculeSpec
+from xpict.future.spec import MoleculeSpec
 from xpict.warnings import PictBackendWarning
 
 

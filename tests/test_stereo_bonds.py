@@ -167,7 +167,7 @@ def test_two_singles_meet_and_clip_the_double():
 def test_two_singles_double_ends_lie_on_singles_acetone():
     """Acetone: each C=O stroke end sits on a methyl single."""
     from xpict.backends import get_backend
-    from xpict.contracts.nodes import expand_pict
+    from xpict.future.nodes import expand_pict
     from xpict.draw.drawable import normalize_coords
     from xpict.draw.metrics import shared_coord_scale
 

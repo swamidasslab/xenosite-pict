@@ -1,48 +1,43 @@
 # Contracts
 
-## Shipped public API (language clients)
+## Live (shipped)
 
-The **product surface** today is not a full nested figure document. It is:
+Pydantic under ``xpict.contracts`` — what the public package implements today:
 
-1. `mol(source)` → input handle  
-2. `render(mol, opts?)` → `Rendered` (`scene`, coords, `frame_molblock`, …)  
-3. `toSvg(scene)` → SVG  
-4. **Batch stub:** `depict({ molecules: MolSpec[] })` → `Rendered[]`  
+| Model | Role |
+| --- | --- |
+| ``MolSpec`` / ``DepictSpec`` | Batch document: mol list → ``Rendered[]`` |
+| ``Scene`` (+ primitives) | Paint ABI (Rust / JS / Python serializers) |
+| ``MoleculeLayout`` / ``LayoutResult`` | Backend layout result |
 
-`MolSpec` fields match current render options (`smiles` / `source` / `molfile` /
-`cxsmiles`, marks, shade, color, star labels, `align_to` as an **index** into
-earlier entries). This stub is the seam to grow toward full `PictSpec`.
+JSON Schema (committed):
 
-Scene JSON (`xpict-core::Scene` / `scene.schema.json`) remains the paint ABI
-between layout and SVG.
-
-## Future declarative tree (`PictSpec`)
-
-Pydantic models in `xpict.contracts` describe the **long-term** nested input
-(`group` / `grid` / `reaction` / …). Build/export writes portable JSON Schema
-to `schema/`:
-
-- `xpict.schema.json` — full declarative input (`PictSpec`) — **not** the MVP ship surface  
-- `layout.schema.json` — backend layout result  
-- `scene.schema.json` — drawable scene graph  
+- ``schema/xpict.schema.json`` — **live** ``DepictSpec``
+- ``schema/scene.schema.json`` — scene graph
+- ``schema/layout.schema.json`` — layout result
 
 ```bash
 uv run xpict-export-schema
 ```
 
-Python `Pict().render(spec)` still exercises that path for lab/CI. Public
-package docs and xenosite should lead with `mol` / `render` / `toSvg` /
-`depict`.
+Language clients: ``mol`` / ``render`` / ``toSvg`` / ``depict`` (see root README).
+
+## Future (design / refinement)
+
+Full nested ``PictSpec`` (groups, reactions, annotations, shorthand, diagram
+chrome) lives in ``xpict.future`` and ``schema/future/xpict.schema.json``.
+
+Import as ``from xpict.future import PictSpec, MoleculeSpec, …``. Lab code
+(``Pict``, POCs, nested-schema tests) still uses these models; they are **not**
+the publish surface until features land in ``contracts``.
+
+See ``src/xpict/future/README.md``.
 
 ## Runtime vs document
 
-- **In a mol / MolSpec:** structure string, marks, shade, color, star labels, align index.  
-- **Runtime only:** layout backend choice (RDKit vs Indigo vs native), output format where applicable.
+- **In a live ``MolSpec``:** structure string, marks, shade, color, star labels, align index.  
+- **Runtime only:** layout backend (RDKit / Indigo / native), output format where applicable.
 
 ## Partial backend support
 
-If a backend cannot honor an option, it must `warnings.warn(..., PictBackendWarning)` and continue best-effort.
-
-## Composition with Vega / HoloViews
-
-Emit SVG/HTML fragments; compose as sibling views. Vega has no molecule-mark plugin API — do not embed as a Vega mark type.
+If a backend cannot honor an option, it must ``warnings.warn(..., PictBackendWarning)`` and continue best-effort.

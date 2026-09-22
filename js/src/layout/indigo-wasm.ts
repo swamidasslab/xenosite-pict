@@ -5,7 +5,7 @@
  * Returns backend-agnostic coords only — SVG is drawn by ``draw/svg.ts``.
  */
 
-import type { MoleculeLayout, MoleculeSpec } from "../types.js";
+import type { MoleculeLayout, MoleculeSpec } from "../future/pict-types.js";
 
 export async function layoutWithIndigoWasm(
   mol: MoleculeSpec

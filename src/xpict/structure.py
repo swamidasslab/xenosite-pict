@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from xpict.contracts.spec import MoleculeSpec
+from xpict.future.spec import MoleculeSpec
 
 # ChemAxon ``|$alias1;alias2;$|`` atom-label block inside CXSMILES.
 _CX_ATOM_LABELS = re.compile(r"\|\$([^|]*)\$\|")

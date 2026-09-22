@@ -7,8 +7,8 @@ from typing import Any, Literal
 from xpict.align import align_layouts
 from xpict.backends import BACKEND_PREFERENCE, get_backend
 from xpict.contracts.layout import LayoutResult, MoleculeLayout
-from xpict.contracts.nodes import PictSpec, expand_pict
-from xpict.contracts.spec import LegacyPictSpec
+from xpict.future.nodes import PictSpec, expand_pict
+from xpict.future.spec import LegacyPictSpec
 from xpict.diagram.elk import layout_diagram_ex
 from xpict.draw.scene_builder import build_scene
 from xpict.draw.svg import scene_to_html, scene_to_svg

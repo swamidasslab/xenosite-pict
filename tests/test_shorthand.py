@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from xpict.contracts.nodes import PictSpec, compress_pict, expand_pict
-from xpict.contracts.shorthand import (
+from xpict.future.nodes import PictSpec, compress_pict, expand_pict
+from xpict.future.shorthand import (
     LABEL_DEFAULTS,
     compress_label,
     compress_pict_input,
@@ -14,7 +14,7 @@ from xpict.contracts.shorthand import (
     map_dicts,
     map_tree,
 )
-from xpict.contracts.spec import LabelPos, LabelSpec
+from xpict.future.spec import LabelPos, LabelSpec
 
 
 def test_expand_shorthand_string_and_partial_dict():

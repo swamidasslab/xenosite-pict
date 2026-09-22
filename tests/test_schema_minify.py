@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from xpict.contracts.nodes import PictSpec
+from xpict.future.nodes import PictSpec
 from xpict.export_schema import minify_json_schema
 
 

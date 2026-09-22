@@ -61,7 +61,7 @@ let svg = rendered.to_svg();
 
 **Not in the public MVP yet:** nested diagrams, ELK placement, reaction/network
 chrome, captions/annotations as first-class document nodes. Those remain
-in-tree (`PictSpec`, Python `Pict`) as the long-term model.
+under ``xpict.future`` / ``schema/future/`` for design review (`PictSpec`).
 
 ### Batch stub (expandable seam)
 

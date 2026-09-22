@@ -1,6 +1,9 @@
-"""Public re-exports of schema / contract types."""
+"""Public re-exports — live contracts + future PictSpec (lab)."""
 
-from xpict.contracts.nodes import (
+from xpict.contracts.depict import DepictSpec, MolSpec
+from xpict.contracts.layout import LayoutResult, MoleculeLayout
+from xpict.contracts.scene import Scene
+from xpict.future.nodes import (
     ArrowNode,
     GridNode,
     GroupNode,
@@ -18,7 +21,7 @@ from xpict.contracts.nodes import (
     compress_pict,
     expand_pict,
 )
-from xpict.contracts.spec import (
+from xpict.future.spec import (
     AnnotationSpec,
     DiagramSpec,
     EdgeSpec,
@@ -29,20 +32,25 @@ from xpict.contracts.spec import (
 __all__ = [
     "AnnotationSpec",
     "ArrowNode",
+    "DepictSpec",
     "DiagramSpec",
     "EdgeSpec",
     "GridNode",
     "GroupNode",
     "ImageNode",
+    "LayoutResult",
     "LayoutSpec",
     "LegacyPictSpec",
     "MolNode",
+    "MolSpec",
+    "MoleculeLayout",
     "MoleculeSpec",
     "NetworkNode",
     "Node",
     "PictSpec",
     "ReactionNode",
     "RefNode",
+    "Scene",
     "StackNode",
     "TableNode",
     "TextNode",

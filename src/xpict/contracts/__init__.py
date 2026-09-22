@@ -1,82 +1,38 @@
-"""Contract package exports."""
+"""Live package contracts — implemented public surface only.
 
-from xpict.contracts.layout import LayoutResult, MoleculeLayout
-from xpict.contracts.nodes import (
-    ArrowNode,
-    ContainerCommon,
-    GridNode,
-    GroupNode,
-    ImageNode,
-    LayoutSpec,
-    MolNode,
-    NetworkNode,
-    Node,
-    NodeCommon,
-    PictSpec,
-    ReactionNode,
-    RefNode,
-    StackNode,
-    TableNode,
-    TextNode,
-    compress_pict,
-    expand_pict,
-    flatten_to_legacy,
-    lift_legacy,
+Full nested ``PictSpec`` / shorthand / diagram chrome lives under
+``xpict.future`` for design review until those features ship.
+"""
+
+from xpict.contracts.depict import DepictSpec, MolSpec
+from xpict.contracts.layout import (
+    AtomLayout,
+    BondLayout,
+    LayoutResult,
+    MoleculeLayout,
 )
-from xpict.contracts.scene import Scene
-from xpict.contracts.shorthand import (
-    LABEL_DEFAULTS,
-    compress_label,
-    compress_pict_input,
-    compress_shorthand,
-    expand_label,
-    expand_pict_input,
-    expand_shorthand,
-    map_dicts,
-    map_tree,
-)
-from xpict.contracts.spec import (
-    LabelPos,
-    LabelSpec,
-    LegacyPictSpec,
-    MoleculeSpec,
+from xpict.contracts.scene import (
+    CirclePrim,
+    Layer,
+    PathPrim,
+    Primitive,
+    Scene,
+    TextPrim,
+    Viewport,
 )
 
 __all__ = [
-    "LABEL_DEFAULTS",
-    "ArrowNode",
-    "GridNode",
-    "GroupNode",
-    "ImageNode",
-    "LabelPos",
-    "LabelSpec",
+    "AtomLayout",
+    "BondLayout",
+    "CirclePrim",
+    "DepictSpec",
+    "Layer",
     "LayoutResult",
-    "LayoutSpec",
-    "LegacyPictSpec",
-    "MolNode",
+    "MolSpec",
     "MoleculeLayout",
-    "MoleculeSpec",
-    "NetworkNode",
-    "Node",
-    "NodeCommon",
-    "ContainerCommon",
-    "PictSpec",
-    "ReactionNode",
-    "RefNode",
+    "PathPrim",
+    "Primitive",
     "Scene",
-    "StackNode",
-    "TableNode",
-    "TextNode",
-    "compress_label",
-    "compress_pict",
-    "compress_pict_input",
-    "compress_shorthand",
-    "expand_label",
-    "expand_pict",
-    "expand_pict_input",
-    "expand_shorthand",
-    "flatten_to_legacy",
-    "lift_legacy",
-    "map_dicts",
-    "map_tree",
+    "TextPrim",
+    "Viewport",
 ]

@@ -7,7 +7,7 @@ import re
 import pytest
 
 from xpict import Pict, render
-from xpict.contracts.spec import LabelPos, MoleculeSpec
+from xpict.future.spec import LabelPos, MoleculeSpec
 from xpict.draw.collision import CollisionGrid
 from xpict.draw.metrics import (
     COLLISION_CELL_PX,

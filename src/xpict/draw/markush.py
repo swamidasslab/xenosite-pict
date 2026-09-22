@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from xpict.contracts.layout import MoleculeLayout
-from xpict.contracts.spec import (
+from xpict.future.spec import (
     AnnotationSpec,
     AnnotKind,
     MoleculeSpec,

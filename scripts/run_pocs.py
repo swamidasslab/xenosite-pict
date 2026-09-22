@@ -13,7 +13,7 @@ import warnings
 from pathlib import Path
 
 from xpict import Pict, render
-from xpict.contracts.nodes import PictSpec
+from xpict.future.nodes import PictSpec
 from xpict.diagram.elk import elk_graph, layout_diagram
 from xpict.draw.svg import svg_to_img_tag
 from xpict.warnings import PictBackendWarning

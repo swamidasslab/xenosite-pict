@@ -39,7 +39,7 @@ def test_halo_global_off_emits_no_halo():
 
 def test_halo_layer_is_first_in_viewport():
     from xpict import Pict
-    from xpict.contracts.nodes import PictSpec
+    from xpict.future.nodes import PictSpec
     from xpict.draw.scene_builder import build_scene
 
     pict = Pict(backend="native")
@@ -55,7 +55,7 @@ def test_halo_layer_is_first_in_viewport():
 
 
 def test_legacy_molecule_halo_lifts_to_document():
-    from xpict.contracts.nodes import PictSpec
+    from xpict.future.nodes import PictSpec
 
     spec = PictSpec.model_validate({"molecules": [{"smiles": "CCO", "halo": False}]})
     assert spec.halo is False
@@ -64,7 +64,7 @@ def test_legacy_molecule_halo_lifts_to_document():
 def test_shading_does_not_opt_into_document_halo():
     """Shade disks paint under the knockout but never join it."""
     from xpict import Pict
-    from xpict.contracts.nodes import PictSpec
+    from xpict.future.nodes import PictSpec
     from xpict.draw.drawable import paint_molecule
 
     bare = PictSpec.model_validate({"molecules": [{"smiles": "CCO"}], "halo": True})

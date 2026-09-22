@@ -30,7 +30,7 @@ from collections.abc import Sequence
 from typing import Protocol
 
 from xpict.contracts.layout import AtomLayout, BondLayout, MoleculeLayout
-from xpict.contracts.spec import MoleculeSpec
+from xpict.future.spec import MoleculeSpec
 
 
 def _element_key(el: str) -> str:

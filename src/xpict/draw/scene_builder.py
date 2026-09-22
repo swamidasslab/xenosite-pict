@@ -6,7 +6,7 @@ from collections.abc import Sequence
 
 from xpict.contracts.layout import MoleculeLayout
 from xpict.contracts.scene import Primitive, Scene, Viewport
-from xpict.contracts.spec import LegacyPictSpec, MoleculeSpec
+from xpict.future.spec import LegacyPictSpec, MoleculeSpec
 from xpict.draw.arrows import diagram_overlays
 from xpict.draw.drawable import (
     display_text,

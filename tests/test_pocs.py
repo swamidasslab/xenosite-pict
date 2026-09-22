@@ -6,7 +6,7 @@ import json
 import warnings
 
 from xpict import Pict, render
-from xpict.contracts.nodes import PictSpec
+from xpict.future.nodes import PictSpec
 from xpict.diagram.elk import elk_graph, elk_graph_json, layout_diagram
 
 

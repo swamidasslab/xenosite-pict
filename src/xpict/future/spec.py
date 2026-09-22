@@ -14,7 +14,7 @@ from pydantic import (
     model_validator,
 )
 
-from xpict.contracts.shorthand import (
+from xpict.future.shorthand import (
     LABEL_DEFAULTS,
     expand_label,
     expand_pict_input,
@@ -415,7 +415,7 @@ class DiagramSpec(StrictModel):
 class LegacyPictSpec(StrictModel):
     """Flat molecule-list document used by the draw / ELK pipeline.
 
-    Prefer the nested :class:`~xpict.contracts.nodes.PictSpec` tree for authoring.
+    Prefer the nested :class:`~xpict.future.nodes.PictSpec` tree for authoring.
     Legacy ``{molecules, diagram}`` JSON is still accepted and lifted automatically.
     """
 

@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from xpict.contracts.scene import CirclePrim, PathPrim, TextPrim
-from xpict.contracts.spec import AnnotationSpec, AnnotKind
+from xpict.future.spec import AnnotationSpec, AnnotKind
 from xpict.draw.collision import CollisionGrid
 from xpict.draw.drawn import Drawn
 from xpict.draw.glyphs import compile_text_shapes

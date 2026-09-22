@@ -1,0 +1,115 @@
+"""Future declarative PictSpec — design / refinement, not the ship surface.
+
+The live public package ships ``xpict.contracts.depict`` (``MolSpec`` /
+``DepictSpec``) matching the implemented ``mol`` / ``render`` / ``depict``
+API. This package keeps the full nested figure algebra (groups, reactions,
+annotations, shorthand, ELK diagram chrome) so it can be reviewed and
+grown without blocking releases.
+
+Import as ``xpict.future`` (lab / tests / POCs). Do not treat these models
+as stable public ABI until features land in ``contracts``.
+"""
+
+from __future__ import annotations
+
+from xpict.future.nodes import (
+    ArrowNode,
+    ContainerCommon,
+    GridNode,
+    GroupNode,
+    ImageNode,
+    LayoutSpec,
+    MolNode,
+    NetworkNode,
+    Node,
+    NodeCommon,
+    PictSpec,
+    ReactionNode,
+    RefNode,
+    StackNode,
+    TableNode,
+    TextNode,
+    compress_pict,
+    expand_pict,
+    flatten_to_legacy,
+    lift_legacy,
+)
+from xpict.future.shorthand import (
+    LABEL_DEFAULTS,
+    compress_label,
+    compress_pict_input,
+    compress_shorthand,
+    expand_label,
+    expand_pict_input,
+    expand_shorthand,
+    map_dicts,
+    map_tree,
+)
+from xpict.future.spec import (
+    AnnotationSpec,
+    AnnotKind,
+    AnnotPrefer,
+    DiagramKind,
+    DiagramSpec,
+    EdgeArrow,
+    EdgeSpec,
+    LabelPos,
+    LabelSpec,
+    LegacyPictSpec,
+    MarkKind,
+    MarkSpec,
+    MoleculeSpec,
+    RingAttachmentSpec,
+    RTableSpec,
+    ShadeSpec,
+    StrictModel,
+)
+
+__all__ = [
+    "LABEL_DEFAULTS",
+    "AnnotationSpec",
+    "AnnotKind",
+    "AnnotPrefer",
+    "ArrowNode",
+    "ContainerCommon",
+    "DiagramKind",
+    "DiagramSpec",
+    "EdgeArrow",
+    "EdgeSpec",
+    "GridNode",
+    "GroupNode",
+    "ImageNode",
+    "LabelPos",
+    "LabelSpec",
+    "LayoutSpec",
+    "LegacyPictSpec",
+    "MarkKind",
+    "MarkSpec",
+    "MolNode",
+    "MoleculeSpec",
+    "NetworkNode",
+    "Node",
+    "NodeCommon",
+    "PictSpec",
+    "ReactionNode",
+    "RefNode",
+    "RingAttachmentSpec",
+    "RTableSpec",
+    "ShadeSpec",
+    "StackNode",
+    "StrictModel",
+    "TableNode",
+    "TextNode",
+    "compress_label",
+    "compress_pict",
+    "compress_pict_input",
+    "compress_shorthand",
+    "expand_label",
+    "expand_pict",
+    "expand_pict_input",
+    "expand_shorthand",
+    "flatten_to_legacy",
+    "lift_legacy",
+    "map_dicts",
+    "map_tree",
+]

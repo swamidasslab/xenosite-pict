@@ -8,7 +8,7 @@ import pytest
 
 from xpict import Pict
 from xpict.contracts.layout import AtomLayout, BondLayout, MoleculeLayout
-from xpict.contracts.nodes import PictSpec
+from xpict.future.nodes import PictSpec
 from xpict.draw.metrics import BOND_PX, coord_scale, shared_coord_scale
 from xpict.draw.scene_builder import build_scene, normalize_coords
 

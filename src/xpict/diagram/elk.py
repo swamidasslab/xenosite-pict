@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from xpict.contracts.layout import MoleculeLayout
-from xpict.contracts.spec import DiagramKind, LegacyPictSpec, MoleculeSpec
+from xpict.future.spec import DiagramKind, LegacyPictSpec, MoleculeSpec
 from xpict.draw.metrics import shared_coord_scale
 from xpict.draw.scene_builder import viewport_size
 from xpict.warnings import PictBackendWarning

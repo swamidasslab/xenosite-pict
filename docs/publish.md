@@ -135,6 +135,11 @@ When cutting a release that should stay aligned across languages:
 
 ## 5. Public API vs future declarative tree
 
-**Ship / document now:** `mol` / `render` / `toSvg` (+ optional batch stub `depict({ molecules: [...] }) → Rendered[]`).
+**Ship / document now:** `mol` / `render` / `toSvg` (+ batch stub
+`depict({ molecules: [...] }) → Rendered[]`). Live Pydantic is
+`xpict.contracts.depict` (`MolSpec` / `DepictSpec`); JSON Schema is
+`schema/xpict.schema.json`.
 
-**Not the publish surface yet:** nested `PictSpec`, ELK diagrams, reaction/network chrome. Those stay in-tree as the long-term document model; the batch stub is the expandable seam (same mol fields, list-shaped output).
+**Not the publish surface yet:** nested `PictSpec` under `xpict.future` /
+`schema/future/` — keep refining there; promote fields into `contracts` as
+paint support lands.

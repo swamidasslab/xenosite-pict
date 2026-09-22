@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from xpict import render
-from xpict.contracts.nodes import (
+from xpict.future.nodes import (
     ArrowNode,
     GridNode,
     MolNode,
@@ -13,7 +13,7 @@ from xpict.contracts.nodes import (
     ReactionNode,
     lift_legacy,
 )
-from xpict.contracts.spec import EdgeArrow
+from xpict.future.spec import EdgeArrow
 
 
 def test_legacy_single_mol_lifts_to_mol_root():

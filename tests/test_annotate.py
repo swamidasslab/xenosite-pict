@@ -7,8 +7,8 @@ import re
 import pytest
 
 from xpict import render
-from xpict.contracts.nodes import PictSpec
-from xpict.contracts.spec import (
+from xpict.future.nodes import PictSpec
+from xpict.future.spec import (
     AnnotationSpec,
     AnnotKind,
     AnnotPrefer,

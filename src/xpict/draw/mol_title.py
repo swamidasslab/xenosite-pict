@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from xpict.contracts.spec import LabelPos
+from xpict.future.spec import LabelPos
 from xpict.draw.collision import CollisionGrid
 from xpict.draw.metrics import (
     PAD_PX,

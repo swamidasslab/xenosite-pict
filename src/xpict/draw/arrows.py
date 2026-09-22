@@ -6,7 +6,7 @@ import math
 from collections.abc import Sequence
 
 from xpict.contracts.scene import PathPrim, Primitive, TextPrim, Viewport
-from xpict.contracts.spec import EdgeArrow, EdgeSpec
+from xpict.future.spec import EdgeArrow, EdgeSpec
 
 _DEFAULT_COLOR = "#222"
 _DEFAULT_WIDTH = 1.6
