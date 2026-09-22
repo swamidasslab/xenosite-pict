@@ -17,3 +17,9 @@ export type {
   SceneLayer,
   SceneViewport,
 } from "./api.js";
+export {
+  cxAtomLabels,
+  smilesBase,
+  smilesStarAtomIndices,
+  starLabelsFromCxsmiles,
+} from "./cxsmiles.js";

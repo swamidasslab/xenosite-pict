@@ -24,6 +24,7 @@ import { depictMolecule, initNative, isNativeReady } from "./native.js";
 import { atomsInSvgFrame, type SvgAtom, type SvgBond } from "./frame.js";
 import { sceneToSvg, type Scene } from "./draw/scene-svg.js";
 import { elementSymbol } from "./elements.js";
+import { starLabelsFromCxsmiles } from "./cxsmiles.js";
 
 export type { SvgAtom, SvgBond } from "./frame.js";
 export type {
@@ -77,6 +78,8 @@ export type MolRenderOptions = {
   /**
    * Labels for ``*`` atoms in encounter order.
    * ``null`` / ``"*"`` → bare star glyph; other strings (e.g. ``R1``) replace it.
+   * When omitted, CXSMILES ``|$alias;…$|`` trailers on the input are applied
+   * automatically (parity with Python ``cx_atom_labels``).
    */
   star_labels?: Array<string | null>;
   /**
@@ -164,7 +167,11 @@ function applyStarLabels(
   return { ...molecule, atoms };
 }
 
-function applyOpts(molecule: MoleculeIn, opts: MolRenderOptions): MoleculeIn {
+function applyOpts(
+  molecule: MoleculeIn,
+  opts: MolRenderOptions,
+  source: string
+): MoleculeIn {
   let out: MoleculeIn = {
     ...molecule,
     atoms: [...molecule.atoms],
@@ -177,7 +184,8 @@ function applyOpts(molecule: MoleculeIn, opts: MolRenderOptions): MoleculeIn {
   if (opts.mark_atoms !== undefined) out.mark_atoms = opts.mark_atoms;
   if (opts.mark_bonds !== undefined) out.mark_bonds = opts.mark_bonds;
   if (opts.bold_labels !== undefined) out.bold_labels = opts.bold_labels;
-  out = applyStarLabels(out, opts.star_labels);
+  const starLabels = opts.star_labels ?? starLabelsFromCxsmiles(source);
+  out = applyStarLabels(out, starLabels);
   return out;
 }
 
@@ -235,7 +243,7 @@ async function render(
     if (!m.frame_molblock) m.frame_molblock = poseMolblock;
   }
 
-  const molecule = applyOpts(laid, opts);
+  const molecule = applyOpts(laid, opts, m.source);
   const sceneJson = depictMolecule(JSON.stringify(molecule));
   const scene = JSON.parse(sceneJson) as Scene;
   const framed = atomsInSvgFrame(molecule);

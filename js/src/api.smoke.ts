@@ -83,6 +83,25 @@ if (bareSvg.includes("<text")) {
   throw new Error("star label must be a glyph path, not <text>");
 }
 
+// CXSMILES trailer → star label without explicit star_labels (Python parity).
+const fromCx = await xpict.render(xpict.mol("*C |$R1;$|"));
+const fromCxSvg = xpict.toSvg(fromCx.scene);
+if (!fromCxSvg.includes('data-text="R1"')) {
+  throw new Error("CXSMILES |$R1;$| should auto-label * as R1");
+}
+const gsh = await xpict.render(xpict.mol("*C1C=C(O)C=CC1=O |$GSH;;;;;;;;$|"));
+const gshSvg = xpict.toSvg(gsh.scene);
+if (!gshSvg.includes('data-text="GSH"')) {
+  throw new Error("CXSMILES GSH adduct should auto-label *");
+}
+// Explicit star_labels still wins over the trailer.
+const override = await xpict.render(xpict.mol("*C |$R1;$|"), {
+  star_labels: ["X"],
+});
+if (!xpict.toSvg(override.scene).includes('data-text="X"')) {
+  throw new Error("explicit star_labels should override CX trailer");
+}
+
 console.log("api smoke ok", {
   svgBytes: svg.length,
   alignToMol: xpict.toSvg(alignedToMol.scene).length,
