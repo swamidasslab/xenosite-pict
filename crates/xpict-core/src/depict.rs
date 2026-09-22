@@ -489,14 +489,17 @@ fn paint_marks(
     dy: f64,
 ) -> Vec<Primitive> {
     use crate::geom::{capsule_polygon, polygon_to_svg_d};
-    use crate::metrics::{MARK_HALO_OPACITY, MARK_HALO_STROKE_PX, MARK_OPACITY, MARK_STROKE_PX};
+    use crate::metrics::{
+        MARK_HALO_COLOR, MARK_HALO_OPACITY, MARK_HALO_STROKE_PX, MARK_INK_COLOR, MARK_OPACITY,
+        MARK_STROKE_PX,
+    };
 
     let mut out = Vec::new();
     let r = BOND_PX * MARK_FRAC;
-    // xenopict mark halo `<use href="#mark" stroke="#555" …>`; mark ink uses the
-    // backbone stroke color (lines default `#000000`), not a separate coral.
-    const MARK_HALO_COLOR: &str = "#555";
-    let color = mol.color.as_deref().unwrap_or("#000000");
+    // xenopict: mark halo via `<use href="#mark" stroke="#555" …>`; mark ink
+    // sits in a separate group with stroke-width scale×0.1 / opacity 0.7.
+    // Backbone `set_backbone_color` does **not** recolor marks — ink stays
+    // black like the default lines stroke, never `mol.color`.
     // shapely `resolution=6` → 24 verts/circle; keep capsules smooth.
     const CAPSULE_QUAD_SEGS: u32 = 16;
 
@@ -566,7 +569,7 @@ fn paint_marks(
             cy: a.y + dy,
             r,
             fill: Some("none".into()),
-            stroke: Some(color.into()),
+            stroke: Some(MARK_INK_COLOR.into()),
             stroke_width: MARK_STROKE_PX,
             opacity: MARK_OPACITY,
             class: Some(format!("atom-{ai} mark")),
@@ -575,7 +578,7 @@ fn paint_marks(
     for (a, b, d) in bond_capsules {
         out.push(Primitive::Path {
             d,
-            stroke: Some(color.into()),
+            stroke: Some(MARK_INK_COLOR.into()),
             fill: Some("none".into()),
             stroke_width: MARK_STROKE_PX,
             opacity: MARK_OPACITY,
@@ -937,13 +940,34 @@ mod tests {
             }
             _ => None,
         });
-        let (r, sw, op, _) = atom.expect("atom mark");
+        let (r, sw, op, stroke) = atom.expect("atom mark");
         assert!((r - BOND_PX).abs() < 1e-9, "mark radius = scale");
         assert!(
             (sw - BOND_PX * 0.1).abs() < 1e-9,
             "mark stroke = scale*0.1, got {sw}"
         );
         assert!((op - 0.7).abs() < 1e-9);
+        assert_eq!(
+            stroke, "#000000",
+            "mark ink is always black (xenopict); not mol.color"
+        );
+        // Colored backbone must not recolor marks.
+        mol.color = Some("#0b6e4f".into());
+        let scene2 = depict_molecule(&mol);
+        let marks2 = scene2.viewports[0]
+            .layers
+            .iter()
+            .find(|l| l.name == LayerName::Marks)
+            .expect("marks");
+        let ink = marks2.primitives.iter().find_map(|p| match p {
+            Primitive::Circle {
+                stroke: Some(s),
+                class: Some(c),
+                ..
+            } if c.contains(" mark") && !c.contains("halo") => Some(s.clone()),
+            _ => None,
+        });
+        assert_eq!(ink.as_deref(), Some("#000000"));
         let halo = marks.primitives.iter().any(|p| match p {
             Primitive::Circle {
                 stroke: Some(s),

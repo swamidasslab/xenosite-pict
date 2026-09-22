@@ -41,6 +41,10 @@ pub const MARK_STROKE_FRAC: f64 = 0.1;
 pub const MARK_HALO_STROKE_FRAC: f64 = 0.2;
 pub const MARK_OPACITY: f64 = 0.7;
 pub const MARK_HALO_OPACITY: f64 = 0.45;
+/// xenopict mark ink (default lines stroke); never follows molecule color.
+pub const MARK_INK_COLOR: &str = "#000000";
+/// xenopict mark halo `<use stroke>`.
+pub const MARK_HALO_COLOR: &str = "#555";
 /// RDKit ``DrawText::SUBS_SCALE`` / ``SUPER_SCALE`` for H-counts and charges.
 pub const SCRIPT_SCALE: f64 = 0.66;
 /// Dummy / R-group ``*`` height as a multiple of Liberation cap-height.

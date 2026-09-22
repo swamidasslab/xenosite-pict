@@ -72,6 +72,8 @@ MARK_HALO_STROKE_FRAC = 0.2
 MARK_OPACITY = 0.7
 MARK_HALO_OPACITY = 0.45
 MARK_HALO_COLOR = "#555"
+# xenopict mark ink (lines default); not backbone ``color`` / coral.
+MARK_INK_COLOR = "#000000"
 # RDKit DrawText::SUBS_SCALE / SUPER_SCALE for H-counts and charges.
 SCRIPT_SCALE = 0.66
 # Dummy / R-group ``*`` height as a multiple of Liberation cap-height (~2× letters).

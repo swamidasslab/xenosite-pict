@@ -37,6 +37,7 @@ from xpict.draw.metrics import (
     MARK_HALO_COLOR,
     MARK_HALO_OPACITY,
     MARK_HALO_STROKE_PX,
+    MARK_INK_COLOR,
     MARK_OPACITY,
     MARK_STROKE_PX,
     OFFSET_PX,
@@ -502,7 +503,7 @@ class MarkDrawable(Drawable):
     spec: MarkSpec
 
     def draw(self, ctx: MolContext) -> Drawn | None:
-        color = self.spec.color or "#c44"
+        color = self.spec.color or MARK_INK_COLOR
         # Publication marks do not opt into the document halo by default.
         drawn = Drawn(layer="marks", halo_cls="halo mark-halo")
         mark = self.spec
