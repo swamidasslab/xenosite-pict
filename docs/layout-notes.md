@@ -56,6 +56,11 @@ stack: one molecule graph, no FFI tax between perceive and draw, small browser
 bundle. Keep Python as the algorithm lab until skeleton → offsets → wedges and
 the native layout quality bar are demonstrated — then port, don’t invent twice.
 
+**Incremental path:** workspace crate [`crates/xpict-core`](../crates/xpict-core)
+holds shared pure algorithms (`metrics`, `plotdot`, `bonds`, …). Stubs mark
+where Shapely (`geom`) and fontTools (`font`) will land. Migrate after Python
+parity tests exist; do not invent depiction rules only in Rust.
+
 ### Transitional layout coords
 
 1. **Indigo** — the one transitional layout engine (WASM for `js/` too).

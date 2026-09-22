@@ -1,0 +1,28 @@
+[package]
+name = "xpict-core"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Shared depiction core for xpict (metrics, plotdots, bond geometry) — Python lab ports here, then PyO3 + WASM"
+readme = "README.md"
+
+[lib]
+name = "xpict_core"
+path = "src/lib.rs"
+crate-type = ["rlib"]
+
+[features]
+default = []
+# Future: pyo3 = ["dep:pyo3"], wasm = ["dep:wasm-bindgen"]
+# Keep the core free of FFI so algorithms stay testable in pure Rust.
+
+[dependencies]
+# Intentionally empty for the seed. Fonts / geometry land behind optional
+# crates (e.g. ttf-parser, geo / i_overlay) when those modules move over.
+
+[dev-dependencies]
+
+[lints]
+workspace = true

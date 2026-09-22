@@ -12,6 +12,8 @@ Scaffold in progress. Language-neutral JSON contracts (Pydantic → generated JS
 
 **Chem stack (likely):** Chematic (or similar) for **perception** (aromaticity, SSSR, stereo — small Rust); **our** drawing. Chematic depict coords are not good enough. If we settle there, shipping depiction as a **Rust** crate (Py + WASM) is the natural fit — prove the draw/layout model in Python first.
 
+**Shared Rust core:** `crates/xpict-core` — pure algorithms move here as they stabilize (metrics, plotdot, bond helpers first; geom/font stubs next). Python stays the lab; PyO3 + WASM bindings come later. See `crates/xpict-core/README.md`.
+
 **Layout coords (transitional):** **Indigo only** while native matures. No multi-backend ladder (RDKit / Open Babel / Chematic-as-layout are out of the product path). Native stub remains for tests without Indigo.
 
 **Multi-molecule diagrams:** ELK via **jsrun** (embedded V8 + vendored elkjs) — no Node required. Grid/row fallback if ELK fails. Optional `diagram.align` runs a **pure-Python** connected-MCS + Kabsch frame alignment (no NetworkX).
