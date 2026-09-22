@@ -19,10 +19,6 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    },
-    "./native": {
-      "types": "./dist/native.d.ts",
-      "import": "./dist/native.js"
     }
   },
   "files": [
@@ -30,8 +26,7 @@
     "dist/**/*.d.ts",
     "dist/**/*.map",
     "dist/**/*.wasm",
-    "!dist/**/native.smoke.*",
-    "!dist/**/api.smoke.*"
+    "!dist/**/*.smoke.*"
   ],
   "scripts": {
     "build:wasm": "../scripts/build_bindings.sh wasm",
@@ -40,9 +35,8 @@
     "build": "npm run build:wasm && npm run build:ts && npm run build:copy-wasm",
     "check": "tsc -p tsconfig.json --noEmit",
     "check:pocs": "tsc --strict --module ES2022 --moduleResolution bundler --target ES2022 --esModuleInterop --skipLibCheck --types node --noEmit pocs/elk_layout.ts",
-    "test:native": "tsx src/native.smoke.ts",
     "test:api": "tsx src/api.smoke.ts",
-    "test": "npm run check && npm run check:pocs && npm run test:native && npm run test:api",
+    "test": "npm run check && npm run check:pocs && npm run test:api",
     "prepack": "npm run build:ts && npm run build:copy-wasm"
   },
   "devDependencies": {

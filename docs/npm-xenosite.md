@@ -43,5 +43,3 @@ const aligned = await xpict.render(xpict.mol("Cc1ccccc1"), {
 
 Public surface: `xpict.mol` / `xpict.render` / `xpict.toSvg` only.
 RDKit + wasm init on first render. Works in Node and the browser.
-
-Low-level wasm: `import { … } from "@swamidasslab/xpict/native"`.

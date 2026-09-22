@@ -30,24 +30,22 @@ pytest tests/test_native_rust.py -q
 cd js && npm test
 ```
 
-| | Python | JavaScript |
+| | Python | JavaScript (MVP) |
 | --- | --- | --- |
 | Package | `xpict` | `@swamidasslab/xpict` (GitHub Packages) |
-| Init | (import extension) | `await initNative()` |
-| Bond offset | `_native.multi_bond_offset(20)` | `multiBondOffset(20)` |
-| PlotDot | `plotdot_rings(z)` | `plotdotRings(z)` → `{radiusFrac,colorZ}[]` |
-| Capsule halo | `capsule_halo_path_d(...)` | `capsuleHaloPathD(...)` |
-| Metrics | `_native.OFFSET_PX` | `offsetPx()` |
+| Public API | `_native.*` + Python draw | `xpict.mol` / `render` / `toSvg` |
+| Paint ABI | `_native.depict_molecule` | wasm `depictMolecule` (internal) |
+| Init | (import extension) | auto on first `render` |
 
-JS `plotdotDisks` takes `coords: [x,y][]`; the wasm layer flattens to
-`[x,y,x,y,…]` for the Rust `Vec<f64>` ABI.
+Python keeps the full `_native` surface (offsets, plotdots, halos, ELK, …).
+JS MVP wasm only binds `depictMolecule`; RDKit layout/align stay in TS.
 
 ## Adding a shared export
 
 1. `xpict-core` + Rust unit test  
-2. Wrap in **both** `xpict-py` and `xpict-wasm`  
-3. Expose via `native_bridge.py` and `js/src/native.ts`  
-4. Parity test in Python; `js/src/native.smoke.ts` for a quick wasm check  
+2. Wrap in **`xpict-py`** (and `xpict-wasm` only if the JS MVP paint path needs it)  
+3. Expose via `native_bridge.py`; JS callers use `xpict.render` / scene JSON  
+4. Parity test in Python; `js/src/api.smoke.ts` for the MVP path  
 
 ## Roadmap: kill Shapely / fontTools on the ship path
 
@@ -60,7 +58,7 @@ of fontTools/Shapely.
 | 2 | Polygon buffer + difference (glyph counters) | `halo_from_shapes` / `O` hole tests via `_native` |
 | 3 | Liberation Sans outlines → path `d` + advances | **Done** (`ttf-parser` + `_native`) |
 | 4 | Python draw calls only `native_bridge` for ink/text | Shapely + fontTools **gone**; deps ≈ pydantic |
-| 5 | JS `native.ts` exposes the same glyph/halo APIs | Browser labels match Python gallery |
+| 5 | JS paint uses Rust glyph/halo via `depictMolecule` | Browser labels match Python gallery |
 
 Crates to prefer when filling stubs: **`ttf-parser`/`skrifa`** (fonts),
 **`geo` + `i_overlay`** (boolean + buffer). Keep Liberation files under

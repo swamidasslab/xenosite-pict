@@ -167,8 +167,3 @@ export function sceneToSvg(scene: Scene): string {
     `viewBox="0 0 ${w} ${h}" class="xpict">${parts.join("")}</svg>`
   );
 }
-
-/** data-URI for ``<img src>`` (xenosite pattern). */
-export function sceneToImgDataUri(scene: Scene): string {
-  return `data:image/svg+xml;utf8,${encodeURIComponent(sceneToSvg(scene))}`;
-}

@@ -80,9 +80,9 @@ xenosite today already embeds depictions as **data-URI `<img>`** with
    - **Python:** existing `align_rdkit` / `diagram.align`.
    - Rust Kabsch / `rigid_align_coords` remains for Indigo / no-RDKit only.
 
-6. **Publish `@swamidasslab/xpict`** to GitHub Packages (wasm + `sceneToSvg` +
-   `initNative`) for the xenosite app bundler — see [`npm-xenosite.md`](npm-xenosite.md).
-   Keep API: `await initNative(); depict(molIn) → img src`.
+6. **Publish `@swamidasslab/xpict`** to GitHub Packages for the xenosite app
+   bundler — see [`npm-xenosite.md`](npm-xenosite.md).
+   Keep API: `xpict.mol` / `xpict.render` / `xpict.toSvg` (scene JSON → SVG).
 
 7. **Parity CI:** Python golden SVGs (or Scene JSON) vs WASM for a small set:
    ethanol, acetone, phenol, one shaded SoM, one marked atom.
