@@ -484,4 +484,90 @@ mod tests {
         assert_eq!(t[1].1, ScriptRole::Superscript);
         assert_eq!(t[2].1, ScriptRole::Superscript);
     }
+
+    #[test]
+    fn face_flags_all_variants() {
+        assert_eq!(face_flags(FaceStyle::Italic), (false, true));
+        assert_eq!(face_flags(FaceStyle::BoldItalic), (true, true));
+        let g = parse_label_markup("A", FaceStyle::Italic);
+        assert_eq!(g[0].face, FaceStyle::Italic);
+    }
+
+    #[test]
+    fn unclosed_dollar_is_literal() {
+        let g = parse_label_markup("$R_1", FaceStyle::Regular);
+        assert_eq!(g.iter().map(|x| x.ch).collect::<String>(), "$R_1");
+    }
+
+    #[test]
+    fn backslash_escapes_and_trailing() {
+        let g = parse_label_markup(r"\_\{ \} \$ \* \\", FaceStyle::Regular);
+        let s: String = g.iter().map(|x| x.ch).collect();
+        assert!(s.contains('_'));
+        assert!(s.contains('{'));
+        assert!(s.contains('\\'));
+        let trail = parse_label_markup(r"x\", FaceStyle::Regular);
+        assert_eq!(trail.last().unwrap().ch, '\\');
+        let lone = parse_label_markup(r"\1", FaceStyle::Regular);
+        assert_eq!(lone[0].ch, '\\');
+        assert_eq!(lone[1].ch, '1');
+    }
+
+    #[test]
+    fn tex_style_commands() {
+        let g = parse_label_markup(r"\textbf{Et}OH", FaceStyle::Regular);
+        assert_eq!(g[0].face, FaceStyle::Bold);
+        assert_eq!(g[1].face, FaceStyle::Bold);
+        assert_eq!(g[2].face, FaceStyle::Regular);
+        let it = parse_label_markup(r"\textit{cis}", FaceStyle::Regular);
+        assert!(it.iter().all(|x| x.face == FaceStyle::Italic));
+        let no_brace = parse_label_markup(r"\textbf x", FaceStyle::Regular);
+        assert_eq!(no_brace[0].ch, '\\');
+        assert!(no_brace.iter().any(|x| x.ch == 'b'));
+    }
+
+    #[test]
+    fn unknown_command_kept_literal() {
+        let g = parse_label_markup(r"\notasymbol", FaceStyle::Regular);
+        assert_eq!(g[0].ch, '\\');
+        assert_eq!(g.iter().map(|x| x.ch).collect::<String>(), r"\notasymbol");
+    }
+
+    #[test]
+    fn unclosed_markdown_bold_literal() {
+        let g = parse_label_markup("**Et", FaceStyle::Regular);
+        assert_eq!(g.iter().map(|x| x.ch).collect::<String>(), "**Et");
+    }
+
+    #[test]
+    fn italic_close_skips_escape_and_double_star() {
+        let g = parse_label_markup(r"*a\*b**c*", FaceStyle::Regular);
+        assert!(g.iter().any(|x| x.face == FaceStyle::Italic));
+        let s: String = g.iter().map(|x| x.ch).collect();
+        assert!(s.contains('a'));
+        assert!(s.contains('c') || s.contains('b'));
+    }
+
+    #[test]
+    fn unicode_script_digits_normalize() {
+        let sub = parse_label_markup("H₂O", FaceStyle::Regular);
+        assert_eq!(sub[1].ch, '2');
+        assert_eq!(sub[1].role, ScriptRole::Subscript);
+        let sup = parse_label_markup("R²⁺", FaceStyle::Regular);
+        assert_eq!(sup[1].ch, '2');
+        assert_eq!(sup[1].role, ScriptRole::Superscript);
+        assert_eq!(sup[2].ch, '+');
+        assert_eq!(sup[2].role, ScriptRole::Superscript);
+        // Already in a script role: keep caller role, still map base char.
+        let nested = parse_label_markup("R^{²}", FaceStyle::Regular);
+        assert_eq!(nested[1].ch, '2');
+        assert_eq!(nested[1].role, ScriptRole::Superscript);
+    }
+
+    #[test]
+    fn unclosed_braced_script() {
+        let g = parse_label_markup("H_{2", FaceStyle::Regular);
+        // Unclosed brace → empty body or literal; must not panic.
+        assert!(!g.is_empty());
+    }
 }
