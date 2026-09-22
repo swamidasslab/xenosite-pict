@@ -1,19 +1,21 @@
 //! Limited declarative document: list of mols → list of [`Rendered`].
 //!
-//! This is the expandable stub toward full ``PictSpec``. Only fields that the
-//! single-mol client already supports are accepted.
+//! This is the **preferred** public document surface (expandable toward full
+//! ``PictSpec``). It calls [`crate::render`] / [`crate::mol`] internally.
+//! Do not put list-index ``align_to`` on [`MolSpec`] — imperative alignment
+//! belongs on [`crate::MolRenderOptions::align_to`] (pose molblock).
 
 use serde::{Deserialize, Serialize};
 
 use crate::{render, Error, Mol, MolRenderOptions, Rendered};
 
-/// Batch depiction document (MVP).
+/// Preferred declarative depiction document (MVP subset of PictSpec).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct DepictSpec {
     pub molecules: Vec<MolSpec>,
 }
 
-/// One molecule entry — mirrors JS/Python render options + a structure string.
+/// One molecule entry — paint options + a structure string.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct MolSpec {
     /// SMILES or CXSMILES (preferred field name for the document stub).
@@ -42,9 +44,6 @@ pub struct MolSpec {
     pub star_labels: Option<Vec<Option<String>>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bold_labels: Option<bool>,
-    /// Index of an **earlier** molecule in this document to align onto.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub align_to: Option<usize>,
 }
 
 impl MolSpec {
@@ -75,21 +74,12 @@ impl MolSpec {
     }
 }
 
-/// Render every molecule in order; ``align_to`` indexes earlier results.
+/// Render every molecule via the simple [`crate::render`] client.
 pub fn depict(spec: &DepictSpec) -> Result<Vec<Rendered>, Error> {
     let mut out: Vec<Rendered> = Vec::with_capacity(spec.molecules.len());
-    for (i, entry) in spec.molecules.iter().enumerate() {
+    for entry in &spec.molecules {
         let structure = entry.structure()?;
         let mut mol = Mol::from_source(structure)?;
-        let align_to = match entry.align_to {
-            Some(idx) if idx >= i => {
-                return Err(Error::Message(format!(
-                    "molecules[{i}].align_to={idx} must refer to an earlier entry"
-                )));
-            }
-            Some(idx) => Some(out[idx].frame_molblock.clone()),
-            None => None,
-        };
         let opts = MolRenderOptions {
             id: entry.id.clone(),
             color: entry.color.clone(),
@@ -99,7 +89,7 @@ pub fn depict(spec: &DepictSpec) -> Result<Vec<Rendered>, Error> {
             mark_bonds: entry.mark_bonds.clone(),
             star_labels: entry.star_labels.clone(),
             bold_labels: entry.bold_labels,
-            align_to,
+            align_to: None,
         };
         out.push(render(&mut mol, opts)?);
     }

@@ -2,7 +2,7 @@
   "$defs": {
     "MolSpec": {
       "additionalProperties": false,
-      "description": "One molecule entry for ``depict`` / single-mol render options.\n\nStructure: pass exactly one of ``smiles``, ``cxsmiles``, ``molfile``, or\n``source`` (alias for any structure string).",
+      "description": "One molecule entry in the preferred declarative document.\n\nStructure: pass exactly one of ``smiles``, ``cxsmiles``, ``molfile``, or\n``source`` (alias for any structure string).\n\nDo **not** put list-index ``align_to`` here. Imperative alignment belongs\non the simple client (``render(..., align_to=Mol|Rendered)``); document-\nlevel align references will grow with ``PictSpec``.",
       "properties": {
         "smiles": {
           "anyOf": [
@@ -191,19 +191,6 @@
           "default": null,
           "description": "Bold Liberation labels + stem-keyed bond stroke",
           "title": "Bold Labels"
-        },
-        "align_to": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Index of an earlier molecule in the same ``DepictSpec`` to use as the RDKit alignment template",
-          "title": "Align To"
         }
       },
       "title": "MolSpec",
@@ -211,7 +198,7 @@
     }
   },
   "additionalProperties": false,
-  "description": "Batch document: ordered mols \u2192 ordered rendered results.",
+  "description": "Preferred declarative document: ordered mols \u2192 ordered rendered results.",
   "properties": {
     "molecules": {
       "items": {

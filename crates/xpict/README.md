@@ -1,8 +1,10 @@
 # xpict (native Rust)
 
 **Declarative molecule depiction for publication-quality vector graphics** —
-Rust API (`mol` / `render` / `to_svg`, plus batch `depict`), matching Python and
-JavaScript.
+Rust API matching Python and JavaScript.
+
+**Preferred:** [`depict`](https://docs.rs/xpict) / `DepictSpec` (document).  
+**Simple:** `mol` / `render` / `to_svg` (single mol; used by `depict`).
 
 **Layout:** crates.io [`rdkit`](https://crates.io/crates/rdkit) + Depictor FFI.  
 **Paint:** [`xpict-core`](https://crates.io/crates/xpict-core) (no RDKit).  
@@ -16,13 +18,7 @@ This crate is **not** linked into the Python or WASM packages (those use
 use xpict::{depict, mol, DepictSpec, MolRenderOptions, MolSpec};
 
 fn main() -> Result<(), xpict::Error> {
-    let mut m = mol("CCO")?;
-    let rendered = m.render(MolRenderOptions {
-        mark_atoms: Some(vec![2]),
-        ..Default::default()
-    })?;
-    println!("{}", rendered.to_svg());
-
+    // Preferred: declarative document
     let batch = depict(&DepictSpec {
         molecules: vec![
             MolSpec {
@@ -32,12 +28,24 @@ fn main() -> Result<(), xpict::Error> {
             },
             MolSpec {
                 smiles: Some("CCCO".into()),
-                align_to: Some(0),
                 ..Default::default()
             },
         ],
     })?;
     assert_eq!(batch.len(), 2);
+
+    // Simple: single mol (+ imperative align via pose molblock)
+    let mut m = mol("CCO")?;
+    let rendered = m.render(MolRenderOptions {
+        mark_atoms: Some(vec![2]),
+        ..Default::default()
+    })?;
+    let mut other = mol("CCCO")?;
+    let aligned = other.render(MolRenderOptions {
+        align_to: Some(rendered.frame().to_string()),
+        ..Default::default()
+    })?;
+    println!("{}", aligned.to_svg());
     Ok(())
 }
 ```

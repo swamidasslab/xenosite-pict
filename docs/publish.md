@@ -14,13 +14,13 @@ Language tags **cannot** ship `X.Y.0` (rejected by
 
 | Intent | Tag | Workflow |
 | --- | --- | --- |
-| Product cut (all surfaces) | `release/v0.2.0` | [`release.yml`](../.github/workflows/release.yml) |
-| JS patch only | `js/v0.1.5` (`Z≥1`) | [`publish-js.yml`](../.github/workflows/publish-js.yml) |
-| Python patch only | `py/v0.1.5` | [`pypi.yml`](../.github/workflows/pypi.yml) |
-| `xpict-core` patch | `rust-core/v0.1.5` | [`crates.yml`](../.github/workflows/crates.yml) |
-| Rust `xpict` patch | `rust/v0.1.5` | [`crates.yml`](../.github/workflows/crates.yml) |
+| Product cut (all surfaces) | `release/v0.2.0` | [`release.yml`](https://github.com/swamidasslab/xenosite-pict/blob/main/.github/workflows/release.yml) |
+| JS patch only | `js/v0.1.5` (`Z≥1`) | [`publish-js.yml`](https://github.com/swamidasslab/xenosite-pict/blob/main/.github/workflows/publish-js.yml) |
+| Python patch only | `py/v0.1.5` | [`pypi.yml`](https://github.com/swamidasslab/xenosite-pict/blob/main/.github/workflows/pypi.yml) |
+| `xpict-core` patch | `rust-core/v0.1.5` | [`crates.yml`](https://github.com/swamidasslab/xenosite-pict/blob/main/.github/workflows/crates.yml) |
+| Rust `xpict` patch | `rust/v0.1.5` | [`crates.yml`](https://github.com/swamidasslab/xenosite-pict/blob/main/.github/workflows/crates.yml) |
 
-CI runs [`scripts/check_version_policy.sh`](../scripts/check_version_policy.sh).
+CI runs [`scripts/check_version_policy.sh`](https://github.com/swamidasslab/xenosite-pict/blob/main/scripts/check_version_policy.sh).
 
 The **public API** to document and version is the single-molecule client:
 
@@ -44,7 +44,7 @@ The **public API** to document and version is the single-molecule client:
    git push origin release/v0.2.0
    ```
 
-5. [`release.yml`](../.github/workflows/release.yml) publishes **xpict-core →
+5. [`release.yml`](https://github.com/swamidasslab/xenosite-pict/blob/main/.github/workflows/release.yml) publishes **xpict-core →
    xpict → JS → Python** at that version (or Actions → **release** workflow
    dispatch).
 
@@ -151,10 +151,12 @@ uv run maturin build --release -m crates/xpict-py/Cargo.toml
 
 ## 4. Public API vs future declarative tree
 
-**Ship / document now:** `mol` / `render` / `toSvg` (+ batch stub
-`depict({ molecules: [...] }) → Rendered[]`). Live Pydantic is
-`xpict.contracts.depict` (`MolSpec` / `DepictSpec`); JSON Schema is
-`schema/xpict.schema.json`.
+**Preferred (document):** `depict({ molecules })` / `DepictSpec` — grows toward
+full `PictSpec`. Live Pydantic is `xpict.contracts.depict`; JSON Schema is
+`schema/xpict.schema.json`. No list-index `align_to`.
+
+**Simple (single mol):** `mol` / `render` / `toSvg` with `align_to` as
+Mol/Rendered (or Rust pose molblock). The document path uses this internally.
 
 **Not the publish surface yet:** nested `PictSpec` under `xpict.future` /
 `schema/future/`.

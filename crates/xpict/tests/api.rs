@@ -77,7 +77,7 @@ fn align_to_rendered_pose() {
 }
 
 #[test]
-fn depict_batch_align_by_index() {
+fn depict_batch_independent() {
     use xpict::{depict, DepictSpec, MolSpec};
     let out = depict(&DepictSpec {
         molecules: vec![
@@ -88,7 +88,6 @@ fn depict_batch_align_by_index() {
             },
             MolSpec {
                 smiles: Some("CCCO".into()),
-                align_to: Some(0),
                 ..Default::default()
             },
         ],

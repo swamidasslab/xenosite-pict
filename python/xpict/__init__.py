@@ -1,4 +1,12 @@
-"""xpict — molecule depiction (public: mol / render / depict / to_svg)."""
+"""xpict — molecule depiction.
+
+**Preferred:** declarative document (``DepictSpec`` / ``render(doc)`` /
+``depict``) — grows toward full ``PictSpec``.
+
+**Simple:** ``mol`` / ``render`` / ``to_svg`` for single-molecule depiction;
+the document path uses that layer internally (JS + Rust today; Python Mol
+client landing).
+"""
 
 from __future__ import annotations
 

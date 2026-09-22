@@ -1,8 +1,9 @@
-"""Live declarative subset — mol list in → list of rendered molecules out.
+"""Live declarative subset — preferred document: mol list → rendered molecules.
 
-Matches JS ``xpict.depict`` / Rust ``xpict::depict``. This is what the public
-package ships today. Nested diagrams, annotations, ELK, etc. stay in
-``xpict.future``.
+Matches JS ``xpict.depict`` / Rust ``xpict::depict``. The simple
+``mol`` / ``render`` / ``to_svg`` client is for single-mol callers; the
+document path uses that layer internally. Nested diagrams, annotations, ELK,
+etc. stay in ``xpict.future`` until they graduate here.
 """
 
 from __future__ import annotations
@@ -15,10 +16,14 @@ class StrictModel(BaseModel):
 
 
 class MolSpec(StrictModel):
-    """One molecule entry for ``depict`` / single-mol render options.
+    """One molecule entry in the preferred declarative document.
 
     Structure: pass exactly one of ``smiles``, ``cxsmiles``, ``molfile``, or
     ``source`` (alias for any structure string).
+
+    Do **not** put list-index ``align_to`` here. Imperative alignment belongs
+    on the simple client (``render(..., align_to=Mol|Rendered)``); document-
+    level align references will grow with ``PictSpec``.
     """
 
     smiles: str | None = Field(default=None, description="SMILES string")
@@ -64,13 +69,6 @@ class MolSpec(StrictModel):
         default=None,
         description="Bold Liberation labels + stem-keyed bond stroke",
     )
-    align_to: int | None = Field(
-        default=None,
-        description=(
-            "Index of an earlier molecule in the same ``DepictSpec`` "
-            "to use as the RDKit alignment template"
-        ),
-    )
 
     @model_validator(mode="after")
     def _need_structure(self) -> MolSpec:
@@ -81,6 +79,6 @@ class MolSpec(StrictModel):
 
 
 class DepictSpec(StrictModel):
-    """Batch document: ordered mols → ordered rendered results."""
+    """Preferred declarative document: ordered mols → ordered rendered results."""
 
     molecules: list[MolSpec] = Field(default_factory=list)

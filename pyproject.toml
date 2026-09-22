@@ -70,6 +70,11 @@ dev = [
   "maturin>=1.4,<2.0",
   "pyright>=1.1.414",
 ]
+docs = [
+  "mkdocs>=1.6,<2",
+  "mkdocs-material>=9.5,<10",
+  "mkdocstrings[python]>=0.26",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

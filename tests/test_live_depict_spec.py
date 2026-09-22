@@ -18,14 +18,19 @@ def test_depict_batch_shape():
         {
             "molecules": [
                 {"smiles": "CCO", "mark_atoms": [2], "color": "#111"},
-                {"source": "CCCO", "align_to": 0},
+                {"source": "CCCO"},
             ]
         }
     )
     assert len(doc.molecules) == 2
     assert doc.molecules[0].mark_atoms == [2]
     assert doc.molecules[1].source == "CCCO"
-    assert doc.molecules[1].align_to == 0
+
+
+def test_molspec_rejects_index_align_to():
+    """Document MolSpec has no list-index align_to (simple client uses Mol/Rendered)."""
+    with pytest.raises(ValidationError):
+        MolSpec.model_validate({"smiles": "CCCO", "align_to": 0})
 
 
 def test_future_pictspec_still_importable():

@@ -6,7 +6,7 @@ Pydantic under ``xpict.contracts`` — what the public package implements today:
 
 | Model | Role |
 | --- | --- |
-| ``MolSpec`` / ``DepictSpec`` | Batch document: mol list → ``Rendered[]`` |
+| ``MolSpec`` / ``DepictSpec`` | **Preferred** declarative document: mol list → ``Rendered[]`` |
 | ``Scene`` (+ primitives) | Paint ABI (Rust / JS / Python serializers) |
 | ``MoleculeLayout`` / ``LayoutResult`` | Backend layout result |
 
@@ -20,7 +20,8 @@ JSON Schema (committed):
 uv run xpict-export-schema
 ```
 
-Language clients: ``mol`` / ``render`` / ``toSvg`` / ``depict`` (see root README).
+Language clients also expose a **simple** single-mol path
+(``mol`` / ``render`` / ``toSvg``) that the document path uses internally.
 
 ## Future (design / refinement)
 
@@ -37,7 +38,9 @@ See ``python/xpict/future/README.md`` and ``CONTRIBUTING.md``.
 
 ## Runtime vs document
 
-- **In a live ``MolSpec``:** structure string, marks, shade, color, star labels, align index.  
+- **In a live ``MolSpec``:** structure string, marks, shade, color, star labels,
+  bold labels, ``id``. (No list-index ``align_to``.)
+- **Simple ``render`` only:** ``align_to`` as Mol / Rendered (or pose molblock).
 - **Runtime only:** layout backend (RDKit / Indigo / native), output format where applicable.
 
 ## Partial backend support

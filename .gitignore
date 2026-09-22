@@ -26,3 +26,7 @@ python/xpict/_native*.so
 vendor/elk/elk.jar
 .venv/
 venv/
+
+# Generated API docs (MkDocs build) — produced into `_site/`, not committed
+docs/typedoc/
+docs/rustdoc/

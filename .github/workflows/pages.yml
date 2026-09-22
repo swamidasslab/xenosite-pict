@@ -1,10 +1,9 @@
-# Deploy xpict docs (+ JS demo) to GitHub Pages.
+# Deploy xpict docs (+ JS demo) to GitHub Pages via MkDocs Material.
 #
 # Site: https://swamidasslab.github.io/xenosite-pict/
-#   /           cross-language docs
-#   /js/demo/   interactive JS align demo
+# Engine: MkDocs Material + mkdocstrings (Python) + TypeDoc (JS) + rustdoc
+# Demo:   /js/demo/
 #
-# Source: site/ + demo/  (assembled by scripts/build_pages.sh)
 # Runs on every push to main (and manual dispatch). Gated on CI.
 
 name: Deploy docs to GitHub Pages
@@ -34,7 +33,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Rust (wasm32)
+      - name: Install Rust (wasm32 + docs)
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
@@ -48,6 +47,7 @@ jobs:
         run: |
           if ! command -v wasm-pack >/dev/null 2>/dev/null; then
             curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+            echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
           fi
 
       - name: Setup Node
@@ -61,11 +61,16 @@ jobs:
         working-directory: js
         run: npm ci
 
-      - name: Strict TypeScript check
-        working-directory: js
-        run: npm run check
+      - name: Install uv + docs deps
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
 
-      - name: Build Pages site
+      - name: Sync Python (docs + rdkit for gallery)
+        run: uv sync --group docs --group dev --extra rdkit
+
+      - name: Build Pages site (MkDocs + autodoc + demo)
         run: bash scripts/build_pages.sh "$GITHUB_WORKSPACE/_site"
 
       - name: Upload Pages artifact

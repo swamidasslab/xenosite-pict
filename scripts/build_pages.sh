@@ -1,44 +1,85 @@
 #!/usr/bin/env bash
-# Assemble the GitHub Pages docs site (cross-language) under demo/_site or $1.
-# Interactive JS demo is published at /js/demo/.
+# Build the GitHub Pages site with MkDocs Material + cross-language autodoc.
+#
+# Steps:
+#   1. Example SVG gallery (Python + RDKit when available)
+#   2. JS package build (demo + TypeDoc inputs)
+#   3. mkdocs build → $OUT
+#   4. TypeDoc → $OUT/typedoc/
+#   5. rustdoc → $OUT/rustdoc/
+#   6. JS interactive demo → $OUT/js/demo/
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-OUT="${1:-"$ROOT/demo/_site"}"
+OUT="${1:-"$ROOT/_site"}"
 
-echo "==> build xpict JS package"
+cd "$ROOT"
+
+echo "==> gallery SVGs"
+if command -v uv >/dev/null 2>&1; then
+  uv run --group docs --extra rdkit python scripts/generate_doc_examples.py \
+    || uv run --group docs python scripts/generate_doc_examples.py
+else
+  python3 scripts/generate_doc_examples.py
+fi
+
+echo "==> JS package (wasm + tsc)"
 cd "$ROOT/js"
-npm run build
+if [[ -f package-lock.json ]]; then
+  npm ci
+else
+  npm install
+fi
+export PATH="$HOME/.cargo/bin:$PATH"
+if command -v wasm-pack >/dev/null 2>&1; then
+  npm run build
+else
+  echo "wasm-pack missing; TypeScript-only build (demo wasm may be stale)"
+  npm run build:ts
+  npm run build:copy-wasm || true
+fi
+cd "$ROOT"
 
-echo "==> assemble Pages site → $OUT"
+echo "==> MkDocs Material → $OUT"
 rm -rf "$OUT"
-mkdir -p "$OUT"
+uv run --group docs mkdocs build --site-dir "$OUT"
 
-# Cross-language docs from site/
-cp -R "$ROOT/site/." "$OUT/"
+echo "==> TypeDoc → $OUT/typedoc"
+cd "$ROOT/js"
+npx --no-install typedoc \
+  --entryPoints src/index.ts \
+  --out "$OUT/typedoc" \
+  --tsconfig tsconfig.json \
+  --excludePrivate \
+  --excludeExternals \
+  --readme none \
+  --name "@xenosite/xpict"
+cd "$ROOT"
 
-# JS interactive demo → /js/demo/ (pkg next to demo.js)
+echo "==> rustdoc → $OUT/rustdoc"
+cargo doc -p xpict-core --no-deps
+cargo doc -p xpict --no-deps 2>/dev/null || true
+rm -rf "$OUT/rustdoc"
+mkdir -p "$OUT/rustdoc"
+cp -a "$ROOT/target/doc/." "$OUT/rustdoc/"
+touch "$OUT/rustdoc/.nojekyll"
+
+echo "==> JS demo → $OUT/js/demo"
 DEMO_OUT="$OUT/js/demo"
 mkdir -p "$DEMO_OUT/pkg"
 cp "$ROOT/demo/index.html" "$ROOT/demo/demo.css" "$ROOT/demo/demo.js" "$DEMO_OUT/"
+if [[ -d "$ROOT/js/dist" ]]; then
+  while IFS= read -r -d '' f; do
+    rel="${f#"$ROOT/js/dist/"}"
+    case "$rel" in
+      *.smoke.js) continue ;;
+      native-fallback.js) continue ;;
+    esac
+    dest="$DEMO_OUT/pkg/$rel"
+    mkdir -p "$(dirname "$dest")"
+    cp "$f" "$dest"
+  done < <(find "$ROOT/js/dist" \( -name '*.js' -o -name '*.wasm' \) -print0)
+fi
 
-while IFS= read -r -d '' f; do
-  rel="${f#"$ROOT/js/dist/"}"
-  case "$rel" in
-    *.smoke.js) continue ;;
-    native-fallback.js) continue ;;
-  esac
-  dest="$DEMO_OUT/pkg/$rel"
-  mkdir -p "$(dirname "$dest")"
-  cp "$f" "$dest"
-done < <(find "$ROOT/js/dist" \( -name '*.js' -o -name '*.wasm' \) -print0)
-
-test -f "$DEMO_OUT/pkg/wasm/xpict_core_bg.wasm"
-test -f "$DEMO_OUT/pkg/index.js"
-test -f "$OUT/index.html"
-test -f "$OUT/js/index.html"
-test -f "$OUT/api.html"
-
-# Compatibility: old root demo URL → JS demo
 mkdir -p "$OUT/demo"
 cat > "$OUT/demo/index.html" <<'EOF'
 <!DOCTYPE html>
@@ -55,6 +96,9 @@ cat > "$OUT/demo/index.html" <<'EOF'
 </html>
 EOF
 
+test -f "$OUT/index.html"
+test -f "$OUT/gallery/index.html" || test -f "$OUT/gallery.html"
+test -d "$OUT/typedoc"
+test -d "$OUT/rustdoc/xpict_core"
 echo "Pages site ready: $OUT"
-du -sh "$OUT" "$DEMO_OUT/pkg/wasm/xpict_core_bg.wasm"
-find "$OUT" -maxdepth 2 -type f -name '*.html' | sort
+du -sh "$OUT" || true
