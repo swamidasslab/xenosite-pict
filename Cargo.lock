@@ -383,6 +383,8 @@ version = "0.1.0"
 dependencies = [
  "elkrs",
  "i_overlay",
+ "serde",
+ "serde_json",
  "ttf-parser",
 ]
 
