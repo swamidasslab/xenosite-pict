@@ -20,3 +20,5 @@ __pycache__/
 venv/
 artifacts/
 /opt/cursor/artifacts/
+.skill-tmp/
+vendor/elk/elk.jar
