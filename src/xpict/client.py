@@ -1,8 +1,7 @@
-"""JS-mirrored client API: ``mol`` / ``render`` / ``to_svg``.
+"""Python client: objects/methods over the same Rust ``depict_molecule`` surface as JS.
 
-Same paint surface as ``@swamidasslab/xpict``: RDKit (or native) layout →
-Rust ``depict_molecule`` → Scene JSON → SVG. Python no longer paints bonds /
-labels / marks / shade itself on this path.
+JS keeps a flat ``xpict`` namespace of plain objects. Python prefers
+``Mol.from_source(...).render().to_svg()`` (helpers still exist for parity).
 """
 
 from __future__ import annotations
@@ -22,15 +21,58 @@ SCALE = BOND_PX  # 20 — same as JS ``SCALE``
 
 @dataclass
 class Mol:
-    """Input molecule — SMILES/CXSMILES/molfile plus optional alignment frame."""
+    """Input molecule — SMILES/CXSMILES/molfile plus optional alignment frame.
+
+    Python prefers methods (``Mol.from_source(...).render()``). JS keeps a flat
+    ``xpict`` namespace of plain objects / functions.
+    """
 
     source: str
     frame_molblock: str | None = None
 
+    @classmethod
+    def from_source(cls, smiles_or_molfile: str) -> Mol:
+        text = smiles_or_molfile.strip()
+        if not text:
+            raise ValueError("Mol requires a non-empty SMILES or molfile")
+        return cls(source=text)
+
+    def layout(
+        self,
+        *,
+        id: str | None = None,
+        template_molblock: str | None = None,
+    ) -> tuple[dict[str, Any], str]:
+        """RDKit/native layout → ``MoleculeIn`` dict + pose molblock."""
+        laid, pose = layout_molecule(
+            self.source,
+            id=id,
+            template_molblock=template_molblock or self.frame_molblock,
+        )
+        if pose and not self.frame_molblock:
+            self.frame_molblock = pose
+        return laid, pose
+
+    def render(
+        self,
+        opts: MolRenderOptions | dict[str, Any] | None = None,
+        /,
+        **kwargs: Any,
+    ) -> Rendered:
+        """Layout → Rust ``depict_molecule`` → :class:`Rendered`."""
+        if opts is None and kwargs:
+            opts = MolRenderOptions(**kwargs)
+        elif isinstance(opts, dict):
+            merged = {**opts, **kwargs} if kwargs else opts
+            opts = MolRenderOptions(**merged)
+        elif opts is not None and kwargs:
+            raise TypeError("pass options via opts= or kwargs, not both")
+        return render(self, opts)
+
 
 @dataclass
 class Rendered:
-    """Mirror of JS ``Rendered``."""
+    """Painted depiction — editable ``scene`` plus alignment frame."""
 
     width: float
     height: float
@@ -42,6 +84,15 @@ class Rendered:
     svg_coords: list[dict[str, Any]] = field(default_factory=list)
     bonds: list[dict[str, Any]] = field(default_factory=list)
     mol: Mol | None = None
+
+    def to_svg(self) -> str:
+        """Serialize ``self.scene`` to an SVG string."""
+        return scene_to_svg(self.scene)
+
+    def render_aligned(self, other: Mol | str, **kwargs: Any) -> Rendered:
+        """Render ``other`` aligned onto this pose (``align_to=self``)."""
+        target = other if isinstance(other, Mol) else Mol.from_source(other)
+        return target.render(align_to=self, **kwargs)
 
 
 @dataclass
@@ -58,14 +109,14 @@ class MolRenderOptions:
 
 
 def mol(smiles_or_molfile: str) -> Mol:
-    text = smiles_or_molfile.strip()
-    if not text:
-        raise ValueError("mol() requires a non-empty SMILES or molfile")
-    return Mol(source=text)
+    """Construct a :class:`Mol` (JS-shaped helper; prefer ``Mol.from_source``)."""
+    return Mol.from_source(smiles_or_molfile)
 
 
-def to_svg(scene: Scene | dict[str, Any]) -> str:
-    """Scene JSON / model → SVG string (JS ``xpict.toSvg``)."""
+def to_svg(scene: Scene | dict[str, Any] | Rendered) -> str:
+    """Scene / :class:`Rendered` → SVG (JS ``xpict.toSvg``)."""
+    if isinstance(scene, Rendered):
+        return scene.to_svg()
     if isinstance(scene, dict):
         scene = Scene.model_validate(scene)
     return scene_to_svg(scene)
@@ -386,19 +437,41 @@ def render(
     )
 
 
-class _XpictNS:
-    mol = staticmethod(mol)
-    render = staticmethod(render)
-    to_svg = staticmethod(to_svg)
-    toSvg = staticmethod(to_svg)
+class Xpict:
+    """Python client entrypoint — methods wrap :class:`Mol` / :class:`Rendered`.
+
+    Prefer ``Mol.from_source(...).render().to_svg()``. The ``xpict`` instance
+    mirrors the JS namespace for cross-language examples.
+    """
+
+    def mol(self, smiles_or_molfile: str) -> Mol:
+        return Mol.from_source(smiles_or_molfile)
+
+    def render(
+        self,
+        input: Mol | str,
+        opts: MolRenderOptions | dict[str, Any] | None = None,
+        /,
+        **kwargs: Any,
+    ) -> Rendered:
+        if isinstance(input, str):
+            return Mol.from_source(input).render(opts, **kwargs)
+        return input.render(opts, **kwargs)
+
+    def to_svg(self, scene: Scene | dict[str, Any] | Rendered) -> str:
+        return to_svg(scene)
+
+    # JS camelCase alias
+    toSvg = to_svg
 
 
-xpict = _XpictNS()
+xpict = Xpict()
 
 __all__ = [
     "Mol",
     "MolRenderOptions",
     "Rendered",
+    "Xpict",
     "layout_molecule",
     "mol",
     "render",
