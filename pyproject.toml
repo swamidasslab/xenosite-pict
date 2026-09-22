@@ -1,5 +1,5 @@
 [project]
-name = "xenosite-pict"
+name = "xpict"
 version = "0.1.0"
 description = "Declarative, publication-quality small-molecule depiction for Python and the web"
 readme = "README.md"
@@ -10,7 +10,6 @@ authors = [
 requires-python = ">=3.11"
 dependencies = [
   "pydantic>=2.7",
-  "networkx>=3.2",
 ]
 classifiers = [
   "Development Status :: 3 - Alpha",
@@ -21,38 +20,36 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-indigo = ["epam.indigo>=1.19"]
-rdkit = ["rdkit>=2023.9.1"]
-openbabel = ["openbabel-wheel>=3.1.1"]
-chematic = ["chematic>=0.16"]
-all = ["xenosite-pict[indigo,rdkit,openbabel,chematic]"]
+# Preferred 2D layout + template alignment (Python). JS uses @rdkit/rdkit separately.
+rdkit = ["rdkit>=2024.3"]
+# Alternate 2D layout; pair with rigid/fake align in Rust (no RDKit template).
+indigo = [
+    "epam-indigo>=1.19",
+]
+all = ["xpict[rdkit,indigo]"]
 
 [project.urls]
 Homepage = "https://github.com/swamidasslab/xenosite-pict"
 Repository = "https://github.com/swamidasslab/xenosite-pict"
 
 [project.scripts]
-xenosite-pict-export-schema = "xenosite.pict.export_schema:main"
+xpict-export-schema = "xpict.export_schema:main"
 
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["maturin>=1.4,<2.0"]
+build-backend = "maturin"
 
-[tool.hatch.build.targets.wheel]
-packages = ["src/xenosite"]
-
-[tool.hatch.build]
-include = [
-  "src/xenosite/**",
-  "schema/**",
-  "js/**",
-  "docs/**",
-]
+[tool.maturin]
+manifest-path = "crates/xpict-py/Cargo.toml"
+python-source = "src"
+module-name = "xpict._native"
+include = ["schema/**", "js/**", "docs/**"]
 
 [dependency-groups]
 dev = [
   "pytest>=8.0",
   "ruff>=0.6",
+  "maturin>=1.4,<2.0",
 ]
 
 [tool.pytest.ini_options]

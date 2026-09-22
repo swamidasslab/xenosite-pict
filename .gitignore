@@ -1,4 +1,7 @@
 build/
+/target/
+src/xpict/_native*.so
+src/xpict/_native*.pyd
 .coverage
 dist/
 .DS_Store
@@ -15,5 +18,7 @@ __pycache__/
 *.svg.bak
 .venv/
 venv/
+artifacts/
+/opt/cursor/artifacts/
 .skill-tmp/
 vendor/elk/elk.jar

@@ -81,8 +81,8 @@
       "properties": {
         "name": {
           "enum": [
-            "shading",
             "halo",
+            "shading",
             "bonds",
             "labels",
             "marks",
@@ -162,6 +162,35 @@
           "title": "Opacity",
           "type": "number"
         },
+        "stroke_dasharray": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stroke Dasharray"
+        },
+        "stroke_linecap": {
+          "anyOf": [
+            {
+              "enum": [
+                "butt",
+                "round",
+                "square"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stroke Linecap"
+        },
         "cls": {
           "anyOf": [
             {
@@ -213,7 +242,7 @@
           "type": "number"
         },
         "font_family": {
-          "default": "Helvetica, Arial, sans-serif",
+          "default": "Liberation Sans, Helvetica, Arial, sans-serif",
           "title": "Font Family",
           "type": "string"
         },
@@ -314,6 +343,24 @@
         "$ref": "#/$defs/Viewport"
       },
       "title": "Viewports",
+      "type": "array"
+    },
+    "overlays": {
+      "description": "Document-space primitives (reaction/network arrows) drawn above viewports",
+      "items": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/PathPrim"
+          },
+          {
+            "$ref": "#/$defs/CirclePrim"
+          },
+          {
+            "$ref": "#/$defs/TextPrim"
+          }
+        ]
+      },
+      "title": "Overlays",
       "type": "array"
     },
     "meta": {

@@ -36,6 +36,12 @@
           "default": null,
           "title": "Isotope"
         },
+        "radical": {
+          "default": 0,
+          "description": "Unpaired electron count (0 = closed shell; 1 = doublet radical)",
+          "title": "Radical",
+          "type": "integer"
+        },
         "label": {
           "anyOf": [
             {
@@ -46,7 +52,7 @@
             }
           ],
           "default": null,
-          "description": "Display label; None means suppress (e.g. carbon)",
+          "description": "Display label; None means suppress (e.g. carbon). Stars / R-groups use '*' or a CXSMILES alias (e.g. R1).",
           "title": "Label"
         }
       },

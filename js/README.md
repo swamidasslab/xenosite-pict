@@ -1,10 +1,23 @@
-# JS/TS processor
+# @swamidasslab/xpict (TypeScript)
 
-Browser/Node implementation of the same JSON contracts as Python (`../schema`).
+MVP client for [xenosite.org](https://xenosite.org). Published to GitHub
+Packages — see [`docs/npm-xenosite.md`](../docs/npm-xenosite.md).
 
-- **Types:** `src/types.ts` mirrors PictSpec (schemas remain source of truth)
-- **Mol layout:** Indigo WASM (preferred); RDKit MinimalLib optional/limited
-- **Diagram layout:** [elkjs](https://github.com/kieler/elkjs)
-- **Draw:** shared Scene → SVG rules (parity with Python)
+```ts
+import { xpict } from "@swamidasslab/xpict";
 
-`render()` currently validates PictSpec shape only.
+const mol = xpict.mol("c1ccccc1");
+const rendered = await xpict.render(mol);
+const svg = xpict.toSvg(rendered.scene); // tweak scene first if needed
+
+const aligned = await xpict.render(xpict.mol("Cc1ccccc1"), {
+  align_to: mol, // or align_to: rendered
+});
+```
+
+RDKit + wasm load on first `render` (hidden). Works in browser and Node.
+
+```bash
+./scripts/build_bindings.sh wasm
+cd js && npm test
+```

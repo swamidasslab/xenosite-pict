@@ -1,0 +1,17 @@
+[workspace]
+resolver = "2"
+members = ["crates/xpict-core", "crates/xpict-py", "crates/xpict-wasm"]
+default-members = ["crates/xpict-core"]
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/swamidasslab/xenosite-pict"
+# elkrs → indexmap 2.14 needs edition2024 (stable since 1.85).
+rust-version = "1.85"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
