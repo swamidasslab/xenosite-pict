@@ -1,13 +1,13 @@
-"""Parity tests for optional ``xpict._native`` (maturin / Rust core)."""
+"""Parity tests for ``xpict._native`` (maturin / Rust core)."""
 
 from __future__ import annotations
 
+import json
 import math
 
 import pytest
-from shapely.geometry import LineString, Point
 
-from xpict.native_bridge import HAS_RUST_CORE, CapsuleInk, multi_bond_offset
+from xpict.native_bridge import HAS_RUST_CORE, CapsuleInk, Shape, multi_bond_offset
 from xpict.draw.bonds import _multi_bond_offset_py
 from xpict.draw.halo import capsule_shape, halo_path_d
 from xpict.draw.metrics import LABEL_GAP_PX, OFFSET_PX
@@ -35,23 +35,18 @@ def test_plotdot_rings_match_python():
             assert c1 == pytest.approx(c2, abs=1e-9)
 
 
-def test_capsule_halo_near_shapely():
-    from shapely.geometry import Polygon
-
+def test_capsule_halo_path_closed():
     from xpict import _native
-    from xpict.draw.paths import path_coords
 
     x1, y1, x2, y2 = 0.0, 0.0, 20.0, 0.0
     ink_r = 0.56
     grow = LABEL_GAP_PX
     rust_d = _native.capsule_halo_path_d(x1, y1, x2, y2, ink_r, grow)
     assert rust_d and rust_d.endswith("Z")
-    ink = LineString([(x1, y1), (x2, y2)]).buffer(ink_r, quad_segs=8, cap_style=1)
-    shapely_d = halo_path_d(ink, grow)
-    assert shapely_d
-    rust_area = Polygon(path_coords(rust_d)).area
-    shapely_area = Polygon(path_coords(shapely_d)).area
-    assert rust_area == pytest.approx(shapely_area, rel=0.08)
+    ink = capsule_shape(x1, y1, x2, y2, ink_r)
+    assert isinstance(ink, CapsuleInk)
+    via_halo = halo_path_d(ink, grow)
+    assert via_halo and via_halo.endswith("Z")
 
 
 def test_tagged_capsule_uses_rust_in_halo_path_d():
@@ -68,8 +63,6 @@ def test_offset_px_constant():
 
 
 def test_elk_layout_json_layered():
-    import json
-
     from xpict import _native
 
     assert getattr(_native, "HAS_ELK", False)
@@ -92,3 +85,21 @@ def test_elk_layout_json_layered():
     edge = laid["edges"][0]
     assert edge["sections"]
     assert "startPoint" in edge["sections"][0]
+
+
+def test_shape_evenodd_and_halo():
+    from xpict import _native
+
+    assert getattr(_native, "HAS_GEOM", False)
+    # Annulus-like: outer square, inner square via even-odd.
+    outer = [(0.0, 0.0), (20.0, 0.0), (20.0, 20.0), (0.0, 20.0)]
+    inner = [(5.0, 5.0), (15.0, 5.0), (15.0, 15.0), (5.0, 15.0)]
+    ink = Shape.from_contours_evenodd([outer, inner])
+    assert not ink.is_empty
+    assert ink.has_holes
+    assert not ink.contains(10.0, 10.0)
+    halo = ink.halo(1.0)
+    assert not halo.is_empty
+    assert not halo.contains(10.0, 10.0)
+    assert halo.area > ink.area
+    assert "M" in ink.to_svg_d()

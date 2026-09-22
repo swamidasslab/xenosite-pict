@@ -7,7 +7,7 @@ back into `PictSpec` / layout / scene contracts.
 | --- | --- | --- |
 | **A — Own SVG** | Can Indigo layouts feed a publication SVG we own (no SVG mutation)? | `uv run python scripts/run_pocs.py svg` |
 | **B — Marks + shade** | Do atom/bond/substructure marks and plot-dot shading work on real layouts? | `uv run python scripts/run_pocs.py shade` |
-| **C — ELK multi-mol** | Can elkjs place network viewports via **jsrun** (no Node)? | `uv run python scripts/run_pocs.py elk` |
+| **C — ELK multi-mol** | Can **elkrs** place network viewports via `_native`? | `uv run python scripts/run_pocs.py elk` |
 | **D — Full pipeline** | Hard grid + stereo wedges + SoM shade + ELK pathway + branched routes? | `uv run python scripts/run_pocs.py pipeline` |
 | **E — Native vs Indigo** | Does experimental native ring/chain layout look plausible beside Indigo? | `uv run python scripts/run_pocs.py native` |
 

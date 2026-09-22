@@ -14,15 +14,17 @@ path = "src/lib.rs"
 crate-type = ["rlib"]
 
 [features]
-default = ["elk"]
+default = ["elk", "geom"]
 # Diagram placement via native ELK (drops Python jsrun + vendored elkjs).
 elk = ["dep:elkrs"]
+# Polygon buffer / boolean ops (drops Python Shapely).
+geom = ["dep:i_overlay"]
 # Keep the core free of FFI so algorithms stay testable in pure Rust.
 
 [dependencies]
-# Fonts / geometry land behind optional crates (ttf-parser, geo / i_overlay)
-# when those modules move over.
+# Fonts land behind optional crates (ttf-parser / skrifa) when that module moves.
 elkrs = { version = "0.1.1", optional = true }
+i_overlay = { version = "9.0.0", optional = true }
 
 [dev-dependencies]
 

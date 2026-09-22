@@ -1,19 +1,15 @@
-"""ELK diagram placement via native elkrs (Rust) or elkjs in jsrun, with grid/row fallback.
+"""ELK diagram placement via native elkrs (Rust), with grid/row fallback.
 
-Preferred path: ``xpict._native.elk_layout_json`` (elkrs). Fallback: vendored
-elkjs inside jsrun (embedded V8). Grid/row stay pure-Python. See
-``docs/layout-notes.md``.
+Requires ``xpict._native`` (maturin). Grid/row stay pure-Python when ELK is
+unavailable or fails. See ``docs/layout-notes.md``.
 """
 
 from __future__ import annotations
 
-import asyncio
 import json
-import threading
 import warnings
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from pathlib import Path
 
 from xpict.contracts.layout import MoleculeLayout
 from xpict.contracts.spec import DiagramKind, LegacyPictSpec, MoleculeSpec
@@ -30,11 +26,6 @@ def _flat(spec: LegacyPictSpec | object) -> LegacyPictSpec:
 
 _GAP = 24.0
 _REACTION_GAP = 56.0  # room for arrow shafts + edge labels between molecules
-_VENDOR = Path(__file__).resolve().parents[1] / "vendor" / "elkjs"
-
-_runtime_lock = threading.Lock()
-_runtime = None  # jsrun.Runtime | None
-_elk_ready = False
 
 
 def _viewport_sizes(
@@ -55,112 +46,6 @@ class DiagramPlacement:
     edge_paths: list[list[tuple[float, float]] | None] = field(default_factory=list)
     width: float | None = None
     height: float | None = None
-
-
-def _polyfills() -> str:
-    return """
-    (function () {
-      // GWT/elk-worker resolves $wnd via window | global | self.
-      // Provide Node-like `global` only — do NOT define `self`, or
-      // elk-worker.min.js takes the Web-Worker branch and skips exports.
-      if (typeof globalThis.global === "undefined") {
-        globalThis.global = globalThis;
-      }
-      try { Error.stackTraceLimit = 0; } catch (e) {}
-      let n = 0;
-      const pending = new Map();
-      globalThis.setTimeout = function (cb, _ms) {
-        const id = ++n;
-        pending.set(id, cb);
-        Promise.resolve().then(() => {
-          const fn = pending.get(id);
-          if (fn) {
-            pending.delete(id);
-            fn();
-          }
-        });
-        return id;
-      };
-      globalThis.clearTimeout = function (id) {
-        pending.delete(id);
-      };
-    })();
-    """
-
-
-def _ensure_elk_runtime():
-    """Load vendored elkjs into a process-wide jsrun Runtime (lazy, thread-safe)."""
-    global _runtime, _elk_ready
-    if _elk_ready and _runtime is not None:
-        return _runtime
-    with _runtime_lock:
-        if _elk_ready and _runtime is not None:
-            return _runtime
-        try:
-            from jsrun import Runtime
-        except ImportError as e:
-            raise ImportError(
-                "ELK layout requires jsrun when the Rust elkrs binding is unavailable."
-            ) from e
-
-        api_path = _VENDOR / "elk-api.js"
-        worker_path = _VENDOR / "elk-worker.min.js"
-        if not api_path.is_file() or not worker_path.is_file():
-            raise FileNotFoundError(
-                f"Vendored elkjs assets missing under {_VENDOR}. "
-                "Expected elk-api.js and elk-worker.min.js."
-            )
-
-        rt = Runtime()
-        rt.eval(_polyfills())
-        worker_src = worker_path.read_text(encoding="utf-8")
-        api_src = api_path.read_text(encoding="utf-8")
-        rt.eval(
-            "(function(){\n"
-            "  var module = { exports: {} };\n"
-            "  var exports = module.exports;\n"
-            f"{worker_src}\n"
-            "  globalThis.__ElkWorkerMod__ = module.exports;\n"
-            "})();"
-        )
-        rt.eval(
-            "(function(){\n"
-            "  var module = { exports: {} };\n"
-            "  var exports = module.exports;\n"
-            "  var define = undefined;\n"
-            f"{api_src}\n"
-            "  globalThis.__ELKAPI__ = module.exports.default || module.exports;\n"
-            "})();"
-        )
-        kind = rt.eval(
-            "typeof globalThis.__ELKAPI__ + ':' + "
-            "typeof (globalThis.__ElkWorkerMod__ && globalThis.__ElkWorkerMod__.Worker)"
-        )
-        if kind != "function:function":
-            raise RuntimeError(f"elkjs failed to initialize in jsrun (got {kind!r})")
-        _runtime = rt
-        _elk_ready = True
-        return _runtime
-
-
-def _run_async(coro):
-    """Run ``coro`` whether or not a loop is already running."""
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        return asyncio.run(coro)
-
-    out: dict[str, object] = {}
-
-    def _target() -> None:
-        out["value"] = asyncio.run(coro)
-
-    t = threading.Thread(target=_target, name="elk-jsrun")
-    t.start()
-    t.join()
-    if "value" not in out:
-        raise RuntimeError("elk jsrun worker thread failed")
-    return out["value"]
 
 
 def _grid_positions(
@@ -258,26 +143,6 @@ def elk_graph_json(layouts: Sequence[MoleculeLayout], spec: LegacyPictSpec) -> s
     return json.dumps(elk_graph(layouts, spec), indent=2)
 
 
-async def _elk_layout_async(graph: dict) -> dict:
-    rt = _ensure_elk_runtime()
-    graph_json = json.dumps(graph)
-    rt.eval(f"globalThis.__elkGraphJson__ = {json.dumps(graph_json)};")
-    result_json = await rt.eval_async(
-        """
-        (async () => {
-          const ELK = globalThis.__ELKAPI__;
-          const Worker = globalThis.__ElkWorkerMod__.Worker;
-          const elk = new ELK({ workerFactory: () => new Worker() });
-          const laid = await elk.layout(JSON.parse(globalThis.__elkGraphJson__));
-          return JSON.stringify(laid);
-        })()
-        """
-    )
-    if not isinstance(result_json, str):
-        raise TypeError(f"expected JSON string from elkjs, got {type(result_json)!r}")
-    return json.loads(result_json)
-
-
 def _section_points(section: dict) -> list[tuple[float, float]]:
     """Flatten one ELK edge section into a polyline (start → bends → end)."""
     start = section.get("startPoint") or {}
@@ -342,7 +207,7 @@ def _placement_from_laid(
 def _elkrs_placement(
     layouts: Sequence[MoleculeLayout], spec: LegacyPictSpec
 ) -> DiagramPlacement | None:
-    """Native elkrs via ``xpict._native`` when the extension is built."""
+    """Native elkrs via ``xpict._native``."""
     try:
         from xpict import _native
     except ImportError:
@@ -355,40 +220,12 @@ def _elkrs_placement(
         laid = json.loads(layout_fn(json.dumps(graph)))
     except Exception as exc:
         warnings.warn(
-            f"elkrs (native) layout failed ({exc}); trying jsrun fallback.",
+            f"elkrs layout failed ({exc}); falling back to row layout.",
             PictBackendWarning,
             stacklevel=3,
         )
         return None
     return _placement_from_laid(layouts, spec, laid)
-
-
-def _elkjs_placement(
-    layouts: Sequence[MoleculeLayout], spec: LegacyPictSpec | object
-) -> DiagramPlacement | None:
-    """Run elkjs inside jsrun when available; include edge bend routes."""
-    spec = _flat(spec)
-    graph = elk_graph(layouts, spec)
-    try:
-        laid = _run_async(_elk_layout_async(graph))
-    except Exception as exc:
-        warnings.warn(
-            f"elkjs (jsrun) layout failed ({exc}); falling back.",
-            PictBackendWarning,
-            stacklevel=3,
-        )
-        return None
-    return _placement_from_laid(layouts, spec, laid)
-
-
-def _elk_placement(
-    layouts: Sequence[MoleculeLayout], spec: LegacyPictSpec
-) -> DiagramPlacement | None:
-    """Prefer native elkrs; fall back to jsrun+elkjs."""
-    native = _elkrs_placement(layouts, spec)
-    if native is not None:
-        return native
-    return _elkjs_placement(layouts, spec)
 
 
 def layout_diagram_ex(
@@ -402,12 +239,11 @@ def layout_diagram_ex(
     sizes = _viewport_sizes(layouts, spec)
     kind = spec.diagram.kind
     if kind in {DiagramKind.network, DiagramKind.reaction}:
-        elk = _elk_placement(layouts, spec)
+        elk = _elkrs_placement(layouts, spec)
         if elk is not None:
             return elk
         warnings.warn(
-            "ELK unavailable (native elkrs and jsrun both failed); "
-            "using row layout for network/reaction diagrams.",
+            "ELK (elkrs) unavailable; using row layout for network/reaction diagrams.",
             PictBackendWarning,
             stacklevel=3,
         )

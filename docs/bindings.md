@@ -59,7 +59,7 @@ of fontTools/Shapely.
 | 1 | Capsule / disk halo SVG paths | Done (`geom` + bindings) |
 | 2 | Polygon buffer + difference (glyph counters) | `halo_from_shapes` / `O` hole tests via `_native` |
 | 3 | Liberation Sans outlines → path `d` + advances | `label_outline` / caption glyphs via Rust |
-| 4 | Python draw calls only `native_bridge` for ink/text | `shapely` / `fonttools` optional or build-only |
+| 4 | Python draw calls only `native_bridge` for ink/text | Shapely **gone**; `fonttools` until `font` lands |
 | 5 | JS `native.ts` exposes the same glyph/halo APIs | Browser labels match Python gallery |
 
 Crates to prefer when filling stubs: **`ttf-parser`/`skrifa`** (fonts),
@@ -89,7 +89,7 @@ Network / reaction viewport placement moves into Rust via **`elkrs`**
 | Edge | API |
 | --- | --- |
 | Python | `_native.elk_layout_json(graph_json) -> str` |
-| JS / WASM | still npm `elkjs` — `xpict-wasm` builds with `default-features = false` so ELK does not inflate the depict blob (~2.8 MB if enabled) |
+| JS / WASM | npm `elkjs`; `xpict-wasm` uses `default-features = false` (no ELK/geom in the depict blob) |
 
-Python synthesizes the ELK graph in `diagram/elk.py` and prefers the native
-call; jsrun+vendored elkjs stays as fallback until the extension is universal.
+Python synthesizes the ELK graph in `diagram/elk.py` and calls native only
+(jsrun removed).

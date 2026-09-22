@@ -7,8 +7,6 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from shapely.geometry import MultiPoint
-
 from xpict.contracts.scene import CirclePrim, PathPrim, Primitive, TextPrim
 from xpict.contracts.spec import AnnotKind, AnnotationSpec, AnnotPrefer
 from xpict.draw.collision import CollisionGrid
@@ -30,6 +28,7 @@ from xpict.draw.metrics import (
 )
 from xpict.draw.paths import filled_arrow_head_d, oval_d, polyline_d, rect_d
 from xpict.draw.text_metrics import measure_text, text_box
+from xpict.native_bridge import Shape
 
 if TYPE_CHECKING:
     from xpict.draw.drawable import Drawable, MolContext
@@ -105,11 +104,19 @@ def _spline_path(pts: Sequence[tuple[float, float]], pad: float) -> str | None:
     if len(pts) == 1:
         x, y = pts[0]
         return oval_d(x, y, pad, pad)
-    geom = MultiPoint(pts).buffer(pad, quad_segs=8)
+    geom = Shape.multipoint_buffer(list(pts), pad)
     if geom.is_empty:
         return None
-    poly = geom if geom.geom_type == "Polygon" else max(geom.geoms, key=lambda g: g.area)
-    ring = list(poly.exterior.coords)
+    polys = geom.polygons()
+    if not polys:
+        return None
+    # Largest exterior by rough bbox area.
+    exterior = max(
+        polys,
+        key=lambda ph: (max(p[0] for p in ph[0]) - min(p[0] for p in ph[0]))
+        * (max(p[1] for p in ph[0]) - min(p[1] for p in ph[0])),
+    )[0]
+    ring = list(exterior)
     if len(ring) > 1 and ring[0] == ring[-1]:
         ring = ring[:-1]
     return polyline_d(ring, closed=True)
@@ -229,13 +236,14 @@ def _draw_region(ann: AnnotationSpec, pts: Sequence[tuple[float, float]], *, col
                 cls="annot-spline",
             )
         )
-        geom = MultiPoint(pts).buffer(pad, quad_segs=8)
-        outer = geom.buffer(0.5 * stroke, quad_segs=8)
-        inner = geom.buffer(-0.5 * stroke, quad_segs=8) if not geom.is_empty else None
+        geom = Shape.multipoint_buffer(list(pts), pad)
+        outer = geom.buffer(0.5 * stroke)
+        inner = geom.buffer(-0.5 * stroke) if not geom.is_empty else None
         ink = outer.difference(inner) if inner is not None and not inner.is_empty else outer
         if ink is not None and not ink.is_empty:
             drawn.ink.append(ink)
-        drawn.boxes.append(tuple(geom.bounds))  # type: ignore[arg-type]
+        if geom.bounds is not None:
+            drawn.boxes.append(tuple(geom.bounds))
         return drawn
     return None
 

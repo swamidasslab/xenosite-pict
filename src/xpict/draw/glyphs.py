@@ -8,13 +8,7 @@ faces (Regular / Bold / Italic / BoldItalic).
 
 from __future__ import annotations
 
-from functools import reduce
-
 from fontTools.pens.transformPen import TransformPen
-from shapely import affinity
-from shapely.geometry import MultiPolygon, Polygon
-from shapely.geometry.base import BaseGeometry
-from shapely.ops import unary_union
 
 from xpict.draw.font_face import (
     ContourPen,
@@ -26,28 +20,22 @@ from xpict.draw.font_face import (
 from xpict.draw.metrics import FONT_PX
 from xpict.draw.richtext import StyledText, TextRun, parse_richtext
 from xpict.draw.text_metrics import measure_styled
+from xpict.native_bridge import Shape
 
 
-def _contours_to_geom(pen: ContourPen) -> BaseGeometry | None:
-    """Build geometry from TrueType contours via XOR (even-odd fill).
+def _contours_to_geom(pen: ContourPen) -> Shape | None:
+    """Build geometry from TrueType contours via even-odd fill.
 
     Fonts emit counters (the hole in ``O``, ``A``, …) as separate contours.
-    ``symmetric_difference`` punches those holes — no area nesting heuristic.
     """
-    raw: list[BaseGeometry] = []
+    contours: list[list[tuple[float, float]]] = []
     for contour in pen.contours:
         if len(contour) < 3:
             continue
-        poly = Polygon(contour)
-        if poly.is_empty:
-            continue
-        if not poly.is_valid:
-            poly = poly.buffer(0)
-        if not poly.is_empty:
-            raw.append(poly)
-    if not raw:
+        contours.append([(float(x), float(y)) for x, y in contour])
+    if not contours:
         return None
-    geom = reduce(lambda a, b: a.symmetric_difference(b), raw)
+    geom = Shape.from_contours_evenodd(contours)
     return None if geom.is_empty else geom
 
 
@@ -55,7 +43,7 @@ def _outline_run_em(
     text: str,
     *,
     style: FaceStyle = "regular",
-) -> tuple[BaseGeometry | None, float]:
+) -> tuple[Shape | None, float]:
     """Outline plain Unicode in font space (+Y up); return (geom, advance_em)."""
     if not text:
         return None, 0.0
@@ -81,7 +69,7 @@ def compile_text_shapes(
     *,
     font_size: float = FONT_PX,
     anchor: str = "middle",
-) -> BaseGeometry | None:
+) -> Shape | None:
     """Compile styled Unicode (or markup string) to SVG-space glyph geometry.
 
     This is the shared shapes engine: captions, atom labels, edge labels, and
@@ -100,7 +88,7 @@ def compile_text_shapes(
     else:
         cursor = x
 
-    parts: list[BaseGeometry] = []
+    parts: list[Shape] = []
     for run in styled.runs:
         if not run.text:
             continue
@@ -110,60 +98,23 @@ def compile_text_shapes(
         scale = font_size / upem
         run_advance = advance_em * scale
         if geom_em is not None and not geom_em.is_empty:
-            geom = affinity.scale(
-                geom_em, xfact=scale, yfact=-scale, origin=(0.0, 0.0)
-            )
-            geom = affinity.translate(geom, xoff=cursor, yoff=y)
+            geom = geom_em.scale(scale, -scale, 0.0, 0.0).translate(cursor, y)
             parts.append(geom)
         cursor += run_advance
 
     if not parts:
         return None
-    if len(parts) == 1:
-        return parts[0]
-    return unary_union(parts)
+    acc = parts[0]
+    for p in parts[1:]:
+        acc = acc.union(p)
+    return None if acc.is_empty else acc
 
 
-def geom_to_svg_d(geom: BaseGeometry) -> str:
-    """Serialize a (Multi)Polygon to an SVG path ``d`` string."""
+def geom_to_svg_d(geom: Shape) -> str:
+    """Serialize a Shape to an SVG path ``d`` string."""
     if geom.is_empty:
         return ""
-    parts: list[BaseGeometry] = []
-    if isinstance(geom, Polygon):
-        parts = [geom]
-    elif isinstance(geom, MultiPolygon):
-        parts = list(geom.geoms)
-    else:
-        parts = [g for g in getattr(geom, "geoms", [geom]) if isinstance(g, Polygon)]
-
-    chunks: list[str] = []
-    for poly in parts:
-        if poly.is_empty:
-            continue
-
-        def _ring(coords: object) -> str:
-            pts = list(coords)  # type: ignore[arg-type]
-            if len(pts) < 2:
-                return ""
-            if pts[0] == pts[-1]:
-                pts = pts[:-1]
-            if not pts:
-                return ""
-            x0, y0 = pts[0]
-            bits = [f"M {x0:.2f} {y0:.2f}"]
-            for px, py in pts[1:]:
-                bits.append(f"L {px:.2f} {py:.2f}")
-            bits.append("Z")
-            return " ".join(bits)
-
-        exterior = _ring(poly.exterior.coords)
-        if exterior:
-            chunks.append(exterior)
-        for interior in poly.interiors:
-            ring = _ring(interior.coords)
-            if ring:
-                chunks.append(ring)
-    return " ".join(chunks)
+    return geom.to_svg_d()
 
 
 def compile_text_path_d(
@@ -211,7 +162,7 @@ def label_outline(
     anchor: str = "middle",
     bold: bool = False,
     italic: bool = False,
-) -> BaseGeometry | None:
+) -> Shape | None:
     """Compile markup/plain text to glyph geometry (shared engine)."""
     if bold or italic:
         styled = StyledText(

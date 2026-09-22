@@ -177,7 +177,7 @@ def test_reaction_row_fallback_centers(monkeypatch):
     """When ELK fails, reaction fallback uses centered row with wider gap."""
     import xpict.diagram.elk as elk_mod
 
-    monkeypatch.setattr(elk_mod, "_elk_placement", lambda *a, **k: None)
+    monkeypatch.setattr(elk_mod, "_elkrs_placement", lambda *a, **k: None)
     doc = PictSpec.model_validate(
         {
             "molecules": [

@@ -119,5 +119,5 @@ def test_elk_places_network():
     layouts = Pict(backend="native").layout(doc).molecules
     positions = layout_diagram(layouts, doc)
     assert len(positions) == 3
-    # elkrs (or jsrun fallback) should separate nodes (not all stacked at origin).
+    # elkrs should separate nodes (not all stacked at origin).
     assert len({(round(x, 1), round(y, 1)) for x, y in positions}) >= 2

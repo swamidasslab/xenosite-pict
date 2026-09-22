@@ -13,12 +13,11 @@ from dataclasses import dataclass
 from functools import lru_cache
 
 from fontTools.pens.boundsPen import BoundsPen
-from shapely.geometry import LineString, Polygon
-from shapely.ops import unary_union
 
 from xpict.draw.font_face import ContourPen, FaceStyle, face_style, glyph_set_cmap_upem, ttfont
 from xpict.draw.metrics import FONT_PX, LABEL_GAP_PX
 from xpict.draw.richtext import StyledText, TextRun
+from xpict.native_bridge import Shape
 
 
 @dataclass(frozen=True)
@@ -217,30 +216,22 @@ def _measure_stem_em() -> float:
         return 0.0933
     pen = ContourPen(glyph_set)
     glyph_set[name].draw(pen)  # type: ignore[index]
-    polys = []
+    contours: list[list[tuple[float, float]]] = []
     for contour in pen.contours:
         if len(contour) < 3:
             continue
-        p = Polygon(contour)
-        if not p.is_valid:
-            p = p.buffer(0)
-        if not p.is_empty:
-            polys.append(p)
-    if not polys:
+        contours.append([(float(x), float(y)) for x, y in contour])
+    if not contours:
         return 0.0933
-    geom = unary_union(polys)
-    minx, miny, maxx, maxy = geom.bounds
+    geom = Shape.from_contours_evenodd(contours)
+    if geom.is_empty or geom.bounds is None:
+        return 0.0933
+    _minx, miny, _maxx, maxy = geom.bounds
     y = miny + 0.75 * (maxy - miny)
-    chord = LineString([(minx - 1.0, y), (maxx + 1.0, y)])
-    hit = geom.intersection(chord)
-    if hit.is_empty:
+    span = geom.horizontal_span_at(y)
+    if span <= 0:
         return 0.0933
-    if hit.geom_type == "MultiLineString":
-        seg = min(hit.geoms, key=lambda g: g.bounds[0])
-        return float(seg.length) / upem
-    if hit.geom_type == "LineString":
-        return float(hit.length) / upem
-    return 0.0933
+    return float(span) / upem
 
 
 def measure_styled(styled: StyledText, font_size: float = FONT_PX) -> TextMetrics:

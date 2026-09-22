@@ -47,7 +47,7 @@ END_GAP_FRAC = 0.13  # ring doubles: keep the offset off adjacent bonds
 CHAIN_END_GAP_FRAC = 0.0
 HASH_PER_BOND = 8
 HALO_FRAC = 2 * STROKE_FRAC  # knockout stays twice the ink, as in xenopict
-# Air between label ink and bond ends, and the shapely buffer on the glyph
+# Air between label ink and bond ends, and the Rust buffer on the glyph
 # halo. Tuned against RDKit MolDraw2D (~0.9–1.0 px at bond≈20) and Indigo
 # terminal-hetero depictions — enough for a dark-host knockout, not a wide
 # moat. Molecule captions reuse the same order of air above the title band.

@@ -107,7 +107,7 @@ def poc_shade(out: Path, backend: str) -> Path:
 
 
 def poc_elk(out: Path, backend: str) -> Path:
-    """POC C: network diagram via elkjs in jsrun (row fallback if ELK fails)."""
+    """POC C: network diagram via elkrs (row fallback if ELK fails)."""
     spec_dict = {
         "molecules": [
             {"id": "A", "smiles": "CCO"},
@@ -219,7 +219,7 @@ def poc_pipeline(out: Path, backend: str) -> Path:
     som_path = out / f"poc-d3-som-shade-{backend}.svg"
     som_path.write_text(som_svg, encoding="utf-8")
 
-    # D4 — mini ethanol→acetate + aromatic sink pathway (ELK via jsrun)
+    # D4 — mini ethanol→acetate + aromatic sink pathway (ELK via elkrs)
     pathway = {
         "molecules": [
             {"id": "etoh", "smiles": "CCO", "title": "ethanol"},
@@ -314,7 +314,7 @@ def poc_pipeline(out: Path, backend: str) -> Path:
         ],
         "notes": [
             "Indigo layout → own skeleton/offset/wedge SVG",
-            "ELK pathway placement via jsrun+elkjs",
+            "ELK pathway placement via elkrs",
             "Branched scheme uses ELK orthogonal edge routes → overlay arrows",
             "Shade/marks on aspirin as SoM-style annotation",
         ],
@@ -433,7 +433,7 @@ def write_gallery(out: Path, backend: str, only: list[Path] | None = None) -> Pa
         ),
         (
             "C — ELK network",
-            "Multi-mol network placement via elkjs inside jsrun (row fallback if ELK fails).",
+            "Multi-mol network placement via elkjs (row fallback if ELK fails).",
             out / f"poc-c-network-{backend}.svg",
         ),
         (
@@ -453,7 +453,7 @@ def write_gallery(out: Path, backend: str, only: list[Path] | None = None) -> Pa
         ),
         (
             "D4 — Pathway (ELK)",
-            "Ethanol oxidation + aspirin hydrolysis pathway laid out by jsrun+elkjs.",
+            "Ethanol oxidation + aspirin hydrolysis pathway laid out by elkrs.",
             out / f"poc-d4-pathway-{backend}.svg",
         ),
         (

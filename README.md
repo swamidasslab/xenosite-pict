@@ -26,13 +26,12 @@ pytest tests/test_native_rust.py tests/test_rdkit_backend.py
 cd js && npm test
 ```
 
-**Multi-molecule diagrams:** ELK via native **`elkrs`** in `xpict-core` (Python
-`_native.elk_layout_json`). jsrun+elkjs remains a fallback until the extension
-is universal. Grid/row if ELK fails.
+**Multi-molecule diagrams:** ELK via native **`elkrs`** (`_native.elk_layout_json`).
+Grid/row if ELK fails. **jsrun / vendored elkjs removed.**
 
-**Core deps (target):** `pydantic` + Rust extension. **jsrun** leaves once
-elkrs is always built. Shapely / fontTools leave once `geom`/`font` finish
-moving. RDKit / Indigo stay **language-edge extras**.
+**Core deps:** `pydantic` + `fonttools` + Rust extension (`geom` via `i_overlay`,
+no Shapely). fontTools leave once `font` finishes moving. RDKit / Indigo stay
+**language-edge extras**.
 
 **Outputs:** SVG (default); HTML with embedded SVG for responsive pages.
 

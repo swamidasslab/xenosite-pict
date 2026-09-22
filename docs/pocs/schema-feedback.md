@@ -40,7 +40,7 @@ Captured while implementing own-SVG drawing, marks/shade, and ELK placement. The
    → Either freeze draw scale as a contract constant or put `scale`/`padding` on PictSpec so layout and draw agree.
 
 9. **Python ELK path** — **moving to elkrs**  
-   Prefer native **`elkrs`** via `xpict._native.elk_layout_json`. jsrun+vendored
+   Prefer native **`elkrs`** via `xpict._native.elk_layout_json`. native elkrs; jsrun removed. Formerly jsrun+vendored
    elkjs remains a transitional fallback. Grid/row stay pure-Python. Optional
    later: drop jsrun from core deps once the extension is always built.
 

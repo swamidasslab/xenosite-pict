@@ -6,12 +6,10 @@ import math
 import re
 from collections.abc import Sequence
 
-from shapely.geometry import Polygon
-from shapely.geometry.base import BaseGeometry
-
 from xpict.contracts.scene import PathPrim
 from xpict.draw.halo import path_polyline_shape
 from xpict.draw.metrics import STROKE_PX
+from xpict.native_bridge import CapsuleInk, Shape
 
 
 def polyline_d(pts: Sequence[tuple[float, float]], *, closed: bool = False) -> str:
@@ -99,15 +97,13 @@ def shift_path_d(d: str, dx: float, dy: float) -> str:
     return " ".join(out)
 
 
-def ink_from_path_prim(p: PathPrim) -> BaseGeometry | None:
+def ink_from_path_prim(p: PathPrim) -> Shape | CapsuleInk | None:
     """Approximate a stroked/filled PathPrim as ink for haloing."""
     pts = path_coords(p.d)
     if not pts:
         return None
     if p.fill not in (None, "none") and len(pts) >= 3:
-        poly = Polygon(pts)
-        if not poly.is_valid:
-            poly = poly.buffer(0)
+        poly = Shape.from_ring(pts)
         return None if poly.is_empty else poly
     radius = max(p.stroke_width, STROKE_PX) * 0.5
     return path_polyline_shape(pts, radius)

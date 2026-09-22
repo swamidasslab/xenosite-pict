@@ -12,15 +12,13 @@ Python (PyO3) and JS (WASM) share one implementation.
 | `plotdot` | Concentric shade disks (xenopict) | `draw/plotdot.py` |
 | `bonds` | Multi-bond offset helpers | `draw/bonds.py` (partial) |
 | `elk` | Multi-mol diagram placement (elkrs) | `diagram/elk.py` |
-| `geom` *(stub)* | Buffer / union / counters (Shapely) | `draw/halo.py`, `glyphs.py` |
+| `geom` | Buffer / union / counters (`i_overlay` Shape) | `draw/halo.py`, `glyphs.py` |
 | `font` *(stub)* | Liberation outlines + advances | `draw/font_face.py`, `glyphs.py` |
 | `rings` *(stub)* | SSSR helpers, interior normals | `draw/rings.py` |
 
 **Not** in this crate (yet or ever as invent-your-own): chem layout backends
 (Indigo/RDKit wrappers) or PictSpec JSON parsing — those stay at the language
-edges. **ELK** is an exception: diagram graph layout is pure geometry, so it
-lives here via **`elkrs`** (feature `elk`, default on) and drops Python’s
-jsrun+elkjs dependency.
+edges. **ELK** (`elkrs`) and **geom** (`i_overlay` Shape) are in-core features.
 
 ## Migration rule
 
@@ -52,8 +50,8 @@ cargo clippy -p xpict-core -- -D warnings
 See [`docs/bindings.md`](../../docs/bindings.md). Keep both binding crates in sync when
 adding exports.
 
-**Priority:** finish `geom` (Shapely stand-in) and `font` (Liberation outlines) in
-this crate so Python can drop those deps and JS does not reimplement them.
+**Priority:** `font` (Liberation outlines) next so Python can drop fontTools
+and JS shares the same labels.
 
 **Not in this crate:** RDKit or any chem engine. Python/JS call RDKit themselves
 for alignment; Rust only gets numeric maps/coordinates.

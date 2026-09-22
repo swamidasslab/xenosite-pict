@@ -1,13 +1,14 @@
 //! PyO3 extension module `xpict._native`.
 //!
-//! Template: add `#[pyfunction]` wrappers here, keep logic in `xpict-core`.
+//! Keep algorithm logic in `xpict-core`; this file is the Python surface.
 
 #![forbid(unsafe_code)]
 
+use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 use pyo3::types::PyModule;
 use xpict_core::bonds;
-use xpict_core::geom;
+use xpict_core::geom::{self, Shape as CoreShape};
 use xpict_core::metrics;
 use xpict_core::plotdot::PlotDot;
 
@@ -65,7 +66,141 @@ fn disk_halo_path_d(cx: f64, cy: f64, ink_radius: f64, grow: f64) -> Option<Stri
 /// Lay out an ELK JSON graph; returns laid-out JSON (native elkrs).
 #[pyfunction]
 fn elk_layout_json(graph_json: &str) -> PyResult<String> {
-    xpict_core::elk_layout_json(graph_json).map_err(pyo3::exceptions::PyRuntimeError::new_err)
+    xpict_core::elk_layout_json(graph_json).map_err(PyRuntimeError::new_err)
+}
+
+/// Multipolygon geometry (Shapely stand-in).
+#[pyclass(name = "Shape")]
+#[derive(Clone)]
+struct PyShape {
+    inner: CoreShape,
+}
+
+impl PyShape {
+    fn wrap(inner: CoreShape) -> Self {
+        Self { inner }
+    }
+}
+
+#[pymethods]
+impl PyShape {
+    #[staticmethod]
+    fn empty() -> Self {
+        Self::wrap(CoreShape::empty())
+    }
+
+    #[staticmethod]
+    fn from_ring(ring: Vec<(f64, f64)>) -> Self {
+        Self::wrap(CoreShape::from_ring(&ring))
+    }
+
+    #[staticmethod]
+    fn from_contours_evenodd(contours: Vec<Vec<(f64, f64)>>) -> Self {
+        Self::wrap(CoreShape::from_contours_evenodd(&contours))
+    }
+
+    #[staticmethod]
+    #[pyo3(signature = (cx, cy, radius, quad_segs=12))]
+    fn disk(cx: f64, cy: f64, radius: f64, quad_segs: u32) -> Self {
+        Self::wrap(CoreShape::disk(cx, cy, radius, quad_segs))
+    }
+
+    #[staticmethod]
+    fn capsule(x1: f64, y1: f64, x2: f64, y2: f64, radius: f64) -> Self {
+        Self::wrap(CoreShape::capsule(x1, y1, x2, y2, radius))
+    }
+
+    #[staticmethod]
+    fn polyline_buffer(pts: Vec<(f64, f64)>, radius: f64) -> Self {
+        Self::wrap(CoreShape::polyline_buffer(&pts, radius))
+    }
+
+    #[staticmethod]
+    fn multipoint_buffer(pts: Vec<(f64, f64)>, radius: f64) -> Self {
+        Self::wrap(CoreShape::multipoint_buffer(&pts, radius))
+    }
+
+    #[staticmethod]
+    fn annular(cx: f64, cy: f64, r: f64, stroke_width: f64) -> Self {
+        Self::wrap(CoreShape::annular(cx, cy, r, stroke_width))
+    }
+
+    #[getter]
+    fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
+
+    #[getter]
+    fn area(&self) -> f64 {
+        self.inner.area()
+    }
+
+    #[getter]
+    fn bounds(&self) -> Option<(f64, f64, f64, f64)> {
+        self.inner.bounds()
+    }
+
+    #[getter]
+    fn centroid(&self) -> Option<(f64, f64)> {
+        self.inner.centroid()
+    }
+
+    #[getter]
+    fn has_holes(&self) -> bool {
+        self.inner.has_holes()
+    }
+
+    fn buffer(&self, dist: f64) -> Self {
+        Self::wrap(self.inner.buffer(dist))
+    }
+
+    fn halo(&self, dist: f64) -> Self {
+        Self::wrap(self.inner.halo(dist))
+    }
+
+    fn union(&self, other: &Self) -> Self {
+        Self::wrap(self.inner.union(&other.inner))
+    }
+
+    fn difference(&self, other: &Self) -> Self {
+        Self::wrap(self.inner.difference(&other.inner))
+    }
+
+    fn xor(&self, other: &Self) -> Self {
+        Self::wrap(self.inner.xor(&other.inner))
+    }
+
+    fn translate(&self, dx: f64, dy: f64) -> Self {
+        Self::wrap(self.inner.translate(dx, dy))
+    }
+
+    #[pyo3(signature = (sx, sy, ox=0.0, oy=0.0))]
+    fn scale(&self, sx: f64, sy: f64, ox: f64, oy: f64) -> Self {
+        Self::wrap(self.inner.scale(sx, sy, ox, oy))
+    }
+
+    fn contains(&self, x: f64, y: f64) -> bool {
+        self.inner.contains(x, y)
+    }
+
+    fn to_svg_d(&self) -> String {
+        self.inner.to_svg_d()
+    }
+
+    fn horizontal_span_at(&self, y: f64) -> f64 {
+        self.inner.horizontal_span_at(y)
+    }
+
+    /// List of `(exterior, holes)` rings for introspection / annotate.
+    fn polygons(
+        &self,
+    ) -> Vec<(Vec<(f64, f64)>, Vec<Vec<(f64, f64)>>)> {
+        self.inner.polygons_rings()
+    }
+
+    fn __bool__(&self) -> bool {
+        !self.inner.is_empty()
+    }
 }
 
 #[pymodule]
@@ -77,11 +212,13 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(capsule_halo_path_d, m)?)?;
     m.add_function(wrap_pyfunction!(disk_halo_path_d, m)?)?;
     m.add_function(wrap_pyfunction!(elk_layout_json, m)?)?;
+    m.add_class::<PyShape>()?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     m.add("BOND_PX", metrics::BOND_PX)?;
     m.add("OFFSET_PX", metrics::OFFSET_PX)?;
     m.add("STROKE_PX", metrics::STROKE_PX)?;
     m.add("SHADE_FRAC", metrics::SHADE_FRAC)?;
     m.add("HAS_ELK", true)?;
+    m.add("HAS_GEOM", true)?;
     Ok(())
 }
