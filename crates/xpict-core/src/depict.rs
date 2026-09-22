@@ -558,7 +558,7 @@ fn paint_marks(
         });
     }
 
-    // Mark ink (xenopict mark group: fill none, stroke-width scale*0.1, opacity 0.7).
+    // Mark ink (xenopict mark group: fill none, stroke = bond ink, opacity 0.7).
     for &ai in &mol.mark_atoms {
         let Some(&i) = by_index.get(&ai) else {
             continue;
@@ -943,8 +943,8 @@ mod tests {
         let (r, sw, op, stroke) = atom.expect("atom mark");
         assert!((r - BOND_PX).abs() < 1e-9, "mark radius = scale");
         assert!(
-            (sw - BOND_PX * 0.1).abs() < 1e-9,
-            "mark stroke = scale*0.1, got {sw}"
+            (sw - STROKE_PX).abs() < 1e-9,
+            "mark stroke tracks bond ink, got {sw}"
         );
         assert!((op - 0.7).abs() < 1e-9);
         assert_eq!(
@@ -975,7 +975,7 @@ mod tests {
                 opacity,
                 class: Some(c),
                 ..
-            } => c.contains("mark-halo") && s == "#555" && (*stroke_width - BOND_PX * 0.2).abs() < 1e-9 && (*opacity - 0.45).abs() < 1e-9,
+            } => c.contains("mark-halo") && s == "#555" && (*stroke_width - 2.0 * STROKE_PX).abs() < 1e-9 && (*opacity - 0.45).abs() < 1e-9,
             _ => false,
         });
         assert!(halo, "expected #555 mark halo underlay");
@@ -990,7 +990,7 @@ mod tests {
                 c.contains("bond-mark")
                     && !c.contains("halo")
                     && d.contains('Z')
-                    && (*stroke_width - BOND_PX * 0.1).abs() < 1e-9
+                    && (*stroke_width - STROKE_PX).abs() < 1e-9
                     && (*opacity - 0.7).abs() < 1e-9
             }
             _ => false,

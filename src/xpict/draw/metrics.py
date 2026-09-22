@@ -65,10 +65,11 @@ TITLE_CLEARANCE_FRAC = 0.08  # mol ink → title typo top (a touch more than LAB
 COLLISION_CELL_PX = 4.0  # coarse occupancy stamp for title packing
 SHADE_FRAC = 0.90  # xenopict shade(): scale * 0.9
 MARK_FRAC = 1.0  # xenopict mark_atoms radius = scale * mark_down_scale
-# xenopict mark layer style: stroke-width scale*0.1, opacity 0.7;
-# mark halo (<use>): stroke #555, scale*0.2, opacity 0.45.
-MARK_STROKE_FRAC = 0.1
-MARK_HALO_STROKE_FRAC = 0.2
+# Mark stroke tracks bond ink (xenopict: both were scale*0.1). Halo is 2× ink
+# (xenopict: scale*0.2). Absolute 0.1/0.2 looked far too heavy once bonds
+# tracked the Liberation stem (~0.042×bond).
+MARK_STROKE_FRAC = STROKE_FRAC
+MARK_HALO_STROKE_FRAC = 2 * STROKE_FRAC
 MARK_OPACITY = 0.7
 MARK_HALO_OPACITY = 0.45
 MARK_HALO_COLOR = "#555"

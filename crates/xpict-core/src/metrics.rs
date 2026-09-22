@@ -35,10 +35,10 @@ pub const HALO_FRAC: f64 = 2.0 * STROKE_FRAC;
 pub const LABEL_GAP_FRAC: f64 = 0.05;
 pub const SHADE_FRAC: f64 = 0.90;
 pub const MARK_FRAC: f64 = 1.0;
-/// xenopict mark layer: `stroke-width: scale * 0.1`, opacity 0.7.
-pub const MARK_STROKE_FRAC: f64 = 0.1;
-/// xenopict mark halo (`<use>`): `stroke-width: scale * 0.2`, opacity 0.45.
-pub const MARK_HALO_STROKE_FRAC: f64 = 0.2;
+/// Mark ink stroke tracks bond ink (xenopict: both were ``scale * 0.1``).
+pub const MARK_STROKE_FRAC: f64 = STROKE_FRAC;
+/// Mark halo is 2× mark ink (xenopict: ``scale * 0.2`` = 2× mark stroke).
+pub const MARK_HALO_STROKE_FRAC: f64 = 2.0 * STROKE_FRAC;
 pub const MARK_OPACITY: f64 = 0.7;
 pub const MARK_HALO_OPACITY: f64 = 0.45;
 /// xenopict mark ink (default lines stroke); never follows molecule color.
