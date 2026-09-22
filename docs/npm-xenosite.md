@@ -62,34 +62,24 @@ Locally, use a PAT with `read:packages` as `NPM_TOKEN` / `NODE_AUTH_TOKEN`.
 
 ## App usage
 
-Tiny API — RDKit is loaded and initialized for you (npm module in **Node /
-bundlers**, auto `<script>` inject in the **browser**). Present a template
-mol, then `draw`; alignment uses RDKit under the hood. Atom coords are in
-the same SCALE / viewBox space as the SVG ink.
-
 ```ts
-import { init, presentTemplate, draw } from "@swamidasslab/xpict";
+import { xpict } from "@swamidasslab/xpict";
 
-await init(); // Node: pass { wasm: bytes } if fetch isn't available
-presentTemplate("c1ccccc1");
+await xpict.init(); // Node: pass { wasm: bytes } if fetch isn't available
 
-const { svg, atoms, width, height, imgDataUri } = await draw("Cc1ccccc1", {
+const mol = xpict.mol("c1ccccc1");
+const rendered = await xpict.render(mol);
+rendered.svg;
+rendered.svg_coords; // match ink
+rendered.coords;     // SCALE, pre-pad
+
+const aligned = await xpict.render(xpict.mol("Cc1ccccc1"), {
+  align_to: mol, // or align_to: rendered
   mark_atoms: [0],
 });
-// atoms[i].{x,y} match SVG positions (pad-translated viewBox / SCALE units)
 ```
 
-Works server-side (Node) the same way — no DOM required.
+`mol` / `rendered` both carry `frame_molblock` for alignment. RDKit is hidden.
+Works server-side (Node) the same way.
 
-Low-level paint (coords already in hand):
-
-```ts
-import { initNative, depictMolecule, sceneToSvg } from "@swamidasslab/xpict";
-
-await initNative();
-const scene = JSON.parse(depictMolecule(JSON.stringify(moleculeIn)));
-const svg = sceneToSvg(scene);
-```
-
-Brand name `@xenosite/xpict` can be an npmjs publish later; GitHub Packages
-requires the `@swamidasslab` scope.
+Low-level wasm: `import { … } from "@swamidasslab/xpict/native"`.

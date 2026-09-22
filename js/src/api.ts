@@ -1,12 +1,20 @@
 /**
- * Tiny high-level browser/Node API for xenosite.
+ * MVP public surface for xenosite: plain JSON shapes + ``xpict`` namespace.
+ * RDKit stays hidden (auto script in browser / npm on Node).
  *
- * Hides RDKit + wasm: one {@link init}, present a {@link presentTemplate
- * template mol}, then {@link draw} / {@link layout} / {@link depict}.
- * Alignment is RDKit `generate_aligned_coords` under the hood.
+ * ```ts
+ * import { xpict } from "@swamidasslab/xpict";
  *
- * Works in the browser (auto ``<script>`` inject) and on the server (Node
- * loads ``@rdkit/rdkit`` from npm — no DOM required).
+ * await xpict.init();
+ * const mol = xpict.mol("CCCC");
+ * const rendered = await xpict.render(mol);
+ * rendered.svg;
+ * rendered.svg_coords;
+ * rendered.coords;
+ *
+ * const aligned = await xpict.render(xpict.mol("CCCO"), { align_to: mol });
+ * // or: { align_to: rendered }
+ * ```
  */
 
 import {
@@ -28,51 +36,60 @@ import {
 import { atomsInSvgFrame, type SvgAtom, type SvgBond } from "./frame.js";
 import { sceneToImgDataUri, sceneToSvg, type Scene } from "./draw/scene-svg.js";
 
-export type { MoleculeIn } from "./layout/rdkit-layout.js";
 export type { SvgAtom, SvgBond } from "./frame.js";
-export type { Scene } from "./draw/scene-svg.js";
-export { SCALE } from "./layout/rdkit-layout.js";
-export { sceneToSvg, sceneToImgDataUri } from "./draw/scene-svg.js";
 
 export type InitOptions = RdkitLoadOptions & {
   /** Pass-through for xpict-core.wasm (Node usually needs bytes). */
   wasm?: InitInput | { module_or_path: InitInput | Promise<InitInput> };
 };
 
-export type DepictOptions = {
-  /** Override the presented template for this call only. `null` skips align. */
-  template?: string | null;
+/** Input molecule — SMILES/molfile plus optional cached alignment frame. */
+export type Mol = {
+  source: string;
+  /**
+   * Coord-bearing molblock for the home frame.
+   * Filled on first render; carried for ``align_to``.
+   */
+  frame_molblock?: string;
+};
+
+/**
+ * Rendered depiction — SVG + coords. Also an ``align_to`` target via
+ * ``frame_molblock``.
+ */
+export type Rendered = {
+  svg: string;
+  img_data_uri: string;
+  width: number;
+  height: number;
+  /** ViewBox / SCALE positions — match SVG ink. */
+  svg_coords: SvgAtom[];
+  /** SCALE layout (mean bond ≈ 20), before viewBox pad. */
+  coords: SvgAtom[];
+  bonds: SvgBond[];
+  scene: Scene;
+  molecule: MoleculeIn;
+  source: string;
+  /** Pose molblock — for ``align_to: rendered``. */
+  frame_molblock: string;
+  mol?: Mol;
+};
+
+export type AlignTarget = Mol | Rendered;
+
+export type MolRenderOptions = {
   id?: string;
   color?: string;
   atom_shade?: number[];
   bond_shade?: number[];
   mark_atoms?: number[];
   mark_bonds?: Array<[number, number]>;
+  align_to?: AlignTarget;
 };
 
-/** Result of {@link draw}: SVG plus atom coords in the same viewBox space. */
-export type DrawResult = {
-  svg: string;
-  /** data-URI for ``<img src>`` (xenosite pattern). */
-  imgDataUri: string;
-  width: number;
-  height: number;
-  /** Atom centers in SVG viewBox / SCALE units — match ink positions. */
-  atoms: SvgAtom[];
-  bonds: SvgBond[];
-  scene: Scene;
-  /** Pre-pad MoleculeIn (aligned, SCALE bond length). */
-  molecule: MoleculeIn;
-};
-
-/** Author-facing template source (SMILES / molfile). */
-let templateSource: string | null = null;
-/** Coord-bearing molblock — stable frame for every align. */
-let templateMolblock: string | null = null;
 let initPromise: Promise<void> | null = null;
 
-/** Load RDKit (script or npm) + xpict wasm. Idempotent. Browser + Node. */
-export async function init(opts: InitOptions = {}): Promise<void> {
+async function init(opts: InitOptions = {}): Promise<void> {
   if (isNativeReady() && isRdkitReady()) return;
   if (!initPromise) {
     initPromise = (async () => {
@@ -91,80 +108,36 @@ export async function init(opts: InitOptions = {}): Promise<void> {
   await initPromise;
 }
 
-/**
- * Present the template mol everything else aligns to (SMILES or molfile).
- * Coords are materialized once so later molecules share one frame.
- */
-export function presentTemplate(source: string): void {
-  const text = source.trim();
-  if (!text) throw new Error("presentTemplate requires a non-empty SMILES or molfile");
-  templateSource = text;
-  templateMolblock = null;
+function mol(smilesOrMolfile: string): Mol {
+  const text = smilesOrMolfile.trim();
+  if (!text) throw new Error("mol() requires a non-empty SMILES or molfile");
+  return { source: text };
 }
 
-/** Clear the presented template (later layouts depict independently). */
-export function clearTemplate(): void {
-  templateSource = null;
-  templateMolblock = null;
+function isRendered(value: AlignTarget): value is Rendered {
+  return typeof (value as Rendered).svg === "string" && "frame_molblock" in value;
 }
 
-/** Currently presented template source, or `null`. */
-export function currentTemplate(): string | null {
-  return templateSource;
-}
-
-async function presentedTemplateMolblock(): Promise<string | null> {
-  if (!templateSource) return null;
-  if (!templateMolblock) {
-    await init();
-    templateMolblock = await materializeTemplateMolblock(templateSource);
-  }
-  return templateMolblock;
-}
-
-async function resolveTemplate(
-  override?: string | null
-): Promise<string | null | undefined> {
-  if (override === undefined) return presentedTemplateMolblock();
-  if (override === null) return null;
-  return materializeTemplateMolblock(override);
-}
-
-/** RDKit 2D layout; aligns onto the presented (or passed) template when set. */
-export async function layout(
-  source: string,
-  opts: { template?: string | null; id?: string } = {}
-): Promise<MoleculeIn> {
+async function ensureFrame(target: AlignTarget): Promise<string> {
   await init();
-  const template = await resolveTemplate(opts.template);
-  return layoutWithRdkit(source, { template, id: opts.id });
-}
-
-/** Layout the presented template itself (or `source` if given). */
-export async function layoutPresentedTemplate(
-  source?: string,
-  opts: { id?: string } = {}
-): Promise<MoleculeIn> {
-  await init();
-  if (source) {
-    presentTemplate(source);
+  if (isRendered(target)) {
+    if (!target.frame_molblock) {
+      throw new Error("Rendered is missing frame_molblock");
+    }
+    return target.frame_molblock;
   }
-  const mb = await presentedTemplateMolblock();
-  if (!mb) throw new Error("no template presented — call presentTemplate() first");
-  return layoutWithRdkit(mb, { id: opts.id, template: null });
+  if (!target.frame_molblock) {
+    target.frame_molblock = await materializeTemplateMolblock(target.source);
+  }
+  return target.frame_molblock;
 }
 
-function isMoleculeIn(value: unknown): value is MoleculeIn {
-  return (
-    !!value &&
-    typeof value === "object" &&
-    Array.isArray((value as MoleculeIn).atoms) &&
-    Array.isArray((value as MoleculeIn).bonds)
-  );
-}
-
-function applyDepictOpts(mol: MoleculeIn, opts: DepictOptions): MoleculeIn {
-  const out: MoleculeIn = { ...mol, atoms: [...mol.atoms], bonds: [...mol.bonds] };
+function applyOpts(molecule: MoleculeIn, opts: MolRenderOptions): MoleculeIn {
+  const out: MoleculeIn = {
+    ...molecule,
+    atoms: [...molecule.atoms],
+    bonds: [...molecule.bonds],
+  };
   if (opts.id !== undefined) out.id = opts.id;
   if (opts.color !== undefined) out.color = opts.color;
   if (opts.atom_shade !== undefined) out.atom_shade = opts.atom_shade;
@@ -174,52 +147,76 @@ function applyDepictOpts(mol: MoleculeIn, opts: DepictOptions): MoleculeIn {
   return out;
 }
 
-async function resolveMolecule(
-  source: string | MoleculeIn,
-  opts: DepictOptions
-): Promise<MoleculeIn> {
-  if (isMoleculeIn(source)) {
-    return applyDepictOpts(source, opts);
+function toCoordList(
+  atoms: Array<{
+    index: number;
+    element: string;
+    x: number;
+    y: number;
+    label?: string;
+    charge?: number;
+  }>
+): SvgAtom[] {
+  return atoms.map((a) => ({
+    index: a.index,
+    element: a.element,
+    x: a.x,
+    y: a.y,
+    ...(a.label ? { label: a.label } : {}),
+    ...(a.charge ? { charge: a.charge } : {}),
+  }));
+}
+
+async function render(
+  input: Mol | string,
+  opts: MolRenderOptions = {}
+): Promise<Rendered> {
+  await init();
+  const m: Mol = typeof input === "string" ? mol(input) : input;
+
+  let laid: MoleculeIn;
+  let poseMolblock: string;
+  if (opts.align_to) {
+    const template = await ensureFrame(opts.align_to);
+    const result = await layoutWithRdkit(m.source, {
+      template,
+      id: opts.id,
+    });
+    laid = result.molecule;
+    poseMolblock = result.molblock;
+  } else {
+    const home = await ensureFrame(m);
+    const result = await layoutWithRdkit(home, { id: opts.id, template: null });
+    laid = result.molecule;
+    poseMolblock = result.molblock;
+    if (!m.frame_molblock) m.frame_molblock = poseMolblock;
   }
-  const laid = await layout(source, { template: opts.template, id: opts.id });
-  return applyDepictOpts(laid, opts);
-}
 
-/**
- * Layout (optional template align) + `depictMolecule` → Scene JSON.
- * Prefer {@link draw} when you need SVG + matching atom coords.
- */
-export async function depict(
-  source: string | MoleculeIn,
-  opts: DepictOptions = {}
-): Promise<string> {
-  await init();
-  const mol = await resolveMolecule(source, opts);
-  return depictMolecule(JSON.stringify(mol));
-}
-
-/**
- * High-level draw: SVG + atom/bond coords in the **same** SCALE / viewBox
- * space as the SVG ink (pad-translated to match ``depict_molecule``).
- */
-export async function draw(
-  source: string | MoleculeIn,
-  opts: DepictOptions = {}
-): Promise<DrawResult> {
-  await init();
-  const molecule = await resolveMolecule(source, opts);
+  const molecule = applyOpts(laid, opts);
   const sceneJson = depictMolecule(JSON.stringify(molecule));
   const scene = JSON.parse(sceneJson) as Scene;
   const framed = atomsInSvgFrame(molecule);
   const svg = sceneToSvg(scene);
+
   return {
     svg,
-    imgDataUri: sceneToImgDataUri(scene),
+    img_data_uri: sceneToImgDataUri(scene),
     width: scene.width,
     height: scene.height,
-    atoms: framed.atoms,
+    svg_coords: framed.atoms,
+    coords: toCoordList(molecule.atoms),
     bonds: framed.bonds,
     scene,
     molecule,
+    source: m.source,
+    frame_molblock: poseMolblock,
+    mol: m,
   };
 }
+
+/** Public lib namespace — MVP surface for xenosite. */
+export const xpict = {
+  init,
+  mol,
+  render,
+} as const;

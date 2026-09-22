@@ -191,6 +191,12 @@ function ensureCoords(mol: RdkitMol): void {
   // Molfile / cached templates already carry coords — leave the frame alone.
 }
 
+export type LayoutResult = {
+  molecule: MoleculeIn;
+  /** Coord-bearing molblock of the laid-out mol — pack into Rendered for align_to. */
+  molblock: string;
+};
+
 /**
  * Layout `source` (SMILES / molfile). When `template` is set, RDKit aligns
  * onto that frame via `generate_aligned_coords`.
@@ -198,7 +204,7 @@ function ensureCoords(mol: RdkitMol): void {
 export async function layoutWithRdkit(
   source: string,
   opts: { template?: string | null; id?: string } = {}
-): Promise<MoleculeIn> {
+): Promise<LayoutResult> {
   const rdkit = await ensureRdkit();
   const mol = getMol(rdkit, source);
   let templateMol: RdkitMol | null = null;
@@ -208,21 +214,28 @@ export async function layoutWithRdkit(
       ensureCoords(templateMol);
       const aligned = mol.generate_aligned_coords(templateMol, ALIGN_OPTS);
       if (!aligned) {
-        // Align declined — independent depiction (own scale).
         ensureCoords(mol);
-        return toMoleculeIn(mol, { id: opts.id });
+        return {
+          molecule: toMoleculeIn(mol, { id: opts.id }),
+          molblock: mol.get_molblock(),
+        };
       }
-      // Shared scale + Y-flip from the template so the core stays fixed.
       const tmplJson = JSON.parse(templateMol.get_json()) as RdkitMolJson;
       const tmplBonds = tmplJson.molecules[0]?.bonds ?? [];
       const tmplCoords = parseCoords(templateMol);
       const tmplScale = SCALE / meanBondLength(tmplCoords, tmplBonds);
       let flipMaxY = -Infinity;
       for (const [, y] of tmplCoords) flipMaxY = Math.max(flipMaxY, y);
-      return toMoleculeIn(mol, { id: opts.id, scale: tmplScale, flipMaxY });
+      return {
+        molecule: toMoleculeIn(mol, { id: opts.id, scale: tmplScale, flipMaxY }),
+        molblock: mol.get_molblock(),
+      };
     }
     ensureCoords(mol);
-    return toMoleculeIn(mol, { id: opts.id });
+    return {
+      molecule: toMoleculeIn(mol, { id: opts.id }),
+      molblock: mol.get_molblock(),
+    };
   } finally {
     mol.delete();
     templateMol?.delete();
