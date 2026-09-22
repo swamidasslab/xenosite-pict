@@ -41,7 +41,27 @@ FONT_FRAC = 0.45
 # Outline measurement of the vertical stem (H, I, and the straight stems
 # of P/F/B) is 0.0933 em. Stroke tracks the stem so ink matches letters.
 FONT_STEM_EM = 0.0933
+# Liberation Sans Bold H stem (measured); used when ``bold_labels`` is on.
+FONT_STEM_EM_BOLD = 0.144
 STROKE_FRAC = round(FONT_STEM_EM * FONT_FRAC, 3)  # 0.042 → 0.84 px
+
+
+def label_stem_em(bold_labels: bool = False) -> float:
+    return FONT_STEM_EM_BOLD if bold_labels else FONT_STEM_EM
+
+
+def stroke_frac_from_stem(stem_em: float) -> float:
+    return round(stem_em * FONT_FRAC, 3)
+
+
+def stroke_px_from_stem(stem_em: float) -> float:
+    return stroke_frac_from_stem(stem_em) * BOND_PX
+
+
+def halo_stroke_from_stroke(stroke_px: float) -> float:
+    return 2.0 * stroke_px
+
+
 OFFSET_FRAC = 0.15  # RDKit multipleBondOffset (xenopict keeps this)
 # Parallel spacing uses OFFSET_PX even after label insets shorten the stroke;
 # see ``bonds.multi_bond_offset``.

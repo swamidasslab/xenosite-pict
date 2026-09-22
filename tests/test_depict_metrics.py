@@ -97,6 +97,20 @@ def test_stroke_matches_label_stem():
     assert strokes.skeleton.stroke_width == pytest.approx(stem, abs=0.01)
 
 
+def test_bold_stem_thickens_stroke_parametrically():
+    """Bold Liberation stem keys a thicker bond stroke (demo toggle)."""
+    from xpict.draw.metrics import (
+        FONT_STEM_EM_BOLD,
+        halo_stroke_from_stroke,
+        stroke_px_from_stem,
+    )
+
+    bold_px = stroke_px_from_stem(FONT_STEM_EM_BOLD)
+    assert bold_px == pytest.approx(1.3, abs=0.02)
+    assert bold_px > STROKE_PX + 0.3
+    assert halo_stroke_from_stroke(bold_px) == pytest.approx(2 * bold_px)
+
+
 def test_wedge_fat_end_width():
     w = solid_wedge(0, 0, BOND_PX, 0)
     # Fat end is the two points after the tip; full width ≈ WEDGE_WIDTH_FRAC * bond.

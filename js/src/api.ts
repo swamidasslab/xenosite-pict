@@ -79,6 +79,11 @@ export type MolRenderOptions = {
    * ``null`` / ``"*"`` → bare star glyph; other strings (e.g. ``R1``) replace it.
    */
   star_labels?: Array<string | null>;
+  /**
+   * Bold Liberation labels + bond stroke keyed to bold stem thickness.
+   * Default off — toggle for readability / parametric layout stress test.
+   */
+  bold_labels?: boolean;
   align_to?: AlignTarget;
 };
 
@@ -171,6 +176,7 @@ function applyOpts(molecule: MoleculeIn, opts: MolRenderOptions): MoleculeIn {
   if (opts.bond_shade !== undefined) out.bond_shade = opts.bond_shade;
   if (opts.mark_atoms !== undefined) out.mark_atoms = opts.mark_atoms;
   if (opts.mark_bonds !== undefined) out.mark_bonds = opts.mark_bonds;
+  if (opts.bold_labels !== undefined) out.bold_labels = opts.bold_labels;
   out = applyStarLabels(out, opts.star_labels);
   return out;
 }

@@ -16,7 +16,7 @@ use std::sync::{Mutex, OnceLock};
 use ttf_parser::{Face, GlyphId, OutlineBuilder, Rect};
 
 use crate::geom::Shape;
-use crate::metrics::{FONT_STEM_EM, SCRIPT_SCALE, STAR_FRAC};
+use crate::metrics::{SCRIPT_SCALE, STAR_FRAC};
 
 const BEZIER_STEPS: usize = 8;
 
@@ -343,7 +343,8 @@ fn outline_glyph_em_uncached(
             // Scale about the glyph origin; advance tracks the smaller width.
             let scaled = shape.scale(SCRIPT_SCALE, SCRIPT_SCALE, 0.0, 0.0);
             // Inflate so 0.66× glyphs keep roughly full stem weight.
-            let grow = 0.5 * (1.0 - SCRIPT_SCALE) * FONT_STEM_EM * upem;
+            let stem = face_metrics(style).stem_em;
+            let grow = 0.5 * (1.0 - SCRIPT_SCALE) * stem * upem;
             let thick = if grow > 0.05 {
                 scaled.buffer(grow)
             } else {

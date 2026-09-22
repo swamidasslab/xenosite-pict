@@ -218,6 +218,18 @@ pub fn hashed_wedge(
     half: Option<f64>,
     n: Option<usize>,
 ) -> Vec<StrokePath> {
+    hashed_wedge_sw(x1, y1, x2, y2, half, n, STROKE_PX)
+}
+
+fn hashed_wedge_sw(
+    x1: f64,
+    y1: f64,
+    x2: f64,
+    y2: f64,
+    half: Option<f64>,
+    n: Option<usize>,
+    stroke_width: f64,
+) -> Vec<StrokePath> {
     let half = half.unwrap_or(WEDGE_HALF_PX);
     let (ux, uy, nx, ny, length) = unit(x1, y1, x2, y2);
     let count = n.unwrap_or_else(|| hash_count(length));
@@ -233,7 +245,7 @@ pub fn hashed_wedge(
             cx - nx * w,
             cy - ny * w,
             "bond bond-wedge-down",
-            STROKE_PX,
+            stroke_width,
         ));
     }
     paths
@@ -247,6 +259,18 @@ pub fn wavy_bond(
     y2: f64,
     amp: Option<f64>,
     waves: usize,
+) -> StrokePath {
+    wavy_bond_sw(x1, y1, x2, y2, amp, waves, STROKE_PX)
+}
+
+fn wavy_bond_sw(
+    x1: f64,
+    y1: f64,
+    x2: f64,
+    y2: f64,
+    amp: Option<f64>,
+    waves: usize,
+    stroke_width: f64,
 ) -> StrokePath {
     let (ux, uy, nx, ny, length) = unit(x1, y1, x2, y2);
     let amp = amp.unwrap_or(0.055 * BOND_PX);
@@ -263,7 +287,7 @@ pub fn wavy_bond(
         d: parts.join(" "),
         stroke: "#111".into(),
         fill: Some("none".into()),
-        stroke_width: STROKE_PX,
+        stroke_width,
         stroke_linecap: Some("round".into()),
         class: "bond bond-either".into(),
     }
@@ -282,6 +306,17 @@ pub fn crossed_double(
     y2: f64,
     interior: Option<(f64, f64)>,
 ) -> Vec<StrokePath> {
+    crossed_double_sw(x1, y1, x2, y2, interior, STROKE_PX)
+}
+
+fn crossed_double_sw(
+    x1: f64,
+    y1: f64,
+    x2: f64,
+    y2: f64,
+    interior: Option<(f64, f64)>,
+    stroke_width: f64,
+) -> Vec<StrokePath> {
     let (_ux, _uy, lx, ly, length) = unit(x1, y1, x2, y2);
     let (nx, ny) = interior.unwrap_or((lx, ly));
     let off = multi_bond_offset(length);
@@ -296,9 +331,9 @@ pub fn crossed_double(
     let b2x = sx2 - nx * off;
     let b2y = sy2 - ny * off;
     vec![
-        line_path(x1, y1, x2, y2, "bond bond-skeleton", STROKE_PX),
-        line_path(a1x, a1y, b2x, b2y, "bond bond-either-cross", STROKE_PX),
-        line_path(b1x, b1y, a2x, a2y, "bond bond-either-cross", STROKE_PX),
+        line_path(x1, y1, x2, y2, "bond bond-skeleton", stroke_width),
+        line_path(a1x, a1y, b2x, b2y, "bond bond-either-cross", stroke_width),
+        line_path(b1x, b1y, a2x, a2y, "bond bond-either-cross", stroke_width),
     ]
 }
 
@@ -623,6 +658,7 @@ fn centered_strokes(
     ny: f64,
     length: f64,
     trims: Option<&EndTrims>,
+    stroke_width: f64,
 ) -> BondStrokes {
     let disps = centered_displacements(order, off);
     let (t1_owned, t2_owned) = match trims {
@@ -648,7 +684,7 @@ fn centered_strokes(
         } else {
             "bond bond-offset"
         };
-        let line = line_path(ax, ay, bx, by, class, STROKE_PX);
+        let line = line_path(ax, ay, bx, by, class, stroke_width);
         if disp.abs() < 1e-9 {
             skeleton = Some(line);
         } else {
@@ -670,6 +706,9 @@ fn centered_strokes(
 ///
 /// `trims` are per-line inset distances at `(x1, y1)` then `(x2, y2)`
 /// for a centered multiple bond (see [`join_centered_multibonds`]).
+///
+/// `stroke_width` defaults to [`STROKE_PX`] when `None` — pass a stem-keyed
+/// width when `bold_labels` thickens ink.
 #[allow(clippy::too_many_arguments)]
 pub fn bond_strokes(
     x1: f64,
@@ -680,7 +719,9 @@ pub fn bond_strokes(
     interior: Option<(f64, f64)>,
     stereo: Option<&str>,
     trims: Option<&EndTrims>,
+    stroke_width: Option<f64>,
 ) -> BondStrokes {
+    let sw = stroke_width.unwrap_or(STROKE_PX);
     let order = depict_order(order);
     let mut stereo = stereo.unwrap_or("none").to_ascii_lowercase();
     if stereo == "none" {
@@ -695,25 +736,25 @@ pub fn bond_strokes(
     }
     if stereo == "down" && order < 1.5 {
         return BondStrokes {
-            stereo: hashed_wedge(x1, y1, x2, y2, None, None),
+            stereo: hashed_wedge_sw(x1, y1, x2, y2, None, None, sw),
             ..Default::default()
         };
     }
     if stereo == "either" && order < 1.5 {
         return BondStrokes {
-            stereo: vec![wavy_bond(x1, y1, x2, y2, None, 5)],
+            stereo: vec![wavy_bond_sw(x1, y1, x2, y2, None, 5, sw)],
             ..Default::default()
         };
     }
     if stereo == "either" && order >= 1.5 {
         return BondStrokes {
-            stereo: crossed_double(x1, y1, x2, y2, interior),
+            stereo: crossed_double_sw(x1, y1, x2, y2, interior, sw),
             ..Default::default()
         };
     }
 
     let (ux, uy, lx, ly, length) = unit(x1, y1, x2, y2);
-    let skeleton = line_path(x1, y1, x2, y2, "bond bond-skeleton", STROKE_PX);
+    let skeleton = line_path(x1, y1, x2, y2, "bond bond-skeleton", sw);
     if order < 1.5 {
         return BondStrokes {
             skeleton: Some(skeleton),
@@ -723,7 +764,9 @@ pub fn bond_strokes(
 
     let off = multi_bond_offset(length);
     let Some(interior) = interior else {
-        return centered_strokes(x1, y1, x2, y2, order, off, ux, uy, lx, ly, length, trims);
+        return centered_strokes(
+            x1, y1, x2, y2, order, off, ux, uy, lx, ly, length, trims, sw,
+        );
     };
 
     let gap = offset_gap(length, false);
@@ -739,7 +782,7 @@ pub fn bond_strokes(
                 sx2 + ox,
                 sy2 + oy,
                 "bond bond-offset",
-                STROKE_PX,
+                sw,
             ));
         }
         return BondStrokes {
@@ -754,7 +797,7 @@ pub fn bond_strokes(
         sx2 + interior.0 * off,
         sy2 + interior.1 * off,
         "bond bond-offset",
-        STROKE_PX,
+        sw,
     ));
     BondStrokes {
         skeleton: Some(skeleton),
@@ -773,7 +816,7 @@ pub fn bond_paths(
     interior: Option<(f64, f64)>,
     stereo: Option<&str>,
 ) -> Vec<StrokePath> {
-    bond_strokes(x1, y1, x2, y2, order, interior, stereo, None)
+    bond_strokes(x1, y1, x2, y2, order, interior, stereo, None, None)
         .paint_order()
         .into_iter()
         .cloned()
@@ -828,7 +871,7 @@ mod tests {
 
     #[test]
     fn skeleton_then_offset_for_double() {
-        let strokes = bond_strokes(0.0, 0.0, 20.0, 0.0, 2.0, None, None, None);
+        let strokes = bond_strokes(0.0, 0.0, 20.0, 0.0, 2.0, None, None, None, None);
         assert!(strokes.skeleton.is_none());
         assert_eq!(strokes.offsets.len(), 2);
         assert!(strokes
@@ -843,7 +886,7 @@ mod tests {
 
     #[test]
     fn triple_has_skeleton_and_two_offsets() {
-        let strokes = bond_strokes(0.0, 0.0, 30.0, 0.0, 3.0, None, None, None);
+        let strokes = bond_strokes(0.0, 0.0, 30.0, 0.0, 3.0, None, None, None, None);
         assert!(strokes.skeleton.is_some());
         assert!(strokes
             .skeleton
@@ -884,21 +927,21 @@ mod tests {
 
     #[test]
     fn stereo_up_replaces_skeleton() {
-        let strokes = bond_strokes(0.0, 0.0, 10.0, 0.0, 1.0, None, Some("up"), None);
+        let strokes = bond_strokes(0.0, 0.0, 10.0, 0.0, 1.0, None, Some("up"), None, None);
         assert!(strokes.skeleton.is_none());
         assert!(strokes.stereo[0].class.contains("wedge-up"));
     }
 
     #[test]
     fn either_single_is_wavy() {
-        let strokes = bond_strokes(0.0, 0.0, 20.0, 0.0, 1.0, None, Some("either"), None);
+        let strokes = bond_strokes(0.0, 0.0, 20.0, 0.0, 1.0, None, Some("either"), None, None);
         assert!(strokes.skeleton.is_none());
         assert!(strokes.stereo[0].class.contains("bond-either"));
     }
 
     #[test]
     fn either_double_is_crossed() {
-        let strokes = bond_strokes(0.0, 0.0, 20.0, 0.0, 2.0, None, Some("either"), None);
+        let strokes = bond_strokes(0.0, 0.0, 20.0, 0.0, 2.0, None, Some("either"), None, None);
         assert!(strokes
             .stereo
             .iter()
@@ -924,6 +967,7 @@ mod tests {
             None,
             None,
             bonds[0].trims.as_ref(),
+            None,
         );
         for path in &strokes.offsets {
             let end = path_pts(&path.d)[0];
@@ -952,7 +996,7 @@ mod tests {
         assert!((bonds[2].y1).abs() < 1e-9);
         let trims = bonds[0].trims.as_ref().expect("trims");
         assert!(trims.0.iter().all(|&t| t < 0.0));
-        let strokes = bond_strokes(0.0, 0.0, 20.0, 0.0, 2.0, None, None, Some(trims));
+        let strokes = bond_strokes(0.0, 0.0, 20.0, 0.0, 2.0, None, None, Some(trims), None);
         for path in &strokes.offsets {
             let (x, y) = path_pts(&path.d)[0];
             let on_upper = on_line(x, y, 0.0, 0.0, -10.0, 8.0);
@@ -980,6 +1024,7 @@ mod tests {
             None,
             None,
             bonds[0].trims.as_ref(),
+            None,
         );
         for path in &strokes.offsets {
             let end = path_pts(&path.d)[1];
@@ -1005,7 +1050,7 @@ mod tests {
         join_centered_multibonds(&mut bonds);
         let trims = bonds[0].trims.as_ref().expect("trims at acute junction");
         assert!(trims.0.iter().all(|&t| t < 0.0));
-        let strokes = bond_strokes(0.0, 0.0, 20.0, 0.0, 2.0, None, None, Some(trims));
+        let strokes = bond_strokes(0.0, 0.0, 20.0, 0.0, 2.0, None, None, Some(trims), None);
         for path in &strokes.offsets {
             let (x, y) = path_pts(&path.d)[0];
             let on_upper = on_line(x, y, 0.0, 0.0, -18.0, 4.0);
@@ -1034,6 +1079,7 @@ mod tests {
             0.0,
             2.0,
             Some((0.0, -1.0)),
+            None,
             None,
             None,
         );

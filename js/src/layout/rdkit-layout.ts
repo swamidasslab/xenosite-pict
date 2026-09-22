@@ -36,6 +36,11 @@ export type MoleculeIn = {
   bond_shade?: number[];
   mark_atoms?: number[];
   mark_bonds?: Array<[number, number]>;
+  /**
+   * When true, atom labels use Bold Liberation and bond stroke width
+   * keys off the bold stem (thicker ink). Demo / stress toggle.
+   */
+  bold_labels?: boolean;
 };
 
 type RdkitAtomJson = {

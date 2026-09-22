@@ -17,6 +17,9 @@ pub const FONT_FRAC: f64 = 0.45;
 /// Liberation Sans Regular vertical stem width in em.
 pub const FONT_STEM_EM: f64 = 0.0933;
 
+/// Liberation Sans Bold vertical stem width in em (measured on H).
+pub const FONT_STEM_EM_BOLD: f64 = 0.144;
+
 /// Bond stroke as a fraction of bond length — tracks the label stem so ink
 /// weight matches letter stems when [`FONT_FRAC`] changes.
 pub const STROKE_FRAC: f64 = 0.042; // FONT_STEM_EM * FONT_FRAC, rounded
@@ -64,6 +67,30 @@ pub const HALO_OPACITY: f64 = 0.5;
 pub const MARK_STROKE_PX: f64 = MARK_STROKE_FRAC * BOND_PX;
 pub const MARK_HALO_STROKE_PX: f64 = MARK_HALO_STROKE_FRAC * BOND_PX;
 
+/// Stem em for the active label weight (`bold_labels` toggle).
+pub fn label_stem_em(bold_labels: bool) -> f64 {
+    if bold_labels {
+        FONT_STEM_EM_BOLD
+    } else {
+        FONT_STEM_EM
+    }
+}
+
+/// Bond stroke fraction from a stem width in em (rounded like [`STROKE_FRAC`]).
+pub fn stroke_frac_from_stem(stem_em: f64) -> f64 {
+    (stem_em * FONT_FRAC * 1000.0).round() / 1000.0
+}
+
+/// Bond stroke in drawing px keyed to a label stem.
+pub fn stroke_px_from_stem(stem_em: f64) -> f64 {
+    stroke_frac_from_stem(stem_em) * BOND_PX
+}
+
+/// Halo stroke width tracks active bond ink (2×, same ratio as [`HALO_FRAC`]).
+pub fn halo_stroke_from_stroke(stroke_px: f64) -> f64 {
+    2.0 * stroke_px
+}
+
 /// Dash count scaling with drawn bond length (hashed wedges).
 pub fn hash_count(length: f64) -> usize {
     let n = (f64::from(HASH_PER_BOND) * length / BOND_PX).round() as i32;
@@ -86,5 +113,14 @@ mod tests {
     fn stroke_tracks_font_stem() {
         let expected = (FONT_STEM_EM * FONT_FRAC * 1000.0).round() / 1000.0;
         assert!((STROKE_FRAC - expected).abs() < 1e-9);
+        assert!((stroke_px_from_stem(FONT_STEM_EM) - STROKE_PX).abs() < 1e-9);
+    }
+
+    #[test]
+    fn bold_stem_thickens_stroke() {
+        let bold = stroke_px_from_stem(FONT_STEM_EM_BOLD);
+        assert!(bold > STROKE_PX + 0.3);
+        assert!((bold - 1.3).abs() < 0.02); // 0.065 × 20
+        assert!((halo_stroke_from_stroke(bold) - 2.0 * bold).abs() < 1e-9);
     }
 }
