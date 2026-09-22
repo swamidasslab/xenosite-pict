@@ -1,7 +1,9 @@
 //! Limited declarative document: list of mols → list of [`Rendered`].
 //!
 //! This is the expandable stub toward full ``PictSpec``. Only fields that the
-//! single-mol client already supports are accepted.
+//! single-mol client already supports are accepted. Alignment is **not**
+//! expressed here — use [`crate::render`] with
+//! [`crate::MolRenderOptions::align_to`] (pose molblock from [`crate::Rendered::frame`]).
 
 use serde::{Deserialize, Serialize};
 
@@ -42,9 +44,6 @@ pub struct MolSpec {
     pub star_labels: Option<Vec<Option<String>>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bold_labels: Option<bool>,
-    /// Index of an **earlier** molecule in this document to align onto.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub align_to: Option<usize>,
 }
 
 impl MolSpec {
@@ -75,21 +74,12 @@ impl MolSpec {
     }
 }
 
-/// Render every molecule in order; ``align_to`` indexes earlier results.
+/// Render every molecule independently (no index-based ``align_to``).
 pub fn depict(spec: &DepictSpec) -> Result<Vec<Rendered>, Error> {
     let mut out: Vec<Rendered> = Vec::with_capacity(spec.molecules.len());
-    for (i, entry) in spec.molecules.iter().enumerate() {
+    for entry in &spec.molecules {
         let structure = entry.structure()?;
         let mut mol = Mol::from_source(structure)?;
-        let align_to = match entry.align_to {
-            Some(idx) if idx >= i => {
-                return Err(Error::Message(format!(
-                    "molecules[{i}].align_to={idx} must refer to an earlier entry"
-                )));
-            }
-            Some(idx) => Some(out[idx].frame_molblock.clone()),
-            None => None,
-        };
         let opts = MolRenderOptions {
             id: entry.id.clone(),
             color: entry.color.clone(),
@@ -99,7 +89,7 @@ pub fn depict(spec: &DepictSpec) -> Result<Vec<Rendered>, Error> {
             mark_bonds: entry.mark_bonds.clone(),
             star_labels: entry.star_labels.clone(),
             bold_labels: entry.bold_labels,
-            align_to,
+            align_to: None,
         };
         out.push(render(&mut mol, opts)?);
     }

@@ -44,19 +44,17 @@ const aligned = await xpict.render(xpict.mol("Cc1ccccc1"), {
   align_to: mol, // or align_to: rendered
 });
 
-// Batch stub (mol list → Rendered[]) — expandable toward full PictSpec
+// Optional batch stub (independent layouts). Align via render + Mol/Rendered.
 const batch = await xpict.depict({
-  molecules: [
-    { smiles: "CCO", mark_atoms: [2] },
-    { smiles: "CCCO", align_to: 0 },
-  ],
+  molecules: [{ smiles: "CCO", mark_atoms: [2] }, { smiles: "CCCO" }],
 });
 ```
 
-Surface: `xpict.mol` / `xpict.render` / `xpict.toSvg` / `xpict.depict`.  
+Surface: `xpict.mol` / `xpict.render` / `xpict.toSvg` (+ optional `depict`).  
 RDKit + wasm init on first render. Works in Node and the browser.
 
 **Supported `render` options today:** `color`, `mark_atoms`, `mark_bonds`,
-`atom_shade`, `bond_shade`, `star_labels`, `bold_labels`, `align_to`, `id`.
+`atom_shade`, `bond_shade`, `star_labels`, `bold_labels`,
+`align_to` (`Mol` | `Rendered`), `id`.
 
 Nested diagrams / ELK / reaction chrome are **not** this package’s public MVP.

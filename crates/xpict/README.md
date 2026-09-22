@@ -23,6 +23,13 @@ fn main() -> Result<(), xpict::Error> {
     })?;
     println!("{}", rendered.to_svg());
 
+    let mut other = mol("CCCO")?;
+    let aligned = other.render(MolRenderOptions {
+        align_to: Some(rendered.frame().to_string()),
+        ..Default::default()
+    })?;
+    println!("{}", aligned.to_svg());
+
     let batch = depict(&DepictSpec {
         molecules: vec![
             MolSpec {
@@ -32,7 +39,6 @@ fn main() -> Result<(), xpict::Error> {
             },
             MolSpec {
                 smiles: Some("CCCO".into()),
-                align_to: Some(0),
                 ..Default::default()
             },
         ],

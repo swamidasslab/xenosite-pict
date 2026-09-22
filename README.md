@@ -67,21 +67,25 @@ under ``xpict.future`` / ``schema/future/`` for design review (`PictSpec`).
 
 ### Batch stub (expandable seam)
 
-A thin declarative document that only knows **lists of mols** with the options
-above, and returns a **language-level list of `Rendered`**:
+A thin declarative document that only knows **lists of mols** with the paint
+options above (no alignment indices), and returns a **language-level list of
+`Rendered`**:
 
 ```ts
 const results = await xpict.depict({
   molecules: [
     { smiles: "CCO", mark_atoms: [2] },
-    { smiles: "CCCO", align_to: 0 }, // index into earlier entries
+    { smiles: "CCCO" },
   ],
 });
 // results: Rendered[]
 ```
 
-Same shape in Rust (`xpict::depict`) and documented for Python. This is the
-stub to grow toward full `PictSpec` without blocking shipping.
+Alignment stays on the client API: `render(mol, { align_to: otherMol })` (JS),
+`align_to=rendered` (Python client), or a pose molblock (Rust). Same batch
+shape in Rust (`xpict::depict`); Python still uses the document `render` path
+until the Mol client lands. This stub grows toward full `PictSpec` without
+blocking shipping.
 
 ## Docs & demo
 

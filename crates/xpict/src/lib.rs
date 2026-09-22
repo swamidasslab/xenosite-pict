@@ -11,14 +11,15 @@
 //! let svg = rendered.to_svg();
 //! ```
 //!
-//! Batch stub (list of mols → list of [`Rendered`]):
+//! Batch stub (list of mols → list of [`Rendered`]; alignment via client
+//! ``render(..., align_to: pose)``, not document indices):
 //!
 //! ```ignore
 //! use xpict::{depict, DepictSpec, MolSpec};
 //! let out = depict(&DepictSpec {
 //!     molecules: vec![
 //!         MolSpec { smiles: Some("CCO".into()), mark_atoms: Some(vec![2]), ..Default::default() },
-//!         MolSpec { smiles: Some("CCCO".into()), align_to: Some(0), ..Default::default() },
+//!         MolSpec { smiles: Some("CCCO".into()), ..Default::default() },
 //!     ],
 //! })?;
 //! ```

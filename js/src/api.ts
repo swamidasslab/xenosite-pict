@@ -92,7 +92,8 @@ export type MolRenderOptions = {
 
 /**
  * One molecule in the batch ``depict`` stub (expandable toward full PictSpec).
- * ``align_to`` is an index into **earlier** entries in the same document.
+ * Alignment is **not** expressed here — use ``render(mol, { align_to })`` with a
+ * ``Mol`` / ``Rendered`` target (the agreed client API).
  */
 export type MolSpec = {
   smiles?: string;
@@ -107,8 +108,6 @@ export type MolSpec = {
   mark_bonds?: Array<[number, number]>;
   star_labels?: Array<string | null>;
   bold_labels?: boolean;
-  /** Index of an earlier molecule in this document to align onto. */
-  align_to?: number;
 };
 
 /** Limited declarative document: mol list in → ``Rendered[]`` out. */
@@ -331,18 +330,14 @@ function structureFromSpec(entry: MolSpec): string {
 
 /**
  * Batch stub: ``{ molecules: [...] }`` → ``Rendered[]``.
- * ``align_to`` is an index into earlier entries (not a Mol/Rendered object).
+ * Independent layouts only — for ``align_to``, call ``render`` with a
+ * ``Mol`` / ``Rendered`` target.
  */
 async function depict(spec: DepictSpec): Promise<Rendered[]> {
   const out: Rendered[] = [];
   for (let i = 0; i < spec.molecules.length; i++) {
     const entry = spec.molecules[i]!;
     const m = mol(structureFromSpec(entry));
-    if (entry.align_to !== undefined && entry.align_to >= i) {
-      throw new Error(
-        `molecules[${i}].align_to=${entry.align_to} must refer to an earlier entry`
-      );
-    }
     const opts: MolRenderOptions = {
       id: entry.id,
       color: entry.color,
@@ -352,8 +347,6 @@ async function depict(spec: DepictSpec): Promise<Rendered[]> {
       mark_bonds: entry.mark_bonds,
       star_labels: entry.star_labels,
       bold_labels: entry.bold_labels,
-      align_to:
-        entry.align_to !== undefined ? out[entry.align_to] : undefined,
     };
     out.push(await render(m, opts));
   }

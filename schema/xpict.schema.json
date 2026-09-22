@@ -2,7 +2,7 @@
   "$defs": {
     "MolSpec": {
       "additionalProperties": false,
-      "description": "One molecule entry for ``depict`` / single-mol render options.\n\nStructure: pass exactly one of ``smiles``, ``cxsmiles``, ``molfile``, or\n``source`` (alias for any structure string).",
+      "description": "One molecule entry for the batch ``depict`` stub (paint options only).\n\nStructure: pass exactly one of ``smiles``, ``cxsmiles``, ``molfile``, or\n``source`` (alias for any structure string).\n\nAlignment is **not** on this model \u2014 use the client ``render(..., align_to=)``\nwith a Mol / Rendered target (or Rust pose molblock).",
       "properties": {
         "smiles": {
           "anyOf": [
@@ -191,19 +191,6 @@
           "default": null,
           "description": "Bold Liberation labels + stem-keyed bond stroke",
           "title": "Bold Labels"
-        },
-        "align_to": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Index of an earlier molecule in the same ``DepictSpec`` to use as the RDKit alignment template",
-          "title": "Align To"
         }
       },
       "title": "MolSpec",

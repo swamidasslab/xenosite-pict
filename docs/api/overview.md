@@ -4,7 +4,9 @@ The **shipped** cross-language surface is:
 
 `mol` → `render(opts?)` → `Rendered` → `toSvg(scene)`
 
-plus a batch stub `depict({ molecules })` → list of rendered molecules.
+with `align_to` as a **Mol / Rendered** (or Rust pose molblock), not a list
+index. An optional batch stub `depict({ molecules })` returns independent
+`Rendered[]` (no document-level `align_to`).
 
 Nested diagrams / ELK / full `PictSpec` live under `xpict.future` and are
 **not** the publish surface yet.
@@ -29,6 +31,7 @@ Quick examples:
 === "Python"
 
     ```python
+    # Document path today (Pict / legacy). Preferred Mol client still landing.
     from xpict import render
     svg = render({"molecules": [{"smiles": "CCO"}]})
     ```
@@ -37,5 +40,5 @@ Quick examples:
 
     ```rust
     // crates.io `xpict` (RDKit-backed)
-    let svg = xpict::mol("CCO")?.render()?.to_svg();
+    let svg = xpict::mol("CCO")?.render(Default::default())?.to_svg();
     ```

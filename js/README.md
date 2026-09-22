@@ -24,19 +24,17 @@ const svg = xpict.toSvg(rendered.scene);
 
 const aligned = await xpict.render(xpict.mol("Cc1ccccc1"), { align_to: mol });
 
+// Optional batch stub (independent layouts; align via render + Mol/Rendered)
 const batch = await xpict.depict({
-  molecules: [
-    { smiles: "CCO", mark_atoms: [2] },
-    { smiles: "CCCO", align_to: 0 },
-  ],
+  molecules: [{ smiles: "CCO", mark_atoms: [2] }, { smiles: "CCCO" }],
 });
 ```
 
-Surface: `xpict.mol` / `xpict.render` / `xpict.toSvg` / `xpict.depict`.  
+Surface: `xpict.mol` / `xpict.render` / `xpict.toSvg` (+ optional `xpict.depict`).  
 RDKit + WASM initialize on first `render`.
 
 **Render options today:** `color`, `mark_atoms`, `mark_bonds`, `atom_shade`,
-`bond_shade`, `star_labels`, `bold_labels`, `align_to`, `id`.
+`bond_shade`, `star_labels`, `bold_labels`, `align_to` (`Mol` | `Rendered`), `id`.
 
 Chem label markup (`$R_1$`, `R^2`, `\alpha`, `**bold**`):  
 https://github.com/swamidasslab/xenosite-pict/blob/main/docs/label-markup.md

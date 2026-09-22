@@ -1,4 +1,9 @@
-"""xpict — molecule depiction (public: mol / render / depict / to_svg)."""
+"""xpict — molecule depiction.
+
+Preferred cross-language surface: ``mol`` / ``render`` / ``to_svg`` (JS + Rust
+today; Python Mol client landing). This package currently exports document
+``render`` / ``Pict`` plus live ``MolSpec`` / ``DepictSpec`` contracts.
+"""
 
 from __future__ import annotations
 

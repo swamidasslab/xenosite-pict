@@ -153,11 +153,11 @@ const both = await xpict.render(xpict.mol("*C* |$R1;;R2;$|"));
   }
 }
 
-// Batch stub: mol list → Rendered[]
+// Batch stub: mol list → Rendered[] (no index align_to — use render + Mol/Rendered)
 const batch = await xpict.depict({
   molecules: [
     { smiles: "CCO", mark_atoms: [2] },
-    { smiles: "CCCO", align_to: 0 },
+    { smiles: "CCCO" },
   ],
 });
 if (batch.length !== 2) throw new Error(`depict length ${batch.length}`);

@@ -21,9 +21,11 @@ one Rust paint core (`xpict-core`), with RDKit layout at each language edge
 === "Python"
 
     ```python
+    # Document path today — preferred Mol.from_source(...).render().to_svg()
+    # mirrors JS/Rust when that client lands.
     from xpict import render
 
-    svg = render({"molecules": [{"smiles": "c1ccccc1O"}]})
+    svg = render({"molecules": [{"smiles": "c1ccccc1O", "mark_atoms": [6]}]})
     ```
 
 === "Rust"

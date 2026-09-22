@@ -15,10 +15,13 @@ class StrictModel(BaseModel):
 
 
 class MolSpec(StrictModel):
-    """One molecule entry for ``depict`` / single-mol render options.
+    """One molecule entry for the batch ``depict`` stub (paint options only).
 
     Structure: pass exactly one of ``smiles``, ``cxsmiles``, ``molfile``, or
     ``source`` (alias for any structure string).
+
+    Alignment is **not** on this model — use the client ``render(..., align_to=)``
+    with a Mol / Rendered target (or Rust pose molblock).
     """
 
     smiles: str | None = Field(default=None, description="SMILES string")
@@ -63,13 +66,6 @@ class MolSpec(StrictModel):
     bold_labels: bool | None = Field(
         default=None,
         description="Bold Liberation labels + stem-keyed bond stroke",
-    )
-    align_to: int | None = Field(
-        default=None,
-        description=(
-            "Index of an earlier molecule in the same ``DepictSpec`` "
-            "to use as the RDKit alignment template"
-        ),
     )
 
     @model_validator(mode="after")
