@@ -93,7 +93,8 @@ def test_stroke_matches_label_stem():
     """Default bond ink is the label face's vertical stem, not 0.10×bond."""
     stem = FONT_STEM_EM * FONT_PX
     assert STROKE_PX == pytest.approx(stem, abs=0.01)
-    assert STROKE_PX == pytest.approx(1.12, abs=0.001)
+    assert STROKE_PX == pytest.approx(0.84, abs=0.001)
+    assert FONT_PX == pytest.approx(9.0, abs=0.001)
     assert HALO_STROKE == pytest.approx(2 * STROKE_PX, abs=0.001)
     strokes = bond_strokes(0, 0, BOND_PX, 0, 1.0)
     assert strokes.skeleton is not None

@@ -8,14 +8,18 @@ pub const SCALE: f64 = 20.0;
 /// Bond length in drawing / CSS-px units (alias of [`SCALE`]).
 pub const BOND_PX: f64 = SCALE;
 
-/// RDKit `baseFontSize`.
-pub const FONT_FRAC: f64 = 0.60;
+/// Atom-label em as a fraction of bond length.
+///
+/// RDKit documents `baseFontSize = 0.6`, but MolDraw2D outlined heteroatom
+/// glyphs measure ~0.29 × bond in cap height (~0.45 em with Liberation Sans).
+pub const FONT_FRAC: f64 = 0.45;
 
 /// Liberation Sans Regular vertical stem width in em.
 pub const FONT_STEM_EM: f64 = 0.0933;
 
-/// Bond stroke as a fraction of bond length (font stem, not xenopict's 0.10).
-pub const STROKE_FRAC: f64 = 0.056; // FONT_STEM_EM * FONT_FRAC, rounded
+/// Bond stroke as a fraction of bond length — tracks the label stem so ink
+/// weight matches letter stems when [`FONT_FRAC`] changes.
+pub const STROKE_FRAC: f64 = 0.042; // FONT_STEM_EM * FONT_FRAC, rounded
 
 /// RDKit `multipleBondOffset`.
 pub const OFFSET_FRAC: f64 = 0.15;
@@ -55,7 +59,14 @@ mod tests {
     #[test]
     fn offset_matches_python_house_style() {
         assert!((OFFSET_PX - 3.0).abs() < 1e-9);
-        assert!((STROKE_PX - 1.12).abs() < 1e-9);
+        assert!((STROKE_PX - 0.84).abs() < 1e-9);
+        assert!((FONT_PX - 9.0).abs() < 1e-9);
         assert!((SHADE_FRAC - 0.90).abs() < 1e-9);
+    }
+
+    #[test]
+    fn stroke_tracks_font_stem() {
+        let expected = (FONT_STEM_EM * FONT_FRAC * 1000.0).round() / 1000.0;
+        assert!((STROKE_FRAC - expected).abs() < 1e-9);
     }
 }

@@ -78,7 +78,8 @@ function fmt(n: number): string {
 
 function attr(name: string, value: string | number | null | undefined): string {
   if (value === null || value === undefined || value === "") return "";
-  return ` ${name}="${esc(String(value))}"`;
+  const v = typeof value === "number" ? fmt(value) : String(value);
+  return ` ${name}="${esc(v)}"`;
 }
 
 function renderPrimitive(p: ScenePrimitive): string {

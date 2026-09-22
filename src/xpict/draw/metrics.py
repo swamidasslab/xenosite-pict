@@ -1,11 +1,12 @@
 """Depiction proportions.
 
 House style starts from **xenopict** (``drawer.py``): bond length
-``scale = 20``, shade dots ``scale * 0.9``, atom-mark radius ``scale``,
-font at RDKit ``baseFontSize = 0.6``. Xenopict then forces stroke width
-to ``scale * 0.1`` (2 px) and halo lines to ``scale * 0.2``. That stroke
-is almost twice the stem of the label face, so the default ink is the
-font stem instead, and the halo stays twice that ink.
+``scale = 20``, shade dots ``scale * 0.9``, atom-mark radius ``scale``.
+RDKit documents ``baseFontSize = 0.6``, but MolDraw2D's outlined heteroatom
+glyphs measure closer to **~0.29 × bond** in cap height (~``0.45 × bond``
+em with Liberation Sans). We match that optical size. Bond stroke tracks
+the label stem (``FONT_STEM_EM × FONT_FRAC``), not xenopict's thicker
+``0.10 × bond``.
 
 Geometry that xenopict does not override comes from the engines it sits on:
 
@@ -33,13 +34,14 @@ from xpict.contracts.layout import MoleculeLayout
 SCALE = 20.0
 BOND_PX = SCALE  # alias — bond length in drawing / CSS-px units
 
-FONT_FRAC = 0.60  # RDKit baseFontSize, inherited by xenopict
+# Optical match to RDKit MolDraw2D heteroatom labels at fixedBondLength=20
+# (measured O cap-height / mean bond ≈ 0.29 → em ≈ 0.45 with Liberation).
+FONT_FRAC = 0.45
 # "Helvetica, Arial, sans-serif" resolves to Liberation Sans Regular.
 # Outline measurement of the vertical stem (H, I, and the straight stems
-# of P/F/B) is 0.0933 em. At FONT_PX that is 1.12 px; xenopict's 2 px
-# stroke was nearly twice the letters.
+# of P/F/B) is 0.0933 em. Stroke tracks the stem so ink matches letters.
 FONT_STEM_EM = 0.0933
-STROKE_FRAC = round(FONT_STEM_EM * FONT_FRAC, 3)  # 0.056 → 1.12 px
+STROKE_FRAC = round(FONT_STEM_EM * FONT_FRAC, 3)  # 0.042 → 0.84 px
 OFFSET_FRAC = 0.15  # RDKit multipleBondOffset (xenopict keeps this)
 # Parallel spacing uses OFFSET_PX even after label insets shorten the stroke;
 # see ``bonds.multi_bond_offset``.
@@ -54,12 +56,10 @@ CHAIN_END_GAP_FRAC = 0.0
 HASH_PER_BOND = 8
 HALO_FRAC = 2 * STROKE_FRAC  # knockout stays twice the ink, as in xenopict
 # Air between label ink and bond ends, and the Rust buffer on the glyph
-# halo. Tuned against RDKit MolDraw2D (~0.9–1.0 px at bond≈20) and Indigo
-# terminal-hetero depictions — enough for a dark-host knockout, not a wide
-# moat. Molecule captions reuse the same order of air above the title band.
+# halo. Tuned against RDKit MolDraw2D and Indigo terminal-hetero depictions.
 LABEL_GAP_FRAC = 0.05  # × bond → 1.0 px at BOND_PX=20
 # Molecule caption (MoleculeSpec.label): default center-bottom band.
-TITLE_FONT_FRAC = 0.50  # slightly smaller than atom labels (0.60)
+TITLE_FONT_FRAC = 0.40  # slightly smaller than atom labels
 TITLE_BOTTOM_FRAC = 0.20  # typo-box bottom → viewport bottom
 TITLE_CLEARANCE_FRAC = 0.08  # mol ink → title typo top (a touch more than LABEL_GAP)
 COLLISION_CELL_PX = 4.0  # coarse occupancy stamp for title packing
@@ -68,7 +68,7 @@ MARK_FRAC = 1.0  # xenopict mark_atoms radius = scale * mark_down_scale
 # Annotation callouts / region outlines (box, oval, spline).
 ANNOT_PAD_FRAC = 0.45  # region outline stand-off from atom centers
 ANNOT_GAP_FRAC = 0.40  # callout label air past the target
-ANNOT_FONT_FRAC = 0.50  # same order as molecule captions
+ANNOT_FONT_FRAC = 0.40  # same order as molecule captions
 ANNOT_ARROW_FRAC = 0.30  # filled arrowhead length
 ANNOT_STROKE_FRAC = STROKE_FRAC * 1.25
 

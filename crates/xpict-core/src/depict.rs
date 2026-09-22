@@ -9,6 +9,7 @@ use crate::bonds::{bond_strokes, join_centered_multibonds, DrawnBond};
 use crate::labels::{self, place_backbone};
 use crate::metrics::{BOND_PX, FONT_PX, MARK_FRAC, PAD_PX, SHADE_FRAC, STROKE_PX};
 use crate::plotdot::PlotDot;
+use crate::rings::{bond_interior_normals, find_sssr};
 use crate::scene::{
     AtomIn, Layer, LayerName, MoleculeIn, Primitive, Scene, TextAnchor, Viewport,
 };
@@ -83,6 +84,14 @@ pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
         .collect();
     let (shortened, placed) = place_backbone(&label_atoms, &label_bonds, FONT_PX);
 
+    // Ring bonds get interior normals → short inside offsets (not acyclic extend).
+    let ring_coords: HashMap<i32, (f64, f64)> = mol
+        .atoms
+        .iter()
+        .map(|a| (a.index, (a.x + dx, a.y + dy)))
+        .collect();
+    let ring_normals = bond_interior_normals(&find_sssr(mol, 8), &ring_coords);
+
     let mut prepared: Vec<DrawnBond> = Vec::new();
     for (bond, ends) in mol.bonds.iter().zip(shortened.iter()) {
         if !by_index.contains_key(&bond.begin) || !by_index.contains_key(&bond.end) {
@@ -101,7 +110,13 @@ pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
             bond.order,
         );
         db.stereo = bond.stereo.clone();
-        db.interior = bond.interior;
+        let key = if bond.begin < bond.end {
+            (bond.begin, bond.end)
+        } else {
+            (bond.end, bond.begin)
+        };
+        // Ring membership overrules centered/extend; else keep caller interior.
+        db.interior = ring_normals.get(&key).copied().or(bond.interior);
         db.begin_labeled = placed[i0].is_some();
         db.end_labeled = placed[i1].is_some();
         prepared.push(db);
@@ -577,6 +592,63 @@ mod tests {
             } => s == "#336699",
             _ => false,
         }));
+    }
+
+    #[test]
+    fn benzene_ring_doubles_are_single_sided_short() {
+        // Regular hexagon — without ring interiors, join_centered would extend
+        // doubles onto singles and emit two parallel offsets per double.
+        let mut atoms = Vec::new();
+        for i in 0..6 {
+            let ang = std::f64::consts::PI / 2.0 + i as f64 * std::f64::consts::TAU / 6.0;
+            atoms.push(AtomIn {
+                index: i,
+                element: Some("C".into()),
+                z: None,
+                x: 20.0 * ang.cos(),
+                y: -20.0 * ang.sin(),
+                label: None,
+                charge: 0,
+            });
+        }
+        let orders = [1.0, 2.0, 1.0, 2.0, 1.0, 2.0];
+        let mut bonds = Vec::new();
+        for i in 0..6 {
+            bonds.push(BondIn {
+                index: i,
+                begin: i,
+                end: (i + 1) % 6,
+                order: orders[i as usize],
+                stereo: None,
+                interior: None,
+            });
+        }
+        let mol = MoleculeIn {
+            id: Some("phh".into()),
+            atoms,
+            bonds,
+            color: None,
+            atom_shade: None,
+            bond_shade: None,
+            mark_atoms: vec![],
+            mark_bonds: vec![],
+        };
+        let scene = depict_molecule(&mol);
+        let layer = scene.viewports[0]
+            .layers
+            .iter()
+            .find(|l| l.name == LayerName::Bonds)
+            .expect("bonds");
+        let offset_count = layer
+            .primitives
+            .iter()
+            .filter(|p| match p {
+                Primitive::Path { class: Some(c), .. } => c.contains("bond-offset"),
+                _ => false,
+            })
+            .count();
+        // Three ring doubles → one interior offset each (not two centered lines).
+        assert_eq!(offset_count, 3, "ring doubles should be single-sided");
     }
 
     #[test]
