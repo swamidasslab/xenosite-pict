@@ -19,6 +19,10 @@ test of quality — not benzene.
 
 ## Strategic target: RDKit for coords+align now; native long-term; Indigo alternate
 
+**MVP (shared Rust paint):** one molecule — Kekulé depiction, atom/bond
+**marks** (circles), atom/bond **shading**, plus **alignment**. Multi-mol
+diagrams / ELK are post-MVP.
+
 **Focus (current):** call **RDKit at each language edge** for:
 
 1. **2D coordinates** — `backend="rdkit"` (Python `rdkit` / JS `@rdkit/rdkit`)

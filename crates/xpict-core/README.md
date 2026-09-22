@@ -4,28 +4,41 @@ Shared **depiction algorithms** for xpict. Python (`src/xpict/`) remains the
 algorithm lab and the working engine. As pieces stabilize, move them here so
 Python (PyO3) and JS (WASM) share one implementation.
 
+## MVP (focus)
+
+**One molecule at a time** — not multi-mol diagrams / ELK scenes.
+
+| Capability | Status |
+| --- | --- |
+| Standard Kekulé depiction (skeleton, doubles/triples, wedges, labels, halo) | Python working; Rust partial (`bonds`, `labels`, `geom`, `font`) |
+| Circling atoms / bonds (publication marks) | Python `MarkDrawable`; Rust port TBD |
+| Shading atoms / bonds (plot-dot disks) | Rust `plotdot` + Python shade paint |
+| Alignment | RDKit template align at language edges; Rust rigid/fake align for Indigo |
+
+Caller supplies SVG-space coords (+ optional shade scores / mark indices).
+Core returns a [`Scene`](src/scene.rs) with **one viewport**. Python/JS only
+serialize to SVG / data-URI `<img>`.
+
+**Out of MVP:** reaction/network diagrams, ELK placement, multi-viewport
+overlays. `elk` stays in-tree for later; do not block the depict path on it.
+
 ## What belongs here
 
 | Module | Role | Python today |
 | --- | --- | --- |
-| `metrics` | Bond / stroke / offset fractions | `draw/metrics.py` |
+| `metrics` | Bond / stroke / offset fractions (`SCALE=20`) | `draw/metrics.py` |
 | `plotdot` | Concentric shade disks (xenopict) | `draw/plotdot.py` |
-| `bonds` | Multi-bond offset helpers | `draw/bonds.py` (partial) |
-| `elk` | Multi-mol diagram placement (elkrs) | `diagram/elk.py` |
+| `bonds` | Multi-bond offset + joins | `draw/bonds.py` (partial in Rust) |
 | `geom` | Buffer / union / counters (`i_overlay` Shape) | `draw/halo.py`, `glyphs.py` |
 | `font` | Liberation outlines + advances (`ttf-parser`) | `draw/font_face.py`, `glyphs.py` |
 | `labels` | Atom-label orientation + backbone insets | `draw/label_place.py` |
 | `scene` | Drawable document (primitives → SVG) | `contracts/scene.py` |
 | `rings` *(stub)* | SSSR helpers, interior normals | `draw/rings.py` |
+| `elk` *(post-MVP)* | Multi-mol diagram placement | `diagram/elk.py` |
 
-**Target API:** caller passes SVG-space coords + chem metadata (`MoleculeIn`);
-core returns a [`Scene`](src/scene.rs) of typed primitives. Python and JS stay
-thin serializers (SVG / data-URI `<img>`). Layout backends stay at the language
-edges.
-
-**Not** in this crate (yet or ever as invent-your-own): chem layout backends
-(Indigo/RDKit wrappers) or PictSpec JSON parsing — those stay at the language
-edges. **ELK** (`elkrs`) and **geom** (`i_overlay` Shape) are in-core features.
+**Not** in this crate: chem layout backends (Indigo/RDKit) or PictSpec JSON
+parsing — those stay at the language edges. Python/JS call RDKit for 2D coords
+and template alignment; Rust only gets numbers (plus rigid align helpers).
 
 ## Migration rule
 
@@ -35,6 +48,9 @@ edges. **ELK** (`elkrs`) and **geom** (`i_overlay` Shape) are in-core features.
 4. WASM bindings last (same `rlib`).
 
 Do not invent new depiction rules in Rust that Python does not already own.
+
+**MVP port order:** bond strokes/joins → mark circles → shade paint onto
+`Scene` → single-mol `depict_molecule(MoleculeIn) -> Scene` → thin serializers.
 
 ## Build
 
@@ -57,10 +73,7 @@ cargo clippy -p xpict-core -- -D warnings
 See [`docs/bindings.md`](../../docs/bindings.md). Keep both binding crates in sync when
 adding exports.
 
-**Priority:** WASM font export + rigid align helpers next.
-
-**Not in this crate:** RDKit or any chem engine. Python/JS call RDKit themselves
-for alignment; Rust only gets numeric maps/coordinates.
+**Not in this crate:** RDKit or any chem engine.
 
 ## LLM-assisted ports (no Rust required to start)
 

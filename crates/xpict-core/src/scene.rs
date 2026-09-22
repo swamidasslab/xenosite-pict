@@ -1,14 +1,14 @@
 //! Drawable scene document — engine-neutral primitives shared by Python & JS.
 //!
-//! **Target shape** (xenosite / xpict dual-runtime):
+//! **MVP:** one molecule → one [`Viewport`] inside a [`Scene`]. Marks (atom/bond
+//! circles) and shade disks are layers on that viewport. Multi-mol diagrams /
+//! ELK are out of scope for the first shared paint path.
 //!
 //! 1. Language edge supplies **coords + chem metadata** (RDKit/Indigo/native
-//!    layout stays outside this crate).
+//!    layout + align stay outside this crate).
 //! 2. Rust builds a [`Scene`] of typed primitives (paths, circles, …).
-//! 3. A thin Python / JS layer only **serializes** that document to SVG / HTML
-//!    (data-URI `<img>`, etc.).
+//! 3. Thin Python / JS serializers emit SVG / data-URI `<img>`.
 //!
-//! Drawing algorithms (`bonds`, `labels`, `geom`, …) fill this document.
 //! Do not invent new depiction rules here — port proven Python behavior.
 
 use serde::{Deserialize, Serialize};
@@ -167,12 +167,26 @@ pub struct BondIn {
 }
 
 /// One molecule ready to paint (coords already in SVG / ``SCALE`` space).
+///
+/// MVP extras: optional per-atom / per-bond shade scores and mark indices.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MoleculeIn {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
     pub atoms: Vec<AtomIn>,
     pub bonds: Vec<BondIn>,
+    /// Per-atom shade scores (same order as [`Self::atoms`]); omit if unshaded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub atom_shade: Option<Vec<f64>>,
+    /// Per-bond shade scores (same order as [`Self::bonds`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bond_shade: Option<Vec<f64>>,
+    /// Atom indices to circle (publication marks).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mark_atoms: Vec<i32>,
+    /// Bond endpoint index pairs to circle/stroke-mark.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mark_bonds: Vec<(i32, i32)>,
 }
 
 impl Scene {

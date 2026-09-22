@@ -96,18 +96,18 @@ Python synthesizes the ELK graph in `diagram/elk.py` and calls native only
 
 ## Scene document (shared depict → thin serializers)
 
-**Goal:** Rust owns depiction. Edges only supply coords and serialize.
+**MVP:** single-molecule depiction with **marks** (circle atoms/bonds),
+**shading** (plot-dot disks), and **alignment** (RDKit at edges; Rust rigid
+helpers). Not multi-mol / ELK scenes.
 
 ```
-  RDKit / Indigo / native (per language)
-           │  atoms, bonds, SVG-space coords
+  RDKit / Indigo / native  (+ align)
+           │  atoms, bonds, SVG-space coords, shade/marks
            ▼
-     xpict-core::scene
-           │  Scene { viewports, layers, primitives, halo }
+     xpict-core  (paint → Scene, one viewport)
            ▼
   Python svg.py  ·  JS svg.ts   (thin: Scene → SVG / data-URI <img>)
 ```
 
 `MoleculeIn` → (future) `depict_molecule` → `Scene` JSON is the ABI.
-Today: `Scene` types + JSON round-trip live in `xpict-core::scene`; paint/join
-logic still ports from Python incrementally (bonds → labels → halo).
+Port order: bond strokes/joins → marks → shade → full single-mol paint.
