@@ -3,6 +3,7 @@
 from xpict.contracts.layout import LayoutResult, MoleculeLayout
 from xpict.contracts.nodes import (
     ArrowNode,
+    ContainerCommon,
     GridNode,
     GroupNode,
     ImageNode,
@@ -58,6 +59,7 @@ __all__ = [
     "NetworkNode",
     "Node",
     "NodeCommon",
+    "ContainerCommon",
     "PictSpec",
     "ReactionNode",
     "RefNode",

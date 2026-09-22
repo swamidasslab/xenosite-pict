@@ -171,7 +171,7 @@ def minify_json_schema(schema: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-_NODE_TYPE_DEFS = frozenset(
+_LEAF_NODE_DEFS = frozenset(
     {
         "MolNode",
         "ArrowNode",
@@ -180,6 +180,11 @@ _NODE_TYPE_DEFS = frozenset(
         "TableNode",
         "RefNode",
         "AnnotationNode",
+    }
+)
+
+_CONTAINER_NODE_DEFS = frozenset(
+    {
         "GroupNode",
         "GridNode",
         "StackNode",
@@ -188,59 +193,97 @@ _NODE_TYPE_DEFS = frozenset(
     }
 )
 
-# Properties owned by NodeCommon (shared via allOf in the exported schema).
-_NODE_COMMON_FIELDS = ("id", "panel", "layout", "meta", "children")
+# Properties owned by NodeCommon / ContainerCommon (shared via allOf).
+_NODE_COMMON_FIELDS = ("id", "panel", "layout", "meta")
+_CONTAINER_COMMON_FIELDS = ("children",)
 
 
 def factor_node_common_allof(schema: dict[str, Any]) -> dict[str, Any]:
-    """Rewrite node defs as ``allOf: [NodeCommon, {type-specific props}]``.
+    """Rewrite node defs as ``allOf`` over ``NodeCommon`` / ``ContainerCommon``.
 
     Pydantic flattens Python inheritance into each model schema. JSON Schema's
-    portable extension form is ``allOf`` + ``$ref``, which we restore here so
-    ``NodeCommon`` is shared instead of copy-pasted.
+    portable extension form is ``allOf`` + ``$ref``, which we restore here.
+    Leaves extend ``NodeCommon``; containers extend ``ContainerCommon``
+    (itself ``allOf`` ``NodeCommon`` + ``children``).
     """
     root: dict[str, Any] = json.loads(json.dumps(schema))
     defs: dict[str, Any] = dict(root.get("$defs") or {})
 
-    # Prefer MolNode (richest) as the property template for shared fields.
-    template_name = next((n for n in ("MolNode", "GroupNode") if n in defs), None)
-    if template_name is None:
-        return root
-    template_props = dict(defs[template_name].get("properties") or {})
+    # Templates: MolNode for common fields; GridNode for children.
+    mol_props = dict((defs.get("MolNode") or {}).get("properties") or {})
+    grid_props = dict((defs.get("GridNode") or {}).get("properties") or {})
     common_props = {
-        k: template_props[k] for k in _NODE_COMMON_FIELDS if k in template_props
+        k: mol_props[k] for k in _NODE_COMMON_FIELDS if k in mol_props
     }
+    # Prefer children schema from a container template when present.
+    children_prop = grid_props.get("children") or mol_props.get("children")
     if len(common_props) < 2:
         return root
 
     defs["NodeCommon"] = {
         "title": "NodeCommon",
-        "description": (
-            "Fields shared by every figure node "
-            "(id, panel, layout, meta, children)."
-        ),
+        "description": "Fields shared by every figure node (id, panel, layout, meta).",
         "type": "object",
         "properties": common_props,
     }
 
-    for name in _NODE_TYPE_DEFS:
+    if children_prop is not None:
+        defs["ContainerCommon"] = {
+            "title": "ContainerCommon",
+            "description": (
+                "Node that owns nested children "
+                "(group / grid / stack / reaction / network)."
+            ),
+            "allOf": [
+                {"$ref": "#/$defs/NodeCommon"},
+                {
+                    "type": "object",
+                    "properties": {"children": children_prop},
+                },
+            ],
+        }
+
+    def _rewrite_leaf(name: str) -> None:
         body = defs.get(name)
         if not isinstance(body, dict):
-            continue
+            return
         props = dict(body.get("properties") or {})
         if not all(f in props for f in common_props):
-            continue
+            return
         own = {k: v for k, v in props.items() if k not in common_props}
-        extension: dict[str, Any] = {
-            "type": "object",
-            "properties": own,
-        }
-        # Keep forbid-unknown on the combined node via unevaluatedProperties
-        # when the original model forbade extras.
         rewritten: dict[str, Any] = {
             "title": body.get("title", name),
             "allOf": [
                 {"$ref": "#/$defs/NodeCommon"},
+                {"type": "object", "properties": own},
+            ],
+        }
+        if "description" in body:
+            rewritten["description"] = body["description"]
+        if body.get("additionalProperties") is False:
+            rewritten["unevaluatedProperties"] = False
+        defs[name] = rewritten
+
+    def _rewrite_container(name: str) -> None:
+        body = defs.get(name)
+        if not isinstance(body, dict):
+            return
+        props = dict(body.get("properties") or {})
+        own = {
+            k: v
+            for k, v in props.items()
+            if k not in common_props and k not in _CONTAINER_COMMON_FIELDS
+        }
+        base_ref = (
+            "#/$defs/ContainerCommon"
+            if "ContainerCommon" in defs
+            else "#/$defs/NodeCommon"
+        )
+        extension: dict[str, Any] = {"type": "object", "properties": own}
+        rewritten = {
+            "title": body.get("title", name),
+            "allOf": [
+                {"$ref": base_ref},
                 extension,
             ],
         }
@@ -249,6 +292,11 @@ def factor_node_common_allof(schema: dict[str, Any]) -> dict[str, Any]:
         if body.get("additionalProperties") is False:
             rewritten["unevaluatedProperties"] = False
         defs[name] = rewritten
+
+    for name in _LEAF_NODE_DEFS:
+        _rewrite_leaf(name)
+    for name in _CONTAINER_NODE_DEFS:
+        _rewrite_container(name)
 
     root["$defs"] = defs
     return root

@@ -133,7 +133,7 @@
           }
         }
       ],
-      "description": "Annotation as a nested object (alternative to mol.annotations list).",
+      "description": "Standalone annotation node (prefer ``mol.annotations`` when targeting a mol).",
       "unevaluatedProperties": false
     },
     "AnnotationSpec": {
@@ -418,7 +418,7 @@
       "title": "GridNode",
       "allOf": [
         {
-          "$ref": "#/$defs/NodeCommon"
+          "$ref": "#/$defs/ContainerCommon"
         },
         {
           "type": "object",
@@ -438,7 +438,7 @@
       "title": "GroupNode",
       "allOf": [
         {
-          "$ref": "#/$defs/NodeCommon"
+          "$ref": "#/$defs/ContainerCommon"
         },
         {
           "type": "object",
@@ -965,7 +965,7 @@
       "title": "NetworkNode",
       "allOf": [
         {
-          "$ref": "#/$defs/NodeCommon"
+          "$ref": "#/$defs/ContainerCommon"
         },
         {
           "type": "object",
@@ -1020,7 +1020,7 @@
       "title": "ReactionNode",
       "allOf": [
         {
-          "$ref": "#/$defs/NodeCommon"
+          "$ref": "#/$defs/ContainerCommon"
         },
         {
           "type": "object",
@@ -1172,7 +1172,7 @@
       "title": "StackNode",
       "allOf": [
         {
-          "$ref": "#/$defs/NodeCommon"
+          "$ref": "#/$defs/ContainerCommon"
         },
         {
           "type": "object",
@@ -1258,7 +1258,7 @@
     },
     "NodeCommon": {
       "title": "NodeCommon",
-      "description": "Fields shared by every figure node (id, panel, layout, meta, children).",
+      "description": "Fields shared by every figure node (id, panel, layout, meta).",
       "type": "object",
       "properties": {
         "id": {
@@ -1294,70 +1294,84 @@
           "additionalProperties": true,
           "title": "Meta",
           "type": "object"
-        },
-        "children": {
-          "description": "Owned nested nodes (same discriminated union as the document root)",
-          "items": {
-            "discriminator": {
-              "mapping": {
-                "annotation": "#/$defs/AnnotationNode",
-                "arrow": "#/$defs/ArrowNode",
-                "grid": "#/$defs/GridNode",
-                "group": "#/$defs/GroupNode",
-                "image": "#/$defs/ImageNode",
-                "mol": "#/$defs/MolNode",
-                "network": "#/$defs/NetworkNode",
-                "reaction": "#/$defs/ReactionNode",
-                "ref": "#/$defs/RefNode",
-                "stack": "#/$defs/StackNode",
-                "table": "#/$defs/TableNode",
-                "text": "#/$defs/TextNode"
-              },
-              "propertyName": "type"
-            },
-            "oneOf": [
-              {
-                "$ref": "#/$defs/MolNode"
-              },
-              {
-                "$ref": "#/$defs/ArrowNode"
-              },
-              {
-                "$ref": "#/$defs/TextNode"
-              },
-              {
-                "$ref": "#/$defs/ImageNode"
-              },
-              {
-                "$ref": "#/$defs/TableNode"
-              },
-              {
-                "$ref": "#/$defs/RefNode"
-              },
-              {
-                "$ref": "#/$defs/AnnotationNode"
-              },
-              {
-                "$ref": "#/$defs/GroupNode"
-              },
-              {
-                "$ref": "#/$defs/GridNode"
-              },
-              {
-                "$ref": "#/$defs/StackNode"
-              },
-              {
-                "$ref": "#/$defs/ReactionNode"
-              },
-              {
-                "$ref": "#/$defs/NetworkNode"
-              }
-            ]
-          },
-          "title": "Children",
-          "type": "array"
         }
       }
+    },
+    "ContainerCommon": {
+      "title": "ContainerCommon",
+      "description": "Node that owns nested children (group / grid / stack / reaction / network).",
+      "allOf": [
+        {
+          "$ref": "#/$defs/NodeCommon"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "children": {
+              "description": "Owned nested nodes (same discriminated union as the document root)",
+              "items": {
+                "discriminator": {
+                  "mapping": {
+                    "annotation": "#/$defs/AnnotationNode",
+                    "arrow": "#/$defs/ArrowNode",
+                    "grid": "#/$defs/GridNode",
+                    "group": "#/$defs/GroupNode",
+                    "image": "#/$defs/ImageNode",
+                    "mol": "#/$defs/MolNode",
+                    "network": "#/$defs/NetworkNode",
+                    "reaction": "#/$defs/ReactionNode",
+                    "ref": "#/$defs/RefNode",
+                    "stack": "#/$defs/StackNode",
+                    "table": "#/$defs/TableNode",
+                    "text": "#/$defs/TextNode"
+                  },
+                  "propertyName": "type"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/MolNode"
+                  },
+                  {
+                    "$ref": "#/$defs/ArrowNode"
+                  },
+                  {
+                    "$ref": "#/$defs/TextNode"
+                  },
+                  {
+                    "$ref": "#/$defs/ImageNode"
+                  },
+                  {
+                    "$ref": "#/$defs/TableNode"
+                  },
+                  {
+                    "$ref": "#/$defs/RefNode"
+                  },
+                  {
+                    "$ref": "#/$defs/AnnotationNode"
+                  },
+                  {
+                    "$ref": "#/$defs/GroupNode"
+                  },
+                  {
+                    "$ref": "#/$defs/GridNode"
+                  },
+                  {
+                    "$ref": "#/$defs/StackNode"
+                  },
+                  {
+                    "$ref": "#/$defs/ReactionNode"
+                  },
+                  {
+                    "$ref": "#/$defs/NetworkNode"
+                  }
+                ]
+              },
+              "title": "Children",
+              "type": "array"
+            }
+          }
+        }
+      ]
     },
     "ArraySchema": {
       "items": {
