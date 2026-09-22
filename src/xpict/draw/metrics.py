@@ -85,12 +85,17 @@ TITLE_CLEARANCE_FRAC = 0.08  # mol ink → title typo top (a touch more than LAB
 COLLISION_CELL_PX = 4.0  # coarse occupancy stamp for title packing
 SHADE_FRAC = 0.90  # xenopict shade(): scale * 0.9
 MARK_FRAC = 1.0  # xenopict mark_atoms radius = scale * mark_down_scale
-# xenopict mark layer style: stroke-width scale*0.1, opacity 0.7;
+# xenopict mark layer: stroke-width scale*0.1, opacity 0.7;
 # mark halo (<use>): stroke #555, scale*0.2, opacity 0.45.
+# Absolute (not stem-keyed) so rings match xenopict publication weight even
+# though xpict bond ink tracks the Liberation stem (~0.042×bond).
 MARK_STROKE_FRAC = 0.1
 MARK_HALO_STROKE_FRAC = 0.2
 MARK_OPACITY = 0.7
 MARK_HALO_OPACITY = 0.45
+# xenopict mark halo <use stroke="#555">. Mark ink has width/opacity but no
+# stroke color (host CSS on `.mark` may add one). Xpict does not style by
+# class: the visible ring is this baked halo attribute.
 MARK_HALO_COLOR = "#555"
 # RDKit DrawText::SUBS_SCALE / SUPER_SCALE for H-counts and charges.
 SCRIPT_SCALE = 0.66

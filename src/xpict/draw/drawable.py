@@ -502,7 +502,9 @@ class MarkDrawable(Drawable):
     spec: MarkSpec
 
     def draw(self, ctx: MolContext) -> Drawn | None:
-        color = self.spec.color or "#c44"
+        # Optional API color is baked on ink attrs. Default ink has no stroke
+        # (xenopict); visible ring is the baked #555 halo — not class CSS.
+        color = self.spec.color
         # Publication marks do not opt into the document halo by default.
         drawn = Drawn(layer="marks", halo_cls="halo mark-halo")
         mark = self.spec
@@ -510,10 +512,11 @@ class MarkDrawable(Drawable):
             pts = ctx.points(mark.atoms)
             path = hull_path_d(pts, pad=BOND_PX * 0.45)
             if path:
+                fill = color or MARK_HALO_COLOR
                 prim = PathPrim(
                     d=path,
-                    stroke=color,
-                    fill=color,
+                    stroke=fill,
+                    fill=fill,
                     stroke_width=1.5,
                     opacity=0.25,
                     cls="substructure-mark",

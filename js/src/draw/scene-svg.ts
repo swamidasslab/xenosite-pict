@@ -102,7 +102,7 @@ function renderPrimitive(p: ScenePrimitive): string {
       `<path` +
       attr("d", fmtPathD(p.d)) +
       attr("fill", p.fill ?? "none") +
-      attr("stroke", p.stroke ?? "none") +
+      attr("stroke", p.stroke) +
       attr("stroke-width", p.stroke_width ?? 1.5) +
       attr("stroke-linecap", p.stroke_linecap ?? "round") +
       attr("stroke-linejoin", "round") +
@@ -121,7 +121,7 @@ function renderPrimitive(p: ScenePrimitive): string {
       attr("r", fmt(p.r)) +
       attr("fill", p.fill ?? "none") +
       attr("stroke", p.stroke) +
-      attr("stroke-width", p.stroke !== undefined ? p.stroke_width ?? 1.5 : undefined) +
+      attr("stroke-width", p.stroke_width ?? 1.5) +
       attr("opacity", p.opacity ?? 1) +
       attr("class", p.cls) +
       `/>`

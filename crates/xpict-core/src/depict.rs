@@ -500,14 +500,17 @@ fn paint_marks(
     dy: f64,
 ) -> Vec<Primitive> {
     use crate::geom::{capsule_polygon, polygon_to_svg_d};
-    use crate::metrics::{MARK_HALO_OPACITY, MARK_HALO_STROKE_PX, MARK_OPACITY, MARK_STROKE_PX};
+    use crate::metrics::{
+        MARK_HALO_COLOR, MARK_HALO_OPACITY, MARK_HALO_STROKE_PX, MARK_OPACITY, MARK_STROKE_PX,
+    };
 
     let mut out = Vec::new();
     let r = BOND_PX * MARK_FRAC;
-    // xenopict mark halo `<use href="#mark" stroke="#555" …>`; mark ink uses the
-    // backbone stroke color (lines default `#000000`), not a separate coral.
-    const MARK_HALO_COLOR: &str = "#555";
-    let color = mol.color.as_deref().unwrap_or("#000000");
+    // xenopict: mark halo via `<use href="#mark" stroke="#555" …>`; mark ink
+    // sits in a separate group with stroke-width scale×0.1 / opacity 0.7 but
+    // **no stroke color** (host CSS on `.mark` may add one). Xpict does not
+    // style by class: bake the visible ring on the halo attrs only. Backbone
+    // color never recolors marks.
     // shapely `resolution=6` → 24 verts/circle; keep capsules smooth.
     const CAPSULE_QUAD_SEGS: u32 = 16;
 
@@ -566,7 +569,8 @@ fn paint_marks(
         });
     }
 
-    // Mark ink (xenopict mark group: fill none, stroke-width scale*0.1, opacity 0.7).
+    // Mark ink (xenopict mark group: fill none, stroke-width scale×0.1,
+    // opacity 0.7, **no stroke color**). Visible color is the halo above.
     for &ai in &mol.mark_atoms {
         let Some(&i) = by_index.get(&ai) else {
             continue;
@@ -577,7 +581,7 @@ fn paint_marks(
             cy: a.y + dy,
             r,
             fill: Some("none".into()),
-            stroke: Some(color.into()),
+            stroke: None,
             stroke_width: MARK_STROKE_PX,
             opacity: MARK_OPACITY,
             class: Some(format!("atom-{ai} mark")),
@@ -586,7 +590,7 @@ fn paint_marks(
     for (a, b, d) in bond_capsules {
         out.push(Primitive::Path {
             d,
-            stroke: Some(color.into()),
+            stroke: None,
             fill: Some("none".into()),
             stroke_width: MARK_STROKE_PX,
             opacity: MARK_OPACITY,
@@ -972,20 +976,41 @@ mod tests {
                 stroke_width,
                 opacity,
                 class: Some(c),
-                stroke: Some(s),
+                stroke,
                 ..
             } if c.contains(" mark") && !c.contains("halo") => {
-                Some((*r, *stroke_width, *opacity, s.clone()))
+                Some((*r, *stroke_width, *opacity, stroke.clone()))
             }
             _ => None,
         });
-        let (r, sw, op, _) = atom.expect("atom mark");
+        let (r, sw, op, stroke) = atom.expect("atom mark");
         assert!((r - BOND_PX).abs() < 1e-9, "mark radius = scale");
         assert!(
             (sw - BOND_PX * 0.1).abs() < 1e-9,
-            "mark stroke = scale*0.1, got {sw}"
+            "mark stroke = scale*0.1 (xenopict), got {sw}"
         );
         assert!((op - 0.7).abs() < 1e-9);
+        assert!(
+            stroke.is_none(),
+            "mark ink has no baked stroke (xenopict); visible color is halo #555"
+        );
+        // Colored backbone must not recolor marks.
+        mol.color = Some("#0b6e4f".into());
+        let scene2 = depict_molecule(&mol);
+        let marks2 = scene2.viewports[0]
+            .layers
+            .iter()
+            .find(|l| l.name == LayerName::Marks)
+            .expect("marks");
+        let ink = marks2.primitives.iter().find_map(|p| match p {
+            Primitive::Circle {
+                stroke,
+                class: Some(c),
+                ..
+            } if c.contains(" mark") && !c.contains("halo") => Some(stroke.clone()),
+            _ => None,
+        });
+        assert_eq!(ink, Some(None), "backbone color must not paint mark ink");
         let halo = marks.primitives.iter().any(|p| match p {
             Primitive::Circle {
                 stroke: Some(s),
@@ -1000,6 +1025,7 @@ mod tests {
         let bond = marks.primitives.iter().any(|p| match p {
             Primitive::Path {
                 d,
+                stroke,
                 stroke_width,
                 opacity,
                 class: Some(c),
@@ -1008,6 +1034,7 @@ mod tests {
                 c.contains("bond-mark")
                     && !c.contains("halo")
                     && d.contains('Z')
+                    && stroke.is_none()
                     && (*stroke_width - BOND_PX * 0.1).abs() < 1e-9
                     && (*opacity - 0.7).abs() < 1e-9
             }
