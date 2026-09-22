@@ -26,6 +26,9 @@ plotdotRings(1.0);   // [{ radiusFrac, colorZ }, ...]
 
 Shared API table: [`docs/bindings.md`](../docs/bindings.md).
 
+**→ xenosite.org:** [`docs/migration-xenosite.md`](../docs/migration-xenosite.md)
+(client-side MVP: one mol + marks + shade + align).
+
 ## Scripts
 
 ```bash

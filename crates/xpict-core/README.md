@@ -70,8 +70,9 @@ cargo clippy -p xpict-core -- -D warnings
 ./scripts/build_bindings.sh all
 ```
 
-See [`docs/bindings.md`](../../docs/bindings.md). Keep both binding crates in sync when
-adding exports.
+See [`docs/bindings.md`](../../docs/bindings.md) and
+[`docs/migration-xenosite.md`](../../docs/migration-xenosite.md) (ASAP path to
+xenosite.org client-side). Keep both binding crates in sync when adding exports.
 
 **Not in this crate:** RDKit or any chem engine.
 

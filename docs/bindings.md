@@ -111,3 +111,5 @@ helpers). Not multi-mol / ELK scenes.
 
 `MoleculeIn` → (future) `depict_molecule` → `Scene` JSON is the ABI.
 Port order: bond strokes/joins → marks → shade → full single-mol paint.
+
+**ASAP track (xenosite.org client):** [`docs/migration-xenosite.md`](migration-xenosite.md).
