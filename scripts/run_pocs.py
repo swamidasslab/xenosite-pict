@@ -483,7 +483,10 @@ def write_gallery(out: Path, backend: str, only: list[Path] | None = None) -> Pa
             body = f"<p class='missing'>Missing artifact: {path.name}</p>"
         else:
             svg = path.read_text(encoding="utf-8")
-            body = f'<div class="frame">{svg_to_img_tag(svg, alt=title)}</div>'
+            body = (
+                f'<div class="frame"><div class="xpict-mol">'
+                f"{svg_to_img_tag(svg, alt=title)}</div></div>"
+            )
         sections.append(
             f"""
 <article class="card">
@@ -563,13 +566,16 @@ def write_gallery(out: Path, backend: str, only: list[Path] | None = None) -> Pa
     overflow: auto;
     padding: 0.75rem;
   }}
-  .frame img.xpict {{
+  .frame .xpict-mol {{
+    position: relative;
     display: inline-block;
-    vertical-align: middle;
-    width: auto;
-    height: auto;
     max-width: 100%;
-    flex: 0 0 auto;
+    line-height: 0;
+  }}
+  .frame img.xpict {{
+    display: block;
+    max-width: 100%;
+    height: auto;
     background: #fff !important;
   }}
   .frame .xpict-row {{

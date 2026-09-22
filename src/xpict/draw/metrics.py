@@ -14,8 +14,10 @@ Geometry that xenopict does not override comes from the engines it sits on:
 - wedge fat-end ~``0.30 × bond`` so the triangle still reads against the
   bond stroke (Indigo’s thin-stroke wedges were ~0.17)
 
-``coord_scale`` maps layout units onto ``BOND_PX`` so Indigo (bond ≈ 1)
-and native (bond = 1.5) depict at the same size.
+``coord_scale`` maps layout units onto ``SCALE`` so Indigo (bond ≈ 1)
+and native (bond = 1.5) depict at the same size. SVG roots use those
+drawing units as ``width``/``height`` (same as viewBox), matching
+xenosite.org’s data-URI ``<img>`` intrinsic-size pattern.
 """
 
 from __future__ import annotations
@@ -25,8 +27,11 @@ from collections.abc import Sequence
 
 from xpict.contracts.layout import MoleculeLayout
 
-# xenopict ``Xenopict.scale`` — RDKit ``fixedBondLength``.
-BOND_PX = 20.0
+# xenopict ``Xenopict.scale`` / xenosite depiction ``"scale": 20``.
+# Layout coords are multiplied so the mean bond draws at this length; the
+# SVG root width/height use the same units (intrinsic CSS px when embedded).
+SCALE = 20.0
+BOND_PX = SCALE  # alias — bond length in drawing / CSS-px units
 
 FONT_FRAC = 0.60  # RDKit baseFontSize, inherited by xenopict
 # "Helvetica, Arial, sans-serif" resolves to Liberation Sans Regular.
@@ -93,12 +98,12 @@ ANNOT_STROKE_PX = ANNOT_STROKE_FRAC * BOND_PX
 
 
 def coord_scale(layout: MoleculeLayout) -> float:
-    """SVG pixels per layout unit so the mean bond draws at ``BOND_PX``."""
+    """SVG drawing units per layout unit so the mean bond draws at ``SCALE``."""
     return shared_coord_scale([layout])
 
 
 def shared_coord_scale(layouts: Sequence[MoleculeLayout]) -> float:
-    """One scale for co-displayed molecules so mean bonds match ``BOND_PX``.
+    """One scale for co-displayed molecules so mean bonds match ``SCALE``.
 
     Pools every bond length across ``layouts`` rather than normalizing each
     molecule on its own mean (which made neighbors look differently sized).
@@ -115,7 +120,7 @@ def shared_coord_scale(layouts: Sequence[MoleculeLayout]) -> float:
     mean = sum(lengths) / len(lengths) if lengths else 1.0
     if mean < 1e-6:
         mean = 1.0
-    return BOND_PX / mean
+    return SCALE / mean
 
 
 def label_clearance(text: str, font_px: float = FONT_PX) -> float:

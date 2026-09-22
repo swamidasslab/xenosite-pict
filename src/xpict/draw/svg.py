@@ -144,11 +144,11 @@ def svg_root_size_px(svg: str) -> tuple[str, str] | None:
 def svg_to_data_uri(svg: str) -> str:
     """Encode an SVG document as a ``data:image/svg+xml`` URI for ``<img src>``.
 
-    Percent-encoding keeps the payload URL-safe; browsers use the SVG's own
-    ``width``/``height`` as the image's intrinsic size.
+    Matches xenosite.org: ``data:image/svg+xml;utf8,…`` with percent-encoding.
+    The SVG’s own ``width``/``height`` become the image’s intrinsic size.
     """
     body = _strip_xml_decl(svg).strip()
-    return "data:image/svg+xml;charset=utf-8," + quote(body, safe="")
+    return "data:image/svg+xml;utf8," + quote(body, safe="")
 
 
 def svg_to_img_tag(
@@ -160,28 +160,30 @@ def svg_to_img_tag(
     """Wrap ``svg`` in an ``<img>`` whose ``src`` is a data URI.
 
     ``width``/``height`` attributes mirror the SVG root so layout is correct
-    before (and without relying on) CSS.
+    before (and without relying on) CSS — same pattern as xenosite’s
+    ``interactive-molecule__img``.
     """
     uri = svg_to_data_uri(svg)
     size = svg_root_size_px(svg)
     size_attrs = f' width="{size[0]}" height="{size[1]}"' if size else ""
     return (
         f'<img class="{html.escape(cls)}" src="{uri}"{size_attrs} '
-        f'alt="{html.escape(alt)}" decoding="async"/>'
+        f'alt="{html.escape(alt)}" decoding="async" draggable="false"/>'
     )
 
 
 def scene_to_svg(scene: Scene) -> str:
-    # Explicit px width/height give a stable intrinsic size. viewBox stays in
-    # user units so content scales only when CSS intentionally overrides size.
+    # width/height match viewBox (drawing units = SCALE-space). As a data-URI
+    # <img>, browsers treat those numbers as intrinsic CSS px — xenosite.org
+    # acetone uses the same pattern (width="103.0" height="97.2").
     w = _fmt_user(scene.width)
     h = _fmt_user(scene.height)
     root = Element(
         "svg",
         {
             "xmlns": "http://www.w3.org/2000/svg",
-            "width": _fmt_css_px(scene.width),
-            "height": _fmt_css_px(scene.height),
+            "width": w,
+            "height": h,
             "viewBox": f"0 0 {w} {h}",
             "class": "xpict",
         },
@@ -206,6 +208,9 @@ def scene_to_html(scene: Scene, *, title: str | None = None) -> str:
     t = title or "xpict"
     img = svg_to_img_tag(scene_to_svg(scene), alt=t)
     te = html.escape(t)
+    # CSS mirrors xenosite.org ``.interactive-molecule`` /
+    # ``.interactive-molecule__img``: intrinsic size from SVG width/height,
+    # shrink-only via max-width (never stretch separate mols to one column).
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -213,16 +218,18 @@ def scene_to_html(scene: Scene, *, title: str | None = None) -> str:
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>{te}</title>
 <style>
-  body {{ margin: 0; font-family: system-ui, sans-serif; background: #fafafa; }}
+  body {{ margin: 0; font-family: system-ui, sans-serif; background: #fafafa; color: #111; }}
   .xpict-page {{ padding: 1rem; box-sizing: border-box; }}
-  /* Data-URI <img> uses SVG width/height as intrinsic size; shrink only. */
-  .xpict-page img.xpict {{
+  .xpict-mol {{
+    position: relative;
     display: inline-block;
-    vertical-align: middle;
-    width: auto;
-    height: auto;
     max-width: 100%;
-    flex: 0 0 auto;
+    line-height: 0;
+  }}
+  .xpict-mol img.xpict {{
+    display: block;
+    max-width: 100%;
+    height: auto;
   }}
   .xpict-row {{
     display: flex;
@@ -234,7 +241,9 @@ def scene_to_html(scene: Scene, *, title: str | None = None) -> str:
 </head>
 <body>
 <main class="xpict-page">
+<div class="xpict-mol">
 {img}
+</div>
 </main>
 </body>
 </html>
