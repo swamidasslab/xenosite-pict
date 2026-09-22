@@ -8,10 +8,11 @@ use std::collections::HashMap;
 
 use crate::bonds::{bond_strokes, join_centered_multibonds, DrawnBond, StrokePath};
 use crate::colormap::colormap_rgb;
+use crate::font::FaceStyle;
 use crate::labels::{self, place_backbone};
 use crate::metrics::{
-    BOND_PX, FONT_PX, HALO_GAP_PX, HALO_OPACITY, HALO_STROKE, MARK_FRAC, PAD_PX, SHADE_FRAC,
-    STROKE_PX,
+    halo_stroke_from_stroke, label_stem_em, stroke_px_from_stem, BOND_PX, FONT_PX, HALO_GAP_PX,
+    HALO_OPACITY, MARK_FRAC, PAD_PX, SHADE_FRAC,
 };
 use crate::plotdot::PlotDot;
 use crate::rings::{bond_interior_normals, find_sssr};
@@ -24,6 +25,12 @@ use crate::scene::{
 /// Layers (bottom → top): shading → bonds → labels → marks.
 pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
     let color = mol.color.as_deref().unwrap_or("#111");
+    let face = if mol.bold_labels {
+        FaceStyle::Bold
+    } else {
+        FaceStyle::Regular
+    };
+    let stroke_px = stroke_px_from_stem(label_stem_em(mol.bold_labels));
     let by_index: HashMap<i32, usize> = mol
         .atoms
         .iter()
@@ -87,7 +94,7 @@ pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
             end: *by_index.get(&b.end).unwrap_or(&0),
         })
         .collect();
-    let (shortened, placed) = place_backbone(&label_atoms, &label_bonds, FONT_PX);
+    let (shortened, placed) = place_backbone(&label_atoms, &label_bonds, FONT_PX, face);
 
     // Ring bonds get interior normals → short inside offsets (not acyclic extend).
     let ring_coords: HashMap<i32, (f64, f64)> = mol
@@ -140,6 +147,7 @@ pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
             bond.interior,
             bond.stereo.as_deref(),
             bond.trims.as_ref(),
+            Some(stroke_px),
         );
         let tag = format!(
             "bond-{} atom-{} atom-{}",
@@ -171,7 +179,7 @@ pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
         if matches!(pl.side, labels::LabelSide::North | labels::LabelSide::South) {
             height = height.max(pl.atom_y + FONT_PX * 1.6 + pad * 0.25);
         }
-        if let Some(ink) = labels::label_ink_shape(pl, FONT_PX) {
+        if let Some(ink) = labels::label_ink_shape(pl, FONT_PX, face) {
             label_ink_for_halo.push(ink);
         }
         if pl.path_d.is_empty() {
@@ -192,7 +200,7 @@ pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
 
     let shade_prims = paint_shade(mol, &by_index, dx, dy);
     let mark_prims = paint_marks(mol, &by_index, dx, dy);
-    let halo_prims = paint_halo(&bond_strokes_for_halo, &label_ink_for_halo);
+    let halo_prims = paint_halo(&bond_strokes_for_halo, &label_ink_for_halo, stroke_px);
 
     let mut layers = Vec::new();
     if !shade_prims.is_empty() {
@@ -371,6 +379,7 @@ fn normalize_shade_scores(zs: &[f64], vmin: f64, vmax: f64) -> Vec<f64> {
 fn paint_halo(
     bond_strokes: &[StrokePath],
     label_ink: &[crate::geom::Shape],
+    stroke_px: f64,
 ) -> Vec<Primitive> {
     use crate::geom::Shape;
 
@@ -390,7 +399,7 @@ fn paint_halo(
         if pts.len() < 2 {
             continue;
         }
-        let ink_r = sp.stroke_width.max(STROKE_PX) * 0.5;
+        let ink_r = sp.stroke_width.max(stroke_px) * 0.5;
         // Filled wedges: treat the polygon as ink; stroked lines → capsules.
         if sp.fill.as_deref().is_some_and(|f| f != "none") && pts.len() >= 3 {
             let poly = Shape::from_ring(&pts);
@@ -422,8 +431,9 @@ fn paint_halo(
         return Vec::new();
     };
     // Match Python BondsDrawable: max(HALO_GAP, 0.25*HALO_STROKE - ink_r).
-    let ink_r = STROKE_PX * 0.5;
-    let dist = HALO_GAP_PX.max(0.25 * HALO_STROKE - ink_r);
+    let ink_r = stroke_px * 0.5;
+    let halo_stroke = halo_stroke_from_stroke(stroke_px);
+    let dist = HALO_GAP_PX.max(0.25 * halo_stroke - ink_r);
     let grown = ink.halo(dist);
     if grown.is_empty() {
         return Vec::new();
@@ -449,6 +459,7 @@ fn paint_halo(
 fn paint_halo(
     _bond_strokes: &[StrokePath],
     _label_ink: &[crate::geom::Shape],
+    _stroke_px: f64,
 ) -> Vec<Primitive> {
     Vec::new()
 }
@@ -636,6 +647,7 @@ mod tests {
             bond_shade: None,
             mark_atoms: vec![],
             mark_bonds: vec![],
+            bold_labels: false,
         }
     }
 
@@ -679,6 +691,7 @@ mod tests {
             bond_shade: None,
             mark_atoms: vec![],
             mark_bonds: vec![],
+            bold_labels: false,
         }
     }
 
@@ -719,6 +732,7 @@ mod tests {
             bond_shade: None,
             mark_atoms: vec![],
             mark_bonds: vec![],
+            bold_labels: false,
         };
         assert_eq!(mol.atoms[0].symbol(), "C");
         assert_eq!(mol.atoms[1].symbol(), "O");
@@ -767,6 +781,33 @@ mod tests {
         assert_eq!(bonds.primitives.len(), 2);
         assert!(scene.width > PAD_PX);
         assert!(scene.height > PAD_PX);
+    }
+
+    #[test]
+    fn bold_labels_thicken_bond_stroke() {
+        use crate::metrics::{label_stem_em, stroke_px_from_stem, STROKE_PX};
+        let mut mol = ethanol();
+        mol.bold_labels = true;
+        let scene = depict_molecule(&mol);
+        let bonds = scene.viewports[0]
+            .layers
+            .iter()
+            .find(|l| l.name == LayerName::Bonds)
+            .expect("bonds");
+        let sw = bonds
+            .primitives
+            .iter()
+            .find_map(|p| match p {
+                Primitive::Path { stroke_width, .. } if *stroke_width > 0.0 => Some(*stroke_width),
+                _ => None,
+            })
+            .expect("bond stroke");
+        let expected = stroke_px_from_stem(label_stem_em(true));
+        assert!(
+            (sw - expected).abs() < 0.02,
+            "bold stroke {sw} vs {expected}"
+        );
+        assert!(sw > STROKE_PX + 0.3);
     }
 
     #[test]
@@ -832,6 +873,7 @@ mod tests {
             bond_shade: None,
             mark_atoms: vec![],
             mark_bonds: vec![],
+            bold_labels: false,
         };
         let scene = depict_molecule(&mol);
         let layer = scene.viewports[0]

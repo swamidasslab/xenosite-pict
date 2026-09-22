@@ -385,16 +385,16 @@ fn superscript_char(ch: char) -> char {
     }
 }
 
-fn advance_glyphs_px(glyphs: &[ChemGlyph], font_px: f64) -> f64 {
+fn advance_glyphs_px(glyphs: &[ChemGlyph], font_px: f64, style: FaceStyle) -> f64 {
     if glyphs.is_empty() {
         return 0.0;
     }
-    let face = font::face_metrics(FaceStyle::Regular);
-    let (_shape, adv_em) = font::outline_chem_run_em(glyphs, FaceStyle::Regular);
+    let face = font::face_metrics(style);
+    let (_shape, adv_em) = font::outline_chem_run_em(glyphs, style);
     adv_em * (font_px / face.upem)
 }
 
-fn advance_px(text: &str, font_px: f64) -> f64 {
+fn advance_px(text: &str, font_px: f64, style: FaceStyle) -> f64 {
     if text.is_empty() {
         return 0.0;
     }
@@ -405,11 +405,11 @@ fn advance_px(text: &str, font_px: f64) -> f64 {
             role: ScriptRole::Normal,
         })
         .collect();
-    advance_glyphs_px(&glyphs, font_px)
+    advance_glyphs_px(&glyphs, font_px, style)
 }
 
-fn baseline_offset(font_px: f64) -> f64 {
-    let face = font::face_metrics(FaceStyle::Regular);
+fn baseline_offset(font_px: f64, style: FaceStyle) -> f64 {
+    let face = font::face_metrics(style);
     0.5 * (face.cap_height / face.upem) * font_px
 }
 
@@ -429,7 +429,12 @@ fn center_glyph_text(parts: &LabelParts, side: LabelSide) -> String {
 }
 
 /// Advance from string start to the start of the center glyph (E/W runs).
-fn prefix_before_center(parts: &LabelParts, side: LabelSide, font_px: f64) -> f64 {
+fn prefix_before_center(
+    parts: &LabelParts,
+    side: LabelSide,
+    font_px: f64,
+    style: FaceStyle,
+) -> f64 {
     match side {
         LabelSide::East | LabelSide::North | LabelSide::South => 0.0,
         LabelSide::West => {
@@ -440,11 +445,11 @@ fn prefix_before_center(parts: &LabelParts, side: LabelSide, font_px: f64) -> f6
                     return 0.0;
                 }
                 let prefix: String = chars.collect();
-                return advance_px(&prefix, font_px);
+                return advance_px(&prefix, font_px, style);
             }
             let mut prefix = charge_glyphs(parts.charge);
             prefix.extend(h_travel_glyphs(parts));
-            advance_glyphs_px(&prefix, font_px)
+            advance_glyphs_px(&prefix, font_px, style)
         }
     }
 }
@@ -454,6 +459,7 @@ fn center_glyph_ink_rel(
     parts: &LabelParts,
     side: LabelSide,
     font_px: f64,
+    style: FaceStyle,
 ) -> (f64, Option<(f64, f64, f64, f64)>) {
     let text = center_glyph_text(parts, side);
     if text.is_empty() {
@@ -461,12 +467,12 @@ fn center_glyph_ink_rel(
     }
     // ``*`` uses the custom star metrics.
     if text == "*" {
-        let face = font::face_metrics(FaceStyle::Regular);
+        let face = font::face_metrics(style);
         let scale = font_px / face.upem;
-        let (shape, adv_em) = font::outline_star_em(FaceStyle::Regular);
+        let (shape, adv_em) = font::outline_star_em(style);
         let advance = adv_em * scale;
         let half = 0.5 * advance;
-        let base = baseline_offset(font_px);
+        let base = baseline_offset(font_px, style);
         let ink = shape.bounds().map(|(x0, y0, x1, y1)| {
             (
                 x0 * scale - half,
@@ -477,7 +483,7 @@ fn center_glyph_ink_rel(
         });
         return (advance, ink);
     }
-    let face = font::face_metrics(FaceStyle::Regular);
+    let face = font::face_metrics(style);
     let scale = font_px / face.upem;
     let mut advance_em = 0.0;
     let mut ink_xmin: Option<f64> = None;
@@ -486,7 +492,7 @@ fn center_glyph_ink_rel(
     let mut ink_ymax: Option<f64> = None;
     let mut x_cursor = 0.0;
     for ch in text.chars() {
-        let Some(g) = font::glyph_metrics(ch, FaceStyle::Regular) else {
+        let Some(g) = font::glyph_metrics(ch, style) else {
             continue;
         };
         if g.has_ink() {
@@ -504,7 +510,7 @@ fn center_glyph_ink_rel(
     }
     let advance = advance_em * scale;
     let half = 0.5 * advance;
-    let base = baseline_offset(font_px);
+    let base = baseline_offset(font_px, style);
     let ink = match (ink_xmin, ink_ymin, ink_xmax, ink_ymax) {
         (Some(x0), Some(y0), Some(x1), Some(y1)) => Some((
             x0 * scale - half,
@@ -553,8 +559,9 @@ fn outline_placed(
     atom_x: f64,
     _atom_y: f64,
     font_px: f64,
+    style: FaceStyle,
 ) -> Option<Shape> {
-    let face = font::face_metrics(FaceStyle::Regular);
+    let face = font::face_metrics(style);
     let scale = font_px / face.upem;
     let line_gap = 1.1 * (face.cap_height / face.upem) * font_px;
 
@@ -567,7 +574,7 @@ fn outline_placed(
                 baseline_y,
                 font_px,
                 "start",
-                FaceStyle::Regular,
+                style,
             )
         }
         LabelSide::North | LabelSide::South => {
@@ -575,7 +582,7 @@ fn outline_placed(
             let center = center_glyphs(parts);
             let mut travel = h_travel_glyphs(parts);
             travel.extend(charge_glyphs(parts.charge));
-            let (c_shape, c_adv_em) = font::outline_chem_run_em(&center, FaceStyle::Regular);
+            let (c_shape, c_adv_em) = font::outline_chem_run_em(&center, style);
             let c_adv = c_adv_em * scale;
             let c_origin_x = atom_x - 0.5 * c_adv;
             let mut acc = c_shape.map(|s| {
@@ -583,7 +590,7 @@ fn outline_placed(
                     .translate(c_origin_x, baseline_y)
             });
             if !travel.is_empty() {
-                let (t_shape, t_adv_em) = font::outline_chem_run_em(&travel, FaceStyle::Regular);
+                let (t_shape, t_adv_em) = font::outline_chem_run_em(&travel, style);
                 let t_adv = t_adv_em * scale;
                 let t_origin_x = atom_x - 0.5 * t_adv;
                 let t_y = if side == LabelSide::North {
@@ -613,15 +620,16 @@ pub fn place_label(
     atom_y: f64,
     side: LabelSide,
     font_px: f64,
+    style: FaceStyle,
 ) -> PlacedLabel {
     let parts = split_label(raw);
     let text = compose_label(&parts, side);
-    let (center_adv, ink) = center_glyph_ink_rel(&parts, side, font_px);
-    let prefix = prefix_before_center(&parts, side, font_px);
+    let (center_adv, ink) = center_glyph_ink_rel(&parts, side, font_px, style);
+    let prefix = prefix_before_center(&parts, side, font_px, style);
     let origin_x = atom_x - prefix - 0.5 * center_adv;
-    let y = atom_y + baseline_offset(font_px);
+    let y = atom_y + baseline_offset(font_px, style);
     let clearance = clearance_isotropic(center_adv, ink);
-    let path_d = outline_placed(&parts, side, origin_x, y, atom_x, atom_y, font_px)
+    let path_d = outline_placed(&parts, side, origin_x, y, atom_x, atom_y, font_px, style)
         .map(|s| s.to_svg_d())
         .unwrap_or_default();
     PlacedLabel {
@@ -638,7 +646,7 @@ pub fn place_label(
 }
 
 /// Glyph ink for a placed label (halo / occupancy).
-pub fn label_ink_shape(pl: &PlacedLabel, font_px: f64) -> Option<Shape> {
+pub fn label_ink_shape(pl: &PlacedLabel, font_px: f64, style: FaceStyle) -> Option<Shape> {
     let parts = split_label(&pl.raw);
     outline_placed(
         &parts,
@@ -648,6 +656,7 @@ pub fn label_ink_shape(pl: &PlacedLabel, font_px: f64) -> Option<Shape> {
         pl.atom_x,
         pl.atom_y,
         font_px,
+        style,
     )
 }
 
@@ -708,6 +717,7 @@ pub fn place_backbone(
     atoms: &[AtomIn],
     bonds: &[BondIn],
     font_px: f64,
+    style: FaceStyle,
 ) -> (Vec<BondOut>, Vec<Option<PlacedLabel>>) {
     let n = atoms.len();
     let mut nbrs: Vec<Vec<(f64, f64)>> = vec![Vec::new(); n];
@@ -730,8 +740,8 @@ pub fn place_backbone(
         let parts = split_label(raw);
         let elem = parts.center.as_str();
         let side = label_side_for((atom.x, atom.y), &nbrs[i], Some(elem));
-        metrics.push(Some(center_glyph_ink_rel(&parts, side, font_px)));
-        labels.push(Some(place_label(raw, atom.x, atom.y, side, font_px)));
+        metrics.push(Some(center_glyph_ink_rel(&parts, side, font_px, style)));
+        labels.push(Some(place_label(raw, atom.x, atom.y, side, font_px, style)));
     }
 
     let mut out_bonds = Vec::with_capacity(bonds.len());
@@ -847,24 +857,25 @@ mod tests {
 
     #[test]
     fn oh_center_stays_on_atom() {
-        let east = place_label("OH", 100.0, 50.0, LabelSide::East, FONT_PX);
-        let west = place_label("OH", 100.0, 50.0, LabelSide::West, FONT_PX);
+        let style = FaceStyle::Regular;
+        let east = place_label("OH", 100.0, 50.0, LabelSide::East, FONT_PX, style);
+        let west = place_label("OH", 100.0, 50.0, LabelSide::West, FONT_PX, style);
         assert_eq!(east.text, "OH");
         assert_eq!(west.text, "HO");
         assert!(!east.path_d.is_empty());
         assert!(east.path_d.contains('M'));
-        let o_adv = advance_px("O", FONT_PX);
+        let o_adv = advance_px("O", FONT_PX, style);
         assert!((east.origin_x + 0.5 * o_adv - 100.0).abs() < 1e-6);
-        let h_adv = advance_px("H", FONT_PX);
+        let h_adv = advance_px("H", FONT_PX, style);
         assert!((west.origin_x + h_adv + 0.5 * o_adv - 100.0).abs() < 1e-6);
         assert!((east.clearance - (0.5 * o_adv + LABEL_GAP_PX)).abs() < 1e-6);
-        assert!(east.clearance < advance_px("OH", FONT_PX) * 0.5 + LABEL_GAP_PX - 0.1);
+        assert!(east.clearance < advance_px("OH", FONT_PX, style) * 0.5 + LABEL_GAP_PX - 0.1);
     }
 
     #[test]
     fn n_diagonal_clearance_uses_ink_support() {
         let parts = split_label("N");
-        let (adv, ink) = center_glyph_ink_rel(&parts, LabelSide::East, FONT_PX);
+        let (adv, ink) = center_glyph_ink_rel(&parts, LabelSide::East, FONT_PX, FaceStyle::Regular);
         let horiz = clearance_toward(adv, ink, 1.0, 0.0);
         let diag = clearance_toward(
             adv,
@@ -891,7 +902,7 @@ mod tests {
             },
         ];
         let bonds = vec![BondIn { begin: 0, end: 1 }];
-        let (out, labels) = place_backbone(&atoms, &bonds, FONT_PX);
+        let (out, labels) = place_backbone(&atoms, &bonds, FONT_PX, FaceStyle::Regular);
         assert!(labels[1].is_some());
         let lab = labels[1].as_ref().unwrap();
         assert_eq!(lab.text, "OH");
@@ -914,9 +925,9 @@ mod tests {
             },
         ];
         let bonds = vec![BondIn { begin: 0, end: 1 }];
-        let (out, labels) = place_backbone(&atoms, &bonds, FONT_PX);
+        let (out, labels) = place_backbone(&atoms, &bonds, FONT_PX, FaceStyle::Regular);
         let lab = labels[1].as_ref().unwrap();
-        let n_adv = advance_px("N", FONT_PX);
+        let n_adv = advance_px("N", FONT_PX, FaceStyle::Regular);
         let gap = ((out[0].x2 - 30.0).powi(2) + (out[0].y2 - 30.0).powi(2)).sqrt();
         assert!(gap > 0.5 * n_adv + LABEL_GAP_PX + 0.3);
         assert!((lab.clearance - (0.5 * n_adv + LABEL_GAP_PX)).abs() < 1e-6);
@@ -924,7 +935,7 @@ mod tests {
 
     #[test]
     fn star_label_emits_path() {
-        let pl = place_label("*", 10.0, 10.0, LabelSide::East, FONT_PX);
+        let pl = place_label("*", 10.0, 10.0, LabelSide::East, FONT_PX, FaceStyle::Regular);
         assert_eq!(pl.text, "*");
         assert!(!pl.path_d.is_empty());
     }

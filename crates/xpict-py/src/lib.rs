@@ -221,7 +221,12 @@ fn place_backbone(
         .into_iter()
         .map(|(begin, end)| xpict_core::labels::BondIn { begin, end })
         .collect();
-    let (outs, labs) = xpict_core::labels::place_backbone(&atoms, &bonds, font_px);
+    let (outs, labs) = xpict_core::labels::place_backbone(
+        &atoms,
+        &bonds,
+        font_px,
+        xpict_core::font::FaceStyle::Regular,
+    );
     let bond_ends = outs
         .into_iter()
         .map(|b| (b.x1, b.y1, b.x2, b.y2))
@@ -307,7 +312,8 @@ fn label_ink_shape(
         clearance: 0.0,
         path_d: String::new(),
     };
-    xpict_core::labels::label_ink_shape(&pl, font_px).map(PyShape::wrap)
+    xpict_core::labels::label_ink_shape(&pl, font_px, xpict_core::font::FaceStyle::Regular)
+        .map(PyShape::wrap)
 }
 
 /// Multipolygon geometry (Shapely stand-in).

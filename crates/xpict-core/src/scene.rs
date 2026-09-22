@@ -218,6 +218,11 @@ pub struct MoleculeIn {
     /// Bond endpoint index pairs to circle/stroke-mark.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mark_bonds: Vec<(i32, i32)>,
+    /// When true, atom labels use Bold Liberation and bond stroke width
+    /// keys off the bold stem (thicker ink). Default off — demo / stress
+    /// toggle for parametric layout.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub bold_labels: bool,
 }
 
 impl Scene {

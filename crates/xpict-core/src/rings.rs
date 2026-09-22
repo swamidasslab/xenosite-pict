@@ -286,6 +286,7 @@ mod tests {
             bond_shade: None,
             mark_atoms: vec![],
             mark_bonds: vec![],
+            bold_labels: false,
         }
     }
 

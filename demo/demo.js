@@ -63,6 +63,7 @@ function parseStarLabels(raw) {
 function readOptions() {
   return {
     align: $("align").checked,
+    bold_labels: $("bold_labels").checked,
     color1: $("color1").value,
     color2: $("color2").value,
     star_labels1: parseStarLabels($("star_labels1").value),
@@ -111,6 +112,7 @@ async function draw() {
     const rendered1 = await xpict.render(template, {
       color: opts.color1,
       ...(opts.star_labels1 ? { star_labels: opts.star_labels1 } : {}),
+      ...(opts.bold_labels ? { bold_labels: true } : {}),
     });
     if (gen !== drawGen) return;
     showSvg(out1, xpict.toSvg(rendered1.scene));
@@ -122,6 +124,7 @@ async function draw() {
       ...(opts.mark_bonds ? { mark_bonds: opts.mark_bonds } : {}),
       ...(opts.atom_shade ? { atom_shade: opts.atom_shade } : {}),
       ...(opts.bond_shade ? { bond_shade: opts.bond_shade } : {}),
+      ...(opts.bold_labels ? { bold_labels: true } : {}),
       ...(opts.align ? { align_to: template } : {}),
     };
     const rendered2 = await xpict.render(xpict.mol(smiles2), queryOpts);
