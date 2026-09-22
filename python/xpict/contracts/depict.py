@@ -91,5 +91,5 @@ class DepictSpec(RootModel[DepictRoot]):
         return list(root.children)
 
 
-# Historical name — same live mol node.
+# Alias for MolNode.
 MolSpec = MolNode

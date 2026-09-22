@@ -125,7 +125,7 @@ impl MolNode {
     }
 }
 
-/// Historical alias.
+/// Alias of [`MolNode`].
 pub type MolSpec = MolNode;
 
 /// Render every mol via the simple [`crate::render`] client.

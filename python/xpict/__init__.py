@@ -14,7 +14,7 @@ from xpict.contracts.depict import DepictSpec, MolSpec
 from xpict.contracts.scene import Scene
 from xpict.warnings import PictBackendWarning
 
-# Lab / future nested document (not the ship surface).
+# Lab / future nested document.
 from xpict.future import PictSpec
 
 __version__ = "0.1.4"

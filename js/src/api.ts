@@ -130,7 +130,7 @@ export type GroupNode = {
 /** Preferred declarative document (nested subset of PictSpec). */
 export type DepictSpec = MolNode | GroupNode;
 
-/** @deprecated Use MolNode — kept as an alias for older imports. */
+/** Alias of {@link MolNode}. */
 export type MolSpec = MolNode;
 
 let readyPromise: Promise<void> | null = null;
