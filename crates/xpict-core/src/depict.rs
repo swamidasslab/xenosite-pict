@@ -742,6 +742,33 @@ mod tests {
         assert_eq!(mol.atoms[1].symbol(), "O");
         let scene = depict_molecule(&mol);
         assert_eq!(scene.viewports.len(), 1);
+        assert_eq!(scene.viewports[0].id.as_deref(), Some("z"));
+        let bonds = scene.viewports[0]
+            .layers
+            .iter()
+            .find(|l| l.name == LayerName::Bonds)
+            .expect("bonds");
+        assert_eq!(bonds.primitives.len(), 1);
+        let labels = scene.viewports[0]
+            .layers
+            .iter()
+            .find(|l| l.name == LayerName::Labels)
+            .expect("labels");
+        let texts: Vec<_> = labels
+            .primitives
+            .iter()
+            .filter_map(|p| match p {
+                Primitive::Path {
+                    data_text: Some(t),
+                    ..
+                } => Some(t.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            texts.iter().any(|t| *t == "O"),
+            "expected O label from z=8 atom, got {texts:?}"
+        );
     }
 
     #[test]
@@ -830,13 +857,16 @@ mod tests {
                 _ => false,
             })
             .count();
-        assert!(offset_count >= 2, "expected centered C=O offsets");
-        assert!(bonds.primitives.iter().any(|p| match p {
-            Primitive::Path {
-                stroke: Some(s), ..
-            } => s == "#336699",
-            _ => false,
-        }));
+        assert_eq!(offset_count, 2, "centered C=O must emit exactly two offsets");
+        assert!(
+            bonds.primitives.iter().all(|p| match p {
+                Primitive::Path {
+                    stroke: Some(s), ..
+                } => s == "#336699",
+                _ => true,
+            }),
+            "all bond strokes must use molecule color #336699"
+        );
     }
 
     #[test]
@@ -950,12 +980,12 @@ mod tests {
                 _ => None,
             })
             .collect();
-        assert!(fills.len() >= 2);
+        assert!(fills.len() >= 4, "atom+bond shade should emit multiple disks, got {}", fills.len());
         // Combined atom+bond → base radius 0.8×bond (not 0.9).
         let max_r = fills.iter().map(|(_, r)| *r).fold(0.0_f64, f64::max);
         assert!(
-            (max_r - BOND_PX * 0.8).abs() < 0.05 || max_r < BOND_PX * 0.8 + 0.05,
-            "expected ≤0.8×bond when both atom+bond shaded, got {max_r}"
+            (max_r - BOND_PX * 0.8).abs() < 0.05,
+            "expected 0.8×bond when both atom+bond shaded, got {max_r}"
         );
     }
 
@@ -1049,7 +1079,39 @@ mod tests {
         let json = serde_json::to_string(&scene).expect("ser");
         let back: Scene = serde_json::from_str(&json).expect("de");
         assert_eq!(back.viewports[0].id.as_deref(), Some("acetone"));
-        assert!(!back.viewports[0].layers.is_empty());
+        let orig_names: Vec<_> = scene.viewports[0].layers.iter().map(|l| l.name).collect();
+        let back_names: Vec<_> = back.viewports[0].layers.iter().map(|l| l.name).collect();
+        assert_eq!(back_names, orig_names);
+        assert!(back_names.contains(&LayerName::Bonds));
+        assert!(back_names.contains(&LayerName::Labels));
+        let bond_count = |s: &Scene| {
+            s.viewports[0]
+                .layers
+                .iter()
+                .find(|l| l.name == LayerName::Bonds)
+                .map(|l| l.primitives.len())
+                .unwrap_or(0)
+        };
+        assert_eq!(bond_count(&back), bond_count(&scene));
+        assert_eq!(bond_count(&back), 4);
+        let bond_colors = |s: &Scene| -> Vec<String> {
+            s.viewports[0]
+                .layers
+                .iter()
+                .find(|l| l.name == LayerName::Bonds)
+                .into_iter()
+                .flat_map(|l| l.primitives.iter())
+                .filter_map(|p| match p {
+                    Primitive::Path {
+                        stroke: Some(s), ..
+                    } => Some(s.clone()),
+                    _ => None,
+                })
+                .collect()
+        };
+        let colors = bond_colors(&back);
+        assert_eq!(colors, bond_colors(&scene));
+        assert!(colors.iter().all(|c| c == "#336699"));
     }
 
     /// Parity: Python ``test_depict_molecule_ethanol_two_bonds``.
@@ -1063,7 +1125,29 @@ mod tests {
             .find(|l| l.name == LayerName::Bonds)
             .expect("bonds");
         assert_eq!(bonds.primitives.len(), 2);
-        assert!(scene.width > 0.0 && scene.height > 0.0);
+        assert!(scene.width.is_finite() && scene.height.is_finite());
+        assert!(scene.width > PAD_PX);
+        assert!(scene.height > PAD_PX);
+        let labels = scene.viewports[0]
+            .layers
+            .iter()
+            .find(|l| l.name == LayerName::Labels)
+            .expect("labels");
+        let texts: Vec<_> = labels
+            .primitives
+            .iter()
+            .filter_map(|p| match p {
+                Primitive::Path {
+                    data_text: Some(t),
+                    ..
+                } => Some(t.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            texts.iter().any(|t| *t == "OH" || *t == "HO"),
+            "expected OH/HO data-text, got {texts:?}"
+        );
     }
 
     /// Parity: Python ``test_depict_acetone_centered_double_offsets`` + joined offsets.
@@ -1083,14 +1167,14 @@ mod tests {
                 _ => false,
             })
             .collect();
-        assert!(offsets.len() >= 2);
+        assert_eq!(offsets.len(), 2, "centered C=O must emit exactly two offsets");
         assert!(bonds.primitives.iter().all(|p| match p {
             Primitive::Path {
                 stroke: Some(s), ..
             } => s == "#336699",
             _ => true,
         }));
-        assert!((crate::metrics::OFFSET_PX - 3.0).abs() < 1e-9);
+        assert_eq!(crate::metrics::OFFSET_PX, 3.0);
     }
 
     /// Parity: Python ``test_depict_marks_and_shade_layers``.
@@ -1126,6 +1210,54 @@ mod tests {
         assert!(names.contains(&LayerName::Shading));
         assert!(names.contains(&LayerName::Bonds));
         assert!(names.contains(&LayerName::Marks));
+
+        let shade = scene.viewports[0]
+            .layers
+            .iter()
+            .find(|l| l.name == LayerName::Shading)
+            .expect("shading");
+        let disks: Vec<_> = shade
+            .primitives
+            .iter()
+            .filter_map(|p| match p {
+                Primitive::Circle {
+                    cx,
+                    cy,
+                    r,
+                    class: Some(c),
+                    ..
+                } if c == "shade" => Some((*cx, *cy, *r)),
+                _ => None,
+            })
+            .collect();
+        // z=0 filtered; z=0.85 → 4 PlotDot rings at the O atom.
+        assert_eq!(disks.len(), 4);
+        let base_r = BOND_PX * SHADE_FRAC;
+        let max_r = disks.iter().map(|(_, _, r)| *r).fold(0.0_f64, f64::max);
+        assert!((max_r - base_r).abs() < 1e-6, "outer shade radius = {max_r}");
+        let (sx, sy, _) = disks[0];
+        assert!(disks.iter().all(|(x, y, _)| (*x - sx).abs() < 1e-9 && (*y - sy).abs() < 1e-9));
+
+        let marks = scene.viewports[0]
+            .layers
+            .iter()
+            .find(|l| l.name == LayerName::Marks)
+            .expect("marks");
+        let mark = marks.primitives.iter().find_map(|p| match p {
+            Primitive::Circle {
+                cx,
+                cy,
+                r,
+                class: Some(c),
+                ..
+            } if c.contains("atom-1") && c.contains(" mark") && !c.contains("halo") => {
+                Some((*cx, *cy, *r))
+            }
+            _ => None,
+        });
+        let (mx, my, mr) = mark.expect("atom-1 mark circle");
+        assert!((mr - BOND_PX).abs() < 1e-9);
+        assert!((mx - sx).abs() < 1e-9 && (my - sy).abs() < 1e-9);
     }
 
     #[test]
@@ -1288,7 +1420,21 @@ mod tests {
             .iter()
             .find(|l| l.name == LayerName::Labels)
             .expect("labels");
-        assert!(!labels.primitives.is_empty());
+        let texts: Vec<_> = labels
+            .primitives
+            .iter()
+            .filter_map(|p| match p {
+                Primitive::Path {
+                    data_text: Some(t),
+                    ..
+                } => Some(t.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            texts.iter().any(|t| t.contains("NH") || t.contains("HN")),
+            "expected NH2/HN2 label, got {texts:?}"
+        );
     }
 
     #[test]
@@ -1296,19 +1442,38 @@ mod tests {
         let mut mol = ethanol();
         mol.atom_shade = Some(vec![-0.8, -0.2, 0.0]);
         let scene = depict_molecule(&mol);
-        assert!(scene.viewports[0]
-            .layers
-            .iter()
-            .any(|l| l.name == LayerName::Shading));
-
-        mol.atom_shade = Some(vec![-0.9, 0.0, 0.9]);
-        let scene2 = depict_molecule(&mol);
-        let shade = scene2.viewports[0]
+        let shade = scene.viewports[0]
             .layers
             .iter()
             .find(|l| l.name == LayerName::Shading)
             .expect("shading");
-        assert!(!shade.primitives.is_empty());
+        assert!(
+            shade.primitives.len() >= 2,
+            "negative scores should still paint shade disks"
+        );
+
+        mol.atom_shade = Some(vec![-0.9, 0.0, 0.9]);
+        let scene2 = depict_molecule(&mol);
+        let shade2 = scene2.viewports[0]
+            .layers
+            .iter()
+            .find(|l| l.name == LayerName::Shading)
+            .expect("shading");
+        let fills: Vec<_> = shade2
+            .primitives
+            .iter()
+            .filter_map(|p| match p {
+                Primitive::Circle {
+                    fill: Some(f), ..
+                } => Some(f.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert!(fills.len() >= 2);
+        assert!(
+            fills.iter().any(|f| f.starts_with("rgb(")),
+            "diverging colormap must emit rgb() fills"
+        );
     }
 
     #[test]
@@ -1330,8 +1495,29 @@ mod tests {
             .iter()
             .find(|l| l.name == LayerName::Marks)
             .expect("marks");
-        // Valid atom mark + bond mark only (missing indices skipped).
-        assert!(marks.primitives.len() >= 2);
+        // Valid atom mark (+halo) + bond mark (+halo); missing indices skipped.
+        let atom_marks = marks
+            .primitives
+            .iter()
+            .filter(|p| match p {
+                Primitive::Circle {
+                    class: Some(c), ..
+                } => c.contains("atom-2") && c.contains(" mark") && !c.contains("halo"),
+                _ => false,
+            })
+            .count();
+        let bond_marks = marks
+            .primitives
+            .iter()
+            .filter(|p| match p {
+                Primitive::Path {
+                    class: Some(c), ..
+                } => c.contains("bond-mark") && !c.contains("halo"),
+                _ => false,
+            })
+            .count();
+        assert_eq!(atom_marks, 1);
+        assert_eq!(bond_marks, 1);
     }
 
     #[test]
@@ -1361,10 +1547,23 @@ mod tests {
             .iter()
             .find(|l| l.name == LayerName::Bonds)
             .expect("bonds");
-        assert!(bonds.primitives.iter().any(|p| match p {
-            Primitive::Path { class: Some(c), .. } => c.contains("wedge"),
-            _ => false,
-        }));
+        let wedges: Vec<_> = bonds
+            .primitives
+            .iter()
+            .filter(|p| match p {
+                Primitive::Path { class: Some(c), .. } => c.contains("wedge"),
+                _ => false,
+            })
+            .collect();
+        assert_eq!(wedges.len(), 1);
+        match wedges[0] {
+            Primitive::Path { d, fill: Some(f), .. } => {
+                assert!(d.starts_with("M "), "wedge path starts with move: {d}");
+                assert!(d.contains('Z'), "wedge must be closed");
+                assert_eq!(f, "#111");
+            }
+            _ => panic!("expected filled wedge path"),
+        }
     }
 
     #[test]
@@ -1378,7 +1577,15 @@ mod tests {
             .iter()
             .find(|l| l.name == LayerName::Shading)
             .expect("shading");
+        // Only bond 0 score 0.9 survives the 0.01 filter.
         assert!(!shade.primitives.is_empty());
+        assert!(shade.primitives.iter().all(|p| matches!(
+            p,
+            Primitive::Circle {
+                class: Some(c),
+                ..
+            } if c == "shade"
+        )));
 
         // Near-zero-only scores: either no shading layer or only filtered disks.
         mol.bond_shade = Some(vec![0.0, 0.0]);

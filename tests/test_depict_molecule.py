@@ -11,6 +11,8 @@ import json
 
 import pytest
 
+from xpict.draw.metrics import PAD_PX
+
 try:
     from xpict import _native
 
@@ -38,6 +40,10 @@ def test_native_depict_molecule_abi():
     }
     scene = json.loads(_native.depict_molecule(json.dumps(mol)))
     assert scene["viewports"][0]["id"] == "etoh"
-    assert scene["width"] > 0 and scene["height"] > 0
-    names = {layer["name"] for layer in scene["viewports"][0]["layers"]}
-    assert "bonds" in names
+    assert scene["width"] > PAD_PX and scene["height"] > PAD_PX
+    layers = {layer["name"]: layer for layer in scene["viewports"][0]["layers"]}
+    assert "bonds" in layers
+    assert len(layers["bonds"]["primitives"]) == 2
+    labels = layers["labels"]["primitives"]
+    texts = [p.get("data_text") for p in labels if p.get("data_text")]
+    assert any(t in ("OH", "HO") for t in texts), texts

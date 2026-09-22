@@ -929,23 +929,42 @@ mod tests {
     fn stereo_up_replaces_skeleton() {
         let strokes = bond_strokes(0.0, 0.0, 10.0, 0.0, 1.0, None, Some("up"), None, None);
         assert!(strokes.skeleton.is_none());
+        assert_eq!(strokes.stereo.len(), 1);
         assert!(strokes.stereo[0].class.contains("wedge-up"));
+        let pts = path_pts(&strokes.stereo[0].d);
+        assert_eq!(pts.len(), 3, "filled wedge is a triangle (Z closes)");
+        assert!((pts[0].0 - 0.0).abs() < 1e-6 && (pts[0].1 - 0.0).abs() < 1e-6);
+        assert!(strokes.stereo[0].d.starts_with("M 0.00 0.00"));
+        assert!(strokes.stereo[0].d.contains('Z'));
     }
 
     #[test]
     fn either_single_is_wavy() {
         let strokes = bond_strokes(0.0, 0.0, 20.0, 0.0, 1.0, None, Some("either"), None, None);
         assert!(strokes.skeleton.is_none());
+        assert_eq!(strokes.stereo.len(), 1);
         assert!(strokes.stereo[0].class.contains("bond-either"));
+        // wavy_bond_sw(..., waves=5) → M + (5*2) L segments.
+        let pts = path_pts(&strokes.stereo[0].d);
+        assert_eq!(pts.len(), 1 + 5 * 2);
+        assert!((pts[0].0 - 0.0).abs() < 1e-6 && (pts[0].1 - 0.0).abs() < 1e-6);
     }
 
     #[test]
     fn either_double_is_crossed() {
         let strokes = bond_strokes(0.0, 0.0, 20.0, 0.0, 2.0, None, Some("either"), None, None);
-        assert!(strokes
+        assert!(strokes.skeleton.is_none());
+        let crosses: Vec<_> = strokes
             .stereo
             .iter()
-            .any(|p| p.class.contains("either-cross")));
+            .filter(|p| p.class.contains("either-cross"))
+            .collect();
+        assert_eq!(crosses.len(), 2, "crossed double has two diagonals");
+        assert!(crosses.iter().all(|p| p.class == "bond bond-either-cross"));
+        for p in &crosses {
+            let pts = path_pts(&p.d);
+            assert_eq!(pts.len(), 2);
+        }
     }
 
     #[test]

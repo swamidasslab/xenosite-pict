@@ -684,6 +684,31 @@ mod tests {
         c.curve_to(10.0, 0.0, 10.0, 10.0, 0.0, 10.0);
         c.close();
         assert_eq!(c.contours.len(), 1);
-        assert!(c.contours[0].len() > 4);
+        assert_eq!(
+            c.contours[0].len(),
+            1 + BEZIER_STEPS,
+            "move_to + one sample per Bezier step"
+        );
+        // Midpoint sample at t=0.5 (step BEZIER_STEPS/2).
+        let t = 0.5;
+        let mt = 1.0 - t;
+        let expected = (
+            mt * mt * mt * 0.0
+                + 3.0 * mt * mt * t * 10.0
+                + 3.0 * mt * t * t * 10.0
+                + t * t * t * 0.0,
+            mt * mt * mt * 0.0
+                + 3.0 * mt * mt * t * 0.0
+                + 3.0 * mt * t * t * 10.0
+                + t * t * t * 10.0,
+        );
+        let mid_idx = BEZIER_STEPS / 2;
+        let (mx, my) = c.contours[0][mid_idx];
+        assert!(
+            (mx - expected.0).abs() < 1e-9 && (my - expected.1).abs() < 1e-9,
+            "midpoint ({mx}, {my}) vs cubic@0.5 ({}, {})",
+            expected.0,
+            expected.1
+        );
     }
 }
