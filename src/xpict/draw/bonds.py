@@ -260,9 +260,12 @@ def _end_frame(
 def join_centered_multibonds(bonds: list[DrawnBond]) -> None:
     """Mitre acyclic doubles and triples to their single-bond neighbors.
 
-    One single is extended until it hits the far parallel line. Two singles
-    already share the atom; each is extended to the line on the far side so
-    they still meet, and every multiple-bond line stops on one of those lines.
+    One single: extend it to the far parallel line; both multiple-bond strokes
+    stop on that single.
+
+    Two singles: leave them meeting at the atom; extend each multiple-bond
+    stroke past the atom until its end lies on a single (closes the vertex
+    angle gap).
     """
     by_atom: dict[int, list[DrawnBond]] = defaultdict(list)
     by_index = {bond.index: bond for bond in bonds}
@@ -300,6 +303,10 @@ def join_centered_multibonds(bonds: list[DrawnBond]) -> None:
                 continue
             ex, ey, ux, uy, nx, ny = _end_frame(bond, end_i == 0)
             disps_e = end_disps[end_i]
+
+            # Per multiple-bond line: intersection t along the bond with each single.
+            # Positive t shortens from the atom; negative t extends past it.
+            line_ts: list[list[float]] = [[] for _ in disps_e]
             for single in singles:
                 if single.begin == atom:
                     sx, sy = single.x2, single.y2
@@ -315,32 +322,46 @@ def join_centered_multibonds(bonds: list[DrawnBond]) -> None:
                 side = ux * vhy - uy * vhx
                 if abs(side) < _JOIN_MIN_SIN:
                     continue
-                # +side means the substituent lies to the left of the bond.
-                d_far = min(disps_e) if side > 0 else max(disps_e)
                 cross_nv = nx * vhy - ny * vhx
-                t_far = -d_far * cross_nv / side
-                if not 0.0 < t_far < _JOIN_MAX_FRAC * length:
-                    continue
-                px = ex + ux * t_far + nx * d_far
-                py = ey + uy * t_far + ny * d_far
-                dist = math.hypot(px - ex, py - ey)
-                key = (single.index, end_flag)
-                prev = moves.get(key)
-                if prev is None or dist > prev[2]:
-                    moves[key] = (px, py, dist)
                 for i, d in enumerate(disps_e):
                     ti = -d * cross_nv / side
-                    # Positive t shortens the line onto the single. A small
-                    # negative t extends the near line back until it hits the
-                    # single too, so both strokes of a centered bond join it.
-                    if 0.0 < ti < _JOIN_MAX_FRAC * length:
-                        cur = trims[end_i][i]
-                        if cur <= 0.0 or ti < cur:
-                            trims[end_i][i] = ti
-                    elif -0.25 * length < ti < 0.0:
-                        cur = trims[end_i][i]
-                        if cur == 0.0 or (cur < 0.0 and ti > cur):
-                            trims[end_i][i] = ti
+                    if -0.25 * length < ti < _JOIN_MAX_FRAC * length and abs(ti) > 1e-9:
+                        line_ts[i].append(ti)
+                if len(singles) == 1:
+                    # Grow the single to the far parallel so both strokes meet it.
+                    d_far = min(disps_e) if side > 0 else max(disps_e)
+                    t_far = -d_far * cross_nv / side
+                    if 0.0 < t_far < _JOIN_MAX_FRAC * length:
+                        px = ex + ux * t_far + nx * d_far
+                        py = ey + uy * t_far + ny * d_far
+                        dist = math.hypot(px - ex, py - ey)
+                        key = (single.index, end_flag)
+                        prev = moves.get(key)
+                        if prev is None or dist > prev[2]:
+                            moves[key] = (px, py, dist)
+
+            for i, ts in enumerate(line_ts):
+                if not ts:
+                    continue
+                if len(singles) == 2:
+                    # Extend onto the singles (past the atom) so ends lie on them.
+                    neg = [t for t in ts if t < 0.0]
+                    pos = [t for t in ts if t > 0.0]
+                    if neg:
+                        trims[end_i][i] = max(neg)  # smallest extension that hits
+                    elif pos:
+                        trims[end_i][i] = min(pos)
+                else:
+                    # One single: shorten/extend each stroke onto that single.
+                    for ti in ts:
+                        if ti > 0.0:
+                            cur = trims[end_i][i]
+                            if cur <= 0.0 or ti < cur:
+                                trims[end_i][i] = ti
+                        else:
+                            cur = trims[end_i][i]
+                            if cur == 0.0 or (cur < 0.0 and ti > cur):
+                                trims[end_i][i] = ti
                 joined = True
         if joined:
             bond.trims = (trims[0], trims[1])

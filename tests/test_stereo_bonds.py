@@ -145,23 +145,68 @@ def test_one_single_extends_to_the_far_line():
 
 
 def test_two_singles_meet_and_clip_the_double():
+    """Two singles stay at the atom; double strokes extend onto those singles."""
     bonds = [
         DrawnBond(0, 0, 1, 0.0, 0.0, 20.0, 0.0, 2.0),
         DrawnBond(1, 0, 2, 0.0, 0.0, -10.0, 8.0, 1.0),
         DrawnBond(2, 0, 3, 0.0, 0.0, -10.0, -8.0, 1.0),
     ]
     join_centered_multibonds(bonds)
-    # Both singles still pass through the atom, so they connect there.
-    assert _on_line(0.0, 0.0, bonds[1].x1, bonds[1].y1, -10.0, 8.0)
-    assert _on_line(0.0, 0.0, bonds[2].x1, bonds[2].y1, -10.0, -8.0)
+    # Singles are not stub-extended past the atom.
+    assert bonds[1].x1 == pytest.approx(0.0)
+    assert bonds[1].y1 == pytest.approx(0.0)
+    assert bonds[2].x1 == pytest.approx(0.0)
+    assert bonds[2].y1 == pytest.approx(0.0)
     assert bonds[0].trims is not None
+    # Trims are negative: strokes extend past the atom onto the singles.
+    assert all(t < 0.0 for t in bonds[0].trims[0])
     strokes = bond_strokes(0, 0, 20, 0, 2.0, trims=bonds[0].trims)
     for path in strokes.offsets:
         x, y = _pts(path.d)[0]
-        on_upper = _on_line(x, y, bonds[1].x1, bonds[1].y1, -10.0, 8.0)
-        on_lower = _on_line(x, y, bonds[2].x1, bonds[2].y1, -10.0, -8.0)
+        on_upper = _on_line(x, y, 0.0, 0.0, -10.0, 8.0)
+        on_lower = _on_line(x, y, 0.0, 0.0, -10.0, -8.0)
         assert on_upper or on_lower
-        assert x > 0.2
+        assert x < -0.2  # past the atom, on the single-bond side
+
+
+def test_two_singles_double_ends_lie_on_singles_acetone():
+    """Acetone: each C=O stroke end sits on a methyl single."""
+    from xpict.backends import get_backend
+    from xpict.contracts.nodes import expand_pict
+    from xpict.draw.drawable import normalize_coords
+    from xpict.draw.metrics import shared_coord_scale
+
+    doc = expand_pict({"molecules": [{"smiles": "CC(=O)C"}]}).to_legacy()
+    layout = get_backend("native").layout(doc.molecules[0])
+    coords, _, _ = normalize_coords(layout, scale=shared_coord_scale([layout]))
+    bonds = []
+    for b in layout.bonds:
+        x1, y1 = coords[b.begin]
+        x2, y2 = coords[b.end]
+        bonds.append(
+            DrawnBond(
+                b.index,
+                b.begin,
+                b.end,
+                x1,
+                y1,
+                x2,
+                y2,
+                b.order,
+                begin_labeled=layout.atoms[b.begin].element != "C",
+                end_labeled=layout.atoms[b.end].element != "C",
+            )
+        )
+    join_centered_multibonds(bonds)
+    dbl = next(b for b in bonds if b.order >= 1.5)
+    singles = [b for b in bonds if b.order < 1.5]
+    assert dbl.trims is not None
+    strokes = bond_strokes(dbl.x1, dbl.y1, dbl.x2, dbl.y2, 2.0, trims=dbl.trims)
+    for path in strokes.offsets:
+        x, y = _pts(path.d)[0]
+        assert any(
+            _on_line(x, y, s.x1, s.y1, s.x2, s.y2) for s in singles
+        ), f"end ({x:.2f},{y:.2f}) not on a single"
 
 
 def test_far_end_single_joins_too():
