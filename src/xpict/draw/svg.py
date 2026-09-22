@@ -203,6 +203,7 @@ def scene_to_svg(scene: Scene) -> str:
             "height": h,
             "viewBox": f"0 0 {w} {h}",
             "class": "xpict",
+            "style": "background:transparent",
         },
     )
     # Shade under the document halo; ink above it.

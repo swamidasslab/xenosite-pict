@@ -255,7 +255,24 @@ class ShadeDrawable(Drawable):
         drawn = Drawn(layer="shading", halo=False)
         cmap = self.spec.colormap
 
-        def _emit(zs: list[float], coords: list[tuple[float, float]]) -> None:
+        # Atom + bond scores share one PlotDot pass so overlapping rings stack
+        # by strength (weak first → strong on top), matching xenopict shade().
+        zs: list[float] = []
+        coords: list[tuple[float, float]] = []
+        if atom_zs and ctx.coords:
+            for z, xy in zip(atom_zs, ctx.coords, strict=False):
+                zs.append(z)
+                coords.append(xy)
+        if bond_zs and ctx.layout.bonds:
+            for bond, z in zip(ctx.layout.bonds, bond_zs, strict=False):
+                i0, i1 = ctx.atom_pos.get(bond.begin), ctx.atom_pos.get(bond.end)
+                if i0 is None or i1 is None:
+                    continue
+                x1, y1 = ctx.coords[i0]
+                x2, y2 = ctx.coords[i1]
+                zs.append(z)
+                coords.append(((x1 + x2) * 0.5, (y1 + y2) * 0.5))
+        if zs:
             norm = _normalize_shade_scores(zs, vmin, vmax)
             for radius_frac, color_z, (x, y) in PlotDot()(norm, coords[: len(norm)]):
                 if abs(color_z) < 0.05 and radius_frac < 0.35:
@@ -272,22 +289,6 @@ class ShadeDrawable(Drawable):
                         cls="shade",
                     )
                 )
-
-        if atom_zs and ctx.coords:
-            _emit(atom_zs, list(ctx.coords))
-        if bond_zs and ctx.layout.bonds:
-            mids: list[tuple[float, float]] = []
-            scores: list[float] = []
-            for bond, z in zip(ctx.layout.bonds, bond_zs, strict=False):
-                i0, i1 = ctx.atom_pos.get(bond.begin), ctx.atom_pos.get(bond.end)
-                if i0 is None or i1 is None:
-                    continue
-                x1, y1 = ctx.coords[i0]
-                x2, y2 = ctx.coords[i1]
-                mids.append(((x1 + x2) * 0.5, (y1 + y2) * 0.5))
-                scores.append(z)
-            if scores:
-                _emit(scores, mids)
         return drawn if drawn.primitives else None
 
 

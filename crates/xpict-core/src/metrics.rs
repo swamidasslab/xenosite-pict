@@ -45,6 +45,9 @@ pub const END_GAP_PX: f64 = END_GAP_FRAC * BOND_PX;
 pub const CHAIN_END_GAP_PX: f64 = CHAIN_END_GAP_FRAC * BOND_PX;
 pub const HALO_STROKE: f64 = HALO_FRAC * BOND_PX;
 pub const LABEL_GAP_PX: f64 = LABEL_GAP_FRAC * BOND_PX;
+/// Halo outline grow (half the label-gap air) + soft white fill.
+pub const HALO_GAP_PX: f64 = 0.5 * LABEL_GAP_PX;
+pub const HALO_OPACITY: f64 = 0.5;
 
 /// Dash count scaling with drawn bond length (hashed wedges).
 pub fn hash_count(length: f64) -> usize {
