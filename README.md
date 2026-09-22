@@ -22,11 +22,11 @@ pytest tests/test_native_rust.py
 cd js && npm test
 ```
 
-**Layout coords (transitional):** **Indigo** for 2D coords while native matures. **Alignment** (`diagram.align`): prefer **RDKit** — template align exists in Python (`rdkit`) and in the browser (`@rdkit/rdkit` MinimalLib WASM). Rigid Kabsch remains the no-RDKit fallback. Chematic-as-layout stays out of the product path.
+**Layout coords (transitional):** **Indigo** for 2D coords while native matures. **Alignment** (`diagram.align`): each language calls **RDKit its own way** (Python `rdkit`, JS `@rdkit/rdkit`) and passes maps/coords into Rust for shared transform math — **no RDKit inside `xpict-core` / WASM**. Rigid Kabsch remains the no-RDKit fallback. Chematic-as-layout stays out of the product path.
 
 **Multi-molecule diagrams:** ELK via **jsrun** (embedded V8 + vendored elkjs) — no Node required. Grid/row fallback if ELK fails.
 
-**Core deps (target):** `pydantic` + `jsrun` + Rust extension. Shapely / fontTools become build-time-only once `geom`/`font` finish moving. Indigo / RDKit / Chematic stay **extras**.
+**Core deps (target):** `pydantic` + `jsrun` + Rust extension. Shapely / fontTools become build-time-only once `geom`/`font` finish moving. Indigo / RDKit / Chematic stay **language-edge extras**, not Rust crate deps.
 
 **Outputs:** SVG (default); HTML with embedded SVG for responsive pages.
 

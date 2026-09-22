@@ -71,25 +71,30 @@ should move next so JS never needs Shapely or fontTools.
 
 Migrate after Python parity tests exist; do not invent depiction rules only in Rust.
 
-### Alignment: RDKit (Python + WASM), not a layout backend
+### Alignment: RDKit at the language edges — never in Rust
 
 `diagram.align` / `align_layouts` already prefers **RDKit template alignment**
-when installed (`align_rdkit.py`); rigid Kabsch is the fallback. That is the
-right long-term **aligner** to invest in:
+when installed (`align_rdkit.py`); rigid Kabsch is the fallback.
 
-* Python: `rdkit` extra (already)
-* Browser: `@rdkit/rdkit` MinimalLib WASM — same chem semantics as Python RDKit
-* Not a replacement for Indigo/native **coordinate generation** of the reference mol
+**Do not** pull RDKit into `xpict-core` (no `rdkit-sys`, no Rust chem wrappers).
+RDKit’s C++ stack does not ship a clean WASM story that way. Instead:
+
+| Layer | Who | Job |
+| --- | --- | --- |
+| Call RDKit | **Python** `rdkit` / **JS** `@rdkit/rdkit` MinimalLib | Template depict, MCS / substructure matches, chem identity |
+| Common math | **`xpict-core`** (PyO3 + WASM) | Rigid transforms, score embeddings, apply maps to coords — pure numbers |
+
+Flow: language edge asks RDKit → gets atom maps + coordinates → passes arrays into
+Rust helpers → gets aligned layouts back. Same Rust for both runtimes.
 
 Do **not** add RDKit as a general layout backend ladder. Use it where it already
-wins and is dual-platform: **alignment** (and as an algorithm reference for
-native layout).
+wins at the edges: **alignment** (and as an algorithm reference for native layout).
 
 ### Transitional layout coords
 
 1. **Indigo** — transitional **layout** engine (2D coords) while native matures; WASM available for `js/` too.
 2. **native** — must grow from stub → proven depictor; that is the real layout goal.
-3. **RDKit** — **alignment** (Py + WASM), not product layout.
+3. **RDKit** — **alignment only**, called from Python/JS themselves — not linked into Rust.
 
 CoordGen / CDK remain **algorithm references**, not installed layout backends.
 
