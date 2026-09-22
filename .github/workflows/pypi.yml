@@ -4,6 +4,9 @@
 #   - tag py/v*  (e.g. py/v0.1.5) → builds wheels + sdist, publishes
 #   - workflow_dispatch → same, optional dry_run
 #
+# Wheels: Linux (x86_64, aarch64), macOS (x86_64, aarch64), Windows (x64, aarch64).
+# abi3-py311 → one wheel per platform for CPython ≥3.11.
+#
 # PyPI Trusted Publishing should point at this workflow filename: pypi.yml
 # Package name: xpict (source under python/xpict/, not under xenosite).
 
@@ -32,26 +35,11 @@ jobs:
   checks:
     uses: ./.github/workflows/ci.yml
 
-  build-and-publish:
+  prepare:
     needs: checks
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: ". -> target"
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-        with:
-          python-version: "3.12"
-          enable-cache: true
+      - uses: actions/checkout@v4
 
       - name: Set version from tag
         if: startsWith(github.ref, 'refs/tags/py/v')
@@ -62,16 +50,23 @@ jobs:
           python3 - <<PY
           from pathlib import Path
           import re
+          ver = "${VER}"
           p = Path("pyproject.toml")
           text = p.read_text()
           text, n = re.subn(
               r'(?m)^version = "[^"]+"',
-              f'version = "{VER}"',
+              f'version = "{ver}"',
               text,
               count=1,
           )
           assert n == 1, "pyproject version line not found"
           p.write_text(text)
+          for name in ("xpict-py", "xpict-core"):
+              cp = Path(f"crates/{name}/Cargo.toml")
+              t = cp.read_text()
+              t, n = re.subn(r'(?m)^version = "[^"]+"', f'version = "{ver}"', t, count=1)
+              assert n == 1, cp
+              cp.write_text(t)
           PY
 
       - name: Version policy (workflow_dispatch)
@@ -80,12 +75,31 @@ jobs:
           VER="$(python3 -c "import re; from pathlib import Path; print(re.search(r'(?m)^version = \"([^\"]+)\"', Path('pyproject.toml').read_text()).group(1))")"
           bash scripts/check_version_policy.sh "$VER"
 
-      - name: Build wheels (manylinux) + sdist
-        uses: PyO3/maturin-action@v1
+      - name: Upload version tree
+        uses: actions/upload-artifact@v4
         with:
-          command: build
-          args: --release --out dist --find-interpreter
-          manylinux: auto
+          name: py-version-tree
+          path: |
+            pyproject.toml
+            crates/xpict-py/Cargo.toml
+            crates/xpict-core/Cargo.toml
+
+  wheels:
+    needs: prepare
+    uses: ./.github/workflows/build-python-wheels.yml
+    with:
+      version_tree_artifact: py-version-tree
+
+  publish:
+    needs: wheels
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download wheels + sdist
+        uses: actions/download-artifact@v4
+        with:
+          pattern: wheels-*
+          merge-multiple: true
+          path: dist
 
       - name: List artifacts
         run: ls -la dist
@@ -94,7 +108,11 @@ jobs:
         if: ${{ github.event_name != 'workflow_dispatch' || !inputs.dry_run }}
         uses: PyO3/maturin-action@v1
         with:
-          command: publish
+          command: upload
           args: --skip-existing dist/*
         env:
           MATURIN_PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+
+      - name: Dry-run note
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        run: echo "dry_run: skipped PyPI publish"

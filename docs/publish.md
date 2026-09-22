@@ -121,6 +121,16 @@ Do **not** make `xpict-py` / `xpict-wasm` depend on crates.io `xpict` — only `
 
 Source under **`python/xpict/`**. Workflow filename **`pypi.yml`**.
 
+Ships **abi3** wheels (`cp311-abi3`) for:
+
+| OS | Architectures |
+| --- | --- |
+| Linux (manylinux) | x86_64, aarch64 |
+| macOS | x86_64 (`macos-15-intel`), aarch64 (`macos-latest`) |
+| Windows | x64, aarch64 (`windows-11-arm`) |
+
+Plus an sdist. One wheel per platform covers CPython 3.11–3.13.
+
 ```bash
 git tag py/v0.1.5
 git push origin py/v0.1.5

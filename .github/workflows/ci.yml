@@ -2,7 +2,9 @@
 #
 # Rust:   cargo test + llvm-cov on xpict-core (≥97% lines; push to 100%)
 # JS:     tsc --strict
-# Python: pyright (strict) + pytest on 3.11–3.13
+# Python: pyright (strict) + pytest on 3.11–3.13 (Linux) + native smoke on
+#         macos-latest / windows-latest
+# PyPI wheels (all arches): see build-python-wheels.yml / pypi.yml / release.yml
 
 name: CI
 
@@ -135,6 +137,40 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           python-version: ${{ matrix.python-version }}
+          enable-cache: true
+
+      - name: Sync Python deps (dev + rdkit)
+        run: uv sync --group dev --extra rdkit
+
+      - name: Pytest
+        run: uv run pytest -q
+
+  # Smoke: abi3 extension builds and tests on Apple Silicon + Windows x64.
+  # Full wheel matrix (incl. Linux/Windows ARM, macOS Intel) is in build-python-wheels.yml.
+  python-native-smoke:
+    name: Python native smoke (${{ matrix.os }})
+    needs: [rust]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+          shared-key: py-smoke-${{ matrix.os }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
           enable-cache: true
 
       - name: Sync Python deps (dev + rdkit)
