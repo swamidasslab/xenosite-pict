@@ -13,7 +13,7 @@ From the repo root:
 wasm-pack build crates/xpict-wasm --target web --out-dir ../../js/pkg --out-name xpict_core
 ```
 
-JS imports from `@xenosite/xpict` → `src/native.ts`, which loads `js/pkg`.
+JS imports from `@swamidasslab/xpict` → `dist/` + `dist/wasm/` (GitHub Packages).
 
 ## Adding exports
 

@@ -1,7 +1,8 @@
-# @xenosite/xpict (TypeScript)
+# @swamidasslab/xpict (TypeScript)
 
 Browser and Node client for xpict contracts, plus **shared Rust core** via WASM
-(same algorithms as Python `xpict._native`).
+(same algorithms as Python `xpict._native`). Published to **GitHub Packages** for
+[xenosite.org](https://xenosite.org) — see [`docs/npm-xenosite.md`](../docs/npm-xenosite.md).
 
 ## Layout / draw (still stubs)
 
@@ -17,7 +18,7 @@ cd js && npm test
 ```
 
 ```ts
-import { initNative, multiBondOffset, plotdotRings } from "@xenosite/xpict";
+import { initNative, multiBondOffset, plotdotRings } from "@swamidasslab/xpict";
 
 await initNative();
 multiBondOffset(20); // 3

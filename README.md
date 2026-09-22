@@ -10,7 +10,9 @@ Scaffold in progress. Language-neutral JSON contracts (Pydantic → generated JS
 
 **Depiction:** Hard — follow CDK / RDKit / Indigo / CoordGen; don’t invent. Own SVG (skeleton → offsets → stereo). Long-term goal: a **native** depictor proven on a hard-case gallery.
 
-**Ship path:** client-side on [xenosite.org](https://xenosite.org) via WASM — see [`docs/migration-xenosite.md`](docs/migration-xenosite.md) (single-mol + marks + shade + align).
+**Ship path:** client-side on [xenosite.org](https://xenosite.org) via WASM —
+[`docs/migration-xenosite.md`](docs/migration-xenosite.md). Package for the site:
+[`@swamidasslab/xpict`](docs/npm-xenosite.md) on GitHub Packages.
 
 **Focus now — RDKit at the language edges:**
 - **2D coords** via Python `rdkit` / JS `@rdkit/rdkit` (`backend="rdkit"`, auto-picked when installed)

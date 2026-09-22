@@ -32,7 +32,7 @@ cd js && npm test
 
 | | Python | JavaScript |
 | --- | --- | --- |
-| Package | `xpict` | `@xenosite/xpict` |
+| Package | `xpict` | `@swamidasslab/xpict` (GitHub Packages) |
 | Init | (import extension) | `await initNative()` |
 | Bond offset | `_native.multi_bond_offset(20)` | `multiBondOffset(20)` |
 | PlotDot | `plotdot_rings(z)` | `plotdotRings(z)` → `{radiusFrac,colorZ}[]` |

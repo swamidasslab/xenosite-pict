@@ -1,7 +1,7 @@
 # Migration path: xpict on xenosite.org (client-side)
 
 **Goal:** replace server-side xenopict SVGs on [xenosite.org](https://xenosite.org)
-with **`@xenosite/xpict` in the browser**, ASAP.
+with **`@swamidasslab/xpict` in the browser** (GitHub Packages), ASAP.
 
 **MVP product:** one molecule — Kekulé depiction, atom/bond **circles**, atom/bond
 **shading**, backbone/label **color**, **alignment**. Not multi-mol / ELK scenes.
@@ -78,8 +78,9 @@ xenosite today already embeds depictions as **data-URI `<img>`** with
    - Prefer RDKit template align in JS (same as Python `align_rdkit`).
    - Add Rust rigid/Kabsch helper for Indigo / no-RDKit fallbacks; WASM-export it.
 
-6. **Publish `@xenosite/xpict`** (wasm + `sceneToSvg` + `initNative`) for the
-   xenosite app bundler. Keep API: `await initNative(); depict(molIn) → img src`.
+6. **Publish `@swamidasslab/xpict`** to GitHub Packages (wasm + `sceneToSvg` +
+   `initNative`) for the xenosite app bundler — see [`npm-xenosite.md`](npm-xenosite.md).
+   Keep API: `await initNative(); depict(molIn) → img src`.
 
 7. **Parity CI:** Python golden SVGs (or Scene JSON) vs WASM for a small set:
    ethanol, acetone, phenol, one shaded SoM, one marked atom.

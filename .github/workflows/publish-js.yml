@@ -1,0 +1,98 @@
+# Publish @swamidasslab/xpict to GitHub Packages (for xenosite.org CI/app).
+#
+# Triggers:
+#   - tag js/v*  (e.g. js/v0.1.1) → sets version from tag and publishes
+#   - workflow_dispatch → publishes package.json version as-is
+#
+# Consumers (xenosite):
+#   .npmrc:
+#     @swamidasslab:registry=https://npm.pkg.github.com
+#     //npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}
+#   package.json:
+#     "@swamidasslab/xpict": "^0.1.0"
+#
+# Same-org Actions GITHUB_TOKEN can read packages if the package grants
+# access to the xenosite repo (Package settings → Manage Actions access).
+
+name: Publish JS package
+
+on:
+  push:
+    tags:
+      - "js/v*"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build and pack only (do not publish)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: publish-js-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: js
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust (wasm32)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+
+      - name: Install wasm-pack
+        run: |
+          if ! command -v wasm-pack >/dev/null 2>&1; then
+            curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+            echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          fi
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://npm.pkg.github.com"
+          scope: "@swamidasslab"
+          cache: npm
+          cache-dependency-path: js/package-lock.json
+
+      - name: Install JS deps
+        run: npm ci
+
+      - name: Build wasm + TypeScript
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
+      - name: Set version from tag
+        if: startsWith(github.ref, 'refs/tags/js/v')
+        run: |
+          VER="${GITHUB_REF_NAME#js/v}"
+          echo "Publishing version $VER"
+          npm version "$VER" --no-git-tag-version --allow-same-version
+
+      - name: Pack (dry run)
+        if: ${{ inputs.dry_run }}
+        run: npm pack
+
+      - name: Publish to GitHub Packages
+        if: ${{ !inputs.dry_run }}
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

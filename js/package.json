@@ -1,9 +1,18 @@
 {
-  "name": "@xenosite/xpict",
+  "name": "@swamidasslab/xpict",
   "version": "0.1.0",
-  "private": true,
+  "description": "TypeScript + WASM bindings for xpict (shared Rust core) — for xenosite.org",
   "type": "module",
-  "description": "TypeScript + WASM bindings for xpict (shared Rust core + Indigo layout stub)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/swamidasslab/xenosite-pict.git",
+    "directory": "js"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
+  },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -17,19 +26,22 @@
     }
   },
   "files": [
-    "dist",
-    "src",
-    "src/wasm/*.wasm",
-    "src/wasm/*.js",
-    "src/wasm/*.d.ts"
+    "dist/**/*.js",
+    "dist/**/*.d.ts",
+    "dist/**/*.map",
+    "dist/**/*.wasm",
+    "!dist/**/native.smoke.*"
   ],
   "scripts": {
     "build:wasm": "../scripts/build_bindings.sh wasm",
-    "build": "npm run build:wasm && tsc -p tsconfig.json",
+    "build:ts": "tsc -p tsconfig.json",
+    "build:copy-wasm": "bash scripts/copy-wasm.sh",
+    "build": "npm run build:wasm && npm run build:ts && npm run build:copy-wasm",
     "check": "tsc -p tsconfig.json --noEmit",
     "check:pocs": "tsc --strict --module ES2022 --moduleResolution bundler --target ES2022 --esModuleInterop --skipLibCheck --types node --noEmit pocs/elk_layout.ts",
     "test:native": "tsx src/native.smoke.ts",
-    "test": "npm run check && npm run check:pocs && npm run test:native"
+    "test": "npm run check && npm run check:pocs && npm run test:native",
+    "prepack": "npm run build:ts && npm run build:copy-wasm"
   },
   "devDependencies": {
     "@types/node": "^22.20.4",
