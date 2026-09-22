@@ -65,6 +65,13 @@ TITLE_CLEARANCE_FRAC = 0.08  # mol ink → title typo top (a touch more than LAB
 COLLISION_CELL_PX = 4.0  # coarse occupancy stamp for title packing
 SHADE_FRAC = 0.90  # xenopict shade(): scale * 0.9
 MARK_FRAC = 1.0  # xenopict mark_atoms radius = scale * mark_down_scale
+# xenopict mark layer style: stroke-width scale*0.1, opacity 0.7;
+# mark halo (<use>): stroke #555, scale*0.2, opacity 0.45.
+MARK_STROKE_FRAC = 0.1
+MARK_HALO_STROKE_FRAC = 0.2
+MARK_OPACITY = 0.7
+MARK_HALO_OPACITY = 0.45
+MARK_HALO_COLOR = "#555"
 # Annotation callouts / region outlines (box, oval, spline).
 ANNOT_PAD_FRAC = 0.45  # region outline stand-off from atom centers
 ANNOT_GAP_FRAC = 0.40  # callout label air past the target
@@ -84,6 +91,8 @@ LABEL_GAP_PX = LABEL_GAP_FRAC * BOND_PX
 # Halo outline grow (half the label-gap air) + soft white fill.
 HALO_GAP_PX = 0.5 * LABEL_GAP_PX
 HALO_OPACITY = 0.5
+MARK_STROKE_PX = MARK_STROKE_FRAC * BOND_PX
+MARK_HALO_STROKE_PX = MARK_HALO_STROKE_FRAC * BOND_PX
 TITLE_FONT_PX = TITLE_FONT_FRAC * BOND_PX
 TITLE_BOTTOM_PX = TITLE_BOTTOM_FRAC * BOND_PX
 TITLE_CLEARANCE_PX = TITLE_CLEARANCE_FRAC * BOND_PX

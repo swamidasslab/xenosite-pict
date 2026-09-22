@@ -265,16 +265,45 @@ figcaption {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 220px;
-  background:
-    linear-gradient(180deg, #ffffff 0%, #f7faf8 100%);
+  min-height: 340px;
+  padding: 1.25rem;
+  overflow: visible;
+  /* Transparent — SVG has no fill; page atmosphere shows through. */
+  background: transparent;
   border: 1px dashed color-mix(in srgb, var(--line) 80%, transparent);
 }
 
 .frame svg {
-  max-width: 100%;
+  max-width: none;
+  width: auto;
   height: auto;
+  background: transparent;
+  /* Drawing units are SCALE=20; bump display so shade/halo read clearly. */
+  zoom: 1.55;
   animation: fade-in 0.45s var(--ease) both;
+}
+
+@supports not (zoom: 1) {
+  .frame svg {
+    transform: scale(1.55);
+    transform-origin: center center;
+  }
+}
+
+@media (min-width: 640px) {
+  .frame {
+    min-height: 400px;
+  }
+
+  .frame svg {
+    zoom: 1.7;
+  }
+
+  @supports not (zoom: 1) {
+    .frame svg {
+      transform: scale(1.7);
+    }
+  }
 }
 
 .frame.empty::before {

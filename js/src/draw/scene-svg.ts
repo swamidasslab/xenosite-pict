@@ -179,6 +179,6 @@ export function sceneToSvg(scene: Scene): string {
   return (
     `<?xml version="1.0" encoding="UTF-8"?>\n` +
     `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" ` +
-    `viewBox="0 0 ${w} ${h}" class="xpict">${parts.join("")}</svg>`
+    `viewBox="0 0 ${w} ${h}" class="xpict" style="background:transparent">${parts.join("")}</svg>`
   );
 }

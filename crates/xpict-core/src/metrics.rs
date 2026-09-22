@@ -35,6 +35,12 @@ pub const HALO_FRAC: f64 = 2.0 * STROKE_FRAC;
 pub const LABEL_GAP_FRAC: f64 = 0.05;
 pub const SHADE_FRAC: f64 = 0.90;
 pub const MARK_FRAC: f64 = 1.0;
+/// xenopict mark layer: `stroke-width: scale * 0.1`, opacity 0.7.
+pub const MARK_STROKE_FRAC: f64 = 0.1;
+/// xenopict mark halo (`<use>`): `stroke-width: scale * 0.2`, opacity 0.45.
+pub const MARK_HALO_STROKE_FRAC: f64 = 0.2;
+pub const MARK_OPACITY: f64 = 0.7;
+pub const MARK_HALO_OPACITY: f64 = 0.45;
 
 pub const STROKE_PX: f64 = STROKE_FRAC * BOND_PX;
 pub const OFFSET_PX: f64 = OFFSET_FRAC * BOND_PX;
@@ -45,6 +51,11 @@ pub const END_GAP_PX: f64 = END_GAP_FRAC * BOND_PX;
 pub const CHAIN_END_GAP_PX: f64 = CHAIN_END_GAP_FRAC * BOND_PX;
 pub const HALO_STROKE: f64 = HALO_FRAC * BOND_PX;
 pub const LABEL_GAP_PX: f64 = LABEL_GAP_FRAC * BOND_PX;
+/// Halo outline grow (half the label-gap air) + soft white fill.
+pub const HALO_GAP_PX: f64 = 0.5 * LABEL_GAP_PX;
+pub const HALO_OPACITY: f64 = 0.5;
+pub const MARK_STROKE_PX: f64 = MARK_STROKE_FRAC * BOND_PX;
+pub const MARK_HALO_STROKE_PX: f64 = MARK_HALO_STROKE_FRAC * BOND_PX;
 
 /// Dash count scaling with drawn bond length (hashed wedges).
 pub fn hash_count(length: f64) -> usize {

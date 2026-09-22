@@ -169,6 +169,9 @@ def test_svg_background_is_clear_by_default():
     root = re.search(r"<svg\b[^>]*>", svg)
     assert root is not None
     assert "background-color" not in root.group(0)
+    assert "background:transparent" in root.group(0) or "background: transparent" in root.group(
+        0
+    )
 
 
 def test_halo_is_single_document_union():

@@ -9,6 +9,7 @@
 
 pub mod align;
 pub mod bonds;
+pub mod colormap;
 pub mod depict;
 pub mod elements;
 #[cfg(feature = "elk")]
@@ -27,6 +28,7 @@ pub use bonds::{
     bond_paths, bond_strokes, centered_displacements, depict_order, join_centered_multibonds,
     line_intersect, multi_bond_offset, BondStrokes, DrawnBond, StrokePath,
 };
+pub use colormap::{colormap_rgb, sample_colormap, XENOSITE};
 pub use depict::depict_molecule;
 pub use elements::{atomic_number, element_symbol, SYMBOLS};
 #[cfg(feature = "elk")]

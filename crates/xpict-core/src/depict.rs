@@ -1,13 +1,18 @@
 //! Single-molecule depiction: [`MoleculeIn`] → [`Scene`].
 //!
 //! MVP paint path for WASM/Python thin serializers. Caller supplies SVG-space
-//! coords (+ optional shade / marks / atom labels). Halo is still follow-up.
+//! coords (+ optional shade / marks / atom labels). Shade uses the xenosite
+//! rainbow LUT; halo knocks out white channels through shade for bond/label ink.
 
 use std::collections::HashMap;
 
-use crate::bonds::{bond_strokes, join_centered_multibonds, DrawnBond};
+use crate::bonds::{bond_strokes, join_centered_multibonds, DrawnBond, StrokePath};
+use crate::colormap::colormap_rgb;
 use crate::labels::{self, place_backbone};
-use crate::metrics::{BOND_PX, FONT_PX, MARK_FRAC, PAD_PX, SHADE_FRAC, STROKE_PX};
+use crate::metrics::{
+    BOND_PX, FONT_PX, HALO_GAP_PX, HALO_OPACITY, HALO_STROKE, MARK_FRAC, PAD_PX, SHADE_FRAC,
+    STROKE_PX,
+};
 use crate::plotdot::PlotDot;
 use crate::rings::{bond_interior_normals, find_sssr};
 use crate::scene::{
@@ -124,6 +129,7 @@ pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
     join_centered_multibonds(&mut prepared);
 
     let mut bond_prims: Vec<Primitive> = Vec::new();
+    let mut bond_strokes_for_halo: Vec<StrokePath> = Vec::new();
     for bond in &prepared {
         let strokes = bond_strokes(
             bond.x1,
@@ -139,6 +145,9 @@ pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
             "bond-{} atom-{} atom-{}",
             bond.index, bond.begin, bond.end
         );
+        for sp in strokes.paint_order() {
+            bond_strokes_for_halo.push((*sp).clone());
+        }
         for mut p in strokes.into_primitives(color) {
             if let Primitive::Path { ref mut class, .. } = p {
                 if let Some(c) = class.take() {
@@ -152,12 +161,14 @@ pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
     }
 
     let mut label_prims: Vec<Primitive> = Vec::new();
+    let mut label_halos: Vec<(f64, f64, String)> = Vec::new(); // origin_x, y, text
     for (slot, pl) in placed.iter().enumerate() {
         let Some(pl) = pl else { continue };
         let atom_index = mol.atoms[slot].index;
         // Grow canvas if traveling text spills past the initial pad.
         width = width.max(pl.origin_x + FONT_PX * pl.text.len() as f64 * 0.65 + pad * 0.25);
         height = height.max(pl.y + FONT_PX * 0.35 + pad * 0.25);
+        label_halos.push((pl.origin_x, pl.y, pl.text.clone()));
         label_prims.push(Primitive::Text {
             x: pl.origin_x,
             y: pl.y,
@@ -171,6 +182,7 @@ pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
 
     let shade_prims = paint_shade(mol, &by_index, dx, dy);
     let mark_prims = paint_marks(mol, &by_index, dx, dy);
+    let halo_prims = paint_halo(&bond_strokes_for_halo, &label_halos);
 
     let mut layers = Vec::new();
     if !shade_prims.is_empty() {
@@ -210,7 +222,7 @@ pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
             layers,
         }],
         overlays: Vec::new(),
-        halo: Vec::new(),
+        halo: halo_prims,
     }
 }
 
@@ -254,42 +266,17 @@ fn paint_shade(
             SHADE_FRAC
         });
     let plot = PlotDot::default();
-    let mut out = Vec::new();
-
-    let mut emit = |zs: &[f64], coords: &[(f64, f64)]| {
-        let norm = normalize_shade_scores(zs, vmin, vmax);
-        let n = norm.len().min(coords.len());
-        for d in plot.disks(&norm[..n], &coords[..n]) {
-            if d.color_z.abs() < 0.05 && d.radius_frac < 0.35 {
-                continue;
-            }
-            if d.color_z.abs() < 0.02 {
-                continue;
-            }
-            out.push(Primitive::Circle {
-                cx: d.x,
-                cy: d.y,
-                r: base_r * d.radius_frac,
-                fill: Some(shade_rgb(d.color_z, diverging)),
-                stroke: None,
-                stroke_width: 0.0,
-                opacity: 1.0,
-                class: Some("shade".into()),
-            });
-        }
-    };
-
+    // Atom + bond scores share one PlotDot pass so overlapping rings stack by
+    // strength (weak first → strong on top), matching xenopict shade().
+    let mut zs: Vec<f64> = Vec::new();
+    let mut coords: Vec<(f64, f64)> = Vec::new();
     if !atom_zs.is_empty() {
-        let coords: Vec<(f64, f64)> = mol
-            .atoms
-            .iter()
-            .map(|a| (a.x + dx, a.y + dy))
-            .collect();
-        emit(atom_zs, &coords);
+        for (a, &z) in mol.atoms.iter().zip(atom_zs.iter()) {
+            zs.push(z);
+            coords.push((a.x + dx, a.y + dy));
+        }
     }
     if !bond_zs.is_empty() {
-        let mut mids = Vec::new();
-        let mut scores = Vec::new();
         for (bond, &z) in mol.bonds.iter().zip(bond_zs.iter()) {
             let Some(&i0) = by_index.get(&bond.begin) else {
                 continue;
@@ -299,12 +286,30 @@ fn paint_shade(
             };
             let a0 = &mol.atoms[i0];
             let a1 = &mol.atoms[i1];
-            mids.push(((a0.x + a1.x) * 0.5 + dx, (a0.y + a1.y) * 0.5 + dy));
-            scores.push(z);
+            zs.push(z);
+            coords.push(((a0.x + a1.x) * 0.5 + dx, (a0.y + a1.y) * 0.5 + dy));
         }
-        if !scores.is_empty() {
-            emit(&scores, &mids);
+    }
+    let norm = normalize_shade_scores(&zs, vmin, vmax);
+    let n = norm.len().min(coords.len());
+    let mut out = Vec::new();
+    for d in plot.disks(&norm[..n], &coords[..n]) {
+        if d.color_z.abs() < 0.05 && d.radius_frac < 0.35 {
+            continue;
         }
+        if d.color_z.abs() < 0.02 {
+            continue;
+        }
+        out.push(Primitive::Circle {
+            cx: d.x,
+            cy: d.y,
+            r: base_r * d.radius_frac,
+            fill: Some(colormap_rgb(d.color_z, diverging)),
+            stroke: None,
+            stroke_width: 0.0,
+            opacity: 1.0,
+            class: Some("shade".into()),
+        });
     }
     out
 }
@@ -328,18 +333,125 @@ fn normalize_shade_scores(zs: &[f64], vmin: f64, vmax: f64) -> Vec<f64> {
         .collect()
 }
 
-/// Minimal sequential / diverging LUT (positive → warm coral) until full
-/// xenosite colormap ports.
-fn shade_rgb(z: f64, diverging: bool) -> String {
-    let t = if diverging {
-        ((z + 1.0) * 0.5).clamp(0.0, 1.0)
-    } else {
-        z.clamp(0.0, 1.0)
+/// White knockout under bonds/labels so shade disks don't cover ink.
+///
+/// xenopict: union of per-ink buffers at [`HALO_GAP_PX`] (with a floor from
+/// stroke thickness). Requires the `geom` feature (WASM enables it via `font`).
+#[cfg(feature = "geom")]
+fn paint_halo(bond_strokes: &[StrokePath], labels: &[(f64, f64, String)]) -> Vec<Primitive> {
+    use crate::geom::Shape;
+    #[cfg(feature = "font")]
+    use crate::font::{compile_text_shapes, FaceStyle};
+
+    let mut ink: Option<Shape> = None;
+    let mut absorb = |piece: Shape| {
+        if piece.is_empty() {
+            return;
+        }
+        ink = Some(match ink.take() {
+            Some(acc) => acc.union(&piece),
+            None => piece,
+        });
     };
-    let r = (255.0 * (0.95 + 0.05 * t)) as i32;
-    let g = (255.0 * (0.95 - 0.55 * t)) as i32;
-    let b = (255.0 * (0.95 - 0.70 * t)) as i32;
-    format!("rgb({r},{g},{b})")
+
+    for sp in bond_strokes {
+        let pts = path_points(&sp.d);
+        if pts.len() < 2 {
+            continue;
+        }
+        let ink_r = sp.stroke_width.max(STROKE_PX) * 0.5;
+        // Filled wedges: treat the polygon as ink; stroked lines → capsules.
+        if sp.fill.as_deref().is_some_and(|f| f != "none") && pts.len() >= 3 {
+            let poly = Shape::from_ring(&pts);
+            if !poly.is_empty() {
+                let grown = if ink_r > 0.0 {
+                    poly.buffer(ink_r)
+                } else {
+                    poly
+                };
+                absorb(grown);
+            }
+            continue;
+        }
+        for w in pts.windows(2) {
+            let (x1, y1) = w[0];
+            let (x2, y2) = w[1];
+            if (x1 - x2).hypot(y1 - y2) < 1e-6 {
+                continue;
+            }
+            absorb(Shape::capsule(x1, y1, x2, y2, ink_r));
+        }
+    }
+
+    #[cfg(feature = "font")]
+    for (ox, y, text) in labels {
+        if let Some(shape) =
+            compile_text_shapes(text, *ox, *y, FONT_PX, "start", FaceStyle::Regular)
+        {
+            absorb(shape);
+        }
+    }
+    #[cfg(not(feature = "font"))]
+    let _ = labels;
+
+    let Some(ink) = ink.filter(|s| !s.is_empty()) else {
+        return Vec::new();
+    };
+    // Match Python BondsDrawable: max(HALO_GAP, 0.25*HALO_STROKE - ink_r).
+    let ink_r = STROKE_PX * 0.5;
+    let dist = HALO_GAP_PX.max(0.25 * HALO_STROKE - ink_r);
+    let grown = ink.halo(dist);
+    if grown.is_empty() {
+        return Vec::new();
+    }
+    let d = grown.to_svg_d();
+    if d.is_empty() {
+        return Vec::new();
+    }
+    vec![Primitive::Path {
+        d,
+        stroke: Some("none".into()),
+        fill: Some("#fff".into()),
+        stroke_width: 0.0,
+        opacity: HALO_OPACITY,
+        stroke_dasharray: None,
+        stroke_linecap: None,
+        class: Some("halo".into()),
+    }]
+}
+
+#[cfg(not(feature = "geom"))]
+fn paint_halo(_bond_strokes: &[StrokePath], _labels: &[(f64, f64, String)]) -> Vec<Primitive> {
+    Vec::new()
+}
+
+/// Extract absolute M/L coordinates from a simple path `d` (bond strokes).
+fn path_points(d: &str) -> Vec<(f64, f64)> {
+    let mut out = Vec::new();
+    let mut nums = Vec::new();
+    let mut cur = String::new();
+    let flush_num = |cur: &mut String, nums: &mut Vec<f64>| {
+        if !cur.is_empty() {
+            if let Ok(v) = cur.parse::<f64>() {
+                nums.push(v);
+            }
+            cur.clear();
+        }
+    };
+    for ch in d.chars() {
+        if ch.is_ascii_digit() || ch == '.' || ch == '-' || ch == '+' || ch == 'e' || ch == 'E' {
+            cur.push(ch);
+        } else {
+            flush_num(&mut cur, &mut nums);
+        }
+    }
+    flush_num(&mut cur, &mut nums);
+    for pair in nums.chunks(2) {
+        if pair.len() == 2 {
+            out.push((pair[0], pair[1]));
+        }
+    }
+    out
 }
 
 fn paint_marks(
@@ -348,8 +460,39 @@ fn paint_marks(
     dx: f64,
     dy: f64,
 ) -> Vec<Primitive> {
+    use crate::geom::{capsule_polygon, polygon_to_svg_d};
+    use crate::metrics::{MARK_HALO_OPACITY, MARK_HALO_STROKE_PX, MARK_OPACITY, MARK_STROKE_PX};
+
     let mut out = Vec::new();
     let r = BOND_PX * MARK_FRAC;
+    const MARK_HALO_COLOR: &str = "#555";
+    let color = "#c44";
+
+    // Bond capsules (outline path `d`) — xenopict buffers the bond at mark radius.
+    let mut bond_capsules: Vec<(i32, i32, String)> = Vec::new();
+    for &(a, b) in &mol.mark_bonds {
+        let Some(&ia) = by_index.get(&a) else {
+            continue;
+        };
+        let Some(&ib) = by_index.get(&b) else {
+            continue;
+        };
+        let a0 = &mol.atoms[ia];
+        let a1 = &mol.atoms[ib];
+        let d = polygon_to_svg_d(&capsule_polygon(
+            a0.x + dx,
+            a0.y + dy,
+            a1.x + dx,
+            a1.y + dy,
+            r,
+            8,
+        ));
+        if !d.is_empty() {
+            bond_capsules.push((a, b, d));
+        }
+    }
+
+    // Halo underlay first (xenopict `<use href="#mark">`: #555, scale*0.2, 0.45).
     for &ai in &mol.mark_atoms {
         let Some(&i) = by_index.get(&ai) else {
             continue;
@@ -360,33 +503,49 @@ fn paint_marks(
             cy: a.y + dy,
             r,
             fill: Some("none".into()),
-            stroke: Some("#c44".into()),
-            stroke_width: STROKE_PX,
-            opacity: 0.85,
+            stroke: Some(MARK_HALO_COLOR.into()),
+            stroke_width: MARK_HALO_STROKE_PX,
+            opacity: MARK_HALO_OPACITY,
+            class: Some(format!("atom-{ai} mark-halo")),
+        });
+    }
+    for (a, b, d) in &bond_capsules {
+        out.push(Primitive::Path {
+            d: d.clone(),
+            stroke: Some(MARK_HALO_COLOR.into()),
+            fill: Some("none".into()),
+            stroke_width: MARK_HALO_STROKE_PX,
+            opacity: MARK_HALO_OPACITY,
+            stroke_dasharray: None,
+            stroke_linecap: Some("round".into()),
+            class: Some(format!("bond-mark-halo atom-{a} atom-{b}")),
+        });
+    }
+
+    // Mark ink (xenopict mark group: fill none, stroke-width scale*0.1, opacity 0.7).
+    for &ai in &mol.mark_atoms {
+        let Some(&i) = by_index.get(&ai) else {
+            continue;
+        };
+        let a = &mol.atoms[i];
+        out.push(Primitive::Circle {
+            cx: a.x + dx,
+            cy: a.y + dy,
+            r,
+            fill: Some("none".into()),
+            stroke: Some(color.into()),
+            stroke_width: MARK_STROKE_PX,
+            opacity: MARK_OPACITY,
             class: Some(format!("atom-{ai} mark")),
         });
     }
-    for &(a, b) in &mol.mark_bonds {
-        let Some(&ia) = by_index.get(&a) else {
-            continue;
-        };
-        let Some(&ib) = by_index.get(&b) else {
-            continue;
-        };
-        let a0 = &mol.atoms[ia];
-        let a1 = &mol.atoms[ib];
+    for (a, b, d) in bond_capsules {
         out.push(Primitive::Path {
-            d: format!(
-                "M {:.2} {:.2} L {:.2} {:.2}",
-                a0.x + dx,
-                a0.y + dy,
-                a1.x + dx,
-                a1.y + dy
-            ),
-            stroke: Some("#c44".into()),
+            d,
+            stroke: Some(color.into()),
             fill: Some("none".into()),
-            stroke_width: crate::metrics::HALO_STROKE,
-            opacity: 0.35,
+            stroke_width: MARK_STROKE_PX,
+            opacity: MARK_OPACITY,
             stroke_dasharray: None,
             stroke_linecap: Some("round".into()),
             class: Some(format!("bond-mark atom-{a} atom-{b}")),
@@ -665,6 +824,113 @@ mod tests {
         assert!(names.contains(&LayerName::Shading));
         assert!(names.contains(&LayerName::Bonds));
         assert!(names.contains(&LayerName::Marks));
+        // Rainbow LUT (not the old coral stub): high score → hot orange-red.
+        let shade = scene.viewports[0]
+            .layers
+            .iter()
+            .find(|l| l.name == LayerName::Shading)
+            .expect("shading");
+        assert!(shade.primitives.iter().any(|p| match p {
+            Primitive::Circle {
+                fill: Some(f), ..
+            } => f.starts_with("rgb(") && !f.starts_with("rgb(255,222"),
+            _ => false,
+        }));
+        assert!(!scene.halo.is_empty(), "expected bond/label halo knockout");
+    }
+
+    #[test]
+    fn shade_atom_and_bond_share_one_sorted_layer() {
+        let mut mol = ethanol();
+        // Strong bond mid + weaker atoms → bond disk should paint after (on top).
+        mol.atom_shade = Some(vec![0.3, 0.3, 0.3]);
+        mol.bond_shade = Some(vec![1.0, 0.2]);
+        let scene = depict_molecule(&mol);
+        let shade = scene.viewports[0]
+            .layers
+            .iter()
+            .find(|l| l.name == LayerName::Shading)
+            .expect("shading");
+        let fills: Vec<_> = shade
+            .primitives
+            .iter()
+            .filter_map(|p| match p {
+                Primitive::Circle {
+                    fill: Some(f),
+                    r,
+                    ..
+                } => Some((f.clone(), *r)),
+                _ => None,
+            })
+            .collect();
+        assert!(fills.len() >= 2);
+        // Combined atom+bond → base radius 0.8×bond (not 0.9).
+        let max_r = fills.iter().map(|(_, r)| *r).fold(0.0_f64, f64::max);
+        assert!(
+            (max_r - BOND_PX * 0.8).abs() < 0.05 || max_r < BOND_PX * 0.8 + 0.05,
+            "expected ≤0.8×bond when both atom+bond shaded, got {max_r}"
+        );
+    }
+
+    #[test]
+    fn mark_circles_match_xenopict_style() {
+        let mut mol = ethanol();
+        mol.mark_atoms = vec![1];
+        mol.mark_bonds = vec![(0, 1)];
+        let scene = depict_molecule(&mol);
+        let marks = scene.viewports[0]
+            .layers
+            .iter()
+            .find(|l| l.name == LayerName::Marks)
+            .expect("marks");
+        let atom = marks.primitives.iter().find_map(|p| match p {
+            Primitive::Circle {
+                r,
+                stroke_width,
+                opacity,
+                class: Some(c),
+                stroke: Some(s),
+                ..
+            } if c.contains(" mark") && !c.contains("halo") => {
+                Some((*r, *stroke_width, *opacity, s.clone()))
+            }
+            _ => None,
+        });
+        let (r, sw, op, _) = atom.expect("atom mark");
+        assert!((r - BOND_PX).abs() < 1e-9, "mark radius = scale");
+        assert!(
+            (sw - BOND_PX * 0.1).abs() < 1e-9,
+            "mark stroke = scale*0.1, got {sw}"
+        );
+        assert!((op - 0.7).abs() < 1e-9);
+        let halo = marks.primitives.iter().any(|p| match p {
+            Primitive::Circle {
+                stroke: Some(s),
+                stroke_width,
+                opacity,
+                class: Some(c),
+                ..
+            } => c.contains("mark-halo") && s == "#555" && (*stroke_width - BOND_PX * 0.2).abs() < 1e-9 && (*opacity - 0.45).abs() < 1e-9,
+            _ => false,
+        });
+        assert!(halo, "expected #555 mark halo underlay");
+        let bond = marks.primitives.iter().any(|p| match p {
+            Primitive::Path {
+                d,
+                stroke_width,
+                opacity,
+                class: Some(c),
+                ..
+            } => {
+                c.contains("bond-mark")
+                    && !c.contains("halo")
+                    && d.contains('Z')
+                    && (*stroke_width - BOND_PX * 0.1).abs() < 1e-9
+                    && (*opacity - 0.7).abs() < 1e-9
+            }
+            _ => false,
+        });
+        assert!(bond, "bond mark should be a closed capsule outline");
     }
 
     #[test]
