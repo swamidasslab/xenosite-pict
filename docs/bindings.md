@@ -8,15 +8,17 @@ the same function set.
                     │  xpict-core     │
                     │  (pure Rust)    │
                     └────────┬────────┘
-              ┌──────────────┼──────────────┐
-              ▼                             ▼
-     crates/xpict-py              crates/xpict-wasm
-     (PyO3 / maturin)             (wasm-bindgen)
-              ▼                             ▼
-     xpict._native                js/src/wasm/xpict_core.*
-              ▼                             ▼
-     native_bridge.py             js/src/native.ts
+              ┌──────────────┼──────────────┬──────────────────┐
+              ▼              ▼              ▼                  ▼
+     crates/xpict-py  crates/xpict-wasm  crates/xpict    (JS npm package)
+     (PyO3 / maturin)  (wasm-bindgen)   (RDKit layout     (@swamidasslab/xpict)
+                                           + public API)     RDKit.js + wasm
 ```
+
+`crates/xpict` is the **native Rust** public package (mirrors JS/Python
+`mol` / `render` / `to_svg`). It depends on crates.io `rdkit` for parse + a
+local Depictor FFI for 2D/align. It is **not** linked into `xpict-py` or
+`xpict-wasm`, so RDKit stays out of those artifacts.
 
 ## One-shot setup
 
@@ -73,6 +75,7 @@ Crates to prefer when filling stubs: **`ttf-parser`/`skrifa`** (fonts),
 | --- | --- | --- | --- |
 | Python | `backend="rdkit"` (`xpict[rdkit]`) | `align_rdkit.RdkitAligner` | Draw / rigid helpers via `_native` |
 | Browser | `xpict.mol` / `render` / `toSvg` | RDKit align (hidden) | `scene` JSON → string |
+| Native Rust | crates.io `rdkit` + `crates/xpict` Depictor FFI | `generateDepictionMatching2DStructure` | `xpict-core` paint → SVG |
 
 **Indigo alternate:** `backend="indigo"` + **fake/rigid align** in Rust only
 (no RDKit template). Rigid-only also when RDKit is absent.
