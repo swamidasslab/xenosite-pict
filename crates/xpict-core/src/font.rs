@@ -566,8 +566,8 @@ mod tests {
         let (_x0, y0, _x1, y1) = star.bounds().expect("star ink");
         let height = y1 - y0;
         // Custom star targets STAR_FRAC × cap-height; allow simplify slack.
-        assert!(height > 1.4 * face.cap_height);
-        assert!(height < 1.9 * face.cap_height);
+        assert!(height > 1.7 * face.cap_height);
+        assert!(height < 2.3 * face.cap_height);
         let _ = STAR_FRAC;
     }
 }

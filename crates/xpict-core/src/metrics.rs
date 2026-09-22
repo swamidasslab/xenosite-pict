@@ -45,9 +45,9 @@ pub const MARK_HALO_OPACITY: f64 = 0.45;
 pub const SCRIPT_SCALE: f64 = 0.66;
 /// Dummy / R-group ``*`` height as a multiple of Liberation cap-height.
 ///
-/// Custom five-point star (not the Liberation asterisk); larger than heteroatom
-/// letters so attachment points read clearly.
-pub const STAR_FRAC: f64 = 1.65;
+/// Custom five-point star (not the Liberation asterisk); ~2× letter height so
+/// attachment points read clearly next to heteroatom labels.
+pub const STAR_FRAC: f64 = 2.0;
 
 pub const STROKE_PX: f64 = STROKE_FRAC * BOND_PX;
 pub const OFFSET_PX: f64 = OFFSET_FRAC * BOND_PX;
