@@ -24,7 +24,7 @@ from xpict.draw.drawn import halo_prims
 from xpict.draw.glyphs import compile_text_shapes
 from xpict.draw.halo import circle_ring_shape, disk_shape
 from xpict.draw.markush import apply_rgroup_texts
-from xpict.draw.metrics import HALO_STROKE, LABEL_GAP_PX, STROKE_PX
+from xpict.draw.metrics import HALO_GAP_PX, HALO_STROKE, STROKE_PX
 from xpict.draw.mol_title import pack_label
 from xpict.draw.paths import ink_from_path_prim
 
@@ -141,16 +141,16 @@ def _halo_overlay_ink(prims: Sequence) -> list[PathPrim]:
                 font_size=prim.font_size,
                 anchor=prim.anchor,
             )
-            out.extend(halo_prims(ink, LABEL_GAP_PX, cls="halo label-halo"))
+            out.extend(halo_prims(ink, HALO_GAP_PX, cls="halo label-halo"))
         elif isinstance(prim, PathPrim):
             ink = ink_from_path_prim(prim)
             ink_r = max(prim.stroke_width, STROKE_PX) * 0.5
-            dist = max(LABEL_GAP_PX, 0.5 * HALO_STROKE - ink_r)
+            dist = max(HALO_GAP_PX, 0.25 * HALO_STROKE - ink_r)
             out.extend(halo_prims(ink, dist, cls="halo"))
         elif isinstance(prim, CirclePrim):
             if prim.fill not in (None, "none"):
                 ink = disk_shape(prim.cx, prim.cy, prim.r)
             else:
                 ink = circle_ring_shape(prim.cx, prim.cy, prim.r, prim.stroke_width)
-            out.extend(halo_prims(ink, LABEL_GAP_PX, cls="halo"))
+            out.extend(halo_prims(ink, HALO_GAP_PX, cls="halo"))
     return out

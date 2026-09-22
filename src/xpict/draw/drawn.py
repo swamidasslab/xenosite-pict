@@ -14,7 +14,7 @@ from xpict.contracts.scene import (
     TextPrim,
 )
 from xpict.draw.halo import halo_path_d
-from xpict.draw.metrics import LABEL_GAP_PX
+from xpict.draw.metrics import HALO_GAP_PX, HALO_OPACITY
 from xpict.draw.paths import shift_path_d
 
 Box = tuple[float, float, float, float]
@@ -32,7 +32,7 @@ class Drawn:
     boxes: list[Box] = field(default_factory=list)
     layer: LayerName = "marks"
     halo_cls: str = "halo"
-    # Parallel to ``ink``; ``None`` → ``LABEL_GAP_PX``. Empty → all default.
+    # Parallel to ``ink``; ``None`` → ``HALO_GAP_PX``. Empty → all default.
     ink_dists: list[float | None] = field(default_factory=list)
 
     def extend(self, other: Drawn | None) -> Drawn:
@@ -51,7 +51,7 @@ def halo_prims(
     *,
     cls: str = "halo",
 ) -> list[PathPrim]:
-    """White knockout PathPrims for one ink geometry (bottom layer only)."""
+    """Soft white knockout PathPrims for one ink geometry (bottom layer only)."""
     d = halo_path_d(ink, dist)
     if not d:
         return []
@@ -61,7 +61,7 @@ def halo_prims(
             stroke="none",
             fill="#fff",
             stroke_width=0.0,
-            opacity=1.0,
+            opacity=HALO_OPACITY,
             cls=cls,
         )
     ]
@@ -86,7 +86,7 @@ def emit_drawn(
             else None
         )
         if dist is None:
-            dist = LABEL_GAP_PX
+            dist = HALO_GAP_PX
         layers["halo"].primitives.extend(
             halo_prims(geom, dist, cls=drawn.halo_cls)
         )

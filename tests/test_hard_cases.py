@@ -203,6 +203,7 @@ def test_halo_includes_buffered_label_glyphs():
     assert halo is not None
     assert 'fill="#fff"' in halo.group(0)
     assert 'stroke="none"' in halo.group(0)
+    assert 'opacity="0.5"' in halo.group(0)
     # Atom label ink is a glyph path (shared shapes engine).
     assert re.search(
         r'<path[^>]*data-text="OH"[^>]*class="[^"]*\blabel\b',

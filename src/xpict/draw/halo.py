@@ -7,7 +7,7 @@ like ``O`` / ``A`` stay open at the center; outline offset keeps an inner rim.
 
 from __future__ import annotations
 
-from xpict.draw.metrics import LABEL_GAP_PX
+from xpict.draw.metrics import HALO_GAP_PX
 from xpict.native_bridge import CapsuleInk, DiskInk, Shape, halo_path_d_for_ink
 
 
@@ -17,11 +17,11 @@ def halo_from_shapes(
 ) -> Shape | None:
     """Grow a knockout around ``ink`` shapes.
 
-    ``dist`` defaults to ``LABEL_GAP_PX``. Halo is simplify then offset.
+    ``dist`` defaults to ``HALO_GAP_PX``. Halo is simplify then offset.
     """
     if ink is None or ink.is_empty:
         return None
-    radius = LABEL_GAP_PX if dist is None else dist
+    radius = HALO_GAP_PX if dist is None else dist
     if radius <= 0:
         return None
     grown = ink.halo(radius)
@@ -35,7 +35,7 @@ def halo_path_d(
     dist: float | None = None,
 ) -> str | None:
     """SVG path ``d`` for :func:`halo_from_shapes`."""
-    radius = LABEL_GAP_PX if dist is None else dist
+    radius = HALO_GAP_PX if dist is None else dist
     if ink is not None and radius > 0:
         fast = halo_path_d_for_ink(ink, radius)
         if fast:

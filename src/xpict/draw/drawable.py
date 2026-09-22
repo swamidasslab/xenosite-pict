@@ -32,6 +32,7 @@ from xpict.draw.metrics import (
     BOND_PX,
     COLLISION_CELL_PX,
     FONT_PX,
+    HALO_GAP_PX,
     HALO_STROKE,
     LABEL_GAP_PX,
     MARK_FRAC,
@@ -352,7 +353,7 @@ class BondsDrawable(Drawable):
                 if ink is None:
                     continue
                 ink_r = max(p.stroke_width, STROKE_PX) * 0.5
-                dist = max(LABEL_GAP_PX, 0.5 * HALO_STROKE - ink_r)
+                dist = max(HALO_GAP_PX, 0.25 * HALO_STROKE - ink_r)
                 drawn.ink.append(ink)
                 drawn.ink_dists.append(dist)
         return drawn if drawn.primitives else None
@@ -414,7 +415,7 @@ class AtomLabelsDrawable(Drawable):
                     ink = disk_shape(cx, cy, RADICAL_DOT_R)
                     if ink is not None:
                         drawn.ink.append(ink)
-                        drawn.ink_dists.append(LABEL_GAP_PX)
+                        drawn.ink_dists.append(HALO_GAP_PX)
             if not label:
                 continue
             label_y = y + label_baseline_offset(FONT_PX)
@@ -430,7 +431,7 @@ class AtomLabelsDrawable(Drawable):
             ink = compile_text_shapes(label, x, label_y, font_size=FONT_PX)
             if ink is not None:
                 drawn.ink.append(ink)
-                drawn.ink_dists.append(LABEL_GAP_PX)
+                drawn.ink_dists.append(HALO_GAP_PX)
         return drawn if drawn.primitives else None
 
 
@@ -460,7 +461,7 @@ class MarkDrawable(Drawable):
                 ink = ink_from_path_prim(prim)
                 if ink is not None:
                     drawn.ink.append(ink)
-                    drawn.ink_dists.append(LABEL_GAP_PX)
+                    drawn.ink_dists.append(HALO_GAP_PX)
             return drawn if drawn.primitives else None
         if mark.atoms:
             r = BOND_PX * MARK_FRAC
@@ -484,7 +485,7 @@ class MarkDrawable(Drawable):
                 ink = circle_ring_shape(x, y, r, STROKE_PX)
                 if ink is not None:
                     drawn.ink.append(ink)
-                    drawn.ink_dists.append(LABEL_GAP_PX)
+                    drawn.ink_dists.append(HALO_GAP_PX)
         if mark.bonds:
             for a, b in mark.bonds:
                 ia, ib = ctx.atom_pos.get(a), ctx.atom_pos.get(b)
@@ -504,7 +505,7 @@ class MarkDrawable(Drawable):
                 ink = capsule_shape(x1, y1, x2, y2, 0.5 * HALO_STROKE)
                 if ink is not None:
                     drawn.ink.append(ink)
-                    drawn.ink_dists.append(LABEL_GAP_PX)
+                    drawn.ink_dists.append(HALO_GAP_PX)
         return drawn if drawn.primitives else None
 
 
@@ -533,7 +534,7 @@ class CaptionDrawable(Drawable):
         )
         if ink is not None:
             drawn.ink.append(ink)
-            drawn.ink_dists.append(LABEL_GAP_PX)
+            drawn.ink_dists.append(HALO_GAP_PX)
         return drawn
 
 

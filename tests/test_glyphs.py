@@ -9,6 +9,7 @@ from xpict.draw.glyphs import geom_to_svg_d, label_halo_path_d, label_outline
 from xpict.draw.metrics import (
     FONT_PX,
     FONT_STEM_EM,
+    HALO_GAP_PX,
     LABEL_GAP_PX,
     STROKE_PX,
     label_clearance,
@@ -94,13 +95,13 @@ def test_label_baseline_centers_caps_on_atom():
     assert ink.cy == pytest.approx(0.0, abs=0.75)
 
 
-def test_halo_buffer_matches_label_gap():
+def test_halo_buffer_matches_halo_gap():
     ink = label_outline("O", 10.0, 20.0)
     assert ink is not None
     d = label_halo_path_d("O", 10.0, 20.0)
     assert d and "M" in d and "Z" in d
-    grown = ink.buffer(LABEL_GAP_PX)
+    grown = ink.buffer(HALO_GAP_PX)
     assert grown.area > ink.area
     assert geom_to_svg_d(grown).count("L") > 8
-    # Default halo path uses LABEL_GAP_PX (same air as bond pullback).
-    assert label_halo_path_d("O", 10.0, 20.0, buffer_px=LABEL_GAP_PX) == d
+    # Default halo path uses HALO_GAP_PX (half the label-gap air).
+    assert label_halo_path_d("O", 10.0, 20.0, buffer_px=HALO_GAP_PX) == d
