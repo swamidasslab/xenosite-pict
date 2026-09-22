@@ -39,6 +39,7 @@ pub use labels::{
 };
 pub use metrics::{BOND_PX, OFFSET_FRAC, OFFSET_PX, SCALE, SHADE_FRAC, STROKE_PX};
 pub use plotdot::{PlotDot, ShadeDisk};
+pub use rings::{apply_ring_interiors, bond_interior_normals, find_sssr, Ring};
 pub use scene::{Layer, LayerName, MoleculeIn, Primitive, Scene, TextAnchor, Viewport};
 // MoleculeIn atoms/bonds are scene::AtomIn / scene::BondIn (JSON ABI).
 // labels::AtomIn / BondIn remain the place_backbone wire types.
