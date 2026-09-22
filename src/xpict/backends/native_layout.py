@@ -361,7 +361,7 @@ def _longest_path(adj: dict[int, list[int]], n_atoms: int) -> list[int]:
 
     # Two BFS (tree diameter). For graphs with cycles this is a good heuristic.
     end1, _ = farthest(0)
-    end2, path = farthest(end1)
+    _, path = farthest(end1)
     # Also try other starts if a longer path exists (cycles / disconnected).
     best = path
     for start in range(n_atoms):

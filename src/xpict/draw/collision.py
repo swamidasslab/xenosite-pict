@@ -91,17 +91,6 @@ class CollisionGrid:
             return None
         return min(ix for ix, _iy in self.cells) * self.cell
 
-    def translated(self, dx: float, dy: float) -> CollisionGrid:
-        """Return a copy with coordinates shifted by ``(dx, dy)``."""
-        if not self.cells or (abs(dx) < 1e-12 and abs(dy) < 1e-12):
-            return CollisionGrid(cell=self.cell, cells=set(self.cells))
-        sx = int(round(dx / self.cell))
-        sy = int(round(dy / self.cell))
-        return CollisionGrid(
-            cell=self.cell,
-            cells={(ix + sx, iy + sy) for ix, iy in self.cells},
-        )
-
     def overlaps_box(
         self,
         xmin: float,

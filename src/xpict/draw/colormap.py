@@ -9,10 +9,6 @@ _COLORMAPS: dict[str, list[list[float]]] = {
 }
 
 
-def available_colormaps() -> list[str]:
-    return sorted(_COLORMAPS)
-
-
 def sample_colormap(
     z: float,
     *,

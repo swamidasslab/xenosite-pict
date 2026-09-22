@@ -35,7 +35,6 @@ from xpict.contracts.spec import (
     MarkSpec,
     MoleculeSpec,
     RingAttachmentSpec,
-    RTableSpec,
     ShadeSpec,
     StrictModel,
     _LabelInput,
@@ -431,23 +430,6 @@ def mol_to_molecule_spec(node: MolNode) -> MoleculeSpec:
         shade=node.shade,
         color=node.color,
     )
-
-
-def _stringify_rows(rows: list[list[Any]]) -> list[list[str]]:
-    out: list[list[str]] = []
-    for row in rows:
-        cells: list[str] = []
-        for cell in row:
-            if isinstance(cell, str):
-                cells.append(cell)
-            elif isinstance(cell, dict) and cell.get("smiles"):
-                cells.append(str(cell["smiles"]))
-            elif isinstance(cell, MolNode) and cell.smiles:
-                cells.append(cell.smiles)
-            else:
-                cells.append(str(cell))
-        out.append(cells)
-    return out
 
 
 def _arrow_to_edge(arrow: ArrowNode, source: str, target: str) -> EdgeSpec:

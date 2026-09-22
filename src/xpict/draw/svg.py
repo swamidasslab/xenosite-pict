@@ -117,11 +117,6 @@ def _fmt_user(value: float) -> str:
     return f"{value:.4f}".rstrip("0").rstrip(".") or "0"
 
 
-def _fmt_css_px(value: float) -> str:
-    """Format an intrinsic CSS size so browsers lay the SVG out at content size."""
-    return f"{_fmt_user(value)}px"
-
-
 def _strip_xml_decl(svg: str) -> str:
     if svg.startswith("<?xml"):
         return svg.split("\n", 1)[1] if "\n" in svg else svg.split("?>", 1)[-1]

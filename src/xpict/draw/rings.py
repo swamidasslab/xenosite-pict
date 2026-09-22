@@ -286,25 +286,6 @@ def all_rings_can_be_regular_polygons(rings: list[Ring]) -> bool:
     return True
 
 
-def rings_that_admit_regular_embedding(
-    rings: list[Ring],
-) -> tuple[list[Ring], list[Ring]]:
-    """Split SSSR into rings in drawable systems vs rings in hard systems.
-
-    Rings in an overconstrained (bridged/cage) component are the hard cases:
-    backends may still draw *some* faces nearly regular, but not all SSSR
-    rings as perfect polygons.
-    """
-    drawable: list[Ring] = []
-    hard: list[Ring] = []
-    for component in ring_system_components(rings):
-        if ring_system_is_overconstrained(component):
-            hard.extend(component)
-        else:
-            drawable.extend(component)
-    return drawable, hard
-
-
 def regular_polygon_radius(n: int, bond_length: float) -> float:
     """RDKit ``embedRing`` / CDK ``getNativeRingRadius`` arm length.
 
@@ -338,16 +319,6 @@ def ring_centroid(
     return sum(xs) / len(xs), sum(ys) / len(ys)
 
 
-def ring_mean_radius(
-    ring: Ring, coords_by_index: dict[int, tuple[float, float]]
-) -> float:
-    cx, cy = ring_centroid(ring, coords_by_index)
-    return sum(
-        math.hypot(coords_by_index[i][0] - cx, coords_by_index[i][1] - cy)
-        for i in ring.atoms
-    ) / len(ring.atoms)
-
-
 def bond_interior_normals(
     rings: list[Ring], coords_by_index: dict[int, tuple[float, float]]
 ) -> dict[tuple[int, int], tuple[float, float]]:
@@ -371,35 +342,6 @@ def bond_interior_normals(
                 nx, ny = -nx, -ny
             normals[key] = (nx, ny)
     return normals
-
-
-def aromatic_circle_geometry(
-    ring: Ring, coords_by_index: dict[int, tuple[float, float]], *, scale: float = 0.45
-) -> tuple[float, float, float] | None:
-    """Center + radius for an aromatic inner circle (drawing overlay only)."""
-    if ring.size < 5:
-        return None
-    cx, cy = ring_centroid(ring, coords_by_index)
-    radius = ring_mean_radius(ring, coords_by_index) * scale
-    if radius < 1.0:
-        return None
-    return cx, cy, radius
-
-
-def ring_looks_aromatic(layout: MoleculeLayout, ring: Ring) -> bool:
-    """Heuristic on bond orders after backend Kekulization / aromatic flags."""
-    order_by_bond = {bond_key(b.begin, b.end): b.order for b in layout.bonds}
-    orders = [order_by_bond[b] for b in ring.bonds]
-    if all(1.4 <= o < 1.6 for o in orders):
-        return True
-    if ring.size == 6:
-        doubles = sum(1 for o in orders if o >= 1.5)
-        singles = sum(1 for o in orders if o < 1.5)
-        return doubles == 3 and singles == 3
-    if ring.size == 5:
-        doubles = sum(1 for o in orders if o >= 1.5)
-        return 1 <= doubles <= 2
-    return False
 
 
 # Catalog of molecules where not every SSSR face can be a regular polygon.

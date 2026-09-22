@@ -14,11 +14,6 @@ class StrictModel(BaseModel):
 LayerName = Literal["shading", "halo", "bonds", "labels", "marks", "overlay"]
 
 
-class Point(StrictModel):
-    x: float
-    y: float
-
-
 class PathPrim(StrictModel):
     kind: Literal["path"] = "path"
     d: str

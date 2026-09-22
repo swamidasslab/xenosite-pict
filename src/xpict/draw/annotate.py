@@ -7,7 +7,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from xpict.contracts.scene import CirclePrim, PathPrim, Primitive, TextPrim
+from xpict.contracts.scene import CirclePrim, PathPrim, TextPrim
 from xpict.contracts.spec import AnnotKind, AnnotationSpec, AnnotPrefer
 from xpict.draw.collision import CollisionGrid
 from xpict.draw.drawn import Drawn
@@ -31,7 +31,7 @@ from xpict.draw.text_metrics import measure_text, text_box
 from xpict.native_bridge import Shape
 
 if TYPE_CHECKING:
-    from xpict.draw.drawable import Drawable, MolContext
+    from xpict.draw.drawable import Drawable
 else:
     from abc import ABC, abstractmethod
 
