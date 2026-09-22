@@ -1,30 +1,25 @@
-"""Build a Scene from layout + PictSpec (xenopict-inspired layers)."""
+"""Build a Scene from layout + PictSpec via Rust ``depict_molecule``.
+
+Molecule ink (bonds / labels / shade / marks / halo) comes from the same Rust
+surface as JS. Diagram arrows stay Python. Captions / callout annotations are
+optional overlays when present on the MoleculeSpec.
+"""
 
 from __future__ import annotations
 
+import json
 from collections.abc import Sequence
 
+from xpict import _native
 from xpict.contracts.layout import MoleculeLayout
-from xpict.contracts.scene import PathPrim, Scene, Viewport
+from xpict.contracts.scene import Layer, PathPrim, Scene, Viewport
 from xpict.contracts.spec import LegacyPictSpec, MoleculeSpec
 from xpict.draw.arrows import diagram_overlays
-from xpict.draw.drawable import (
-    display_text,
-    mol_occupancy,
-    normalize_coords,
-    paint_molecule,
-)
-from xpict.draw.drawn import Halo
-from xpict.draw.markush import apply_rgroup_texts
 from xpict.draw.metrics import shared_coord_scale
-from xpict.draw.mol_title import pack_label
+from xpict.molecule_in import layout_to_molecule_in
 
-
-def _flat(spec: LegacyPictSpec | object) -> LegacyPictSpec:
-    to_legacy = getattr(spec, "to_legacy", None)
-    if callable(to_legacy):
-        return to_legacy()  # type: ignore[no-any-return]
-    return spec  # type: ignore[return-value]
+# Re-export for tests / callers that imported from scene_builder.
+from xpict.draw.drawable import normalize_coords  # noqa: F401
 
 __all__ = [
     "build_scene",
@@ -34,11 +29,11 @@ __all__ = [
 ]
 
 
-def _label_text(mol_spec: MoleculeSpec | None) -> str | None:
-    if mol_spec is None or mol_spec.label is None:
-        return None
-    text = mol_spec.label.text.strip()
-    return text or None
+def _flat(spec: LegacyPictSpec | object) -> LegacyPictSpec:
+    to_legacy = getattr(spec, "to_legacy", None)
+    if callable(to_legacy):
+        return to_legacy()  # type: ignore[no-any-return]
+    return spec  # type: ignore[return-value]
 
 
 def viewport_size(
@@ -47,23 +42,8 @@ def viewport_size(
     *,
     scale: float | None = None,
 ) -> tuple[float, float]:
-    """Viewport width/height including a molecule label when present."""
-    coords, width, height = normalize_coords(layout, scale=scale)
-    text = _label_text(mol_spec)
-    if text is None or mol_spec is None or mol_spec.label is None:
-        return width, height
-    texts = apply_rgroup_texts(
-        layout, mol_spec, [display_text(a) for a in layout.atoms]
-    )
-    occ = mol_occupancy(layout, coords, texts)
-    pack = pack_label(
-        frame_width=width,
-        frame_height=height,
-        occupancy=occ,
-        text=text,
-        pos=mol_spec.label.pos,
-    )
-    return pack.width, pack.height
+    vp = molecule_to_viewport(layout, mol_spec or MoleculeSpec(), scale=scale)
+    return vp.width, vp.height
 
 
 def molecule_to_viewport(
@@ -73,9 +53,38 @@ def molecule_to_viewport(
     halo: bool = True,
     scale: float | None = None,
 ) -> Viewport:
-    """Paint one molecule via the drawable hierarchy."""
-    vp, _halo = paint_molecule(layout, mol_spec, halo=halo, scale=scale)
-    return vp
+    """Paint one molecule via Rust ``depict_molecule``."""
+    mol_in = layout_to_molecule_in(layout, mol_spec, scale=scale)
+    scene = Scene.model_validate_json(_native.depict_molecule(json.dumps(mol_in)))
+    if not scene.viewports:
+        return Viewport(id=layout.id or mol_spec.id, width=scene.width, height=scene.height)
+    vp = scene.viewports[0]
+    # Fold per-molecule halo into an extra layer when document halo is off —
+    # build_scene lifts scene.halo to the document when halo=True.
+    if not halo and scene.halo:
+        layers = list(vp.layers)
+        layers.insert(0, Layer(name="halo", primitives=list(scene.halo)))
+        vp = vp.model_copy(update={"layers": layers})
+    return vp.model_copy(update={"id": layout.id or mol_spec.id or vp.id})
+
+
+def _rust_paint(
+    layout: MoleculeLayout,
+    mol_spec: MoleculeSpec,
+    *,
+    scale: float | None,
+) -> tuple[Viewport, list[PathPrim]]:
+    mol_in = layout_to_molecule_in(layout, mol_spec, scale=scale)
+    scene = Scene.model_validate_json(_native.depict_molecule(json.dumps(mol_in)))
+    vp = scene.viewports[0] if scene.viewports else Viewport(
+        id=layout.id or mol_spec.id, width=scene.width, height=scene.height
+    )
+    vp = vp.model_copy(update={"id": layout.id or mol_spec.id or vp.id})
+    halo = [p for p in scene.halo if isinstance(p, PathPrim)]
+    # Also accept any PathPrim-shaped halo entries
+    if not halo and scene.halo:
+        halo = list(scene.halo)  # type: ignore[arg-type]
+    return vp, halo  # type: ignore[return-value]
 
 
 def build_scene(
@@ -89,19 +98,13 @@ def build_scene(
     diagram_height: float | None = None,
     scale: float | None = None,
 ) -> Scene:
-    """Assemble viewports + overlays; one document :class:`~xpict.draw.drawn.Halo`.
-
-    Drawables opt into that halo (backbone, element symbols, annotations).
-    Shading, molecule captions, and diagram arrows do not.
-
-    Co-displayed molecules share one coord ``scale`` (default:
-    :func:`~xpict.draw.metrics.shared_coord_scale`).
-    """
+    """Assemble viewports + overlays; molecule ink from Rust depict."""
     spec = _flat(spec)
     if scale is None:
         scale = shared_coord_scale(layouts)
-    painted: list[tuple[Viewport, Halo]] = [
-        paint_molecule(layout, mol_spec, halo=spec.halo, scale=scale)
+
+    painted: list[tuple[Viewport, list]] = [
+        _rust_paint(layout, mol_spec, scale=scale)
         for layout, mol_spec in zip(layouts, mol_specs, strict=True)
     ]
     viewports = [vp for vp, _ in painted]
@@ -114,15 +117,29 @@ def build_scene(
         positions = auto
 
     placed: list[Viewport] = []
-    doc_halo = Halo()
+    halo_prims: list = []
     max_r = max_b = 0.0
     for (vp, mol_halo), (px, py) in zip(painted, positions, strict=True):
         placed.append(vp.model_copy(update={"x": px, "y": py}))
         max_r = max(max_r, px + vp.width)
         max_b = max(max_b, py + vp.height)
         if spec.halo and mol_halo:
-            mol_halo.shift(px, py)
-            doc_halo.extend(mol_halo.jobs)
+            for prim in mol_halo:
+                # shift path/circle by viewport origin
+                if getattr(prim, "kind", None) == "path" and getattr(prim, "d", None):
+                    # Halo paths are absolute in molecule space; translate via
+                    # a group in SVG — Scene stores absolute coords, so rewrite
+                    # is expensive. Rust halo is already in local SVG space
+                    # starting at 0; offset by translating numbers is hard.
+                    # For single-mol (common) px=py=0 works. Multi-mol: embed
+                    # as viewport-local by keeping halo on the viewport layer.
+                    pass
+            if px == 0.0 and py == 0.0:
+                halo_prims.extend(mol_halo)
+            else:
+                # Attach halo as bottom layer of the viewport (local coords).
+                layers = [Layer(name="halo", primitives=list(mol_halo)), *vp.layers]
+                placed[-1] = placed[-1].model_copy(update={"layers": layers})
 
     if edge_paths:
         for route in edge_paths:
@@ -132,14 +149,7 @@ def build_scene(
                 max_r = max(max_r, x + 8.0)
                 max_b = max(max_b, y + 8.0)
 
-    # Diagram arrows / edge labels are drawn but do not opt into the halo.
     overlays = diagram_overlays(spec.diagram.edges, placed, edge_paths=edge_paths)
-
-    halo_prims: list[PathPrim] = []
-    if spec.halo and doc_halo:
-        prim = doc_halo.to_prim(cls="halo")
-        if prim is not None:
-            halo_prims = [prim]
 
     width = spec.width or max(max_r, diagram_width or 0.0)
     height = spec.height or max(max_b, diagram_height or 0.0)
@@ -148,5 +158,5 @@ def build_scene(
         height=height,
         viewports=placed,
         overlays=overlays,
-        halo=halo_prims,
+        halo=halo_prims if spec.halo else [],
     )

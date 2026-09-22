@@ -1,4 +1,4 @@
-"""Public Pict / render API."""
+"""Public Pict / render API — molecule ink via Rust ``depict_molecule`` (JS surface)."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ def _resolve_backend_name(requested: str | None) -> str:
         return requested.lower()
     for name in BACKEND_PREFERENCE:
         if name == "indigo":
-            continue  # alternate — never auto-pick
+            continue
         if name == "native":
             return "native"
         if name == "rdkit":
@@ -36,7 +36,6 @@ def _resolve_backend_name(requested: str | None) -> str:
 
 
 def _to_legacy(spec: PictSpec | LegacyPictSpec | dict[str, Any]) -> LegacyPictSpec:
-    """Accept nested PictSpec, legacy flat doc, or JSON dict → flat render doc."""
     if isinstance(spec, LegacyPictSpec):
         return spec
     tree = expand_pict(spec)
@@ -46,7 +45,8 @@ def _to_legacy(spec: PictSpec | LegacyPictSpec | dict[str, Any]) -> LegacyPictSp
 class Pict:
     """Configured depiction engine.
 
-    Backend and output options are runtime config — not part of PictSpec JSON.
+    Backend picks **layout** only; paint is always Rust ``depict_molecule``
+    (same ABI as JS wasm).
     """
 
     def __init__(
