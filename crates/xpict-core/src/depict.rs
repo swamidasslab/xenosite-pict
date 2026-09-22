@@ -1,19 +1,21 @@
 //! Single-molecule depiction: [`MoleculeIn`] → [`Scene`].
 //!
 //! MVP paint path for WASM/Python thin serializers. Caller supplies SVG-space
-//! coords (+ optional shade / marks). Labels and halo land in follow-up ports.
+//! coords (+ optional shade / marks / atom labels). Halo is still follow-up.
 
 use std::collections::HashMap;
 
 use crate::bonds::{bond_strokes, join_centered_multibonds, DrawnBond};
-use crate::metrics::{BOND_PX, MARK_FRAC, PAD_PX, SHADE_FRAC, STROKE_PX};
+use crate::labels::{self, place_backbone};
+use crate::metrics::{BOND_PX, FONT_PX, MARK_FRAC, PAD_PX, SHADE_FRAC, STROKE_PX};
 use crate::plotdot::PlotDot;
-use crate::scene::{Layer, LayerName, MoleculeIn, Primitive, Scene, Viewport};
+use crate::scene::{
+    AtomIn, Layer, LayerName, MoleculeIn, Primitive, Scene, TextAnchor, Viewport,
+};
 
 /// Paint one molecule into a single-viewport [`Scene`].
 ///
-/// Layers (bottom → top): shading → bonds → marks. Labels / halo are still
-/// Python-owned; this covers the ASAP bond + SoM path for xenosite.
+/// Layers (bottom → top): shading → bonds → labels → marks.
 pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
     let color = mol.color.as_deref().unwrap_or("#111");
     let by_index: HashMap<i32, usize> = mol
@@ -46,55 +48,62 @@ pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
         max_x += mark_r;
         max_y += mark_r;
     }
+    // Extra room for heteroatom labels (OH / NH2 / …) beyond atom centers.
+    let label_pad = FONT_PX * 0.85;
+    for a in &mol.atoms {
+        if display_label(a).is_some() {
+            min_x = min_x.min(a.x - label_pad);
+            max_x = max_x.max(a.x + label_pad * 1.6);
+            min_y = min_y.min(a.y - label_pad);
+            max_y = max_y.max(a.y + label_pad);
+        }
+    }
     let pad = PAD_PX;
     let dx = pad - min_x;
     let dy = pad - min_y;
-    let width = (max_x - min_x) + 2.0 * pad;
-    let height = (max_y - min_y) + 2.0 * pad;
+    let mut width = (max_x - min_x) + 2.0 * pad;
+    let mut height = (max_y - min_y) + 2.0 * pad;
 
-    let labeled: HashMap<i32, bool> = mol
+    let label_atoms: Vec<labels::AtomIn> = mol
         .atoms
         .iter()
-        .map(|a| {
-            let has_label = a
-                .label
-                .as_ref()
-                .map(|s| !s.trim().is_empty())
-                .unwrap_or(false);
-            // Heteroatoms / charged atoms get labels even without an explicit string.
-            let labeled = if a.symbol() == "C" && a.charge == 0 {
-                has_label
-            } else {
-                true
-            };
-            (a.index, labeled)
+        .map(|a| labels::AtomIn {
+            x: a.x + dx,
+            y: a.y + dy,
+            label: display_label(a),
         })
         .collect();
+    let label_bonds: Vec<labels::BondIn> = mol
+        .bonds
+        .iter()
+        .map(|b| labels::BondIn {
+            begin: *by_index.get(&b.begin).unwrap_or(&0),
+            end: *by_index.get(&b.end).unwrap_or(&0),
+        })
+        .collect();
+    let (shortened, placed) = place_backbone(&label_atoms, &label_bonds, FONT_PX);
 
     let mut prepared: Vec<DrawnBond> = Vec::new();
-    for bond in &mol.bonds {
-        let Some(&i0) = by_index.get(&bond.begin) else {
+    for (bond, ends) in mol.bonds.iter().zip(shortened.iter()) {
+        if !by_index.contains_key(&bond.begin) || !by_index.contains_key(&bond.end) {
             continue;
-        };
-        let Some(&i1) = by_index.get(&bond.end) else {
-            continue;
-        };
-        let a0 = &mol.atoms[i0];
-        let a1 = &mol.atoms[i1];
+        }
+        let i0 = by_index[&bond.begin];
+        let i1 = by_index[&bond.end];
         let mut db = DrawnBond::new(
             bond.index,
             bond.begin,
             bond.end,
-            a0.x + dx,
-            a0.y + dy,
-            a1.x + dx,
-            a1.y + dy,
+            ends.x1,
+            ends.y1,
+            ends.x2,
+            ends.y2,
             bond.order,
         );
         db.stereo = bond.stereo.clone();
         db.interior = bond.interior;
-        db.begin_labeled = *labeled.get(&bond.begin).unwrap_or(&false);
-        db.end_labeled = *labeled.get(&bond.end).unwrap_or(&false);
+        db.begin_labeled = placed[i0].is_some();
+        db.end_labeled = placed[i1].is_some();
         prepared.push(db);
     }
     join_centered_multibonds(&mut prepared);
@@ -127,6 +136,24 @@ pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
         }
     }
 
+    let mut label_prims: Vec<Primitive> = Vec::new();
+    for (slot, pl) in placed.iter().enumerate() {
+        let Some(pl) = pl else { continue };
+        let atom_index = mol.atoms[slot].index;
+        // Grow canvas if traveling text spills past the initial pad.
+        width = width.max(pl.origin_x + FONT_PX * pl.text.len() as f64 * 0.65 + pad * 0.25);
+        height = height.max(pl.y + FONT_PX * 0.35 + pad * 0.25);
+        label_prims.push(Primitive::Text {
+            x: pl.origin_x,
+            y: pl.y,
+            text: pl.text.clone(),
+            fill: color.to_string(),
+            font_size: FONT_PX,
+            anchor: TextAnchor::Start,
+            class: Some(format!("atom-{atom_index} label")),
+        });
+    }
+
     let shade_prims = paint_shade(mol, &by_index, dx, dy);
     let mark_prims = paint_marks(mol, &by_index, dx, dy);
 
@@ -141,6 +168,12 @@ pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
         layers.push(Layer {
             name: LayerName::Bonds,
             primitives: bond_prims,
+        });
+    }
+    if !label_prims.is_empty() {
+        layers.push(Layer {
+            name: LayerName::Labels,
+            primitives: label_prims,
         });
     }
     if !mark_prims.is_empty() {
@@ -163,6 +196,22 @@ pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
         }],
         overlays: Vec::new(),
         halo: Vec::new(),
+    }
+}
+
+/// Explicit ``label``, else heteroatom / charged symbol (carbons stay silent).
+fn display_label(a: &AtomIn) -> Option<String> {
+    if let Some(ref l) = a.label {
+        let t = l.trim();
+        if !t.is_empty() {
+            return Some(t.to_string());
+        }
+    }
+    let sym = a.symbol();
+    if sym == "C" && a.charge == 0 {
+        None
+    } else {
+        Some(sym.to_string())
     }
 }
 
@@ -467,6 +516,28 @@ mod tests {
         assert_eq!(mol.atoms[1].symbol(), "O");
         let scene = depict_molecule(&mol);
         assert_eq!(scene.viewports.len(), 1);
+    }
+
+    #[test]
+    fn ethanol_emits_oh_label() {
+        let scene = depict_molecule(&ethanol());
+        let labels = scene.viewports[0]
+            .layers
+            .iter()
+            .find(|l| l.name == LayerName::Labels)
+            .expect("labels layer");
+        let texts: Vec<_> = labels
+            .primitives
+            .iter()
+            .filter_map(|p| match p {
+                Primitive::Text { text, .. } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            texts.iter().any(|t| *t == "OH" || *t == "HO"),
+            "expected OH/HO, got {texts:?}"
+        );
     }
 
     #[test]

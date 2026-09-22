@@ -6,6 +6,9 @@ Browser / Node bindings for [`xpict-core`](../xpict-core) via **wasm-bindgen**.
 The public npm package wraps that as `xpict.mol` / `render` / `toSvg`.
 Broader helpers stay in `xpict-core` / PyO3.
 
+Depends on `xpict-core` with **`font`** (Liberation Sans) so heteroatom
+labels (`OH`, `NH2`, …) place and paint. ELK stays off here (use npm `elkjs`).
+
 ## Build
 
 From the repo root:

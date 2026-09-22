@@ -22,3 +22,4 @@ artifacts/
 /opt/cursor/artifacts/
 .skill-tmp/
 vendor/elk/elk.jar
+demo/_site/

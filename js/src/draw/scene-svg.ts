@@ -118,7 +118,9 @@ function renderPrimitive(p: ScenePrimitive): string {
     attr("y", fmt(p.y)) +
     attr("fill", p.fill ?? "#000") +
     attr("font-size", p.font_size ?? 12) +
+    attr("font-family", "Liberation Sans, Arial, sans-serif") +
     attr("text-anchor", p.anchor ?? "middle") +
+    attr("dominant-baseline", "alphabetic") +
     attr("class", p.cls) +
     `>${esc(p.text)}</text>`
   );
