@@ -50,35 +50,37 @@ def test_forward_arrow_has_shaft_and_head():
     prims = edge_primitives(EdgeSpec(source="A", target="B", label="ox"), a, b)
     paths = [p for p in prims if isinstance(p, PathPrim)]
     assert len(paths) >= 2
-    assert any(p.fill and p.fill != "none" for p in paths)  # filled head
+    heads = [p for p in paths if p.fill and p.fill != "none"]
+    assert heads  # filled head
+    assert all(p.stroke in (None, "none") or p.stroke_width == 0 for p in heads)
     assert any(getattr(p, "cls", None) and "label" in (p.cls or "") for p in prims)
 
 
-def test_filled_path_ink_covers_stroke_tip():
-    """Stroked fill triangles expand ink past the geometric tip (stroke radius)."""
+def test_filled_path_ink_buffers_stroke_growth():
+    """When a fill still has a stroke, halo ink grows by half that stroke."""
     from xpict.draw.halo import halo_from_shapes
     from xpict.draw.metrics import HALO_GAP_PX
     from xpict.draw.paths import filled_arrow_head_d, ink_from_path_prim, path_coords
 
     tip = (100.0, 50.0)
     ux, uy = 1.0, 0.0
-    head = PathPrim(
+    # Stroked fill (e.g. wedge): ink must clear the painted tip.
+    stroked = PathPrim(
         d=filled_arrow_head_d(tip[0], tip[1], ux, uy, size=9.0),
         stroke="#222",
         fill="#222",
         stroke_width=1.0,
-        cls="edge edge-0 head",
+        cls="bond bond-wedge-up",
     )
-    ink = ink_from_path_prim(head)
+    ink = ink_from_path_prim(stroked)
     assert ink is not None
-    # Stroke expands ink past the path vertex (half-open contains → probe inside).
     assert ink.contains(tip[0] + ux * 0.25, tip[1] + uy * 0.25)
-    assert ink.bounds[2] > tip[0]  # xmax past geometric tip
+    assert ink.bounds[2] > tip[0]
 
     grown = halo_from_shapes(ink, HALO_GAP_PX)
     assert grown is not None
     assert grown.contains(tip[0] + ux * (0.5 + 0.5 * HALO_GAP_PX), tip[1])
-    for x, y in path_coords(head.d)[:3]:
+    for x, y in path_coords(stroked.d)[:3]:
         assert grown.contains(x, y)
 
 

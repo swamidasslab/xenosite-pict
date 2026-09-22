@@ -157,9 +157,10 @@ def _arrow_drawn(
     drawn.primitives.append(
         PathPrim(
             d=filled_arrow_head_d(tip[0], tip[1], ux, uy, size=size),
-            stroke=color,
+            # Fill only — a stroke would grow past the geometric tip.
+            stroke="none",
             fill=color,
-            stroke_width=1.0,
+            stroke_width=0.0,
             cls="annot-arrow-head",
         )
     )

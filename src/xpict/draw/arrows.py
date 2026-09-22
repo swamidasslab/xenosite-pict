@@ -158,13 +158,14 @@ def _filled_head(
     size: float,
     cls: str,
 ) -> PathPrim:
+    """Filled triangle — fill only; a stroke would grow past the tip."""
     from xpict.draw.paths import filled_arrow_head_d
 
     return PathPrim(
         d=filled_arrow_head_d(tip_x, tip_y, ux, uy, size=size),
-        stroke=color,
+        stroke="none",
         fill=color,
-        stroke_width=1.0,
+        stroke_width=0.0,
         cls=cls,
     )
 
