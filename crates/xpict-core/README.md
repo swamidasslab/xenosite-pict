@@ -10,10 +10,10 @@ Python (PyO3) and JS (WASM) share one implementation.
 
 | Capability | Status |
 | --- | --- |
-| Standard Kekulé depiction (skeleton, doubles/triples, wedges, labels, halo) | Python working; Rust partial (`bonds`, `labels`, `geom`, `font`) |
-| Circling atoms / bonds (publication marks) | Python `MarkDrawable`; Rust port TBD |
-| Shading atoms / bonds (plot-dot disks) | Rust `plotdot` + Python shade paint |
-| Backbone / label ink color (`MoleculeSpec.color`) | ✅ Python (bonds + labels + caption); on `MoleculeIn` ABI |
+| Standard Kekulé depiction (skeleton, doubles/triples, wedges, labels, halo) | Python working; Rust bonds ✅ + `depict_molecule` (bonds/marks/shade); labels/halo TBD |
+| Circling atoms / bonds (publication marks) | Rust `depict_molecule` marks layer ✅ |
+| Shading atoms / bonds (plot-dot disks) | Rust `plotdot` + `depict_molecule` shade (simple coral LUT) ✅ |
+| Backbone / label ink color (`MoleculeSpec.color`) | ✅ Python + Rust paint; on `MoleculeIn` ABI |
 | Alignment | RDKit template align at language edges; Rust rigid/fake align for Indigo |
 
 Caller supplies SVG-space coords (+ optional shade scores / mark indices).
@@ -29,7 +29,8 @@ overlays. `elk` stays in-tree for later; do not block the depict path on it.
 | --- | --- | --- |
 | `metrics` | Bond / stroke / offset fractions (`SCALE=20`) | `draw/metrics.py` |
 | `plotdot` | Concentric shade disks (xenopict) | `draw/plotdot.py` |
-| `bonds` | Multi-bond offset + joins | `draw/bonds.py` (partial in Rust) |
+| `bonds` | Strokes, stereo, centered joins | `draw/bonds.py` |
+| `depict` | `MoleculeIn` → single-viewport `Scene` | `draw/drawable.py` (partial) |
 | `geom` | Buffer / union / counters (`i_overlay` Shape) | `draw/halo.py`, `glyphs.py` |
 | `font` | Liberation outlines + advances (`ttf-parser`) | `draw/font_face.py`, `glyphs.py` |
 | `labels` | Atom-label orientation + backbone insets | `draw/label_place.py` |
@@ -50,10 +51,8 @@ and template alignment; Rust only gets numbers (plus rigid align helpers).
 
 Do not invent new depiction rules in Rust that Python does not already own.
 
-**MVP port order:** bond strokes/joins → mark circles → shade paint onto
-`Scene` → single-mol `depict_molecule(MoleculeIn) -> Scene` → thin serializers.
-
-## Build
+**MVP port order:** labels + halo onto `depict_molecule` → thin serializers →
+parity CI. Bonds / marks / shade already in core.
 
 ```bash
 cargo test -p xpict-core

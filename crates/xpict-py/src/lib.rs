@@ -8,9 +8,11 @@ use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 use pyo3::types::PyModule;
 use xpict_core::bonds;
+use xpict_core::depict;
 use xpict_core::geom::{self, Shape as CoreShape};
 use xpict_core::metrics;
 use xpict_core::plotdot::PlotDot;
+use xpict_core::scene::MoleculeIn;
 
 /// Parallel spacing for double/triple strokes (RDKit `multipleBondOffset`).
 #[pyfunction]
@@ -22,6 +24,16 @@ fn multi_bond_offset(length: f64) -> f64 {
 #[pyfunction]
 fn centered_displacements(order: f64, off: f64) -> Vec<f64> {
     bonds::centered_displacements(order, off)
+}
+
+/// Paint one molecule: `MoleculeIn` JSON → `Scene` JSON (MVP ABI).
+#[pyfunction]
+fn depict_molecule(molecule_json: &str) -> PyResult<String> {
+    let mol: MoleculeIn = serde_json::from_str(molecule_json)
+        .map_err(|e| PyRuntimeError::new_err(format!("MoleculeIn JSON: {e}")))?;
+    let scene = depict::depict_molecule(&mol);
+    serde_json::to_string(&scene)
+        .map_err(|e| PyRuntimeError::new_err(format!("Scene JSON: {e}")))
 }
 
 /// PlotDot rings for one normalized score `z`.
@@ -368,6 +380,7 @@ impl PyShape {
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(multi_bond_offset, m)?)?;
     m.add_function(wrap_pyfunction!(centered_displacements, m)?)?;
+    m.add_function(wrap_pyfunction!(depict_molecule, m)?)?;
     m.add_function(wrap_pyfunction!(plotdot_rings, m)?)?;
     m.add_function(wrap_pyfunction!(plotdot_disks, m)?)?;
     m.add_function(wrap_pyfunction!(capsule_halo_path_d, m)?)?;

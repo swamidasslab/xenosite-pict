@@ -164,6 +164,9 @@ pub struct BondIn {
     pub order: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stereo: Option<String>,
+    /// Unit normal toward ring interior (ring doubles); omit for centered.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interior: Option<(f64, f64)>,
 }
 
 /// One molecule ready to paint (coords already in SVG / ``SCALE`` space).

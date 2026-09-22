@@ -393,6 +393,7 @@ name = "xpict-py"
 version = "0.1.0"
 dependencies = [
  "pyo3",
+ "serde_json",
  "xpict-core",
 ]
 
@@ -400,6 +401,7 @@ dependencies = [
 name = "xpict-wasm"
 version = "0.1.0"
 dependencies = [
+ "serde_json",
  "wasm-bindgen",
  "xpict-core",
 ]

@@ -267,6 +267,7 @@ impl Shape {
         }
     }
 
+    #[allow(clippy::type_complexity)]
     pub fn polygons_rings(&self) -> Vec<(Vec<(f64, f64)>, Vec<Vec<(f64, f64)>>)> {
         self.shapes
             .iter()

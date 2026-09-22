@@ -42,6 +42,12 @@ pub const CHAIN_END_GAP_PX: f64 = CHAIN_END_GAP_FRAC * BOND_PX;
 pub const HALO_STROKE: f64 = HALO_FRAC * BOND_PX;
 pub const LABEL_GAP_PX: f64 = LABEL_GAP_FRAC * BOND_PX;
 
+/// Dash count scaling with drawn bond length (hashed wedges).
+pub fn hash_count(length: f64) -> usize {
+    let n = (f64::from(HASH_PER_BOND) * length / BOND_PX).round() as i32;
+    n.clamp(5, 12) as usize
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

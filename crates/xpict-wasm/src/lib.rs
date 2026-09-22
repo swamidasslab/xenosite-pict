@@ -7,9 +7,11 @@
 
 use wasm_bindgen::prelude::*;
 use xpict_core::bonds;
+use xpict_core::depict;
 use xpict_core::geom;
 use xpict_core::metrics;
 use xpict_core::plotdot::PlotDot;
+use xpict_core::scene::MoleculeIn;
 
 #[wasm_bindgen(js_name = multiBondOffset)]
 pub fn multi_bond_offset(length: f64) -> f64 {
@@ -19,6 +21,15 @@ pub fn multi_bond_offset(length: f64) -> f64 {
 #[wasm_bindgen(js_name = centeredDisplacements)]
 pub fn centered_displacements(order: f64, off: f64) -> Vec<f64> {
     bonds::centered_displacements(order, off)
+}
+
+/// `MoleculeIn` JSON → `Scene` JSON (MVP paint ABI).
+#[wasm_bindgen(js_name = depictMolecule)]
+pub fn depict_molecule(molecule_json: &str) -> Result<String, JsValue> {
+    let mol: MoleculeIn = serde_json::from_str(molecule_json)
+        .map_err(|e| JsValue::from_str(&format!("MoleculeIn JSON: {e}")))?;
+    let scene = depict::depict_molecule(&mol);
+    serde_json::to_string(&scene).map_err(|e| JsValue::from_str(&format!("Scene JSON: {e}")))
 }
 
 /// Flat `[radius, color, …]` for one score (empty when near zero).

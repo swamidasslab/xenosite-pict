@@ -8,6 +8,7 @@
 #![forbid(unsafe_code)]
 
 pub mod bonds;
+pub mod depict;
 #[cfg(feature = "elk")]
 pub mod elk;
 pub mod font;
@@ -19,7 +20,11 @@ pub mod plotdot;
 pub mod rings;
 pub mod scene;
 
-pub use bonds::{centered_displacements, multi_bond_offset};
+pub use bonds::{
+    bond_paths, bond_strokes, centered_displacements, depict_order, join_centered_multibonds,
+    multi_bond_offset, BondStrokes, DrawnBond, StrokePath,
+};
+pub use depict::depict_molecule;
 #[cfg(feature = "elk")]
 pub use elk::layout_json as elk_layout_json;
 pub use geom::{capsule_halo_path_d, disk_halo_path_d, polygon_to_svg_d};

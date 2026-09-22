@@ -31,11 +31,11 @@ Python stays the algorithm lab and CI truth; the **ship path for xenosite is WAS
 | Capsule / disk halo paths | ✅ Rust + Py + WASM |
 | Label place + backbone insets | ✅ Rust + Py (WASM font feature next) |
 | Bond offset helpers | ✅ Rust + Py + WASM |
-| Bond strokes / joins / wedges | ⏳ Python only |
-| Mark circles (atoms/bonds) | ⏳ Python only |
-| Shade paint onto scene | ⏳ Python (+ plotdot in Rust) |
+| Bond strokes / joins / wedges | ✅ Rust (+ Py/WASM via `depict_molecule`) |
+| Mark circles (atoms/bonds) | ✅ Rust `depict_molecule` marks layer |
+| Shade paint onto scene | ✅ Rust (simple coral LUT; full xenosite cmap TBD) |
 | `Scene` document types | ✅ Rust (`xpict-core::scene`) |
-| `depict_molecule(MoleculeIn) → Scene` | ❌ not wired |
+| `depict_molecule(MoleculeIn) → Scene` | ✅ Rust + Py + WASM (bonds/marks/shade; labels/halo next) |
 | JS Scene → SVG / data-URI `<img>` | ❌ stub (`layoutToSvgStub`) |
 | Browser RDKit layout + align | ❌ not in this repo (xenosite may already load MinimalLib) |
 | Multi-mol / ELK | post-MVP (ignore for this track) |
