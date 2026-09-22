@@ -54,13 +54,11 @@ def test_forward_arrow_has_shaft_and_head():
     assert any(getattr(p, "cls", None) and "label" in (p.cls or "") for p in prims)
 
 
-def test_filled_arrow_head_halo_covers_stroke_tip():
-    """Stroked fill triangles need ink past the geometric tip (stroke radius)."""
-    from xpict.draw.drawn import _as_shape
+def test_filled_path_ink_covers_stroke_tip():
+    """Stroked fill triangles expand ink past the geometric tip (stroke radius)."""
     from xpict.draw.halo import halo_from_shapes
     from xpict.draw.metrics import HALO_GAP_PX
     from xpict.draw.paths import filled_arrow_head_d, ink_from_path_prim, path_coords
-    from xpict.draw.scene_builder import _overlay_halo_jobs
 
     tip = (100.0, 50.0)
     ux, uy = 1.0, 0.0
@@ -77,14 +75,76 @@ def test_filled_arrow_head_halo_covers_stroke_tip():
     assert ink.contains(tip[0] + ux * 0.25, tip[1] + uy * 0.25)
     assert ink.bounds[2] > tip[0]  # xmax past geometric tip
 
-    jobs = _overlay_halo_jobs([head])
-    assert len(jobs) == 1
-    halo = halo_from_shapes(_as_shape(jobs[0][0]), jobs[0][1])
-    assert halo is not None
-    # Soft air past the painted tip (stroke/2 + most of HALO_GAP).
-    assert halo.contains(tip[0] + ux * (0.5 + 0.5 * HALO_GAP_PX), tip[1])
+    grown = halo_from_shapes(ink, HALO_GAP_PX)
+    assert grown is not None
+    assert grown.contains(tip[0] + ux * (0.5 + 0.5 * HALO_GAP_PX), tip[1])
     for x, y in path_coords(head.d)[:3]:
-        assert halo.contains(x, y)
+        assert grown.contains(x, y)
+
+
+def test_diagram_arrows_do_not_opt_into_document_halo():
+    """Edge shafts / heads / labels are drawn but skip the shared halo."""
+    from xpict.draw.drawable import paint_molecule
+    from xpict.draw.drawn import Halo
+
+    doc = PictSpec.model_validate(
+        {
+            "molecules": [
+                {"id": "A", "smiles": "CCO"},
+                {"id": "B", "smiles": "CC=O"},
+            ],
+            "diagram": {
+                "kind": "reaction",
+                "edges": [
+                    {"source": "A", "target": "B", "label": "ADH", "arrow": "forward"}
+                ],
+            },
+            "halo": True,
+        }
+    )
+    pict = Pict(backend="native")
+    layouts = pict.layout(doc).molecules
+    scene = build_scene(layouts, doc.molecules, doc)
+    assert any(isinstance(p, PathPrim) and "head" in (p.cls or "") for p in scene.overlays)
+    assert any(
+        getattr(p, "cls", None) and "label" in (p.cls or "") for p in scene.overlays
+    )
+    # Halo matches molecule opt-ins only (no overlay ink).
+    expected = Halo()
+    for layout, ms, vp in zip(layouts, doc.molecules, scene.viewports, strict=True):
+        _, h = paint_molecule(layout, ms, halo=True)
+        h.shift(vp.x, vp.y)
+        expected.extend(h.jobs)
+    assert scene.halo and expected.to_prim() is not None
+    assert scene.halo[0].d == expected.to_prim().d
+
+
+def test_molecule_caption_does_not_opt_into_document_halo():
+    """Molecule titles draw without joining the shared halo."""
+    from xpict.contracts.scene import TextPrim
+    from xpict.draw.drawable import paint_molecule
+
+    bare = PictSpec.model_validate({"molecules": [{"smiles": "CCO"}], "halo": True})
+    titled = PictSpec.model_validate(
+        {
+            "molecules": [
+                {"smiles": "CCO", "label": {"text": "ethanol", "pos": "bottom"}}
+            ],
+            "halo": True,
+        }
+    )
+    pict = Pict(backend="native")
+    bare_layout = pict.layout(bare).molecules[0]
+    titled_layout = pict.layout(titled).molecules[0]
+    _, bare_halo = paint_molecule(bare_layout, bare.molecules[0], halo=True)
+    vp, titled_halo = paint_molecule(titled_layout, titled.molecules[0], halo=True)
+    assert any(
+        isinstance(p, TextPrim) and p.cls == "mol-label"
+        for layer in vp.layers
+        for p in layer.primitives
+    )
+    # Same backbone + element-symbol ink; caption must not add jobs.
+    assert len(titled_halo.jobs) == len(bare_halo.jobs)
 
 
 def test_dashed_and_open_and_equilibrium():

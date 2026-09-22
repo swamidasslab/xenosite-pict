@@ -20,13 +20,9 @@ from xpict.draw.annotate import render_annotation
 from xpict.draw.bonds import DrawnBond, bond_strokes, join_centered_multibonds, shorten
 from xpict.draw.collision import CollisionGrid
 from xpict.draw.colormap import colormap_rgb
-from xpict.draw.drawn import Drawn, HaloJob, emit_drawn, shift_ink, shift_layers
+from xpict.draw.drawn import Drawn, Halo, emit_drawn
 from xpict.draw.glyphs import compile_text_shapes
-from xpict.draw.halo import (
-    capsule_shape,
-    circle_ring_shape,
-    disk_shape,
-)
+from xpict.draw.halo import disk_shape
 from xpict.draw.markush import apply_rgroup_texts, ring_attachment_annotations
 from xpict.draw.metrics import (
     BOND_PX,
@@ -90,9 +86,9 @@ class MolContext:
     height: float
     grid: CollisionGrid
     layers: dict[str, Layer]
-    halo: bool = True
+    halo_enabled: bool = True
     label_pack: LabelPack | None = None
-    halo_jobs: list[HaloJob] = field(default_factory=list)
+    halo: Halo = field(default_factory=Halo)
 
     def points(self, atoms: Sequence[int] | None) -> list[tuple[float, float]]:
         if not atoms:
@@ -109,8 +105,8 @@ class MolContext:
         emit_drawn(
             self.layers,
             drawn,
-            halo=self.halo,
-            halo_jobs=self.halo_jobs if self.halo else None,
+            halo=self.halo if self.halo_enabled else None,
+            halo_enabled=self.halo_enabled,
         )
         for box in drawn.boxes:
             self.grid.mark_box(*box, pad=LABEL_GAP_PX * 0.5)
@@ -126,8 +122,10 @@ class MolContext:
         dx = max(0.0, pad - min_x)
         dy = max(0.0, pad - min_y)
         if dx or dy:
+            from xpict.draw.drawn import shift_layers
+
             shift_layers(self.layers, dx, dy)
-            self.halo_jobs = [(shift_ink(ink, dx, dy), dist) for ink, dist in self.halo_jobs]
+            self.halo.shift(dx, dy)
             if self.label_pack is not None:
                 from dataclasses import replace
 
@@ -327,7 +325,7 @@ class BondsDrawable(Drawable):
                 )
             )
         join_centered_multibonds(prepared)
-        drawn = Drawn(layer="bonds", halo_cls="halo")
+        drawn = Drawn(layer="bonds", halo=True, halo_cls="halo")
         for bond in prepared:
             strokes = bond_strokes(
                 bond.x1,
@@ -372,7 +370,7 @@ class AtomLabelsDrawable(Drawable):
     """Heteroatom labels and radical dots."""
 
     def draw(self, ctx: MolContext) -> Drawn | None:
-        drawn = Drawn(layer="labels", halo_cls="halo label-halo")
+        drawn = Drawn(layer="labels", halo=True, halo_cls="halo label-halo")
         for i, atom in enumerate(ctx.layout.atoms):
             label = ctx.texts[i]
             x, y = ctx.coords[i]
@@ -451,6 +449,7 @@ class MarkDrawable(Drawable):
 
     def draw(self, ctx: MolContext) -> Drawn | None:
         color = self.spec.color or "#c44"
+        # Publication marks do not opt into the document halo by default.
         drawn = Drawn(layer="marks", halo_cls="halo mark-halo")
         mark = self.spec
         if mark.kind == MarkKind.substructure and mark.atoms:
@@ -466,10 +465,6 @@ class MarkDrawable(Drawable):
                     cls="substructure-mark",
                 )
                 drawn.primitives.append(prim)
-                ink = ink_from_path_prim(prim)
-                if ink is not None:
-                    drawn.ink.append(ink)
-                    drawn.ink_dists.append(HALO_GAP_PX)
             return drawn if drawn.primitives else None
         if mark.atoms:
             r = BOND_PX * MARK_FRAC
@@ -490,10 +485,6 @@ class MarkDrawable(Drawable):
                         cls=f"atom-{ai} mark",
                     )
                 )
-                ink = circle_ring_shape(x, y, r, STROKE_PX)
-                if ink is not None:
-                    drawn.ink.append(ink)
-                    drawn.ink_dists.append(HALO_GAP_PX)
         if mark.bonds:
             for a, b in mark.bonds:
                 ia, ib = ctx.atom_pos.get(a), ctx.atom_pos.get(b)
@@ -510,16 +501,15 @@ class MarkDrawable(Drawable):
                         cls=f"bond-mark atom-{a} atom-{b}",
                     )
                 )
-                ink = capsule_shape(x1, y1, x2, y2, 0.5 * HALO_STROKE)
-                if ink is not None:
-                    drawn.ink.append(ink)
-                    drawn.ink_dists.append(HALO_GAP_PX)
         return drawn if drawn.primitives else None
 
 
 @dataclass
 class CaptionDrawable(Drawable):
-    """Molecule caption already packed into ``ctx.label_pack``."""
+    """Molecule caption already packed into ``ctx.label_pack``.
+
+    Captions are drawn but do not opt into the document halo by default.
+    """
 
     def draw(self, ctx: MolContext) -> Drawn | None:
         pack = ctx.label_pack
@@ -537,12 +527,6 @@ class CaptionDrawable(Drawable):
                 cls="mol-label",
             )
         )
-        ink = compile_text_shapes(
-            pack.text, pack.x, pack.y, font_size=pack.font_size, anchor=pack.anchor
-        )
-        if ink is not None:
-            drawn.ink.append(ink)
-            drawn.ink_dists.append(HALO_GAP_PX)
         return drawn
 
 
@@ -584,8 +568,8 @@ def paint_molecule(
     mol_spec: MoleculeSpec,
     *,
     halo: bool = True,
-) -> tuple[Viewport, list]:
-    """Build a molecule viewport; return pending halo jobs for document union."""
+) -> tuple[Viewport, Halo]:
+    """Build a molecule viewport; return ink opted into the document halo."""
     coords, width, height = normalize_coords(layout)
     texts = apply_rgroup_texts(
         layout, mol_spec, [display_text(a) for a in layout.atoms]
@@ -616,7 +600,7 @@ def paint_molecule(
         height=height,
         grid=mol_occupancy(layout, coords, texts),
         layers={name: Layer(name=name) for name in LAYER_ORDER},  # type: ignore[arg-type]
-        halo=halo,
+        halo_enabled=halo,
         label_pack=label_pack,
     )
     annot_boxes: list[tuple[float, float, float, float]] = []
@@ -630,7 +614,7 @@ def paint_molecule(
     ctx.grow_to_boxes(annot_boxes)
     vp = ctx.to_viewport()
     vp = vp.model_copy(update={"id": layout.id or mol_spec.id})
-    return vp, list(ctx.halo_jobs) if halo else []
+    return vp, ctx.halo if halo else Halo()
 
 
 __all__ = [

@@ -175,7 +175,7 @@ def test_svg_background_is_clear_by_default():
 
 
 def test_halo_is_single_document_union():
-    """All molecule + overlay ink shares one document-space halo path."""
+    """Opted-in molecule ink shares one document-space halo path."""
     backend = _chem_backend()
     svg = render({"molecules": [{"smiles": "c1ccccc1"}]}, backend=backend)
     n_halo = len(re.findall(r"<path[^>]*class=\"halo\"", svg))
@@ -186,7 +186,7 @@ def test_halo_is_single_document_union():
 
 
 def test_halo_includes_buffered_label_glyphs():
-    """Label knockout is in the unioned document halo; counters stay open."""
+    """Element-symbol knockout is in the unioned document halo; counters stay open."""
     backend = _chem_backend()
     svg = render({"molecules": [{"smiles": "CCO"}]}, backend=backend)
     assert not re.search(r'<circle[^>]*label-halo', svg)

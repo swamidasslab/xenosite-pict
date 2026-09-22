@@ -5,13 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from xpict.contracts.layout import MoleculeLayout
-from xpict.contracts.scene import (
-    CirclePrim,
-    PathPrim,
-    Scene,
-    TextPrim,
-    Viewport,
-)
+from xpict.contracts.scene import PathPrim, Scene, Viewport
 from xpict.contracts.spec import LegacyPictSpec, MoleculeSpec
 from xpict.draw.arrows import diagram_overlays
 from xpict.draw.drawable import (
@@ -20,13 +14,9 @@ from xpict.draw.drawable import (
     normalize_coords,
     paint_molecule,
 )
-from xpict.draw.drawn import HaloJob, shift_ink, union_halo_prim
-from xpict.draw.glyphs import compile_text_shapes
-from xpict.draw.halo import circle_ring_shape, disk_shape
+from xpict.draw.drawn import Halo
 from xpict.draw.markush import apply_rgroup_texts
-from xpict.draw.metrics import HALO_GAP_PX, HALO_STROKE, STROKE_PX
 from xpict.draw.mol_title import pack_label
-from xpict.draw.paths import ink_from_path_prim
 
 
 def _flat(spec: LegacyPictSpec | object) -> LegacyPictSpec:
@@ -79,7 +69,7 @@ def molecule_to_viewport(
     halo: bool = True,
 ) -> Viewport:
     """Paint one molecule via the drawable hierarchy."""
-    vp, _jobs = paint_molecule(layout, mol_spec, halo=halo)
+    vp, _halo = paint_molecule(layout, mol_spec, halo=halo)
     return vp
 
 
@@ -93,8 +83,13 @@ def build_scene(
     diagram_width: float | None = None,
     diagram_height: float | None = None,
 ) -> Scene:
+    """Assemble viewports + overlays; one document :class:`~xpict.draw.drawn.Halo`.
+
+    Drawables opt into that halo (backbone, element symbols, annotations).
+    Molecule captions and diagram arrows do not.
+    """
     spec = _flat(spec)
-    painted: list[tuple[Viewport, list[HaloJob]]] = [
+    painted: list[tuple[Viewport, Halo]] = [
         paint_molecule(layout, mol_spec, halo=spec.halo)
         for layout, mol_spec in zip(layouts, mol_specs, strict=True)
     ]
@@ -108,14 +103,15 @@ def build_scene(
         positions = auto
 
     placed: list[Viewport] = []
-    halo_jobs: list[HaloJob] = []
+    doc_halo = Halo()
     max_r = max_b = 0.0
-    for (vp, jobs), (px, py) in zip(painted, positions, strict=True):
+    for (vp, mol_halo), (px, py) in zip(painted, positions, strict=True):
         placed.append(vp.model_copy(update={"x": px, "y": py}))
         max_r = max(max_r, px + vp.width)
         max_b = max(max_b, py + vp.height)
-        if spec.halo:
-            halo_jobs.extend((shift_ink(ink, px, py), dist) for ink, dist in jobs)
+        if spec.halo and mol_halo:
+            mol_halo.shift(px, py)
+            doc_halo.extend(mol_halo.jobs)
 
     if edge_paths:
         for route in edge_paths:
@@ -125,13 +121,12 @@ def build_scene(
                 max_r = max(max_r, x + 8.0)
                 max_b = max(max_b, y + 8.0)
 
+    # Diagram arrows / edge labels are drawn but do not opt into the halo.
     overlays = diagram_overlays(spec.diagram.edges, placed, edge_paths=edge_paths)
-    if spec.halo:
-        halo_jobs.extend(_overlay_halo_jobs(overlays))
 
     halo_prims: list[PathPrim] = []
-    if spec.halo and halo_jobs:
-        prim = union_halo_prim(halo_jobs, cls="halo")
+    if spec.halo and doc_halo:
+        prim = doc_halo.to_prim(cls="halo")
         if prim is not None:
             halo_prims = [prim]
 
@@ -144,34 +139,3 @@ def build_scene(
         overlays=overlays,
         halo=halo_prims,
     )
-
-
-def _overlay_halo_jobs(prims: Sequence) -> list[HaloJob]:
-    """Ink jobs for document overlays (edge shafts / labels)."""
-    jobs: list[HaloJob] = []
-    for prim in prims:
-        if isinstance(prim, TextPrim):
-            ink = compile_text_shapes(
-                prim.text,
-                prim.x,
-                prim.y,
-                font_size=prim.font_size,
-                anchor=prim.anchor,
-            )
-            if ink is not None:
-                jobs.append((ink, HALO_GAP_PX))
-        elif isinstance(prim, PathPrim):
-            ink = ink_from_path_prim(prim)
-            if ink is None:
-                continue
-            ink_r = max(prim.stroke_width, STROKE_PX) * 0.5
-            dist = max(HALO_GAP_PX, 0.25 * HALO_STROKE - ink_r)
-            jobs.append((ink, dist))
-        elif isinstance(prim, CirclePrim):
-            if prim.fill not in (None, "none"):
-                ink = disk_shape(prim.cx, prim.cy, prim.r)
-            else:
-                ink = circle_ring_shape(prim.cx, prim.cy, prim.r, prim.stroke_width)
-            if ink is not None:
-                jobs.append((ink, HALO_GAP_PX))
-    return jobs

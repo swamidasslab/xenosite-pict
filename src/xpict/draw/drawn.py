@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -26,13 +27,16 @@ HaloJob = tuple[Any, float]  # (ink, dist)
 class Drawn:
     """One drawable's contribution to the scene.
 
-    ``ink`` feeds the bottom halo layer; ``boxes`` stamp the collision grid.
+    Set ``halo=True`` to opt this drawable's ``ink`` into the shared
+    :class:`Halo` (backbone, element symbols, annotations). Captions and
+    diagram overlays leave it ``False``.
     """
 
     primitives: list[Primitive] = field(default_factory=list)
     ink: list[Any] = field(default_factory=list)
     boxes: list[Box] = field(default_factory=list)
     layer: LayerName = "marks"
+    halo: bool = False
     halo_cls: str = "halo"
     # Parallel to ``ink``; ``None`` → ``HALO_GAP_PX``. Empty → all default.
     ink_dists: list[float | None] = field(default_factory=list)
@@ -44,7 +48,34 @@ class Drawn:
         self.ink.extend(other.ink)
         self.boxes.extend(other.boxes)
         self.ink_dists.extend(other.ink_dists)
+        self.halo = self.halo or other.halo
         return self
+
+
+@dataclass
+class Halo:
+    """Single document-space knockout. Drawables opt in via :meth:`add`."""
+
+    jobs: list[HaloJob] = field(default_factory=list)
+
+    def add(self, ink: Any, dist: float | None = None) -> None:
+        if ink is None:
+            return
+        self.jobs.append((ink, HALO_GAP_PX if dist is None else dist))
+
+    def extend(self, jobs: Sequence[HaloJob]) -> None:
+        self.jobs.extend(jobs)
+
+    def shift(self, dx: float, dy: float) -> None:
+        if abs(dx) < 1e-12 and abs(dy) < 1e-12:
+            return
+        self.jobs = [(shift_ink(ink, dx, dy), dist) for ink, dist in self.jobs]
+
+    def to_prim(self, *, cls: str = "halo") -> PathPrim | None:
+        return union_halo_prim(self.jobs, cls=cls)
+
+    def __bool__(self) -> bool:
+        return bool(self.jobs)
 
 
 def _as_shape(ink: Any) -> Shape | None:
@@ -71,7 +102,9 @@ def shift_ink(ink: Any, dx: float, dy: float) -> Any:
 
 
 def drawn_halo_jobs(drawn: Drawn) -> list[HaloJob]:
-    """Ink geometries and buffer distances from one :class:`Drawn`."""
+    """Ink geometries and buffer distances from one opting-in :class:`Drawn`."""
+    if not drawn.halo:
+        return []
     jobs: list[HaloJob] = []
     for i, geom in enumerate(drawn.ink):
         if geom is None:
@@ -127,18 +160,20 @@ def emit_drawn(
     layers: dict[str, Layer],
     drawn: Drawn,
     *,
-    halo: bool = True,
-    halo_jobs: list[HaloJob] | None = None,
+    halo: Halo | None = None,
+    halo_enabled: bool = True,
 ) -> None:
-    """Append primitives to ``drawn.layer``; collect ink for a later union halo."""
+    """Append primitives to ``drawn.layer``; opt into ``halo`` when requested."""
     layers[drawn.layer].primitives.extend(drawn.primitives)
-    if not halo:
+    if not halo_enabled or not drawn.halo:
         return
     jobs = drawn_halo_jobs(drawn)
-    if halo_jobs is not None:
-        halo_jobs.extend(jobs)
+    if not jobs:
         return
-    # Fallback: emit a union for this Drawn alone (no collector).
+    if halo is not None:
+        halo.extend(jobs)
+        return
+    # Fallback: emit a union for this Drawn alone (no shared collector).
     prim = union_halo_prim(jobs, cls="halo")
     if prim is not None:
         layers["halo"].primitives.append(prim)
@@ -165,6 +200,7 @@ def shift_layers(layers: dict[str, Layer], dx: float, dy: float) -> None:
 __all__ = [
     "Box",
     "Drawn",
+    "Halo",
     "HaloJob",
     "drawn_halo_jobs",
     "emit_drawn",

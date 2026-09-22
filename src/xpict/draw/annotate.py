@@ -140,7 +140,7 @@ def _arrow_drawn(
     tip = (tip_x - ux * ANNOT_GAP_PX * 0.35, tip_y - uy * ANNOT_GAP_PX * 0.35)
     base = (tip[0] - ux * size, tip[1] - uy * size)
     start = (from_x, from_y)
-    drawn = Drawn(layer="marks", halo_cls="halo annot-halo")
+    drawn = Drawn(layer="marks", halo=True, halo_cls="halo annot-halo")
     if math.hypot(base[0] - start[0], base[1] - start[1]) >= size * 0.5:
         drawn.primitives.append(
             PathPrim(
@@ -172,7 +172,7 @@ def _arrow_drawn(
 def _draw_region(ann: AnnotationSpec, pts: Sequence[tuple[float, float]], *, color: str) -> Drawn | None:
     pad = ANNOT_PAD_PX
     stroke = ANNOT_STROKE_PX
-    drawn = Drawn(layer="marks", halo_cls="halo annot-halo")
+    drawn = Drawn(layer="marks", halo=True, halo_cls="halo annot-halo")
     if ann.kind == AnnotKind.box:
         bounds = _bounds(pts, pad)
         if bounds is None:
@@ -256,7 +256,7 @@ def _draw_callout(
     color: str,
 ) -> Drawn:
     ax, ay = target
-    drawn = Drawn(layer="marks", halo_cls="halo annot-halo")
+    drawn = Drawn(layer="marks", halo=True, halo_cls="halo annot-halo")
     label = (ann.label or "").strip()
     side = ann.prefer.value if isinstance(ann.prefer, AnnotPrefer) else str(ann.prefer)
 
@@ -414,7 +414,7 @@ def draw_annotations(
     coords: Sequence[tuple[float, float]],
     grid: CollisionGrid,
 ) -> Drawn:
-    out = Drawn(layer="marks", halo_cls="halo annot-halo")
+    out = Drawn(layer="marks", halo=True, halo_cls="halo annot-halo")
     for ann in annotations:
         drawn = draw_annotation(
             ann, atom_pos=atom_pos, coords=coords, grid=grid
