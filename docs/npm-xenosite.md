@@ -69,8 +69,11 @@ await xpict.init(); // Node: pass { wasm: bytes } if fetch isn't available
 
 const mol = xpict.mol("c1ccccc1");
 const rendered = await xpict.render(mol);
-rendered.svg;
-rendered.svg_coords; // match ink
+// tweak rendered.scene (paths/circles/…) then:
+const svg = xpict.toSvg(rendered.scene);
+const img = xpict.toImgDataUri(rendered.scene);
+
+rendered.svg_coords; // match scene ink
 rendered.coords;     // SCALE, pre-pad
 
 const aligned = await xpict.render(xpict.mol("Cc1ccccc1"), {

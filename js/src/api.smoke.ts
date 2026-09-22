@@ -1,5 +1,5 @@
 /**
- * Smoke: xpict.mol / xpict.render + align_to (mol or rendered).
+ * Smoke: xpict.mol / xpict.render + scene → toSvg.
  * Run: `npx tsx src/api.smoke.ts` (after wasm build).
  */
 import { readFile } from "node:fs/promises";
@@ -21,11 +21,23 @@ await xpict.init({
 
 const mol = xpict.mol("c1ccccc1");
 const rendered = await xpict.render(mol);
-if (!rendered.svg.includes("<svg")) throw new Error("missing svg");
+if (!rendered.scene?.viewports?.length) throw new Error("missing scene");
 if (rendered.coords.length !== 6) throw new Error("coords length");
 if (rendered.svg_coords.length !== 6) throw new Error("svg_coords length");
 if (!mol.frame_molblock) throw new Error("mol should carry frame_molblock");
 if (!rendered.frame_molblock) throw new Error("rendered should carry frame");
+
+const svg = xpict.toSvg(rendered.scene);
+if (!svg.includes("<svg") || !svg.includes("viewBox")) {
+  throw new Error("toSvg missing root");
+}
+
+// Tweak scene then re-serialize.
+rendered.scene.width = Math.ceil(rendered.scene.width);
+const tweaked = xpict.toSvg(rendered.scene);
+if (!tweaked.includes(`width="${rendered.scene.width}"`)) {
+  throw new Error("tweaked scene not reflected in toSvg");
+}
 
 const dx = rendered.svg_coords[0]!.x - rendered.coords[0]!.x;
 const dy = rendered.svg_coords[0]!.y - rendered.coords[0]!.y;
@@ -66,12 +78,15 @@ if (!circle) throw new Error("expected mark circle");
 const methyl = alignedToMol.svg_coords.find((a) => a.index === 0);
 if (!methyl) throw new Error("missing methyl");
 if (Math.hypot(methyl.x - circle.cx, methyl.y - circle.cy) > 1e-6) {
-  throw new Error("svg_coords must match mark position in SVG");
+  throw new Error("svg_coords must match mark position in scene");
 }
 
+const uri = xpict.toImgDataUri(alignedToMol.scene);
+if (!uri.startsWith("data:image/svg+xml")) throw new Error("bad data uri");
+
 console.log("api smoke ok", {
-  svgBytes: rendered.svg.length,
-  alignToMol: alignedToMol.svg.length,
-  alignToRendered: alignedToRendered.svg.length,
+  svgBytes: svg.length,
+  alignToMol: xpict.toSvg(alignedToMol.scene).length,
+  alignToRendered: xpict.toSvg(alignedToRendered.scene).length,
   serverSide: typeof document === "undefined",
 });

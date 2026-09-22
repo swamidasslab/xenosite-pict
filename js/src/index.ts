@@ -14,4 +14,8 @@ export type {
   MolRenderOptions,
   SvgAtom,
   SvgBond,
+  Scene,
+  ScenePrimitive,
+  SceneLayer,
+  SceneViewport,
 } from "./api.js";

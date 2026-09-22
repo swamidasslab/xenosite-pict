@@ -9,7 +9,8 @@ import { xpict } from "@swamidasslab/xpict";
 await xpict.init();
 const mol = xpict.mol("c1ccccc1");
 const rendered = await xpict.render(mol);
-// rendered.svg / .svg_coords / .coords
+// rendered.scene is editable JSON; coords match the scene ink
+const svg = xpict.toSvg(rendered.scene);
 
 const aligned = await xpict.render(xpict.mol("Cc1ccccc1"), {
   align_to: mol, // or align_to: rendered

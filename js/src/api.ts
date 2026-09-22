@@ -8,9 +8,8 @@
  * await xpict.init();
  * const mol = xpict.mol("CCCC");
  * const rendered = await xpict.render(mol);
- * rendered.svg;
- * rendered.svg_coords;
- * rendered.coords;
+ * // tweak rendered.scene if needed, then:
+ * const svg = xpict.toSvg(rendered.scene);
  *
  * const aligned = await xpict.render(xpict.mol("CCCO"), { align_to: mol });
  * // or: { align_to: rendered }
@@ -34,9 +33,14 @@ import {
   type InitInput,
 } from "./native.js";
 import { atomsInSvgFrame, type SvgAtom, type SvgBond } from "./frame.js";
-import { sceneToImgDataUri, sceneToSvg, type Scene } from "./draw/scene-svg.js";
+import {
+  sceneToImgDataUri,
+  sceneToSvg,
+  type Scene,
+} from "./draw/scene-svg.js";
 
 export type { SvgAtom, SvgBond } from "./frame.js";
+export type { Scene, ScenePrimitive, SceneLayer, SceneViewport } from "./draw/scene-svg.js";
 
 export type InitOptions = RdkitLoadOptions & {
   /** Pass-through for xpict-core.wasm (Node usually needs bytes). */
@@ -54,19 +58,19 @@ export type Mol = {
 };
 
 /**
- * Rendered depiction — SVG + coords. Also an ``align_to`` target via
- * ``frame_molblock``.
+ * Rendered depiction. ``scene`` is the editable JSON drawable; convert with
+ * ``xpict.toSvg(scene)`` when you want a string. Also an ``align_to`` target
+ * via ``frame_molblock``.
  */
 export type Rendered = {
-  svg: string;
-  img_data_uri: string;
   width: number;
   height: number;
-  /** ViewBox / SCALE positions — match SVG ink. */
+  /** ViewBox / SCALE positions — match scene / SVG ink. */
   svg_coords: SvgAtom[];
   /** SCALE layout (mean bond ≈ 20), before viewBox pad. */
   coords: SvgAtom[];
   bonds: SvgBond[];
+  /** Editable scene document (paths, circles, …). */
   scene: Scene;
   molecule: MoleculeIn;
   source: string;
@@ -115,7 +119,13 @@ function mol(smilesOrMolfile: string): Mol {
 }
 
 function isRendered(value: AlignTarget): value is Rendered {
-  return typeof (value as Rendered).svg === "string" && "frame_molblock" in value;
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "scene" in value &&
+    "frame_molblock" in value &&
+    typeof (value as Rendered).frame_molblock === "string"
+  );
 }
 
 async function ensureFrame(target: AlignTarget): Promise<string> {
@@ -196,11 +206,8 @@ async function render(
   const sceneJson = depictMolecule(JSON.stringify(molecule));
   const scene = JSON.parse(sceneJson) as Scene;
   const framed = atomsInSvgFrame(molecule);
-  const svg = sceneToSvg(scene);
 
   return {
-    svg,
-    img_data_uri: sceneToImgDataUri(scene),
     width: scene.width,
     height: scene.height,
     svg_coords: framed.atoms,
@@ -219,4 +226,8 @@ export const xpict = {
   init,
   mol,
   render,
+  /** Scene JSON → SVG string (tweak ``rendered.scene`` first if needed). */
+  toSvg: sceneToSvg,
+  /** Scene JSON → ``data:image/svg+xml`` URI for ``<img src>``. */
+  toImgDataUri: sceneToImgDataUri,
 } as const;

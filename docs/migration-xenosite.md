@@ -75,9 +75,8 @@ xenosite today already embeds depictions as **data-URI `<img>`** with
 ### Phase B — Align + package for production
 
 5. **Alignment at the edge**
-   - **JS MVP:** `xpict.mol` / `xpict.render({ align_to })` only — RDKit
-     auto-loaded; `align_to` is a mol or prior rendered. Returns
-     `{ svg, svg_coords, coords, … }`.
+   - **JS MVP:** `xpict.mol` / `xpict.render({ align_to })` — returns
+     `{ scene, svg_coords, coords, … }`; stringify with `xpict.toSvg(scene)`.
    - **Python:** existing `align_rdkit` / `diagram.align`.
    - Rust Kabsch / `rigid_align_coords` remains for Indigo / no-RDKit only.
 
