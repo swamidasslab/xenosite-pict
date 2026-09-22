@@ -170,7 +170,7 @@ mod tests {
     #[cfg(feature = "geom")]
     #[test]
     fn lib_simplify_drops_collinear_then_halo_keeps_o_hole() {
-        // Mid-edge points are collinear — i_overlay simplify should drop them.
+        // Mid-edge points are collinear — from_ring runs lib simplify.
         let ring = vec![
             (0.0, 0.0),
             (5.0, 0.0),
@@ -181,8 +181,7 @@ mod tests {
             (0.0, 5.0),
         ];
         let ink = Shape::from_ring(&ring);
-        let simplified = ink.simplify();
-        assert!(simplified.point_count() < ink.point_count());
+        assert!(ink.point_count() < ring.len());
 
         let outer: Vec<(f64, f64)> = (0..24)
             .map(|i| {
@@ -198,8 +197,7 @@ mod tests {
             .collect();
         let ring = Shape::from_contours_evenodd(&[outer, inner]);
         assert!(ring.has_holes());
-        let cleaned = ring.simplify();
-        assert!(cleaned.has_holes());
+        assert!(ring.simplify().has_holes());
         let halo = ring.halo(1.5);
         assert!(!halo.is_empty());
         assert!(!halo.contains(20.0, 20.0));
