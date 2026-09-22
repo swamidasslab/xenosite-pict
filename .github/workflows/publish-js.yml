@@ -11,8 +11,7 @@
 #   package.json:
 #     "@swamidasslab/xpict": "^0.1.0"
 #
-# Same-org Actions GITHUB_TOKEN can read packages if the package grants
-# access to the xenosite repo (Package settings → Manage Actions access).
+# Published with publishConfig.access=public (unrestricted GitHub Package).
 
 name: Publish JS package
 
