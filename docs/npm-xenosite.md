@@ -62,12 +62,33 @@ Locally, use a PAT with `read:packages` as `NPM_TOKEN` / `NODE_AUTH_TOKEN`.
 
 ## App usage
 
+Tiny API — RDKit is loaded and initialized for you (npm module in **Node /
+bundlers**, auto `<script>` inject in the **browser**). Present a template
+mol, then `draw`; alignment uses RDKit under the hood. Atom coords are in
+the same SCALE / viewBox space as the SVG ink.
+
 ```ts
-import { initNative, depictMolecule } from "@swamidasslab/xpict";
+import { init, presentTemplate, draw } from "@swamidasslab/xpict";
+
+await init(); // Node: pass { wasm: bytes } if fetch isn't available
+presentTemplate("c1ccccc1");
+
+const { svg, atoms, width, height, imgDataUri } = await draw("Cc1ccccc1", {
+  mark_atoms: [0],
+});
+// atoms[i].{x,y} match SVG positions (pad-translated viewBox / SCALE units)
+```
+
+Works server-side (Node) the same way — no DOM required.
+
+Low-level paint (coords already in hand):
+
+```ts
+import { initNative, depictMolecule, sceneToSvg } from "@swamidasslab/xpict";
 
 await initNative();
-const sceneJson = depictMolecule(JSON.stringify(moleculeIn));
-// thin sceneToSvg / data-URI next
+const scene = JSON.parse(depictMolecule(JSON.stringify(moleculeIn)));
+const svg = sceneToSvg(scene);
 ```
 
 Brand name `@xenosite/xpict` can be an npmjs publish later; GitHub Packages

@@ -36,8 +36,8 @@ Python stays the algorithm lab and CI truth; the **ship path for xenosite is WAS
 | Shade paint onto scene | ✅ Rust (simple coral LUT; full xenosite cmap TBD) |
 | `Scene` document types | ✅ Rust (`xpict-core::scene`) |
 | `depict_molecule(MoleculeIn) → Scene` | ✅ Rust + Py + WASM (bonds/marks/shade; labels/halo next) |
-| JS Scene → SVG / data-URI `<img>` | ❌ stub (`layoutToSvgStub`) |
-| Browser RDKit layout + align | ❌ not in this repo (xenosite may already load MinimalLib) |
+| JS Scene → SVG / data-URI `<img>` | ✅ `sceneToSvg` / `draw().imgDataUri` |
+| Browser RDKit layout + align | ✅ `init` / `presentTemplate` / `draw` (RDKit hidden; Node too) |
 | Multi-mol / ELK | post-MVP (ignore for this track) |
 
 xenosite today already embeds depictions as **data-URI `<img>`** with
@@ -75,8 +75,12 @@ xenosite today already embeds depictions as **data-URI `<img>`** with
 ### Phase B — Align + package for production
 
 5. **Alignment at the edge**
-   - Prefer RDKit template align in JS (same as Python `align_rdkit`).
-   - Add Rust rigid/Kabsch helper for Indigo / no-RDKit fallbacks; WASM-export it.
+   - **JS:** `presentTemplate(smiles)` + `layout` / `depict` — RDKit
+     MinimalLib is auto-loaded (npm or injected script) and
+     `generate_aligned_coords` aligns onto the template. Callers never
+     import RDKit themselves.
+   - **Python:** existing `align_rdkit` / `diagram.align`.
+   - Rust Kabsch / `rigid_align_coords` remains for Indigo / no-RDKit only.
 
 6. **Publish `@swamidasslab/xpict`** to GitHub Packages (wasm + `sceneToSvg` +
    `initNative`) for the xenosite app bundler — see [`npm-xenosite.md`](npm-xenosite.md).

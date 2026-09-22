@@ -6,6 +6,7 @@
 #![forbid(unsafe_code)]
 
 use wasm_bindgen::prelude::*;
+use xpict_core::align;
 use xpict_core::bonds;
 use xpict_core::depict;
 use xpict_core::geom;
@@ -30,6 +31,65 @@ pub fn depict_molecule(molecule_json: &str) -> Result<String, JsValue> {
         .map_err(|e| JsValue::from_str(&format!("MoleculeIn JSON: {e}")))?;
     let scene = depict::depict_molecule(&mol);
     serde_json::to_string(&scene).map_err(|e| JsValue::from_str(&format!("Scene JSON: {e}")))
+}
+
+/// Kabsch 2D. Flat `[x,y,…]` pairs for src and dst.
+/// Returns `[cos, sin, tx, ty, det]`.
+#[wasm_bindgen(js_name = kabsch2d)]
+pub fn kabsch_2d(src: Vec<f64>, dst: Vec<f64>, allow_reflect: bool) -> Result<Vec<f64>, JsValue> {
+    if src.len() != dst.len() || src.len() % 2 != 0 {
+        return Err(JsValue::from_str("src/dst must be equal-length flat [x,y,…]"));
+    }
+    let n = src.len() / 2;
+    let mut s = Vec::with_capacity(n);
+    let mut d = Vec::with_capacity(n);
+    for i in 0..n {
+        s.push((src[2 * i], src[2 * i + 1]));
+        d.push((dst[2 * i], dst[2 * i + 1]));
+    }
+    let xf = align::kabsch_2d(&s, &d, allow_reflect);
+    Ok(vec![xf.cos, xf.sin, xf.tx, xf.ty, xf.det])
+}
+
+/// Rigid-align other coords onto a template.
+///
+/// `template` / `other`: flat `[index, x, y, …]`.
+/// `mapping`: flat `[otherIndex, templateIndex, …]`.
+/// Returns flat `[index, x, y, …]` for the transformed other atoms.
+#[wasm_bindgen(js_name = rigidAlignCoords)]
+pub fn rigid_align_coords(
+    template: Vec<f64>,
+    other: Vec<f64>,
+    mapping: Vec<i32>,
+) -> Result<Vec<f64>, JsValue> {
+    let parse_atoms = |flat: &[f64], label: &str| -> Result<Vec<(i32, f64, f64)>, JsValue> {
+        if flat.len() % 3 != 0 {
+            return Err(JsValue::from_str(&format!(
+                "{label} must be flat [index, x, y, …]"
+            )));
+        }
+        Ok((0..flat.len() / 3)
+            .map(|i| (flat[3 * i] as i32, flat[3 * i + 1], flat[3 * i + 2]))
+            .collect())
+    };
+    if mapping.len() % 2 != 0 {
+        return Err(JsValue::from_str(
+            "mapping must be flat [otherIndex, templateIndex, …]",
+        ));
+    }
+    let tmpl = parse_atoms(&template, "template")?;
+    let oth = parse_atoms(&other, "other")?;
+    let map: Vec<(i32, i32)> = (0..mapping.len() / 2)
+        .map(|i| (mapping[2 * i], mapping[2 * i + 1]))
+        .collect();
+    let (aligned, _) = align::rigid_align_coords(&tmpl, &oth, &map);
+    let mut out = Vec::with_capacity(aligned.len() * 3);
+    for (i, x, y) in aligned {
+        out.push(i as f64);
+        out.push(x);
+        out.push(y);
+    }
+    Ok(out)
 }
 
 /// Flat `[radius, color, …]` for one score (empty when near zero).

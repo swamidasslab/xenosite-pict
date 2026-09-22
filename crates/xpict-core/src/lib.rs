@@ -7,6 +7,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod align;
 pub mod bonds;
 pub mod depict;
 #[cfg(feature = "elk")]
@@ -20,6 +21,7 @@ pub mod plotdot;
 pub mod rings;
 pub mod scene;
 
+pub use align::{kabsch_2d, rigid_align_coords, RigidTransform};
 pub use bonds::{
     bond_paths, bond_strokes, centered_displacements, depict_order, join_centered_multibonds,
     line_intersect, multi_bond_offset, BondStrokes, DrawnBond, StrokePath,

@@ -21,6 +21,8 @@ import init, {
   type InitInput,
 } from "./wasm/xpict_core.js";
 
+export type { InitInput };
+
 export type ShadeDisk = {
   radiusFrac: number;
   colorZ: number;

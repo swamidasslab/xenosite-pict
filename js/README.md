@@ -18,14 +18,16 @@ cd js && npm test
 ```
 
 ```ts
-import { initNative, multiBondOffset, plotdotRings } from "@swamidasslab/xpict";
+import { init, presentTemplate, draw } from "@swamidasslab/xpict";
 
-await initNative();
-multiBondOffset(20); // 3
-plotdotRings(1.0);   // [{ radiusFrac, colorZ }, ...]
+await init(); // RDKit + xpict wasm (RDKit hidden; works in Node and browser)
+presentTemplate("c1ccccc1");
+const { svg, atoms } = await draw("Cc1ccccc1");
+// atoms[].{x,y} are SCALE-space and match the SVG viewBox ink
 ```
 
-Shared API table: [`docs/bindings.md`](../docs/bindings.md).
+Low-level helpers (`initNative`, `multiBondOffset`, …) remain available for
+tests and Indigo paths. Shared API table: [`docs/bindings.md`](../docs/bindings.md).
 
 **→ xenosite.org:** [`docs/migration-xenosite.md`](../docs/migration-xenosite.md)
 (client-side MVP: one mol + marks + shade + align).

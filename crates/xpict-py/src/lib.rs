@@ -7,6 +7,7 @@
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 use pyo3::types::PyModule;
+use xpict_core::align;
 use xpict_core::bonds;
 use xpict_core::depict;
 use xpict_core::geom::{self, Shape as CoreShape};
@@ -34,6 +35,34 @@ fn depict_molecule(molecule_json: &str) -> PyResult<String> {
     let scene = depict::depict_molecule(&mol);
     serde_json::to_string(&scene)
         .map_err(|e| PyRuntimeError::new_err(format!("Scene JSON: {e}")))
+}
+
+/// Kabsch 2D: paired ``src`` → ``dst``. Returns ``(cos, sin, tx, ty, det)``.
+#[pyfunction]
+#[pyo3(signature = (src, dst, allow_reflect=true))]
+fn kabsch_2d(
+    src: Vec<(f64, f64)>,
+    dst: Vec<(f64, f64)>,
+    allow_reflect: bool,
+) -> PyResult<(f64, f64, f64, f64, f64)> {
+    if src.len() != dst.len() {
+        return Err(PyRuntimeError::new_err("src/dst length mismatch"));
+    }
+    let xf = align::kabsch_2d(&src, &dst, allow_reflect);
+    Ok((xf.cos, xf.sin, xf.tx, xf.ty, xf.det))
+}
+
+/// Rigid-align ``other`` coords onto a template.
+///
+/// ``template`` / ``other`` are ``(index, x, y)``. ``mapping`` is
+/// ``(other_index, template_index)``. Returns transformed ``(index, x, y)``.
+#[pyfunction]
+fn rigid_align_coords(
+    template: Vec<(i32, f64, f64)>,
+    other: Vec<(i32, f64, f64)>,
+    mapping: Vec<(i32, i32)>,
+) -> Vec<(i32, f64, f64)> {
+    align::rigid_align_coords(&template, &other, &mapping).0
 }
 
 /// PlotDot rings for one normalized score `z`.
@@ -381,6 +410,8 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(multi_bond_offset, m)?)?;
     m.add_function(wrap_pyfunction!(centered_displacements, m)?)?;
     m.add_function(wrap_pyfunction!(depict_molecule, m)?)?;
+    m.add_function(wrap_pyfunction!(kabsch_2d, m)?)?;
+    m.add_function(wrap_pyfunction!(rigid_align_coords, m)?)?;
     m.add_function(wrap_pyfunction!(plotdot_rings, m)?)?;
     m.add_function(wrap_pyfunction!(plotdot_disks, m)?)?;
     m.add_function(wrap_pyfunction!(capsule_halo_path_d, m)?)?;

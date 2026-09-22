@@ -48,11 +48,35 @@ export {
   shadeFrac,
   coreVersion,
 } from "./native.js";
-export type { ShadeDisk } from "./native.js";
+export type { ShadeDisk, InitInput } from "./native.js";
 export {
   multiBondOffsetPy,
   plotdotRingsPy,
 } from "./native-fallback.js";
+
+/** Tiny high-level API: RDKit (hidden) + template align + depict. */
+export {
+  init,
+  presentTemplate,
+  clearTemplate,
+  currentTemplate,
+  layout,
+  layoutPresentedTemplate,
+  depict,
+  draw,
+  SCALE,
+  sceneToSvg,
+  sceneToImgDataUri,
+} from "./api.js";
+export type {
+  InitOptions,
+  DepictOptions,
+  MoleculeIn,
+  DrawResult,
+  SvgAtom,
+  SvgBond,
+  Scene,
+} from "./api.js";
 
 
 function isLegacyPict(spec: PictSpec): spec is import("./types.js").LegacyPictSpec {

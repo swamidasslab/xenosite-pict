@@ -74,7 +74,7 @@ Crates to prefer when filling stubs: **`ttf-parser`/`skrifa`** (fonts),
 | Runtime | 2D coords | Template align | Then |
 | --- | --- | --- | --- |
 | Python | `backend="rdkit"` (`xpict[rdkit]`) | `align_rdkit.RdkitAligner` | Draw / rigid helpers via `_native` |
-| Browser | `@rdkit/rdkit` MinimalLib | same package | `initNative()` draw / rigid helpers |
+| Browser | `init()` auto-loads MinimalLib | `presentTemplate` → RDKit align | `depict` → Scene JSON |
 
 **Indigo alternate:** `backend="indigo"` + **fake/rigid align** in Rust only
 (no RDKit template). Rigid-only also when RDKit is absent.
