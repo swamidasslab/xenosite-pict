@@ -2,8 +2,11 @@
 //!
 //! Keep in sync with `src/xpict/draw/metrics.py`.
 
-/// xenopict `Xenopict.scale` — RDKit `fixedBondLength`.
-pub const BOND_PX: f64 = 20.0;
+/// xenopict `Xenopict.scale` / xenosite depiction `"scale": 20`.
+pub const SCALE: f64 = 20.0;
+
+/// Bond length in drawing / CSS-px units (alias of [`SCALE`]).
+pub const BOND_PX: f64 = SCALE;
 
 /// RDKit `baseFontSize`.
 pub const FONT_FRAC: f64 = 0.60;

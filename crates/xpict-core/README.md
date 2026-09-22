@@ -15,7 +15,13 @@ Python (PyO3) and JS (WASM) share one implementation.
 | `geom` | Buffer / union / counters (`i_overlay` Shape) | `draw/halo.py`, `glyphs.py` |
 | `font` | Liberation outlines + advances (`ttf-parser`) | `draw/font_face.py`, `glyphs.py` |
 | `labels` | Atom-label orientation + backbone insets | `draw/label_place.py` |
+| `scene` | Drawable document (primitives → SVG) | `contracts/scene.py` |
 | `rings` *(stub)* | SSSR helpers, interior normals | `draw/rings.py` |
+
+**Target API:** caller passes SVG-space coords + chem metadata (`MoleculeIn`);
+core returns a [`Scene`](src/scene.rs) of typed primitives. Python and JS stay
+thin serializers (SVG / data-URI `<img>`). Layout backends stay at the language
+edges.
 
 **Not** in this crate (yet or ever as invent-your-own): chem layout backends
 (Indigo/RDKit wrappers) or PictSpec JSON parsing — those stay at the language

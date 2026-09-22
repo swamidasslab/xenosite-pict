@@ -93,3 +93,21 @@ Network / reaction viewport placement moves into Rust via **`elkrs`**
 
 Python synthesizes the ELK graph in `diagram/elk.py` and calls native only
 (jsrun removed).
+
+## Scene document (shared depict → thin serializers)
+
+**Goal:** Rust owns depiction. Edges only supply coords and serialize.
+
+```
+  RDKit / Indigo / native (per language)
+           │  atoms, bonds, SVG-space coords
+           ▼
+     xpict-core::scene
+           │  Scene { viewports, layers, primitives, halo }
+           ▼
+  Python svg.py  ·  JS svg.ts   (thin: Scene → SVG / data-URI <img>)
+```
+
+`MoleculeIn` → (future) `depict_molecule` → `Scene` JSON is the ABI.
+Today: `Scene` types + JSON round-trip live in `xpict-core::scene`; paint/join
+logic still ports from Python incrementally (bonds → labels → halo).

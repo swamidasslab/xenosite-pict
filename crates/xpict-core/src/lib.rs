@@ -17,6 +17,7 @@ pub mod labels;
 pub mod metrics;
 pub mod plotdot;
 pub mod rings;
+pub mod scene;
 
 pub use bonds::{centered_displacements, multi_bond_offset};
 #[cfg(feature = "elk")]
@@ -27,5 +28,8 @@ pub use labels::{
     compose_label, label_side, place_backbone, place_label, shorten_bond, split_label, AtomIn,
     BondIn, BondOut, LabelParts, LabelSide, PlacedLabel,
 };
-pub use metrics::{BOND_PX, OFFSET_FRAC, OFFSET_PX, SHADE_FRAC, STROKE_PX};
+pub use metrics::{BOND_PX, OFFSET_FRAC, OFFSET_PX, SCALE, SHADE_FRAC, STROKE_PX};
 pub use plotdot::{PlotDot, ShadeDisk};
+pub use scene::{Layer, LayerName, MoleculeIn, Primitive, Scene, TextAnchor, Viewport};
+// MoleculeIn atoms/bonds are scene::AtomIn / scene::BondIn (JSON ABI).
+// labels::AtomIn / BondIn remain the place_backbone wire types.
