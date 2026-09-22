@@ -49,60 +49,61 @@ def _fmt_path_d(d: str) -> str:
 
 
 def _render_primitive(parent: Element, prim: Primitive) -> None:
-    if isinstance(prim, PathPrim):
-        attrs = {
-            "d": _fmt_path_d(prim.d),
-            "fill": prim.fill or "none",
-            "stroke-width": _fmt_num(prim.stroke_width),
-            "stroke-linecap": prim.stroke_linecap or "round",
-            "stroke-linejoin": "round",
-            "opacity": _fmt_num(prim.opacity),
-        }
-        if prim.stroke:
-            attrs["stroke"] = prim.stroke
-        if prim.stroke_dasharray:
-            attrs["stroke-dasharray"] = prim.stroke_dasharray
-        if prim.cls:
-            attrs["class"] = prim.cls
-        if prim.data_text:
-            attrs["data-text"] = prim.data_text
-        SubElement(parent, "path", attrs)
-    elif isinstance(prim, CirclePrim):
-        attrs = {
-            "cx": _fmt_num(prim.cx),
-            "cy": _fmt_num(prim.cy),
-            "r": _fmt_num(prim.r),
-            "opacity": _fmt_num(prim.opacity),
-            "fill": prim.fill or "none",
-            "stroke-width": _fmt_num(prim.stroke_width),
-        }
-        if prim.stroke:
-            attrs["stroke"] = prim.stroke
-        if prim.cls:
-            attrs["class"] = prim.cls
-        SubElement(parent, "circle", attrs)
-    elif isinstance(prim, TextPrim):
-        # Markup → StyledText (Unicode + spans) → glyph path shapes.
-        styled = StyledText.from_markup(prim.text)
-        d = compile_text_path_d(
-            styled,
-            prim.x,
-            prim.y,
-            font_size=prim.font_size,
-            anchor=prim.anchor,
-        )
-        if not d:
-            return
-        attrs = {
-            "d": _fmt_path_d(d),
-            "fill": prim.fill,
-            "stroke": "none",
-            "opacity": "1",
-            "data-text": styled.text,
-        }
-        if prim.cls:
-            attrs["class"] = prim.cls
-        SubElement(parent, "path", attrs)
+    match prim:
+        case PathPrim():
+            attrs = {
+                "d": _fmt_path_d(prim.d),
+                "fill": prim.fill or "none",
+                "stroke-width": _fmt_num(prim.stroke_width),
+                "stroke-linecap": prim.stroke_linecap or "round",
+                "stroke-linejoin": "round",
+                "opacity": _fmt_num(prim.opacity),
+            }
+            if prim.stroke:
+                attrs["stroke"] = prim.stroke
+            if prim.stroke_dasharray:
+                attrs["stroke-dasharray"] = prim.stroke_dasharray
+            if prim.cls:
+                attrs["class"] = prim.cls
+            if prim.data_text:
+                attrs["data-text"] = prim.data_text
+            SubElement(parent, "path", attrs)
+        case CirclePrim():
+            attrs = {
+                "cx": _fmt_num(prim.cx),
+                "cy": _fmt_num(prim.cy),
+                "r": _fmt_num(prim.r),
+                "opacity": _fmt_num(prim.opacity),
+                "fill": prim.fill or "none",
+                "stroke-width": _fmt_num(prim.stroke_width),
+            }
+            if prim.stroke:
+                attrs["stroke"] = prim.stroke
+            if prim.cls:
+                attrs["class"] = prim.cls
+            SubElement(parent, "circle", attrs)
+        case TextPrim():
+            # Markup → StyledText (Unicode + spans) → glyph path shapes.
+            styled = StyledText.from_markup(prim.text)
+            d = compile_text_path_d(
+                styled,
+                prim.x,
+                prim.y,
+                font_size=prim.font_size,
+                anchor=prim.anchor,
+            )
+            if not d:
+                return
+            attrs = {
+                "d": _fmt_path_d(d),
+                "fill": prim.fill,
+                "stroke": "none",
+                "opacity": "1",
+                "data-text": styled.text,
+            }
+            if prim.cls:
+                attrs["class"] = prim.cls
+            SubElement(parent, "path", attrs)
 
 
 def _render_viewport(
@@ -112,7 +113,7 @@ def _render_viewport(
     layers: tuple[str, ...] | None = None,
 ) -> None:
     want = set(layers) if layers is not None else None
-    prims: list[tuple[str, list]] = []
+    prims: list[tuple[str, list[Primitive]]] = []
     for layer in vp.layers:
         if want is not None and layer.name not in want:
             continue

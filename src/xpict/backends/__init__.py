@@ -14,10 +14,13 @@ Chematic is not used.
 
 from __future__ import annotations
 
-from xpict.backends import indigo as _indigo  # noqa: F401
-from xpict.backends import native as _native  # noqa: F401
-from xpict.backends import rdkit_layout as _rdkit  # noqa: F401
+from xpict.backends import indigo as _indigo
+from xpict.backends import native as _native
+from xpict.backends import rdkit_layout as _rdkit
 from xpict.backends.base import LayoutBackend, get_backend
+
+# Side-effect imports register backends; keep references so imports are used.
+_REGISTERED = (_indigo, _native, _rdkit)
 
 # Resolve default: RDKit if importable, else native. Indigo is opt-in.
 BACKEND_PREFERENCE = ("rdkit", "native", "indigo")

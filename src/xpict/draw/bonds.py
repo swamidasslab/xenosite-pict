@@ -98,7 +98,7 @@ def solid_wedge(
     x1: float, y1: float, x2: float, y2: float, *, half: float = _WEDGE_HALF
 ) -> PathPrim:
     """Filled wedge; tip at (x1,y1) stereocenter — RDKit BEGINWEDGE."""
-    ux, uy, nx, ny, _ = _unit(x1, y1, x2, y2)
+    _ux, _uy, nx, ny, _ = _unit(x1, y1, x2, y2)
     # Fat end centered on endpoint.
     ax, ay = x2 + nx * half, y2 + ny * half
     bx, by = x2 - nx * half, y2 - ny * half
@@ -143,7 +143,9 @@ def hashed_wedge(
     return paths
 
 
-def wavy_bond(x1: float, y1: float, x2: float, y2: float, *, amp: float | None = None, waves: int = 5) -> PathPrim:
+def wavy_bond(
+    x1: float, y1: float, x2: float, y2: float, *, amp: float | None = None, waves: int = 5
+) -> PathPrim:
     """Wiggly single for unspecified stereo (RDKit UNKNOWN / Indigo EITHER)."""
     ux, uy, nx, ny, length = _unit(x1, y1, x2, y2)
     if amp is None:
@@ -271,9 +273,7 @@ def _centered_multi(bond: DrawnBond) -> bool:
     return bond.interior is None and order >= 1.5
 
 
-def _end_frame(
-    bond: DrawnBond, at_begin: bool
-) -> tuple[float, float, float, float, float, float]:
+def _end_frame(bond: DrawnBond, at_begin: bool) -> tuple[float, float, float, float, float, float]:
     """``(ex, ey, ux, uy, nx, ny)`` with ``u`` pointing into the bond."""
     ux, uy, nx, ny, _length = _unit(bond.x1, bond.y1, bond.x2, bond.y2)
     if at_begin:
@@ -349,9 +349,7 @@ def join_centered_multibonds(bonds: list[DrawnBond]) -> None:
                     continue
                 vhx, vhy = vx / vlen, vy / vlen
                 for i, d in enumerate(disps_e):
-                    hit = line_intersect(
-                        ex + nx * d, ey + ny * d, ux, uy, ex, ey, vhx, vhy
-                    )
+                    hit = line_intersect(ex + nx * d, ey + ny * d, ux, uy, ex, ey, vhx, vhy)
                     if hit is None:
                         continue
                     ti, _s, _ix, _iy = hit
@@ -360,9 +358,7 @@ def join_centered_multibonds(bonds: list[DrawnBond]) -> None:
                 if len(singles) == 1:
                     # Grow the single to the far parallel so both strokes meet it.
                     d_far = min(disps_e) if (ux * vhy - uy * vhx) > 0 else max(disps_e)
-                    hit = line_intersect(
-                        ex + nx * d_far, ey + ny * d_far, ux, uy, ex, ey, vhx, vhy
-                    )
+                    hit = line_intersect(ex + nx * d_far, ey + ny * d_far, ux, uy, ex, ey, vhx, vhy)
                     if hit is not None:
                         t_far, _s, px, py = hit
                         if 0.0 < t_far < t_hi:
@@ -412,7 +408,7 @@ def crossed_double(
     x1: float, y1: float, x2: float, y2: float, interior: tuple[float, float] | None
 ) -> list[PathPrim]:
     """Crossed double for unspecified E/Z (RDKit EITHERDOUBLE)."""
-    ux, uy, lx, ly, length = _unit(x1, y1, x2, y2)
+    _ux, _uy, lx, ly, length = _unit(x1, y1, x2, y2)
     nx, ny = interior if interior is not None else (lx, ly)
     off = multi_bond_offset(length)
     gap = _offset_gap(length, chain=interior is None)
@@ -481,9 +477,7 @@ def bond_strokes(
     if order >= 2.5:
         for side in (-1.0, 1.0):
             ox, oy = lx * off * side, ly * off * side
-            offsets.append(
-                _line(sx1 + ox, sy1 + oy, sx2 + ox, sy2 + oy, cls="bond bond-offset")
-            )
+            offsets.append(_line(sx1 + ox, sy1 + oy, sx2 + ox, sy2 + oy, cls="bond bond-offset"))
         return BondStrokes(skeleton=skeleton, offsets=offsets)
     offsets.append(
         _line(

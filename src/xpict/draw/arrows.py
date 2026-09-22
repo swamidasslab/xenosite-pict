@@ -102,9 +102,7 @@ def _path_d(pts: Sequence[tuple[float, float]]) -> str:
     return polyline_d(pts)
 
 
-def _offset_polyline(
-    pts: Sequence[tuple[float, float]], dist: float
-) -> list[tuple[float, float]]:
+def _offset_polyline(pts: Sequence[tuple[float, float]], dist: float) -> list[tuple[float, float]]:
     """Simple parallel offset (good for orthogonal ELK routes)."""
     if len(pts) < 2:
         return list(pts)
@@ -213,15 +211,10 @@ def _harpoon_poly(
     bx, by = tip[0] - ux * head_size, tip[1] - uy * head_size
     out: list[PathPrim] = []
     if len(shaft) >= 2:
-        out.append(
-            _shaft_poly(shaft, color=color, width=width, dashed=dashed, cls=cls)
-        )
+        out.append(_shaft_poly(shaft, color=color, width=width, dashed=dashed, cls=cls))
     out.append(
         PathPrim(
-            d=(
-                f"M {tip[0]:.2f} {tip[1]:.2f} "
-                f"L {bx + px * barb:.2f} {by + py * barb:.2f}"
-            ),
+            d=(f"M {tip[0]:.2f} {tip[1]:.2f} L {bx + px * barb:.2f} {by + py * barb:.2f}"),
             stroke=color,
             fill="none",
             stroke_width=width,
@@ -307,15 +300,11 @@ def edge_primitives(
             )
         )
     elif arrow == EdgeArrow.line:
-        out.append(
-            _shaft_poly(pts, color=color, width=width, dashed=dashed, cls=cls)
-        )
+        out.append(_shaft_poly(pts, color=color, width=width, dashed=dashed, cls=cls))
     elif arrow == EdgeArrow.open:
         shaft, tip, (ux, uy) = _shorten_polyline_end(pts, _HEAD)
         if len(shaft) >= 2:
-            out.append(
-                _shaft_poly(shaft, color=color, width=width, dashed=dashed, cls=cls)
-            )
+            out.append(_shaft_poly(shaft, color=color, width=width, dashed=dashed, cls=cls))
         out.append(
             _open_head(
                 tip[0],
@@ -332,14 +321,8 @@ def edge_primitives(
         # forward
         shaft, tip, (ux, uy) = _shorten_polyline_end(pts, _HEAD)
         if len(shaft) >= 2:
-            out.append(
-                _shaft_poly(shaft, color=color, width=width, dashed=dashed, cls=cls)
-            )
-        out.append(
-            _filled_head(
-                tip[0], tip[1], ux, uy, color=color, size=_HEAD, cls=f"{cls} head"
-            )
-        )
+            out.append(_shaft_poly(shaft, color=color, width=width, dashed=dashed, cls=cls))
+        out.append(_filled_head(tip[0], tip[1], ux, uy, color=color, size=_HEAD, cls=f"{cls} head"))
 
     if edge.label:
         mx, my, px, py = _label_point(pts)

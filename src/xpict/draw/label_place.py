@@ -9,8 +9,9 @@ first or last glyph is the center depending on the bond approach side.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Literal, Sequence
+from typing import Literal
 
 from xpict import _native
 from xpict.contracts.layout import BondLayout
@@ -90,9 +91,7 @@ def place_backbone(
         if ia >= len(coords) or ic >= len(coords):
             fixed_ends.append((0.0, 0.0, 0.0, 0.0))
             continue
-        fixed_ends.append(
-            (float(end[0]), float(end[1]), float(end[2]), float(end[3]))
-        )
+        fixed_ends.append((float(end[0]), float(end[1]), float(end[2]), float(end[3])))
     labels: list[PlacedLabel | None] = []
     for item in raw_labels:
         if item is None:

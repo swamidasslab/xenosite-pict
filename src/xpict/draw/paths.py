@@ -24,9 +24,7 @@ def polyline_d(pts: Sequence[tuple[float, float]], *, closed: bool = False) -> s
 
 
 def rect_d(xmin: float, ymin: float, xmax: float, ymax: float) -> str:
-    return polyline_d(
-        [(xmin, ymin), (xmax, ymin), (xmax, ymax), (xmin, ymax)], closed=True
-    )
+    return polyline_d([(xmin, ymin), (xmax, ymin), (xmax, ymax), (xmin, ymax)], closed=True)
 
 
 def oval_d(cx: float, cy: float, rx: float, ry: float) -> str:
@@ -126,9 +124,7 @@ def convex_hull(points: Sequence[tuple[float, float]]) -> list[tuple[float, floa
     if len(pts) <= 2:
         return list(pts)
 
-    def cross(
-        o: tuple[float, float], a: tuple[float, float], b: tuple[float, float]
-    ) -> float:
+    def cross(o: tuple[float, float], a: tuple[float, float], b: tuple[float, float]) -> float:
         return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
 
     lower: list[tuple[float, float]] = []

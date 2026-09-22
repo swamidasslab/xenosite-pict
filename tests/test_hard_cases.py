@@ -24,24 +24,22 @@ from collections import Counter
 import pytest
 
 from xpict import Pict, render
-from xpict.draw.metrics import HALO_STROKE
-from xpict.draw.plotdot import PlotDot
-from xpict.draw.rings import (
-    HARD_RING_CASES,
-    RingAttachment,
-    all_rings_can_be_regular_polygons,
-    find_sssr,
-    ring_pair_relations,
-    ring_system_is_overconstrained,
-)
 from xpict.draw.bonds import bond_paths
 from xpict.draw.drawable import (
     _normalize_shade_scores,
     _shade_rgb,
     normalize_coords,
 )
-from xpict.draw.rings import bond_interior_normals, find_sssr
-
+from xpict.draw.plotdot import PlotDot
+from xpict.draw.rings import (
+    HARD_RING_CASES,
+    RingAttachment,
+    all_rings_can_be_regular_polygons,
+    bond_interior_normals,
+    find_sssr,
+    ring_pair_relations,
+    ring_system_is_overconstrained,
+)
 
 HARD_CASES: list[dict] = [
     {"id": "benzene", "smiles": "c1ccccc1", "notes": "aromatic hexagon; Kekulize; doubles inside"},
@@ -53,7 +51,11 @@ HARD_CASES: list[dict] = [
     {"id": "acetone", "smiles": "CC(=O)C", "notes": "acyclic carbonyl"},
     {"id": "pyridine", "smiles": "c1ccncc1", "notes": "aromatic heterocycle"},
     {"id": "nitrobenzene", "smiles": "c1ccc(cc1)[N+](=O)[O-]", "notes": "charged + aromatic"},
-    {"id": "caffeine", "smiles": "Cn1cnc2c1c(=O)n(c(=O)n2C)C", "notes": "fused heteroaromatic + carbonyls"},
+    {
+        "id": "caffeine",
+        "smiles": "Cn1cnc2c1c(=O)n(c(=O)n2C)C",
+        "notes": "fused heteroaromatic + carbonyls",
+    },
 ]
 
 
@@ -97,11 +99,7 @@ def test_plotdot_skips_near_zero_scores():
 
 def test_aromatic_layout_is_kekulized():
     backend = _chem_backend()
-    layout = (
-        Pict(backend=backend)
-        .layout({"molecules": [{"smiles": "c1ccccc1"}]})
-        .molecules[0]
-    )
+    layout = Pict(backend=backend).layout({"molecules": [{"smiles": "c1ccccc1"}]}).molecules[0]
     orders = [b.order for b in layout.bonds]
     assert all(o < 3.5 for o in orders), f"aromatic order leaked: {orders}"
     doubles = sum(1 for o in orders if o >= 1.5)
@@ -136,11 +134,7 @@ def test_double_bond_offset_prefers_ring_interior():
     assert normals, "expected ring normals for benzene"
 
     double = next(b for b in layout.bonds if b.order >= 1.5)
-    key = (
-        (double.begin, double.end)
-        if double.begin < double.end
-        else (double.end, double.begin)
-    )
+    key = (double.begin, double.end) if double.begin < double.end else (double.end, double.begin)
     interior = normals[key]
     atom_pos = {a.index: i for i, a in enumerate(layout.atoms)}
     x1, y1 = coords[atom_pos[double.begin]]
@@ -154,9 +148,7 @@ def test_double_bond_offset_prefers_ring_interior():
     mid_off = _path_midpoint(paths[1].d)
     d_main = math.hypot(mid_main[0] - cx, mid_main[1] - cy)
     d_off = math.hypot(mid_off[0] - cx, mid_off[1] - cy)
-    assert d_off < d_main, (
-        f"offset line outside ring: d_off={d_off:.2f} d_main={d_main:.2f}"
-    )
+    assert d_off < d_main, f"offset line outside ring: d_off={d_off:.2f} d_main={d_main:.2f}"
 
 
 def test_svg_background_is_clear_by_default():
@@ -169,9 +161,7 @@ def test_svg_background_is_clear_by_default():
     root = re.search(r"<svg\b[^>]*>", svg)
     assert root is not None
     assert "background-color" not in root.group(0)
-    assert "background:transparent" in root.group(0) or "background: transparent" in root.group(
-        0
-    )
+    assert "background:transparent" in root.group(0) or "background: transparent" in root.group(0)
 
 
 def test_halo_is_single_document_union():
@@ -189,8 +179,8 @@ def test_halo_includes_buffered_label_glyphs():
     """Element-symbol knockout is in the unioned document halo; counters stay open."""
     backend = _chem_backend()
     svg = render({"molecules": [{"smiles": "CCO"}]}, backend=backend)
-    assert not re.search(r'<circle[^>]*label-halo', svg)
-    assert not re.search(r'<text[^>]*label-halo', svg)
+    assert not re.search(r"<circle[^>]*label-halo", svg)
+    assert not re.search(r"<text[^>]*label-halo", svg)
     halo = re.search(r'<path[^>]*class="halo"[^/]*/>', svg)
     assert halo is not None
     assert 'fill="#fff"' in halo.group(0)
@@ -219,9 +209,7 @@ def test_multi_molecule_still_one_halo():
 def test_shade_zeros_do_not_paint_full_disks():
     backend = _chem_backend()
     pict = Pict(backend=backend)
-    layout = pict.layout(
-        {"molecules": [{"smiles": "CC(=O)Oc1ccccc1C(=O)O"}]}
-    ).molecules[0]
+    layout = pict.layout({"molecules": [{"smiles": "CC(=O)Oc1ccccc1C(=O)O"}]}).molecules[0]
     n = len(layout.atoms)
     shade = [0.0] * n
     for i, a in enumerate(layout.atoms):
@@ -257,11 +245,7 @@ def test_fused_systems_admit_regular_polygons():
     """Naphthalene/indole/spiro: CDK FUSED/SPIRO — sequential regular n-gons OK."""
     backend = _chem_backend()
     for smiles in ("c1ccc2ccccc2c1", "c1ccc2[nH]ccc2c1", "C1CCC2(CC1)CCCC2"):
-        layout = (
-            Pict(backend=backend)
-            .layout({"molecules": [{"smiles": smiles}]})
-            .molecules[0]
-        )
+        layout = Pict(backend=backend).layout({"molecules": [{"smiles": smiles}]}).molecules[0]
         rings = find_sssr(layout)
         assert rings
         assert all_rings_can_be_regular_polygons(rings), smiles
@@ -273,9 +257,7 @@ def test_bridged_and_cage_systems_are_overconstrained():
     backend = _chem_backend()
     for case in HARD_RING_CASES:
         layout = (
-            Pict(backend=backend)
-            .layout({"molecules": [{"smiles": case["smiles"]}]})
-            .molecules[0]
+            Pict(backend=backend).layout({"molecules": [{"smiles": case["smiles"]}]}).molecules[0]
         )
         rings = find_sssr(layout)
         assert rings, case["id"]
@@ -283,9 +265,7 @@ def test_bridged_and_cage_systems_are_overconstrained():
         assert ring_system_is_overconstrained(rings), case["id"]
 
 
-@pytest.mark.parametrize(
-    "case", HARD_RING_CASES, ids=[c["id"] for c in HARD_RING_CASES]
-)
+@pytest.mark.parametrize("case", HARD_RING_CASES, ids=[c["id"] for c in HARD_RING_CASES])
 def test_hard_ring_case_still_renders(case: dict):
     backend = _chem_backend()
     svg = render({"molecules": [{"smiles": case["smiles"]}]}, backend=backend)
@@ -297,11 +277,7 @@ def test_hard_ring_case_still_renders(case: dict):
 
 def test_norbornane_pair_is_cdk_bridged():
     backend = _chem_backend()
-    layout = (
-        Pict(backend=backend)
-        .layout({"molecules": [{"smiles": "C1CC2CCC1C2"}]})
-        .molecules[0]
-    )
+    layout = Pict(backend=backend).layout({"molecules": [{"smiles": "C1CC2CCC1C2"}]}).molecules[0]
     rings = find_sssr(layout)
     assert len(rings) >= 2
     rels = ring_pair_relations(rings)

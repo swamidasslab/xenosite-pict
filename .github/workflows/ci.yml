@@ -1,0 +1,90 @@
+# Deploy gates: strict typecheck + tests before merge / pages / publish.
+#
+# JS:     tsc --strict
+# Python: pyright (typeCheckingMode=strict) + pytest on 3.11–3.14
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  js:
+    name: JS strict tsc
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: js
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: js/package-lock.json
+
+      - name: Install JS deps
+        run: npm ci
+
+      - name: Strict TypeScript check
+        run: npm run check
+
+      - name: Strict TypeScript check (pocs)
+        run: npm run check:pocs
+
+  python-typecheck:
+    name: Python strict pyright
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Sync Python deps (dev)
+        run: uv sync --group dev
+
+      - name: Strict pyright
+        run: uv run pyright
+
+  python-test:
+    name: Python pytest ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+          shared-key: py-${{ matrix.python-version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+
+      - name: Sync Python deps (dev + rdkit)
+        run: uv sync --group dev --extra rdkit
+
+      - name: Pytest
+        run: uv run pytest -q

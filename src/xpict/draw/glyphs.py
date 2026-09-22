@@ -8,11 +8,12 @@ first; outlines come from the Rust Liberation Sans stack (``xpict._native``).
 from __future__ import annotations
 
 from xpict import _native
-from xpict.draw.font_face import FaceStyle, bundled_font_path, face_style  # noqa: F401
+from xpict.draw.font_face import FaceStyle, face_style
 from xpict.draw.metrics import FONT_PX
 from xpict.draw.richtext import StyledText, TextRun, parse_richtext
 from xpict.draw.text_metrics import measure_styled
 from xpict.native_bridge import Shape
+
 
 def _outline_run_em(
     text: str,
@@ -41,14 +42,8 @@ def compile_text_shapes(
         return None
 
     # Fast path: single unstyled run → one native call.
-    if (
-        len(styled.runs) == 1
-        and not styled.runs[0].bold
-        and not styled.runs[0].italic
-    ):
-        return _native.compile_text_shapes(
-            styled.runs[0].text, x, y, font_size, anchor, "regular"
-        )
+    if len(styled.runs) == 1 and not styled.runs[0].bold and not styled.runs[0].italic:
+        return _native.compile_text_shapes(styled.runs[0].text, x, y, font_size, anchor, "regular")
 
     metrics = measure_styled(styled, font_size)
     if anchor == "middle":
@@ -97,9 +92,7 @@ def compile_text_path_d(
     anchor: str = "middle",
 ) -> str | None:
     """SVG path ``d`` for label ink compiled from styled Unicode / markup."""
-    outline = compile_text_shapes(
-        styled, x, y, font_size=font_size, anchor=anchor
-    )
+    outline = compile_text_shapes(styled, x, y, font_size=font_size, anchor=anchor)
     if outline is None or outline.is_empty:
         return None
     d = geom_to_svg_d(outline)
@@ -118,9 +111,7 @@ def compile_text_halo_d(
     """White knockout for text — :func:`compile_text_shapes` then ``halo_path_d``."""
     from xpict.draw.halo import halo_path_d
 
-    outline = compile_text_shapes(
-        styled, x, y, font_size=font_size, anchor=anchor
-    )
+    outline = compile_text_shapes(styled, x, y, font_size=font_size, anchor=anchor)
     return halo_path_d(outline, buffer_px)
 
 
@@ -142,9 +133,7 @@ def label_outline(
                 for run in parse_richtext(text)
             )
         )
-        return compile_text_shapes(
-            styled, x, y, font_size=font_size, anchor=anchor
-        )
+        return compile_text_shapes(styled, x, y, font_size=font_size, anchor=anchor)
     return compile_text_shapes(text, x, y, font_size=font_size, anchor=anchor)
 
 

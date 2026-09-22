@@ -11,8 +11,6 @@ from xpict.contracts.nodes import (
     MolNode,
     PictSpec,
     ReactionNode,
-    TableNode,
-    flatten_to_legacy,
     lift_legacy,
 )
 from xpict.contracts.spec import EdgeArrow
@@ -34,9 +32,7 @@ def test_legacy_reaction_lifts_to_reaction_container():
             ],
             "diagram": {
                 "kind": "reaction",
-                "edges": [
-                    {"source": "a", "target": "b", "label": "MeI", "arrow": "forward"}
-                ],
+                "edges": [{"source": "a", "target": "b", "label": "MeI", "arrow": "forward"}],
             },
         }
     )

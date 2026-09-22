@@ -8,9 +8,8 @@ be exercised without a chem engine.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import re
-
+from dataclasses import dataclass, field
 
 _ORGANIC = {
     "B": ("B", False),
@@ -139,17 +138,13 @@ def parse_organic_smiles(smiles: str) -> ParsedMol:
     i = 0
     n = len(s)
 
-    def add_bond(
-        a: int, b: int, order: float, aromatic: bool, stereo: str | None = None
-    ) -> None:
+    def add_bond(a: int, b: int, order: float, aromatic: bool, stereo: str | None = None) -> None:
         if a == b:
             return
         for existing in mol.bonds:
             if {existing.begin, existing.end} == {a, b}:
                 return
-        mol.bonds.append(
-            ParsedBond(begin=a, end=b, order=order, aromatic=aromatic, stereo=stereo)
-        )
+        mol.bonds.append(ParsedBond(begin=a, end=b, order=order, aromatic=aromatic, stereo=stereo))
 
     while i < n:
         ch = s[i]
@@ -205,8 +200,10 @@ def parse_organic_smiles(smiles: str) -> ParsedMol:
             if rnum in rings:
                 other, o_order, o_arom = rings.pop(rnum)
                 order = bond_order if bond_order != 1.0 else o_order
-                arom = pending_arom or o_arom or (
-                    mol.atoms[prev].aromatic and mol.atoms[other].aromatic
+                arom = (
+                    pending_arom
+                    or o_arom
+                    or (mol.atoms[prev].aromatic and mol.atoms[other].aromatic)
                 )
                 if arom and order == 1.0:
                     order = 1.5
@@ -226,8 +223,10 @@ def parse_organic_smiles(smiles: str) -> ParsedMol:
             if rnum in rings:
                 other, o_order, o_arom = rings.pop(rnum)
                 order = bond_order if bond_order != 1.0 else o_order
-                arom = pending_arom or o_arom or (
-                    mol.atoms[prev].aromatic and mol.atoms[other].aromatic
+                arom = (
+                    pending_arom
+                    or o_arom
+                    or (mol.atoms[prev].aromatic and mol.atoms[other].aromatic)
                 )
                 if arom and order == 1.0:
                     order = 1.5
@@ -244,7 +243,7 @@ def parse_organic_smiles(smiles: str) -> ParsedMol:
         if ch == "[":
             m = _BRACKET.match(s, i)
             if not m:
-                raise ValueError(f"bad bracket atom at {i}: {s[i:i+16]!r}")
+                raise ValueError(f"bad bracket atom at {i}: {s[i : i + 16]!r}")
             el_raw = m.group("el")
             aromatic = el_raw.islower() and el_raw != "*"
             if el_raw == "*":
@@ -285,7 +284,7 @@ def parse_organic_smiles(smiles: str) -> ParsedMol:
                     element, aromatic = _ORGANIC[ch]
                     i += 1
                 else:
-                    raise ValueError(f"unsupported SMILES token at {i}: {s[i:i+8]!r}")
+                    raise ValueError(f"unsupported SMILES token at {i}: {s[i : i + 8]!r}")
                 atom = ParsedAtom(index=len(mol.atoms), element=element, aromatic=aromatic)
                 mol.atoms.append(atom)
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import math
 
-from xpict.align import RigidAligner, _choose_mapping, _mcs_mapping, _with_warning
+from xpict.align import RigidAligner, choose_mapping, mcs_mapping, with_warning
 from xpict.contracts.layout import BondLayout, MoleculeLayout
 
 _MIN_MAP = 3
@@ -25,9 +25,7 @@ def _substruct_orders(mol, pattern) -> list[tuple[int, ...]]:
     first place, so unique places are merged back in.
     """
     places = mol.GetSubstructMatches(pattern, uniquify=True, maxMatches=_PLACE_CAP)
-    orders = mol.GetSubstructMatches(
-        pattern, uniquify=False, maxMatches=_PLACE_CAP * _ORDER_CAP
-    )
+    orders = mol.GetSubstructMatches(pattern, uniquify=False, maxMatches=_PLACE_CAP * _ORDER_CAP)
     grouped: dict[frozenset[int], list[tuple[int, ...]]] = {}
     for match in list(orders) + list(places):
         grouped.setdefault(frozenset(match), [])
@@ -79,15 +77,16 @@ def _fmcs_mapping(ref: MoleculeLayout, other: MoleculeLayout) -> dict[int, int] 
                     for ref_i, other_i in zip(ref_match, other_match, strict=True)
                 }
             )
-    return _choose_mapping(ref, other, mappings, min_size=_MIN_MAP)
+    return choose_mapping(ref, other, mappings, min_size=_MIN_MAP)
 
 
 def rdkit_available() -> bool:
     try:
-        import rdkit  # noqa: F401
-    except ImportError:
+        import importlib.util
+
+        return importlib.util.find_spec("rdkit") is not None
+    except (ImportError, ValueError, ModuleNotFoundError):
         return False
-    return True
 
 
 def _mean_bond_length(layout: MoleculeLayout) -> float:
@@ -142,9 +141,7 @@ def layout_to_rdkit(layout: MoleculeLayout):
     to_rd: dict[int, int] = {}
     try:
         for atom in sorted(layout.atoms, key=lambda a: a.index):
-            to_rd[atom.index] = editable.AddAtom(
-                _rd_atom(atom.element, atom.charge, atom.isotope)
-            )
+            to_rd[atom.index] = editable.AddAtom(_rd_atom(atom.element, atom.charge, atom.isotope))
         for bond in layout.bonds:
             if bond.begin not in to_rd or bond.end not in to_rd:
                 continue
@@ -234,13 +231,11 @@ class RdkitAligner(RigidAligner):
     name = "rdkit"
     supports_template = True
 
-    def map_atoms(
-        self, ref: MoleculeLayout, other: MoleculeLayout
-    ) -> dict[int, int] | None:
-        return _choose_mapping(
+    def map_atoms(self, ref: MoleculeLayout, other: MoleculeLayout) -> dict[int, int] | None:
+        return choose_mapping(
             ref,
             other,
-            [_fmcs_mapping(ref, other), _mcs_mapping(ref, other)],
+            [_fmcs_mapping(ref, other), mcs_mapping(ref, other)],
         )
 
     def depict_on_template(
@@ -301,4 +296,4 @@ class RdkitAligner(RigidAligner):
             atoms.append(atom.model_copy(update={"x": float(point.x), "y": float(point.y)}))
         bonds = _bonds_after_depict(mol, other.bonds, to_rd, smiles)
         laid = other.model_copy(update={"atoms": atoms, "bonds": bonds})
-        return _with_warning(laid, "alignment: rdkit template depiction")
+        return with_warning(laid, "alignment: rdkit template depiction")

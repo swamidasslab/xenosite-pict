@@ -9,7 +9,6 @@ from xpict import Pict
 from xpict.draw.metrics import SCALE
 from xpict.draw.svg import svg_to_data_uri, svg_to_img_tag
 
-
 _ROOT = re.compile(r"<svg\b([^>]*)>", re.DOTALL)
 _ATTR = re.compile(r'([\w:-]+)="([^"]*)"')
 
@@ -51,11 +50,9 @@ def test_separate_mol_svgs_keep_distinct_intrinsic_sizes():
 
 
 def test_scene_to_html_embeds_data_uri_img_xenosite_style():
-    html = Pict(backend="native", format="html").render(
-        {"molecules": [{"smiles": "CCO"}]}
-    )
+    html = Pict(backend="native", format="html").render({"molecules": [{"smiles": "CCO"}]})
     assert 'src="data:image/svg+xml;utf8,' in html
-    assert "<img class=\"xpict\"" in html
+    assert '<img class="xpict"' in html
     assert 'class="xpict-mol"' in html
     assert "max-width: 100%" in html
     assert "height: auto" in html

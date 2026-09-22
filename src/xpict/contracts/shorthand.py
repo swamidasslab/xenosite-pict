@@ -32,9 +32,7 @@ def map_tree(
     """
     replaced = fn(value, path)
     if isinstance(replaced, Mapping):
-        return {
-            k: map_tree(v, fn, path=(*path, k)) for k, v in replaced.items()
-        }
+        return {k: map_tree(v, fn, path=(*path, k)) for k, v in replaced.items()}
     if isinstance(replaced, list):
         return [map_tree(v, fn, path=(*path, i)) for i, v in enumerate(replaced)]
     if isinstance(replaced, tuple):
@@ -119,11 +117,7 @@ def deep_merge(base: Mapping[str, Any], overlay: Mapping[str, Any]) -> dict[str,
     """Shallow-prefer overlay; nested dicts merge recursively."""
     out = deepcopy(dict(base))
     for key, val in overlay.items():
-        if (
-            key in out
-            and isinstance(out[key], Mapping)
-            and isinstance(val, Mapping)
-        ):
+        if key in out and isinstance(out[key], Mapping) and isinstance(val, Mapping):
             out[key] = deep_merge(out[key], val)
         else:
             out[key] = deepcopy(val)

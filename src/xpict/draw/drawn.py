@@ -79,26 +79,30 @@ class Halo:
 
 
 def _as_shape(ink: Any) -> Shape | None:
-    if ink is None:
-        return None
-    if isinstance(ink, CapsuleInk):
-        return Shape.capsule(ink.x1, ink.y1, ink.x2, ink.y2, ink.radius)
-    if isinstance(ink, DiskInk):
-        return Shape.disk(ink.cx, ink.cy, ink.radius)
-    if getattr(ink, "is_empty", False):
-        return None
-    return ink
+    match ink:
+        case None:
+            return None
+        case CapsuleInk():
+            return Shape.capsule(ink.x1, ink.y1, ink.x2, ink.y2, ink.radius)
+        case DiskInk():
+            return Shape.disk(ink.cx, ink.cy, ink.radius)
+        case _ if getattr(ink, "is_empty", False):
+            return None
+        case _:
+            return ink
 
 
 def shift_ink(ink: Any, dx: float, dy: float) -> Any:
     """Translate tagged ink or Shape by ``(dx, dy)``."""
     if abs(dx) < 1e-12 and abs(dy) < 1e-12:
         return ink
-    if isinstance(ink, CapsuleInk):
-        return CapsuleInk(ink.x1 + dx, ink.y1 + dy, ink.x2 + dx, ink.y2 + dy, ink.radius)
-    if isinstance(ink, DiskInk):
-        return DiskInk(ink.cx + dx, ink.cy + dy, ink.radius)
-    return ink.translate(dx, dy)
+    match ink:
+        case CapsuleInk():
+            return CapsuleInk(ink.x1 + dx, ink.y1 + dy, ink.x2 + dx, ink.y2 + dy, ink.radius)
+        case DiskInk():
+            return DiskInk(ink.cx + dx, ink.cy + dy, ink.radius)
+        case _:
+            return ink.translate(dx, dy)
 
 
 def drawn_halo_jobs(drawn: Drawn) -> list[HaloJob]:
@@ -109,11 +113,7 @@ def drawn_halo_jobs(drawn: Drawn) -> list[HaloJob]:
     for i, geom in enumerate(drawn.ink):
         if geom is None:
             continue
-        dist = (
-            drawn.ink_dists[i]
-            if i < len(drawn.ink_dists) and drawn.ink_dists
-            else None
-        )
+        dist = drawn.ink_dists[i] if i < len(drawn.ink_dists) and drawn.ink_dists else None
         jobs.append((geom, HALO_GAP_PX if dist is None else dist))
     return jobs
 
@@ -186,14 +186,15 @@ def shift_layers(layers: dict[str, Layer], dx: float, dy: float) -> None:
     for layer in layers.values():
         shifted: list[Primitive] = []
         for p in layer.primitives:
-            if isinstance(p, PathPrim):
-                shifted.append(p.model_copy(update={"d": shift_path_d(p.d, dx, dy)}))
-            elif isinstance(p, CirclePrim):
-                shifted.append(p.model_copy(update={"cx": p.cx + dx, "cy": p.cy + dy}))
-            elif isinstance(p, TextPrim):
-                shifted.append(p.model_copy(update={"x": p.x + dx, "y": p.y + dy}))
-            else:
-                shifted.append(p)
+            match p:
+                case PathPrim():
+                    shifted.append(p.model_copy(update={"d": shift_path_d(p.d, dx, dy)}))
+                case CirclePrim():
+                    shifted.append(p.model_copy(update={"cx": p.cx + dx, "cy": p.cy + dy}))
+                case TextPrim():
+                    shifted.append(p.model_copy(update={"x": p.x + dx, "y": p.y + dy}))
+                case _:
+                    shifted.append(p)
         layer.primitives = shifted
 
 

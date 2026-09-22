@@ -11,7 +11,7 @@ be flattened back for the current render pipeline.
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal, Union
+from typing import Annotated, Any, Literal
 
 from pydantic import (
     Field,
@@ -24,9 +24,9 @@ from xpict.contracts.shorthand import (
     expand_pict_input,
 )
 from xpict.contracts.spec import (
+    AnnotationSpec,
     AnnotKind,
     AnnotPrefer,
-    AnnotationSpec,
     DiagramKind,
     DiagramSpec,
     EdgeArrow,
@@ -41,7 +41,6 @@ from xpict.contracts.spec import (
     _RGroupsInput,
     _RTableInput,
 )
-
 
 # ---------------------------------------------------------------------------
 # Layout (hierarchical; document chrome lives here on the root)
@@ -112,9 +111,7 @@ class NodeCommon(StrictModel):
     """Fields shared by every figure node (factored to ``allOf`` in JSON Schema)."""
 
     id: str | None = Field(default=None, description="Optional stable id for refs/edges")
-    panel: str | None = Field(
-        default=None, description="Subfigure tag drawn as (a), (b), …"
-    )
+    panel: str | None = Field(default=None, description="Subfigure tag drawn as (a), (b), …")
     layout: LayoutSpec = Field(default_factory=LayoutSpec)
     meta: dict[str, Any] = Field(default_factory=dict)
 
@@ -177,8 +174,7 @@ class MolNode(NodeCommon):
         overlap = set(self.ids) & set(self.rings)
         if overlap:
             raise ValueError(
-                f"mol ids/rings names must be unique in scope; "
-                f"duplicates: {sorted(overlap)}"
+                f"mol ids/rings names must be unique in scope; duplicates: {sorted(overlap)}"
             )
         for ra in self.ring_attachments:
             if isinstance(ra.ring, str) and ra.ring not in self.rings:
@@ -271,20 +267,18 @@ class NetworkNode(ContainerCommon):
 
 
 Node = Annotated[
-    Union[
-        MolNode,
-        ArrowNode,
-        TextNode,
-        ImageNode,
-        TableNode,
-        RefNode,
-        AnnotationNode,
-        GroupNode,
-        GridNode,
-        StackNode,
-        ReactionNode,
-        NetworkNode,
-    ],
+    MolNode
+    | ArrowNode
+    | TextNode
+    | ImageNode
+    | TableNode
+    | RefNode
+    | AnnotationNode
+    | GroupNode
+    | GridNode
+    | StackNode
+    | ReactionNode
+    | NetworkNode,
     Field(discriminator="type"),
 ]
 
@@ -325,11 +319,7 @@ _KIND_TO_TYPE = {
 
 def is_legacy_pict(data: Any) -> bool:
     """True when input looks like flat ``{molecules, diagram}``."""
-    return (
-        isinstance(data, dict)
-        and "molecules" in data
-        and "type" not in data
-    )
+    return isinstance(data, dict) and "molecules" in data and "type" not in data
 
 
 def lift_legacy(data: dict[str, Any]) -> dict[str, Any]:
@@ -466,80 +456,83 @@ def flatten_to_legacy(node: Node) -> LegacyPictSpec:
     height = root_layout.height
     meta = dict(node.meta)
 
-    if isinstance(node, GridNode):
-        kind = DiagramKind.grid
-    elif isinstance(node, ReactionNode):
-        kind = DiagramKind.reaction
-    elif isinstance(node, NetworkNode):
-        kind = DiagramKind.network
-    elif isinstance(node, (GroupNode, StackNode)):
-        kind = DiagramKind.single
-    elif isinstance(node, MolNode):
-        kind = DiagramKind.single
+    match node:
+        case GridNode():
+            kind = DiagramKind.grid
+        case ReactionNode():
+            kind = DiagramKind.reaction
+        case NetworkNode():
+            kind = DiagramKind.network
+        case GroupNode() | StackNode() | MolNode():
+            kind = DiagramKind.single
+        case _:
+            pass
 
     def walk_container(n: Node) -> None:
         nonlocal mol_index
         edges.extend(list(n.layout.edges))
 
-        if isinstance(n, (ReactionNode, GroupNode, StackNode, GridNode, NetworkNode)):
-            pending_arrow: ArrowNode | None = None
-            prev_id: str | None = None
-            # When layout.edges already lists links (legacy lift), do not also
-            # synthesize a chain between consecutive mol children.
-            synthesize = isinstance(n, ReactionNode) and not n.layout.edges
-            for child in n.children:
-                if isinstance(child, MolNode):
-                    mid = _ensure_mol_id(child, used_ids, mol_index)
-                    mol_index += 1
-                    # assign id onto a copy via MoleculeSpec
-                    spec = mol_to_molecule_spec(child)
-                    if spec.id is None:
-                        spec = spec.model_copy(update={"id": mid})
-                    molecules.append(spec)
-                    if synthesize and prev_id is not None:
-                        if pending_arrow is not None:
-                            edges.append(_arrow_to_edge(pending_arrow, prev_id, mid))
-                            pending_arrow = None
-                        else:
-                            edges.append(
-                                EdgeSpec(
-                                    source=prev_id,
-                                    target=mid,
-                                    arrow=EdgeArrow.forward,
-                                )
-                            )
-                    prev_id = mid
-                elif isinstance(child, ArrowNode):
-                    pending_arrow = child
-                elif isinstance(
-                    child,
-                    (GroupNode, StackNode, GridNode, ReactionNode, NetworkNode),
-                ):
-                    walk_container(child)
-                elif isinstance(child, TableNode):
-                    # Tables are not yet drawn; Markush rtable already on mols.
-                    continue
-                elif isinstance(child, (ImageNode, TextNode, RefNode, AnnotationNode)):
-                    continue
-            return
+        match n:
+            case ReactionNode() | GroupNode() | StackNode() | GridNode() | NetworkNode():
+                pending_arrow: ArrowNode | None = None
+                prev_id: str | None = None
+                # When layout.edges already lists links (legacy lift), do not also
+                # synthesize a chain between consecutive mol children.
+                synthesize = isinstance(n, ReactionNode) and not n.layout.edges
+                for child in n.children:
+                    match child:
+                        case MolNode():
+                            mid = _ensure_mol_id(child, used_ids, mol_index)
+                            mol_index += 1
+                            # assign id onto a copy via MoleculeSpec
+                            spec = mol_to_molecule_spec(child)
+                            if spec.id is None:
+                                spec = spec.model_copy(update={"id": mid})
+                            molecules.append(spec)
+                            if synthesize and prev_id is not None:
+                                if pending_arrow is not None:
+                                    edges.append(_arrow_to_edge(pending_arrow, prev_id, mid))
+                                    pending_arrow = None
+                                else:
+                                    edges.append(
+                                        EdgeSpec(
+                                            source=prev_id,
+                                            target=mid,
+                                            arrow=EdgeArrow.forward,
+                                        )
+                                    )
+                            prev_id = mid
+                        case ArrowNode():
+                            pending_arrow = child
+                        case (
+                            GroupNode() | StackNode() | GridNode() | ReactionNode() | NetworkNode()
+                        ):
+                            walk_container(child)
+                        case TableNode():
+                            # Tables are not yet drawn; Markush rtable already on mols.
+                            continue
+                        case _:
+                            # ImageNode | TextNode | RefNode | AnnotationNode — not layout.
+                            continue
+                return
 
-        if isinstance(n, MolNode):
-            mid = _ensure_mol_id(n, used_ids, mol_index)
-            mol_index += 1
-            spec = mol_to_molecule_spec(n)
-            if spec.id is None:
-                spec = spec.model_copy(update={"id": mid})
-            molecules.append(spec)
+            case MolNode():
+                mid = _ensure_mol_id(n, used_ids, mol_index)
+                mol_index += 1
+                spec = mol_to_molecule_spec(n)
+                if spec.id is None:
+                    spec = spec.model_copy(update={"id": mid})
+                molecules.append(spec)
 
-    if isinstance(
-        node, (GroupNode, StackNode, GridNode, ReactionNode, NetworkNode)
-    ):
-        walk_container(node)
-    elif isinstance(node, MolNode):
-        walk_container(node)
-    else:
-        # Non-mol root with no mol children — empty legacy (invalid for render)
-        pass
+            case _:
+                pass
+
+    match node:
+        case GroupNode() | StackNode() | GridNode() | ReactionNode() | NetworkNode() | MolNode():
+            walk_container(node)
+        case _:
+            # Non-mol root with no mol children — empty legacy (invalid for render)
+            pass
 
     if not molecules:
         raise ValueError("figure has no mol nodes to render")
@@ -634,9 +627,7 @@ def expand_pict(spec: PictSpec | LegacyPictSpec | dict[str, Any] | Node) -> Pict
     if isinstance(spec, PictSpec):
         return spec
     if isinstance(spec, LegacyPictSpec):
-        return PictSpec.model_validate(
-            lift_legacy(spec.model_dump(mode="json"))
-        )
+        return PictSpec.model_validate(lift_legacy(spec.model_dump(mode="json")))
     if isinstance(
         spec,
         (

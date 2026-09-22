@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from xpict.contracts.scene import CirclePrim, PathPrim, TextPrim
-from xpict.contracts.spec import AnnotKind, AnnotationSpec, AnnotPrefer
+from xpict.contracts.spec import AnnotationSpec, AnnotKind
 from xpict.draw.collision import CollisionGrid
 from xpict.draw.drawn import Drawn
 from xpict.draw.glyphs import compile_text_shapes
@@ -113,8 +113,10 @@ def _spline_path(pts: Sequence[tuple[float, float]], pad: float) -> str | None:
     # Largest exterior by rough bbox area.
     exterior = max(
         polys,
-        key=lambda ph: (max(p[0] for p in ph[0]) - min(p[0] for p in ph[0]))
-        * (max(p[1] for p in ph[0]) - min(p[1] for p in ph[0])),
+        key=lambda ph: (
+            (max(p[0] for p in ph[0]) - min(p[0] for p in ph[0]))
+            * (max(p[1] for p in ph[0]) - min(p[1] for p in ph[0]))
+        ),
     )[0]
     ring = list(exterior)
     if len(ring) > 1 and ring[0] == ring[-1]:
@@ -170,7 +172,9 @@ def _arrow_drawn(
     return drawn
 
 
-def _draw_region(ann: AnnotationSpec, pts: Sequence[tuple[float, float]], *, color: str) -> Drawn | None:
+def _draw_region(
+    ann: AnnotationSpec, pts: Sequence[tuple[float, float]], *, color: str
+) -> Drawn | None:
     pad = ANNOT_PAD_PX
     stroke = ANNOT_STROKE_PX
     drawn = Drawn(layer="marks", halo=True, halo_cls="halo annot-halo")
@@ -241,10 +245,11 @@ def _draw_region(ann: AnnotationSpec, pts: Sequence[tuple[float, float]], *, col
         outer = geom.buffer(0.5 * stroke)
         inner = geom.buffer(-0.5 * stroke) if not geom.is_empty else None
         ink = outer.difference(inner) if inner is not None and not inner.is_empty else outer
-        if ink is not None and not ink.is_empty:
+        if not ink.is_empty:
             drawn.ink.append(ink)
         if geom.bounds is not None:
-            drawn.boxes.append(tuple(geom.bounds))
+            xmin, ymin, xmax, ymax = geom.bounds
+            drawn.boxes.append((xmin, ymin, xmax, ymax))
         return drawn
     return None
 
@@ -259,7 +264,7 @@ def _draw_callout(
     ax, ay = target
     drawn = Drawn(layer="marks", halo=True, halo_cls="halo annot-halo")
     label = (ann.label or "").strip()
-    side = ann.prefer.value if isinstance(ann.prefer, AnnotPrefer) else str(ann.prefer)
+    side = ann.prefer.value
 
     if label:
         metrics = measure_text(label, ANNOT_FONT_PX)
@@ -280,13 +285,9 @@ def _draw_callout(
                 cls="annot-label",
             )
         )
-        box = text_box(
-            label, cx, baseline, font_size=ANNOT_FONT_PX, anchor="middle", which="typo"
-        )
+        box = text_box(label, cx, baseline, font_size=ANNOT_FONT_PX, anchor="middle", which="typo")
         drawn.boxes.append(box.as_tuple())
-        glyph = compile_text_shapes(
-            label, cx, baseline, font_size=ANNOT_FONT_PX, anchor="middle"
-        )
+        glyph = compile_text_shapes(label, cx, baseline, font_size=ANNOT_FONT_PX, anchor="middle")
         if glyph is not None:
             drawn.ink.append(glyph)
         if ann.arrow:
@@ -311,9 +312,7 @@ def _draw_callout(
         }
         fx, fy = offsets.get(side, (ax + stub, ay))
         drawn.extend(_arrow_drawn(ax, ay, fx, fy, color=color))
-        drawn.boxes.append(
-            (min(ax, fx) - 2, min(ay, fy) - 2, max(ax, fx) + 2, max(ay, fy) + 2)
-        )
+        drawn.boxes.append((min(ax, fx) - 2, min(ay, fy) - 2, max(ax, fx) + 2, max(ay, fy) + 2))
     else:
         r = ANNOT_PAD_PX * 0.55
         drawn.primitives.append(
@@ -403,9 +402,7 @@ def draw_annotation(
     coords: Sequence[tuple[float, float]],
     grid: CollisionGrid,
 ) -> Drawn | None:
-    return render_annotation(
-        ann, atom_pos=atom_pos, coords=coords, grid=grid, stamp=True
-    )
+    return render_annotation(ann, atom_pos=atom_pos, coords=coords, grid=grid, stamp=True)
 
 
 def draw_annotations(
@@ -417,9 +414,7 @@ def draw_annotations(
 ) -> Drawn:
     out = Drawn(layer="marks", halo=True, halo_cls="halo annot-halo")
     for ann in annotations:
-        drawn = draw_annotation(
-            ann, atom_pos=atom_pos, coords=coords, grid=grid
-        )
+        drawn = draw_annotation(ann, atom_pos=atom_pos, coords=coords, grid=grid)
         out.extend(drawn)
     return out
 

@@ -7,6 +7,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
+from xpict import _native
 from xpict.contracts.layout import MoleculeLayout
 from xpict.contracts.scene import CirclePrim, Layer, PathPrim, TextPrim, Viewport
 from xpict.contracts.spec import (
@@ -25,7 +26,6 @@ from xpict.draw.glyphs import compile_text_shapes
 from xpict.draw.halo import disk_shape
 from xpict.draw.label_place import PlacedLabel, place_backbone
 from xpict.draw.markush import apply_rgroup_texts, ring_attachment_annotations
-from xpict import _native
 from xpict.draw.metrics import (
     BOND_PX,
     COLLISION_CELL_PX,
@@ -49,7 +49,7 @@ from xpict.draw.metrics import (
     coord_scale,
 )
 from xpict.draw.mol_title import LabelPack, pack_label
-from xpict.draw.paths import hull_path_d, ink_from_path_prim, polyline_d
+from xpict.draw.paths import hull_path_d, ink_from_path_prim
 from xpict.draw.plotdot import PlotDot
 from xpict.draw.rings import bond_interior_normals, find_sssr
 from xpict.draw.text_metrics import text_box
@@ -79,10 +79,7 @@ def normalize_coords(
     ys = [a.y for a in layout.atoms]
     min_x, max_x = min(xs), max(xs)
     min_y, max_y = min(ys), max(ys)
-    coords = [
-        ((a.x - min_x) * scale + _PAD, (max_y - a.y) * scale + _PAD)
-        for a in layout.atoms
-    ]
+    coords = [((a.x - min_x) * scale + _PAD, (max_y - a.y) * scale + _PAD) for a in layout.atoms]
     width = (max_x - min_x) * scale + 2 * _PAD
     height = (max_y - min_y) * scale + 2 * _PAD
     return coords, max(width, 2 * _PAD), max(height, 2 * _PAD)
@@ -110,11 +107,7 @@ class MolContext:
     def points(self, atoms: Sequence[int] | None) -> list[tuple[float, float]]:
         if not atoms:
             return []
-        return [
-            self.coords[self.atom_pos[a]]
-            for a in atoms
-            if a in self.atom_pos
-        ]
+        return [self.coords[self.atom_pos[a]] for a in atoms if a in self.atom_pos]
 
     def emit(self, drawn: Drawn | None) -> None:
         if drawn is None:
@@ -209,18 +202,14 @@ def mol_occupancy(
     for i, text in enumerate(texts):
         x, y = coords[i]
         if text:
-            box = text_box(
-                text, x, y, font_size=FONT_PX, which="ink", pad=LABEL_GAP_PX * 0.25
-            )
+            box = text_box(text, x, y, font_size=FONT_PX, which="ink", pad=LABEL_GAP_PX * 0.25)
             grid.mark_box(*box.as_tuple())
         else:
             grid.mark_circle(x, y, STROKE_PX)
     return grid
 
 
-def _shade_rgb(
-    z: float, *, colormap: str = "xenosite", diverging: bool = False
-) -> str:
+def _shade_rgb(z: float, *, colormap: str = "xenosite", diverging: bool = False) -> str:
     """xenopict ``color_map`` → CSS rgb (default LUT: xenosite)."""
     return colormap_rgb(z, name=colormap, diverging=diverging)
 
@@ -306,12 +295,8 @@ class BondsDrawable(Drawable):
 
     def draw(self, ctx: MolContext) -> Drawn | None:
         rings = find_sssr(ctx.layout)
-        coords_by_index = {
-            a.index: ctx.coords[i] for i, a in enumerate(ctx.layout.atoms)
-        }
-        normals = (
-            bond_interior_normals(rings, coords_by_index) if rings else {}
-        )
+        coords_by_index = {a.index: ctx.coords[i] for i, a in enumerate(ctx.layout.atoms)}
+        normals = bond_interior_normals(rings, coords_by_index) if rings else {}
         prepared: list[DrawnBond] = []
         for bi, bond in enumerate(ctx.layout.bonds):
             i0, i1 = ctx.atom_pos.get(bond.begin), ctx.atom_pos.get(bond.end)
@@ -322,11 +307,7 @@ class BondsDrawable(Drawable):
             else:
                 x1, y1 = ctx.coords[i0]
                 x2, y2 = ctx.coords[i1]
-            key = (
-                (bond.begin, bond.end)
-                if bond.begin < bond.end
-                else (bond.end, bond.begin)
-            )
+            key = (bond.begin, bond.end) if bond.begin < bond.end else (bond.end, bond.begin)
             prepared.append(
                 DrawnBond(
                     index=bond.index,
@@ -407,9 +388,7 @@ class AtomLabelsDrawable(Drawable):
                         oi = ctx.atom_pos.get(other)
                         if oi is not None:
                             nbr_angs.append(
-                                math.atan2(
-                                    ctx.coords[oi][1] - y, ctx.coords[oi][0] - x
-                                )
+                                math.atan2(ctx.coords[oi][1] - y, ctx.coords[oi][0] - x)
                             )
                 if nbr_angs:
                     nbr_angs.sort()
@@ -675,9 +654,7 @@ def paint_molecule(
     lengths match.
     """
     coords, width, height = normalize_coords(layout, scale=scale)
-    texts = apply_rgroup_texts(
-        layout, mol_spec, [display_text(a) for a in layout.atoms]
-    )
+    texts = apply_rgroup_texts(layout, mol_spec, [display_text(a) for a in layout.atoms])
     label_pack = None
     label_text = None
     if mol_spec.label is not None:

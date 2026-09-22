@@ -20,7 +20,6 @@ from xpict.draw.metrics import (
 )
 from xpict.draw.text_metrics import TextMetrics, measure_text, text_box
 
-
 Anchor = Literal["start", "middle", "end"]
 
 

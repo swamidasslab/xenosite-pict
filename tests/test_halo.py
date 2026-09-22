@@ -6,7 +6,7 @@ import re
 
 from xpict import render
 from xpict.draw.glyphs import compile_text_shapes
-from xpict.draw.halo import halo_from_shapes, halo_path_d
+from xpict.draw.halo import halo_from_shapes
 from xpict.draw.metrics import HALO_GAP_PX
 
 
@@ -57,9 +57,7 @@ def test_halo_layer_is_first_in_viewport():
 def test_legacy_molecule_halo_lifts_to_document():
     from xpict.contracts.nodes import PictSpec
 
-    spec = PictSpec.model_validate(
-        {"molecules": [{"smiles": "CCO", "halo": False}]}
-    )
+    spec = PictSpec.model_validate({"molecules": [{"smiles": "CCO", "halo": False}]})
     assert spec.halo is False
 
 
@@ -86,10 +84,6 @@ def test_shading_does_not_opt_into_document_halo():
     shaded_layout = pict.layout(shaded).molecules[0]
     _, bare_halo = paint_molecule(bare_layout, bare.molecules[0], halo=True)
     vp, shaded_halo = paint_molecule(shaded_layout, shaded.molecules[0], halo=True)
-    assert any(
-        getattr(p, "cls", None) == "shade"
-        for layer in vp.layers
-        for p in layer.primitives
-    )
+    assert any(getattr(p, "cls", None) == "shade" for layer in vp.layers for p in layer.primitives)
     assert len(shaded_halo.jobs) == len(bare_halo.jobs)
     assert shaded_halo.to_prim().d == bare_halo.to_prim().d

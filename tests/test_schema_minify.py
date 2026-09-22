@@ -25,8 +25,7 @@ def test_minify_reduces_size_and_shares_children():
     assert "ContainerCommon" in defs
     mol = defs["MolNode"]
     assert any(
-        isinstance(x, dict) and x.get("$ref") == "#/$defs/NodeCommon"
-        for x in mol.get("allOf", [])
+        isinstance(x, dict) and x.get("$ref") == "#/$defs/NodeCommon" for x in mol.get("allOf", [])
     )
     blob = json.dumps(mini)
     assert blob.count("#/$defs/NodeCommon") >= 1

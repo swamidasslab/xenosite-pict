@@ -48,7 +48,7 @@ def test_depict_molecule_ethanol_two_bonds():
     }
     scene = json.loads(_native.depict_molecule(json.dumps(mol)))
     assert scene["viewports"][0]["id"] == "etoh"
-    bonds = next(l for l in scene["viewports"][0]["layers"] if l["name"] == "bonds")
+    bonds = next(layer for layer in scene["viewports"][0]["layers"] if layer["name"] == "bonds")
     assert len(bonds["primitives"]) == 2
     assert scene["width"] > 0 and scene["height"] > 0
 
@@ -70,12 +70,8 @@ def test_depict_acetone_centered_double_offsets():
         "color": "#336699",
     }
     scene = json.loads(_native.depict_molecule(json.dumps(mol)))
-    bonds = next(l for l in scene["viewports"][0]["layers"] if l["name"] == "bonds")
-    offsets = [
-        p
-        for p in bonds["primitives"]
-        if "bond-offset" in (p.get("cls") or "")
-    ]
+    bonds = next(layer for layer in scene["viewports"][0]["layers"] if layer["name"] == "bonds")
+    offsets = [p for p in bonds["primitives"] if "bond-offset" in (p.get("cls") or "")]
     assert len(offsets) >= 2
     assert all(p.get("stroke") == "#336699" for p in bonds["primitives"])
 
@@ -91,7 +87,7 @@ def test_depict_marks_and_shade_layers():
         "atom_shade": [0.0, 0.85],
     }
     scene = json.loads(_native.depict_molecule(json.dumps(mol)))
-    names = {l["name"] for l in scene["viewports"][0]["layers"]}
+    names = {layer["name"] for layer in scene["viewports"][0]["layers"]}
     assert names >= {"shading", "bonds", "marks"}
 
 
@@ -108,9 +104,7 @@ def test_python_join_two_singles_matches_rust_geometry():
     strokes = bond_strokes(0, 0, 20, 0, 2.0, trims=bonds[0].trims)
     for path in strokes.offsets:
         x, y = _pts(path.d)[0]
-        assert _on_line(x, y, 0.0, 0.0, -10.0, 8.0) or _on_line(
-            x, y, 0.0, 0.0, -10.0, -8.0
-        )
+        assert _on_line(x, y, 0.0, 0.0, -10.0, 8.0) or _on_line(x, y, 0.0, 0.0, -10.0, -8.0)
 
 
 def test_rust_acetone_double_has_joined_offsets():
@@ -130,9 +124,7 @@ def test_rust_acetone_double_has_joined_offsets():
     }
     py_bonds = [
         DrawnBond(0, 0, 1, -20.0, 8.0, 0.0, 0.0, 1.0),
-        DrawnBond(
-            1, 1, 2, 0.0, 0.0, 0.0, -20.0, 2.0, begin_labeled=False, end_labeled=True
-        ),
+        DrawnBond(1, 1, 2, 0.0, 0.0, 0.0, -20.0, 2.0, begin_labeled=False, end_labeled=True),
         DrawnBond(2, 1, 3, 0.0, 0.0, 20.0, 8.0, 1.0),
     ]
     join_centered_multibonds(py_bonds)
@@ -140,7 +132,7 @@ def test_rust_acetone_double_has_joined_offsets():
     assert all(t < 0.0 for t in py_bonds[1].trims[0])
 
     scene = json.loads(_native.depict_molecule(json.dumps(mol)))
-    bonds = next(l for l in scene["viewports"][0]["layers"] if l["name"] == "bonds")
+    bonds = next(layer for layer in scene["viewports"][0]["layers"] if layer["name"] == "bonds")
     offsets = [p for p in bonds["primitives"] if "bond-offset" in (p.get("cls") or "")]
     assert len(offsets) >= 2
     assert OFFSET_PX == pytest.approx(_native.OFFSET_PX)

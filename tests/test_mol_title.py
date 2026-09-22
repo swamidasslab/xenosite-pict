@@ -90,9 +90,9 @@ def test_pack_left_and_right_widen_frame():
     assert left.x < 20 + left.dx
     assert right.x > 60 + right.dx
     # Content clears the label band by about TITLE_CLEARANCE_PX.
-    assert (20 + left.dx) - (left.x + measure_text("L", TITLE_FONT_PX).advance * 0.5) == pytest.approx(
-        TITLE_CLEARANCE_PX, abs=COLLISION_CELL_PX + 0.5
-    )
+    assert (20 + left.dx) - (
+        left.x + measure_text("L", TITLE_FONT_PX).advance * 0.5
+    ) == pytest.approx(TITLE_CLEARANCE_PX, abs=COLLISION_CELL_PX + 0.5)
 
 
 def test_label_pack_reserves_caption_band():
@@ -125,25 +125,19 @@ def test_render_emits_centered_mol_label():
     attrs = m.group(1) + m.group(2)
     assert 'data-text="ethanol"' in attrs
     assert "<text" not in svg
-    height = float(re.search(r'height="([0-9.]+)(?:px)?"', svg).group(1))
     # Path sits in the lower half (baseline near bottom).
     assert 'd="M ' in attrs or re.search(r'\bd="M ', svg)
 
 
 def test_render_label_pos_top():
     svg = render(
-        {
-            "molecules": [
-                {"smiles": "CCO", "label": {"text": "ethanol", "pos": "top"}}
-            ]
-        },
+        {"molecules": [{"smiles": "CCO", "label": {"text": "ethanol", "pos": "top"}}]},
         backend="native",
     )
     m = re.search(r'<path[^>]*class="mol-label"[^>]*>', svg)
     assert m is not None
     assert 'data-text="ethanol"' in m.group(0)
     assert "<text" not in svg
-
 
 
 def test_title_snug_is_shorter_than_naive_pad_stack():

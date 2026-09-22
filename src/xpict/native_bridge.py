@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 try:
     from xpict import _native as _rust
@@ -14,7 +14,11 @@ except ImportError as e:  # pragma: no cover
     ) from e
 
 HAS_RUST_CORE: bool = True
-Shape = _rust.Shape
+
+if TYPE_CHECKING:
+    from xpict._native import Shape as Shape
+else:
+    Shape = _rust.Shape
 
 
 @dataclass(frozen=True, slots=True)

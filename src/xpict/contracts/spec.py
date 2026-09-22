@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 from typing import Annotated, Any
 
 from pydantic import (
@@ -25,7 +25,7 @@ class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class DiagramKind(str, Enum):
+class DiagramKind(StrEnum):
     single = "single"
     grid = "grid"
     network = "network"
@@ -33,13 +33,13 @@ class DiagramKind(str, Enum):
     html = "html"
 
 
-class MarkKind(str, Enum):
+class MarkKind(StrEnum):
     atoms = "atoms"
     bonds = "bonds"
     substructure = "substructure"
 
 
-class AnnotKind(str, Enum):
+class AnnotKind(StrEnum):
     """How an annotation is drawn."""
 
     callout = "callout"  # indicator arrow and/or text next to a target
@@ -48,7 +48,7 @@ class AnnotKind(str, Enum):
     spline = "spline"  # smooth closed loop around atoms
 
 
-class AnnotPrefer(str, Enum):
+class AnnotPrefer(StrEnum):
     """Preferred callout placement; collision grid may pick another free slot."""
 
     auto = "auto"
@@ -58,7 +58,7 @@ class AnnotPrefer(str, Enum):
     bottom = "bottom"
 
 
-class LabelPos(str, Enum):
+class LabelPos(StrEnum):
     """Where a molecule caption sits relative to the drawing."""
 
     bottom = "bottom"
@@ -130,9 +130,7 @@ class MarkSpec(StrictModel):
     """
 
     kind: MarkKind = MarkKind.atoms
-    atoms: list[int] | None = Field(
-        default=None, description="0-based atom indices to mark"
-    )
+    atoms: list[int] | None = Field(default=None, description="0-based atom indices to mark")
     bonds: list[tuple[int, int]] | None = Field(
         default=None, description="0-based atom-index pairs for bonds to mark"
     )
@@ -171,9 +169,7 @@ class AnnotationSpec(StrictModel):
         description="Annotation caption (supports light TeX/markdown markup)",
     )
     color: str | None = Field(default=None, description="Stroke/fill color")
-    arrow: bool = Field(
-        default=True, description="Draw indicator arrow for callout annotations"
-    )
+    arrow: bool = Field(default=True, description="Draw indicator arrow for callout annotations")
     prefer: AnnotPrefer = Field(
         default=AnnotPrefer.auto,
         description="Preferred callout/label side; grid may choose another free slot",
@@ -195,9 +191,7 @@ class ShadeSpec(StrictModel):
     atoms: list[float] | None = Field(
         default=None, description="Per-atom scores (same length as atom count)"
     )
-    bonds: list[float] | None = Field(
-        default=None, description="Per-bond scores"
-    )
+    bonds: list[float] | None = Field(default=None, description="Per-bond scores")
     colormap: str = Field(default="xenosite", description="Named colormap")
     vmin: float | None = None
     vmax: float | None = None
@@ -309,7 +303,7 @@ class MoleculeSpec(StrictModel):
         description=(
             "Labels for ``*`` atoms (definite attachment sites). "
             "A list assigns labels in star appearance order (``null`` = bare *). "
-            "A dict maps star ordinal (\"0\", \"1\", …) → label."
+            'A dict maps star ordinal ("0", "1", …) → label.'
         ),
     )
     ring_attachments: list[RingAttachmentSpec] = Field(
@@ -353,9 +347,7 @@ class MoleculeSpec(StrictModel):
     @model_validator(mode="after")
     def require_structure(self) -> MoleculeSpec:
         if not any([self.smiles, self.cxsmiles, self.esmiles, self.molfile]):
-            raise ValueError(
-                "MoleculeSpec requires smiles, cxsmiles, esmiles, or molfile"
-            )
+            raise ValueError("MoleculeSpec requires smiles, cxsmiles, esmiles, or molfile")
         return self
 
     @model_validator(mode="after")
@@ -375,7 +367,7 @@ class MoleculeSpec(StrictModel):
         return self
 
 
-class EdgeArrow(str, Enum):
+class EdgeArrow(StrEnum):
     """Arrow head / shaft style for diagram edges."""
 
     forward = "forward"  # single →

@@ -3,18 +3,18 @@
 from __future__ import annotations
 
 import json
-import math
 
 import pytest
 
-from xpict.native_bridge import HAS_RUST_CORE, CapsuleInk, Shape, multi_bond_offset
 from xpict.draw.bonds import _multi_bond_offset_py
 from xpict.draw.halo import capsule_shape, halo_path_d
 from xpict.draw.metrics import LABEL_GAP_PX, OFFSET_PX
 from xpict.draw.plotdot import PlotDot
+from xpict.native_bridge import HAS_RUST_CORE, CapsuleInk, Shape, multi_bond_offset
 
-
-pytestmark = pytest.mark.skipif(not HAS_RUST_CORE, reason="xpict._native not built (run maturin develop)")
+pytestmark = pytest.mark.skipif(
+    not HAS_RUST_CORE, reason="xpict._native not built (run maturin develop)"
+)
 
 
 def test_multi_bond_offset_matches_python():

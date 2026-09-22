@@ -8,7 +8,7 @@ import warnings
 import pytest
 
 from xpict import Pict, PictBackendWarning, render
-from xpict.align import align_layouts, _mcs_mapping
+from xpict.align import _mcs_mapping, align_layouts
 from xpict.backends.native_smiles import parse_organic_smiles
 from xpict.structure import cx_atom_labels
 
@@ -55,11 +55,7 @@ def test_star_label_native():
 
 
 def test_star_name_from_cxsmiles_native():
-    lay = (
-        Pict(backend="native")
-        .layout({"molecules": [{"cxsmiles": "*C |$R1;$|"}]})
-        .molecules[0]
-    )
+    lay = Pict(backend="native").layout({"molecules": [{"cxsmiles": "*C |$R1;$|"}]}).molecules[0]
     star = next(a for a in lay.atoms if a.element == "*")
     assert star.label == "R1"
     svg = render({"molecules": [{"cxsmiles": "*C |$R1;$|"}]}, backend="native")
@@ -104,14 +100,11 @@ def test_align_layouts_transforms_coords():
     b = pict.layout({"molecules": [{"smiles": "COc1ccccc1"}]}).molecules[0]
     # Flip B so alignment must rotate/translate.
     flipped = b.model_copy(
-        update={
-            "atoms": [
-                at.model_copy(update={"x": -at.x, "y": -at.y + 5.0}) for at in b.atoms
-            ]
-        }
+        update={"atoms": [at.model_copy(update={"x": -at.x, "y": -at.y + 5.0}) for at in b.atoms]}
     )
     aligned = align_layouts([a, flipped], enabled=True)
     assert len(aligned) == 2
+
     # Ring centroids should be closer after alignment than raw flipped.
     def centroid(lay):
         xs = [at.x for at in lay.atoms]
@@ -138,7 +131,6 @@ def test_render_align_flag_no_warning():
             backend=_backend(),
         )
     assert not any(
-        issubclass(c.category, PictBackendWarning)
-        and "not implemented" in str(c.message)
+        issubclass(c.category, PictBackendWarning) and "not implemented" in str(c.message)
         for c in caught
     )

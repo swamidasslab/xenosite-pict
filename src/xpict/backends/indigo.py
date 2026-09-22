@@ -57,11 +57,10 @@ class IndigoBackend:
 
     def layout(self, mol: MoleculeSpec) -> MoleculeLayout:
         try:
-            from indigo import Indigo
+            from indigo import Indigo  # pyright: ignore[reportMissingImports]
         except ImportError as e:
             raise ImportError(
-                "Indigo backend requires epam.indigo. "
-                "Install with: pip install 'xpict[indigo]'"
+                "Indigo backend requires epam.indigo. Install with: pip install 'xpict[indigo]'"
             ) from e
 
         indigo = Indigo()
@@ -76,9 +75,7 @@ class IndigoBackend:
         else:
             smiles = structure_smiles(mol)
             if not smiles:
-                raise ValueError(
-                    "indigo backend requires smiles, cxsmiles, esmiles, or molfile"
-                )
+                raise ValueError("indigo backend requires smiles, cxsmiles, esmiles, or molfile")
             imol = indigo.loadMolecule(smiles)
             cx_labels = cx_atom_labels(smiles)
 
@@ -124,7 +121,9 @@ class IndigoBackend:
                 if cx or name:
                     label = cx or name
                 else:
-                    label = _element_label(el, hcount, charge=charge, radical=radical, isotope=isotope)
+                    label = _element_label(
+                        el, hcount, charge=charge, radical=radical, isotope=isotope
+                    )
 
             atoms.append(
                 AtomLayout(

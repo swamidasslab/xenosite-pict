@@ -10,6 +10,7 @@ import json
 import warnings
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from typing import Any
 
 from xpict.contracts.layout import MoleculeLayout
 from xpict.contracts.spec import DiagramKind, LegacyPictSpec, MoleculeSpec
@@ -24,6 +25,7 @@ def _flat(spec: LegacyPictSpec | object) -> LegacyPictSpec:
     if callable(to_legacy):
         return to_legacy()  # type: ignore[no-any-return]
     return spec  # type: ignore[return-value]
+
 
 _GAP = 24.0
 _REACTION_GAP = 56.0  # room for arrow shafts + edge labels between molecules
@@ -114,7 +116,7 @@ def _reaction_defaults(spec: LegacyPictSpec) -> dict[str, str]:
     return base
 
 
-def elk_graph(layouts: Sequence[MoleculeLayout], spec: LegacyPictSpec | object) -> dict:
+def elk_graph(layouts: Sequence[MoleculeLayout], spec: LegacyPictSpec | object) -> dict[str, Any]:
     spec = _flat(spec)
     sizes = _viewport_sizes(layouts, spec)
     nodes = []
@@ -145,13 +147,11 @@ def elk_graph_json(layouts: Sequence[MoleculeLayout], spec: LegacyPictSpec) -> s
     return json.dumps(elk_graph(layouts, spec), indent=2)
 
 
-def _section_points(section: dict) -> list[tuple[float, float]]:
+def _section_points(section: dict[str, Any]) -> list[tuple[float, float]]:
     """Flatten one ELK edge section into a polyline (start → bends → end)."""
     start = section.get("startPoint") or {}
     end = section.get("endPoint") or {}
-    pts: list[tuple[float, float]] = [
-        (float(start.get("x", 0.0)), float(start.get("y", 0.0)))
-    ]
+    pts: list[tuple[float, float]] = [(float(start.get("x", 0.0)), float(start.get("y", 0.0)))]
     for bp in section.get("bendPoints") or []:
         pts.append((float(bp.get("x", 0.0)), float(bp.get("y", 0.0))))
     pts.append((float(end.get("x", 0.0)), float(end.get("y", 0.0))))
@@ -163,7 +163,7 @@ def _section_points(section: dict) -> list[tuple[float, float]]:
     return cleaned
 
 
-def _edge_path_from_elk(edge: dict) -> list[tuple[float, float]] | None:
+def _edge_path_from_elk(edge: dict[str, Any]) -> list[tuple[float, float]] | None:
     sections = edge.get("sections") or []
     if not sections:
         return None
@@ -181,7 +181,7 @@ def _edge_path_from_elk(edge: dict) -> list[tuple[float, float]] | None:
 
 
 def _placement_from_laid(
-    layouts: Sequence[MoleculeLayout], spec: LegacyPictSpec, laid: dict
+    layouts: Sequence[MoleculeLayout], spec: LegacyPictSpec, laid: dict[str, Any]
 ) -> DiagramPlacement:
     by_id = {c["id"]: c for c in laid.get("children", [])}
     positions: list[tuple[float, float]] = []
@@ -257,9 +257,7 @@ def layout_diagram_ex(
 
     if kind == DiagramKind.grid:
         cols = spec.diagram.columns or max(1, int(len(layouts) ** 0.5 + 0.5))
-        return DiagramPlacement(
-            positions=_grid_positions(layouts, cols, sizes), edge_paths=[]
-        )
+        return DiagramPlacement(positions=_grid_positions(layouts, cols, sizes), edge_paths=[])
 
     return DiagramPlacement(positions=_row_positions(sizes), edge_paths=[])
 

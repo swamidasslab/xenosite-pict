@@ -6,16 +6,12 @@ import json
 import warnings
 from pathlib import Path
 
-import pytest
-
 from xpict import Pict, PictBackendWarning, PictSpec, render
 from xpict.export_schema import export_schemas
 
 
 def test_pictspec_accepts_smiles_and_cxsmiles():
-    s = PictSpec.model_validate(
-        {"molecules": [{"smiles": "CCO"}, {"cxsmiles": "CCO |$;;OH$|"}]}
-    )
+    s = PictSpec.model_validate({"molecules": [{"smiles": "CCO"}, {"cxsmiles": "CCO |$;;OH$|"}]})
     assert s.molecules[0].smiles == "CCO"
     assert s.molecules[1].cxsmiles is not None
 

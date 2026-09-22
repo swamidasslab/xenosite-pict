@@ -269,11 +269,7 @@ def _maps_from_seed(
             for on in oth_adj[_o]:
                 if on in mapping:
                     continue
-                cands = [
-                    rn
-                    for rn in ref_adj[_r]
-                    if rn not in inv and compatible(on, rn, mapping)
-                ]
+                cands = [rn for rn in ref_adj[_r] if rn not in inv and compatible(on, rn, mapping)]
                 if cands:
                     growable.append((len(cands), on, cands))
         if not growable:
@@ -430,10 +426,9 @@ class Aligner(Protocol):
     name: str
     supports_template: bool
 
-    def map_atoms(
-        self, ref: MoleculeLayout, other: MoleculeLayout
-    ) -> dict[int, int] | None:
+    def map_atoms(self, ref: MoleculeLayout, other: MoleculeLayout) -> dict[int, int] | None:
         """Matched atoms as other index → reference index. None if too small."""
+        ...
 
     def rigid_align(
         self,
@@ -442,6 +437,7 @@ class Aligner(Protocol):
         mapping: dict[int, int],
     ) -> MoleculeLayout:
         """Rotate/translate ``other`` onto ``ref`` using ``mapping``."""
+        ...
 
     def depict_on_template(
         self,
@@ -452,6 +448,7 @@ class Aligner(Protocol):
         smiles: str | None = None,
     ) -> MoleculeLayout | None:
         """Redraw ``other`` with mapped atoms fixed to ``ref``. None if unsupported."""
+        ...
 
 
 def _invert_tetrahedral(bond: BondLayout) -> BondLayout:
@@ -469,15 +466,19 @@ def _with_warning(layout: MoleculeLayout, text: str) -> MoleculeLayout:
     return layout.model_copy(update={"warnings": [*layout.warnings, text]})
 
 
+# Public re-exports for align_rdkit / shared helpers.
+choose_mapping = _choose_mapping
+mcs_mapping = _mcs_mapping
+with_warning = _with_warning
+
+
 class RigidAligner:
     """Depict-then-superimpose. The fallback every backend can do."""
 
     name = "rigid"
     supports_template = False
 
-    def map_atoms(
-        self, ref: MoleculeLayout, other: MoleculeLayout
-    ) -> dict[int, int] | None:
+    def map_atoms(self, ref: MoleculeLayout, other: MoleculeLayout) -> dict[int, int] | None:
         return _mcs_mapping(ref, other)
 
     def rigid_align(

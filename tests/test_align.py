@@ -52,9 +52,7 @@ def test_rigid_align_moves_flipped_molecule():
     ref = _layout("c1ccc(cc1)O")
     other = _layout("COc1ccccc1")
     flipped = other.model_copy(
-        update={
-            "atoms": [a.model_copy(update={"x": -a.x, "y": -a.y + 5.0}) for a in other.atoms]
-        }
+        update={"atoms": [a.model_copy(update={"x": -a.x, "y": -a.y + 5.0}) for a in other.atoms]}
     )
     aligned = align_layouts([ref, flipped], enabled=True, aligner=RigidAligner())
     assert "alignment: rigid transform" in aligned[1].warnings
@@ -206,9 +204,7 @@ def test_outlier_does_not_dislodge_the_core():
         degree[bond.begin] = degree.get(bond.begin, 0) + 1
         degree[bond.end] = degree.get(bond.end, 0) + 1
     leaf = next(
-        atom.index
-        for atom in other.atoms
-        if atom.element == "C" and degree.get(atom.index, 0) == 1
+        atom.index for atom in other.atoms if atom.element == "C" and degree.get(atom.index, 0) == 1
     )
     moved = other.model_copy(
         update={

@@ -27,10 +27,11 @@ def _resolve_backend_name(requested: str | None) -> str:
             return "native"
         if name == "rdkit":
             try:
-                import rdkit  # noqa: F401
+                import importlib.util
 
-                return "rdkit"
-            except ImportError:
+                if importlib.util.find_spec("rdkit") is not None:
+                    return "rdkit"
+            except (ImportError, ValueError, ModuleNotFoundError):
                 continue
     return "native"
 
@@ -83,9 +84,7 @@ class Pict:
             return scene_to_html(scene)
         return scene_to_svg(scene)
 
-    def layout(
-        self, spec: PictSpec | LegacyPictSpec | dict[str, Any]
-    ) -> LayoutResult:
+    def layout(self, spec: PictSpec | LegacyPictSpec | dict[str, Any]) -> LayoutResult:
         doc = _to_legacy(spec)
         backend = get_backend(self.backend)
         layouts = align_layouts(

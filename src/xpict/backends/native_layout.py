@@ -25,6 +25,7 @@ from xpict.contracts.layout import AtomLayout, BondLayout, MoleculeLayout
 from xpict.draw.rings import (
     Ring,
     RingAttachment,
+    RingPairRelation,
     all_rings_can_be_regular_polygons,
     embed_regular_ring,
     find_sssr,
@@ -64,9 +65,7 @@ def _cycle_from_edge(ring: Ring, a: int, b: int) -> tuple[int, ...]:
     raise ValueError(f"edge {a}-{b} not in ring {ring.atoms}")
 
 
-def _centroid(
-    atom_ids: list[int], coords: dict[int, tuple[float, float]]
-) -> tuple[float, float]:
+def _centroid(atom_ids: list[int], coords: dict[int, tuple[float, float]]) -> tuple[float, float]:
     pts = [coords[i] for i in atom_ids if i in coords]
     if not pts:
         return 0.0, 0.0
@@ -131,15 +130,13 @@ def _place_fused_ring(
         coords[atom_idx] = xform(*ideal[k], flip=flip)
 
 
-def _place_ring_systems(
-    rings: list[Ring], coords: dict[int, tuple[float, float]]
-) -> set[int]:
+def _place_ring_systems(rings: list[Ring], coords: dict[int, tuple[float, float]]) -> set[int]:
     placed: set[int] = set()
     if not rings:
         return placed
 
     relations = ring_pair_relations(rings)
-    rel_by_pair: dict[frozenset[tuple[int, ...]], object] = {
+    rel_by_pair: dict[frozenset[tuple[int, ...]], RingPairRelation] = {
         frozenset({rel.a.atoms, rel.b.atoms}): rel for rel in relations
     }
 
@@ -192,9 +189,7 @@ def _place_ring_systems(
                     sa, sb = next(iter(rel.shared_bonds))
                 else:
                     sa, sb = tuple(rel.shared_atoms)
-                _place_fused_ring(
-                    ring, sa, sb, coords, _centroid(list(done.atoms), coords)
-                )
+                _place_fused_ring(ring, sa, sb, coords, _centroid(list(done.atoms), coords))
                 placed.update(ring.atoms)
                 progress = True
             pending = next_pending
@@ -310,9 +305,7 @@ def _place_chains(mol: ParsedMol, coords: dict[int, tuple[float, float]]) -> Non
         if not unplaced:
             continue
         ux, uy = coords[u]
-        occupied = [
-            _angle(coords[v][0] - ux, coords[v][1] - uy) for v in adj[u] if v in coords
-        ]
+        occupied = [_angle(coords[v][0] - ux, coords[v][1] - uy) for v in adj[u] if v in coords]
         # Chain zig-zag bias: if exactly one occupied neighbor, prefer ±120° bond
         # angle (CDK linear chain) by seeding a phantom occupied opposite so the
         # free wedge favors the turn — handled naturally when occupied has 1 entry
@@ -413,9 +406,7 @@ def _stereo_parity_from_db(bond: ParsedBond, db_atom: int) -> bool | None:
     return None
 
 
-def _connected_component(
-    start: int, blocked: set[int], adj: dict[int, list[int]]
-) -> set[int]:
+def _connected_component(start: int, blocked: set[int], adj: dict[int, list[int]]) -> set[int]:
     """Atoms reachable from ``start`` without crossing ``blocked``."""
     out = {start}
     q = deque([start])
@@ -537,9 +528,7 @@ def _clash_score(
     return score
 
 
-def _mitigate_terminal_collisions(
-    mol: ParsedMol, coords: dict[int, tuple[float, float]]
-) -> None:
+def _mitigate_terminal_collisions(mol: ParsedMol, coords: dict[int, tuple[float, float]]) -> None:
     """Flip terminal substituents across their attachment bond if they clash.
 
     Guide: RDKit depictor collision flips / CDK openAngles — try the alternate
@@ -554,11 +543,7 @@ def _mitigate_terminal_collisions(
         bonded.add(frozenset({b.begin, b.end}))
 
     min_sep = _BOND_LEN * 0.85
-    terminals = [
-        a.index
-        for a in mol.atoms
-        if len(adj[a.index]) == 1 and a.index in coords
-    ]
+    terminals = [a.index for a in mol.atoms if len(adj[a.index]) == 1 and a.index in coords]
     for t in terminals:
         parent = adj[t][0]
         px, py = coords[parent]
@@ -586,9 +571,7 @@ def _mitigate_terminal_collisions(
         )
         for delta in (math.radians(120.0), -math.radians(120.0)):
             ang = _norm_angle(mean_occ + delta)
-            candidates.append(
-                (px + math.cos(ang) * _BOND_LEN, py + math.sin(ang) * _BOND_LEN)
-            )
+            candidates.append((px + math.cos(ang) * _BOND_LEN, py + math.sin(ang) * _BOND_LEN))
 
         best = coords[t]
         best_score = _clash_score(coords, bonded, min_sep=min_sep)
@@ -647,6 +630,7 @@ def _assign_tetrahedral_wedges(
             nbrs,
             key=lambda v: math.atan2(coords[v][1] - cy, coords[v][0] - cx),
         )
+
         # Signed area of triangle (n0,n1,n2) around center → 2D winding of neighbors.
         def _ccw(a: int, b: int, c: int) -> float:
             ax, ay = coords[a][0] - cx, coords[a][1] - cy
@@ -702,16 +686,10 @@ def layout_parsed(mol: ParsedMol, *, mol_id: str | None = None) -> MoleculeLayou
     _assign_tetrahedral_wedges(mol, coords, bonds)
     warnings = list(mol.warnings)
     if rings and not all_rings_can_be_regular_polygons(rings):
-        warnings.append(
-            "bridged/cage ring system: native does not force all SSSR faces regular"
-        )
+        warnings.append("bridged/cage ring system: native does not force all SSSR faces regular")
     if any(a.tetrahedral for a in mol.atoms):
-        warnings.append(
-            "native tetrahedral wedges are SMILES-parity heuristics, not full CIP"
-        )
-    warnings.append(
-        "native layout is experimental; indigo remains the transitional default"
-    )
+        warnings.append("native tetrahedral wedges are SMILES-parity heuristics, not full CIP")
+    warnings.append("native layout is experimental; indigo remains the transitional default")
     return MoleculeLayout(
         id=mol_id,
         atoms=atoms,

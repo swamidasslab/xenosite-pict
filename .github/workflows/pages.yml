@@ -4,6 +4,7 @@
 # Source: demo/  (assembled with built ESM + wasm under pkg/)
 #
 # Runs on every push to main (and manual dispatch) — not tag-gated.
+# Deploy is gated on CI (strict tsc + pyright + pytest).
 
 name: Deploy demo to GitHub Pages
 
@@ -22,7 +23,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
+
   build:
+    needs: checks
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -54,6 +59,10 @@ jobs:
       - name: Install JS deps
         working-directory: js
         run: npm ci
+
+      - name: Strict TypeScript check
+        working-directory: js
+        run: npm run check
 
       - name: Build Pages site
         run: bash scripts/build_pages.sh "$GITHUB_WORKSPACE/_site"

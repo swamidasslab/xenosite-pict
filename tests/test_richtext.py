@@ -6,7 +6,7 @@ import re
 
 from xpict import render
 from xpict.draw.glyphs import compile_text_path_d, compile_text_shapes
-from xpict.draw.richtext import StyledText, TextRun, plain_text, parse_richtext
+from xpict.draw.richtext import StyledText, TextRun, plain_text
 
 
 def test_greek_and_symbol_macros():
@@ -42,11 +42,7 @@ def test_compile_shapes_shared_engine():
 
 def test_svg_emits_glyph_paths_not_text():
     svg = render(
-        {
-            "molecules": [
-                {"smiles": "CCO", "label": r"$\alpha$-**EtOH**"}
-            ]
-        },
+        {"molecules": [{"smiles": "CCO", "label": r"$\alpha$-**EtOH**"}]},
         backend="native",
     )
     assert "<text" not in svg

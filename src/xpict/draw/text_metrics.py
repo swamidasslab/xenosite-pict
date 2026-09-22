@@ -190,9 +190,7 @@ def measure_text(text: str, font_size: float = FONT_PX) -> TextMetrics:
     return measure_styled(StyledText.from_markup(text), font_size)
 
 
-def _measure_plain(
-    text: str, font_size: float, *, style: FaceStyle = "regular"
-) -> TextMetrics:
+def _measure_plain(text: str, font_size: float, *, style: FaceStyle = "regular") -> TextMetrics:
     face = face_metrics(style)
     scale = font_size / face.upem
     advance_em = 0.0
@@ -200,7 +198,12 @@ def _measure_plain(
     x_cursor = 0.0
     for ch in text:
         g = glyph_metrics(ch, style)
-        if g.has_ink:
+        if (
+            g.ink_xmin is not None
+            and g.ink_ymin is not None
+            and g.ink_xmax is not None
+            and g.ink_ymax is not None
+        ):
             gx0 = x_cursor + float(g.ink_xmin)
             gy0 = float(g.ink_ymin)
             gx1 = x_cursor + float(g.ink_xmax)
@@ -218,8 +221,13 @@ def _measure_plain(
         return Box(xmin * scale, -ymax * scale, xmax * scale, -ymin * scale)
 
     ink_box = None
-    if ink_xmin is not None:
-        ink_box = _to_svg_box(ink_xmin, ink_ymin, ink_xmax, ink_ymax)  # type: ignore[arg-type]
+    if (
+        ink_xmin is not None
+        and ink_ymin is not None
+        and ink_xmax is not None
+        and ink_ymax is not None
+    ):
+        ink_box = _to_svg_box(ink_xmin, ink_ymin, ink_xmax, ink_ymax)
     typo_box = _to_svg_box(*typo_em)
     return TextMetrics(
         text=text,
@@ -231,9 +239,7 @@ def _measure_plain(
 
 
 @lru_cache(maxsize=256)
-def measure_runs(
-    runs: tuple[TextRun, ...], font_size: float = FONT_PX
-) -> TextMetrics:
+def measure_runs(runs: tuple[TextRun, ...], font_size: float = FONT_PX) -> TextMetrics:
     """Metrics for styled runs laid out on one baseline."""
     if not runs:
         return _measure_plain("", font_size)
@@ -251,7 +257,12 @@ def measure_runs(
         plain_parts.append(run.text)
         for ch in run.text:
             g = glyph_metrics(ch, style)
-            if g.has_ink:
+            if (
+                g.ink_xmin is not None
+                and g.ink_ymin is not None
+                and g.ink_xmax is not None
+                and g.ink_ymax is not None
+            ):
                 gx0 = x_cursor + float(g.ink_xmin)
                 gy0 = float(g.ink_ymin)
                 gx1 = x_cursor + float(g.ink_xmax)
@@ -269,8 +280,13 @@ def measure_runs(
         return Box(xmin * scale, -ymax * scale, xmax * scale, -ymin * scale)
 
     ink_box = None
-    if ink_xmin is not None:
-        ink_box = _to_svg_box(ink_xmin, ink_ymin, ink_xmax, ink_ymax)  # type: ignore[arg-type]
+    if (
+        ink_xmin is not None
+        and ink_ymin is not None
+        and ink_xmax is not None
+        and ink_ymax is not None
+    ):
+        ink_box = _to_svg_box(ink_xmin, ink_ymin, ink_xmax, ink_ymax)
     return TextMetrics(
         text="".join(plain_parts),
         font_size=font_size,

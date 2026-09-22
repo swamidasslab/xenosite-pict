@@ -8,10 +8,14 @@ same way and feed coords into shared Rust draw/align helpers.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from xpict.backends.base import register, warn_unsupported
 from xpict.contracts.layout import AtomLayout, BondLayout, MoleculeLayout
 from xpict.contracts.spec import MoleculeSpec
 from xpict.structure import cx_atom_labels, structure_smiles
+
+BondStereo = Literal["up", "down", "either", "none"]
 
 
 def _element_label(
@@ -45,7 +49,7 @@ def _element_label(
     return text
 
 
-def _bond_stereo(bond) -> str:
+def _bond_stereo(bond) -> BondStereo:
     from rdkit import Chem
 
     # Direction relative to begin→end as stored on the bond.
@@ -83,8 +87,7 @@ class RdkitBackend:
             from rdkit.Chem import rdDepictor
         except ImportError as e:
             raise ImportError(
-                "RDKit backend requires rdkit. "
-                "Install with: pip install 'xpict[rdkit]'"
+                "RDKit backend requires rdkit. Install with: pip install 'xpict[rdkit]'"
             ) from e
 
         if mol.esmiles:
@@ -99,13 +102,11 @@ class RdkitBackend:
         else:
             smiles = structure_smiles(mol)
             if not smiles:
-                raise ValueError(
-                    "rdkit backend requires smiles, cxsmiles, esmiles, or molfile"
-                )
+                raise ValueError("rdkit backend requires smiles, cxsmiles, esmiles, or molfile")
             rmol = Chem.MolFromSmiles(smiles)
             cx_labels = cx_atom_labels(smiles)
 
-        if rmol is None:
+        if rmol is None:  # pyright: ignore[reportUnnecessaryComparison]
             raise ValueError("RDKit could not parse molecule")
 
         try:

@@ -86,9 +86,7 @@ def test_codisplayed_unlabeled_bonds_match_length():
     layouts = pict.layout(doc).molecules
     scale = shared_coord_scale(layouts)
     place = layout_diagram_ex(layouts, doc)
-    scene = build_scene(
-        layouts, doc.molecules, doc, positions=place.positions, scale=scale
-    )
+    scene = build_scene(layouts, doc.molecules, doc, positions=place.positions, scale=scale)
 
     def unlabeled_skeleton_lens(vp):
         out = []

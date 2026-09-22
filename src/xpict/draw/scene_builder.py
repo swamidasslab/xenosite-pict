@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from xpict.contracts.layout import MoleculeLayout
-from xpict.contracts.scene import PathPrim, Scene, Viewport
+from xpict.contracts.scene import Primitive, Scene, Viewport
 from xpict.contracts.spec import LegacyPictSpec, MoleculeSpec
 from xpict.draw.arrows import diagram_overlays
 from xpict.draw.drawable import (
@@ -25,6 +25,7 @@ def _flat(spec: LegacyPictSpec | object) -> LegacyPictSpec:
     if callable(to_legacy):
         return to_legacy()  # type: ignore[no-any-return]
     return spec  # type: ignore[return-value]
+
 
 __all__ = [
     "build_scene",
@@ -52,9 +53,7 @@ def viewport_size(
     text = _label_text(mol_spec)
     if text is None or mol_spec is None or mol_spec.label is None:
         return width, height
-    texts = apply_rgroup_texts(
-        layout, mol_spec, [display_text(a) for a in layout.atoms]
-    )
+    texts = apply_rgroup_texts(layout, mol_spec, [display_text(a) for a in layout.atoms])
     occ = mol_occupancy(layout, coords, texts)
     pack = pack_label(
         frame_width=width,
@@ -135,7 +134,7 @@ def build_scene(
     # Diagram arrows / edge labels are drawn but do not opt into the halo.
     overlays = diagram_overlays(spec.diagram.edges, placed, edge_paths=edge_paths)
 
-    halo_prims: list[PathPrim] = []
+    halo_prims: list[Primitive] = []
     if spec.halo and doc_halo:
         prim = doc_halo.to_prim(cls="halo")
         if prim is not None:

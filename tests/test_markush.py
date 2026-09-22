@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from xpict import render
-from xpict.contracts.nodes import PictSpec
-from xpict.contracts.spec import MoleculeSpec, RingAttachmentSpec
+from xpict import Pict, render
+from xpict.contracts.spec import MoleculeSpec
+from xpict.draw.drawable import display_text
 from xpict.draw.markush import (
     apply_rgroup_texts,
     resolve_rgroups,
@@ -15,14 +15,10 @@ from xpict.draw.markush import (
     rtable_groups,
     star_atom_indices,
 )
-from xpict.draw.drawable import display_text
-from xpict import Pict
 
 
 def test_rgroups_list_assigns_stars_in_order():
-    lay = Pict(backend="native").layout(
-        {"molecules": [{"smiles": "*C*"}]}
-    ).molecules[0]
+    lay = Pict(backend="native").layout({"molecules": [{"smiles": "*C*"}]}).molecules[0]
     stars = star_atom_indices(lay)
     assert len(stars) == 2
     ov = resolve_rgroups(lay, ["R¹", None])
@@ -31,9 +27,7 @@ def test_rgroups_list_assigns_stars_in_order():
 
 
 def test_rgroups_dict_by_star_ordinal():
-    lay = Pict(backend="native").layout(
-        {"molecules": [{"smiles": "*CC*"}]}
-    ).molecules[0]
+    lay = Pict(backend="native").layout({"molecules": [{"smiles": "*CC*"}]}).molecules[0]
     ov = resolve_rgroups(lay, {"1": "R2", "0": "R1"})
     stars = star_atom_indices(lay)
     assert ov[stars[0]] == "R1"
@@ -49,7 +43,7 @@ def test_rgroups_render_label_on_star():
         },
         backend="native",
     )
-    assert "R¹" in svg or "data-text=\"R¹\"" in svg or "R" in svg
+    assert "R¹" in svg or 'data-text="R¹"' in svg or "R" in svg
 
 
 def test_rings_and_ring_attachment_schema():
@@ -126,9 +120,7 @@ def test_ring_attachment_draws_callout():
                 {
                     "smiles": "c1ccccc1",
                     "rings": {"A": [0, 1, 2, 3, 4, 5]},
-                    "ring_attachments": [
-                        {"ring": "A", "label": "R", "prefer": "right"}
-                    ],
+                    "ring_attachments": [{"ring": "A", "label": "R", "prefer": "right"}],
                 }
             ]
         },
@@ -138,12 +130,8 @@ def test_ring_attachment_draws_callout():
 
 
 def test_apply_rgroup_texts_overrides_display():
-    lay = Pict(backend="native").layout(
-        {"molecules": [{"smiles": "*C"}]}
-    ).molecules[0]
+    lay = Pict(backend="native").layout({"molecules": [{"smiles": "*C"}]}).molecules[0]
     mol = MoleculeSpec.model_validate({"smiles": "*C", "rgroups": ["X"]})
-    texts = apply_rgroup_texts(
-        lay, mol, [display_text(a) for a in lay.atoms]
-    )
+    texts = apply_rgroup_texts(lay, mol, [display_text(a) for a in lay.atoms])
     star_i = next(i for i, a in enumerate(lay.atoms) if a.element == "*")
     assert texts[star_i] == "X"

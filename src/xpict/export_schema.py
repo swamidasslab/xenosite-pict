@@ -69,18 +69,21 @@ def _looks_like_schema(node: dict[str, Any]) -> bool:
 
 def _walk_collect(node: Any, counts: dict[str, int], examples: dict[str, Any]) -> None:
     """Count duplicate dict subschemas only (never lists — oneOf etc. must stay arrays)."""
-    if isinstance(node, dict):
-        if _is_ref(node):
+    match node:
+        case dict():
+            if _is_ref(node):
+                return
+            if _looks_like_schema(node):
+                key = _canon(node)
+                counts[key] += 1
+                examples.setdefault(key, node)
+            for v in node.values():
+                _walk_collect(v, counts, examples)
+        case list():
+            for v in node:
+                _walk_collect(v, counts, examples)
+        case _:
             return
-        if _looks_like_schema(node):
-            key = _canon(node)
-            counts[key] += 1
-            examples.setdefault(key, node)
-        for v in node.values():
-            _walk_collect(v, counts, examples)
-    elif isinstance(node, list):
-        for v in node:
-            _walk_collect(v, counts, examples)
 
 
 def _slug_for(subtree: Any, used: set[str]) -> str:
@@ -141,33 +144,24 @@ def minify_json_schema(schema: dict[str, Any]) -> dict[str, Any]:
         canon_to_name[key] = name
 
     def rewrite(node: Any, path: tuple[Any, ...] = (), parent_key: str | None = None) -> Any:
-        if isinstance(node, dict):
-            if _is_ref(node):
+        match node:
+            case dict():
+                if _is_ref(node):
+                    return node
+                key = _canon(node)
+                name = canon_to_name.get(key)
+                at_def_body = len(path) == 2 and path[0] == "$defs" and path[1] == name
+                if name is not None and not at_def_body and parent_key not in _NO_REF_VALUE:
+                    return {"$ref": f"#/$defs/{name}"}
+                return {k: rewrite(v, (*path, k), parent_key=k) for k, v in node.items()}
+            case list():
+                return [rewrite(v, (*path, i), parent_key=parent_key) for i, v in enumerate(node)]
+            case _:
                 return node
-            key = _canon(node)
-            name = canon_to_name.get(key)
-            at_def_body = len(path) == 2 and path[0] == "$defs" and path[1] == name
-            if (
-                name is not None
-                and not at_def_body
-                and parent_key not in _NO_REF_VALUE
-            ):
-                return {"$ref": f"#/$defs/{name}"}
-            return {
-                k: rewrite(v, (*path, k), parent_key=k) for k, v in node.items()
-            }
-        if isinstance(node, list):
-            return [
-                rewrite(v, (*path, i), parent_key=parent_key)
-                for i, v in enumerate(node)
-            ]
-        return node
 
     out = rewrite(root)
     assert isinstance(out, dict)
-    out["$defs"] = {
-        name: rewrite(body, ("$defs", name)) for name, body in defs.items()
-    }
+    out["$defs"] = {name: rewrite(body, ("$defs", name)) for name, body in defs.items()}
     return out
 
 
@@ -212,9 +206,7 @@ def factor_node_common_allof(schema: dict[str, Any]) -> dict[str, Any]:
     # Templates: MolNode for common fields; GridNode for children.
     mol_props = dict((defs.get("MolNode") or {}).get("properties") or {})
     grid_props = dict((defs.get("GridNode") or {}).get("properties") or {})
-    common_props = {
-        k: mol_props[k] for k in _NODE_COMMON_FIELDS if k in mol_props
-    }
+    common_props = {k: mol_props[k] for k in _NODE_COMMON_FIELDS if k in mol_props}
     # Prefer children schema from a container template when present.
     children_prop = grid_props.get("children") or mol_props.get("children")
     if len(common_props) < 2:
@@ -231,8 +223,7 @@ def factor_node_common_allof(schema: dict[str, Any]) -> dict[str, Any]:
         defs["ContainerCommon"] = {
             "title": "ContainerCommon",
             "description": (
-                "Node that owns nested children "
-                "(group / grid / stack / reaction / network)."
+                "Node that owns nested children (group / grid / stack / reaction / network)."
             ),
             "allOf": [
                 {"$ref": "#/$defs/NodeCommon"},
@@ -274,11 +265,7 @@ def factor_node_common_allof(schema: dict[str, Any]) -> dict[str, Any]:
             for k, v in props.items()
             if k not in common_props and k not in _CONTAINER_COMMON_FIELDS
         }
-        base_ref = (
-            "#/$defs/ContainerCommon"
-            if "ContainerCommon" in defs
-            else "#/$defs/NodeCommon"
-        )
+        base_ref = "#/$defs/ContainerCommon" if "ContainerCommon" in defs else "#/$defs/NodeCommon"
         extension: dict[str, Any] = {"type": "object", "properties": own}
         rewritten = {
             "title": body.get("title", name),
@@ -302,9 +289,7 @@ def factor_node_common_allof(schema: dict[str, Any]) -> dict[str, Any]:
     return root
 
 
-def export_schemas(
-    out_dir: Path | None = None, *, minify: bool = True
-) -> dict[str, Path]:
+def export_schemas(out_dir: Path | None = None, *, minify: bool = True) -> dict[str, Path]:
     target = out_dir or schema_dir()
     target.mkdir(parents=True, exist_ok=True)
     raw = {
@@ -338,7 +323,7 @@ def main() -> None:
     print(json.dumps(mol, indent=2)[:600])
     assert "NodeCommon" in mini["$defs"]
     assert mol.get("allOf")
-    for name, path in export_schemas().items():
+    for _, path in export_schemas().items():
         print(f"wrote {path}")
 
 

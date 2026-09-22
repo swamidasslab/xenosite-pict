@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from xpict.contracts.layout import MoleculeLayout
 from xpict.contracts.spec import (
-    AnnotKind,
     AnnotationSpec,
-    AnnotPrefer,
+    AnnotKind,
     MoleculeSpec,
 )
 
@@ -75,7 +74,7 @@ def ring_attachment_annotations(
                 label=ra.label,
                 color=color,
                 arrow=True,
-                prefer=ra.prefer if isinstance(ra.prefer, AnnotPrefer) else AnnotPrefer.auto,
+                prefer=ra.prefer,
             )
         )
     return out

@@ -37,7 +37,7 @@ from __future__ import annotations
 import math
 from collections import defaultdict, deque
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 
 from xpict.contracts.layout import MoleculeLayout
 
@@ -59,12 +59,10 @@ class Ring:
     @property
     def bonds(self) -> frozenset[tuple[int, int]]:
         n = len(self.atoms)
-        return frozenset(
-            bond_key(self.atoms[i], self.atoms[(i + 1) % n]) for i in range(n)
-        )
+        return frozenset(bond_key(self.atoms[i], self.atoms[(i + 1) % n]) for i in range(n))
 
 
-class RingAttachment(str, Enum):
+class RingAttachment(StrEnum):
     """CDK ``RingPlacer`` connection kinds (by shared-atom / shared-bond count)."""
 
     ISOLATED = "isolated"
