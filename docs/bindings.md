@@ -58,8 +58,8 @@ of fontTools/Shapely.
 | --- | --- | --- |
 | 1 | Capsule / disk halo SVG paths | Done (`geom` + bindings) |
 | 2 | Polygon buffer + difference (glyph counters) | `halo_from_shapes` / `O` hole tests via `_native` |
-| 3 | Liberation Sans outlines → path `d` + advances | `label_outline` / caption glyphs via Rust |
-| 4 | Python draw calls only `native_bridge` for ink/text | Shapely **gone**; `fonttools` until `font` lands |
+| 3 | Liberation Sans outlines → path `d` + advances | **Done** (`ttf-parser` + `_native`) |
+| 4 | Python draw calls only `native_bridge` for ink/text | Shapely + fontTools **gone**; deps ≈ pydantic |
 | 5 | JS `native.ts` exposes the same glyph/halo APIs | Browser labels match Python gallery |
 
 Crates to prefer when filling stubs: **`ttf-parser`/`skrifa`** (fonts),

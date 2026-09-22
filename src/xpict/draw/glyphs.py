@@ -2,42 +2,17 @@
 
 One engine for every label: atom ink, molecule captions, edge labels, and
 halos. Markup is parsed to :class:`~xpict.draw.richtext.StyledText`
-first; this module only sees font-aligned Unicode runs and Liberation Sans
-faces (Regular / Bold / Italic / BoldItalic).
+first; outlines come from the Rust Liberation Sans stack (``xpict._native``).
 """
 
 from __future__ import annotations
 
-from fontTools.pens.transformPen import TransformPen
-
-from xpict.draw.font_face import (
-    ContourPen,
-    FaceStyle,
-    bundled_font_path,  # noqa: F401
-    face_style,
-    glyph_set_cmap_upem,
-)
+from xpict import _native
+from xpict.draw.font_face import FaceStyle, bundled_font_path, face_style  # noqa: F401
 from xpict.draw.metrics import FONT_PX
 from xpict.draw.richtext import StyledText, TextRun, parse_richtext
 from xpict.draw.text_metrics import measure_styled
 from xpict.native_bridge import Shape
-
-
-def _contours_to_geom(pen: ContourPen) -> Shape | None:
-    """Build geometry from TrueType contours via even-odd fill.
-
-    Fonts emit counters (the hole in ``O``, ``A``, …) as separate contours.
-    """
-    contours: list[list[tuple[float, float]]] = []
-    for contour in pen.contours:
-        if len(contour) < 3:
-            continue
-        contours.append([(float(x), float(y)) for x, y in contour])
-    if not contours:
-        return None
-    geom = Shape.from_contours_evenodd(contours)
-    return None if geom.is_empty else geom
-
 
 def _outline_run_em(
     text: str,
@@ -47,19 +22,8 @@ def _outline_run_em(
     """Outline plain Unicode in font space (+Y up); return (geom, advance_em)."""
     if not text:
         return None, 0.0
-    glyph_set, cmap, upem = glyph_set_cmap_upem(style)
-    pen = ContourPen(glyph_set)
-    pen_x = 0.0
-    for ch in text:
-        name = cmap.get(ord(ch))
-        if name is None:
-            pen_x += 0.5 * upem
-            continue
-        glyph = glyph_set[name]  # type: ignore[index]
-        tpen = TransformPen(pen, (1.0, 0.0, 0.0, 1.0, pen_x, 0.0))
-        glyph.draw(tpen)
-        pen_x += float(glyph.width)
-    return _contours_to_geom(pen), pen_x
+    shape, advance = _native.outline_run_em(text, style)
+    return shape, float(advance)
 
 
 def compile_text_shapes(
@@ -70,15 +34,21 @@ def compile_text_shapes(
     font_size: float = FONT_PX,
     anchor: str = "middle",
 ) -> Shape | None:
-    """Compile styled Unicode (or markup string) to SVG-space glyph geometry.
-
-    This is the shared shapes engine: captions, atom labels, edge labels, and
-    halos all go through here.
-    """
+    """Compile styled Unicode (or markup string) to SVG-space glyph geometry."""
     if isinstance(styled, str):
         styled = StyledText.from_markup(styled)
     if not styled:
         return None
+
+    # Fast path: single unstyled run → one native call.
+    if (
+        len(styled.runs) == 1
+        and not styled.runs[0].bold
+        and not styled.runs[0].italic
+    ):
+        return _native.compile_text_shapes(
+            styled.runs[0].text, x, y, font_size, anchor, "regular"
+        )
 
     metrics = measure_styled(styled, font_size)
     if anchor == "middle":
@@ -94,7 +64,8 @@ def compile_text_shapes(
             continue
         style = face_style(bold=run.bold, italic=run.italic)
         geom_em, advance_em = _outline_run_em(run.text, style=style)
-        _gs, _cmap, upem = glyph_set_cmap_upem(style)
+        face = _native.face_metrics(style)
+        upem = face[0]
         scale = font_size / upem
         run_advance = advance_em * scale
         if geom_em is not None and not geom_em.is_empty:
@@ -144,7 +115,7 @@ def compile_text_halo_d(
     anchor: str = "middle",
     buffer_px: float | None = None,
 ) -> str | None:
-    """White knockout for text — :func:`compile_text_shapes` then ``halo_from_shapes``."""
+    """White knockout for text — :func:`compile_text_shapes` then ``halo_path_d``."""
     from xpict.draw.halo import halo_path_d
 
     outline = compile_text_shapes(

@@ -1,4 +1,4 @@
-"""Optional Rust core (``xpict._native``). fontTools stay required for glyphs."""
+"""Rust core bindings (``xpict._native``). Extension is required on the ship path."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from typing import Any
 
 try:
     from xpict import _native as _rust
-except ImportError as e:  # pragma: no cover - extension required for ship path
+except ImportError as e:  # pragma: no cover
     raise ImportError(
         "xpict requires the Rust extension (xpict._native). "
         "Build with: maturin develop --manifest-path crates/xpict-py/Cargo.toml"

@@ -29,8 +29,7 @@ cd js && npm test
 **Multi-molecule diagrams:** ELK via native **`elkrs`** (`_native.elk_layout_json`).
 Grid/row if ELK fails. **jsrun / vendored elkjs removed.**
 
-**Core deps:** `pydantic` + `fonttools` + Rust extension (`geom` via `i_overlay`,
-no Shapely). fontTools leave once `font` finishes moving. RDKit / Indigo stay
+**Core deps:** `pydantic` + Rust extension (`geom`/`font`/`elk`). RDKit / Indigo stay
 **language-edge extras**.
 
 **Outputs:** SVG (default); HTML with embedded SVG for responsive pages.

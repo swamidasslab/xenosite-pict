@@ -13,7 +13,7 @@ Python (PyO3) and JS (WASM) share one implementation.
 | `bonds` | Multi-bond offset helpers | `draw/bonds.py` (partial) |
 | `elk` | Multi-mol diagram placement (elkrs) | `diagram/elk.py` |
 | `geom` | Buffer / union / counters (`i_overlay` Shape) | `draw/halo.py`, `glyphs.py` |
-| `font` *(stub)* | Liberation outlines + advances | `draw/font_face.py`, `glyphs.py` |
+| `font` | Liberation outlines + advances (`ttf-parser`) | `draw/font_face.py`, `glyphs.py` |
 | `rings` *(stub)* | SSSR helpers, interior normals | `draw/rings.py` |
 
 **Not** in this crate (yet or ever as invent-your-own): chem layout backends
@@ -50,8 +50,7 @@ cargo clippy -p xpict-core -- -D warnings
 See [`docs/bindings.md`](../../docs/bindings.md). Keep both binding crates in sync when
 adding exports.
 
-**Priority:** `font` (Liberation outlines) next so Python can drop fontTools
-and JS shares the same labels.
+**Priority:** WASM font export + rigid align helpers next.
 
 **Not in this crate:** RDKit or any chem engine. Python/JS call RDKit themselves
 for alignment; Rust only gets numeric maps/coordinates.

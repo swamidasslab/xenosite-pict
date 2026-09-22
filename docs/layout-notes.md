@@ -50,12 +50,12 @@ unify JS):
 | Module | Today | Target crates | Why first |
 | --- | --- | --- | --- |
 | `geom` | **Done** — `i_overlay` Shape | buffer / union / xor / halo | Halos, glyph counters, annotate |
-| `font` | fontTools + Liberation TTFs | `ttf-parser` / `skrifa` | Atom labels / captions → SVG paths |
+| `font` | **Done** — `ttf-parser` + Liberation | outlines / advances / Shape | Atom labels / captions → SVG paths |
 | `metrics` / `plotdot` / `bonds` | Done (partial) | — | Already in core + bindings |
 | `align` (rigid) | Python Kabsch | pure Rust | Indigo / no-RDKit fake align |
 
-Capsule/disk halos already call Rust. Glyph `halo_from_shapes` / label outlines
-should move next so JS never needs Shapely or fontTools.
+Capsule/disk halos and glyph outlines already call Rust. Next: WASM font
+exports so the browser matches Python labels without a JS font stack.
 
 ### Alignment + coords: RDKit at the edges — never in Rust
 

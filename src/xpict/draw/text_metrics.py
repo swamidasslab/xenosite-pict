@@ -3,8 +3,7 @@
 All em values use font space (+Y up). Pixel helpers use SVG space (+Y down)
 with the baseline as the y origin for relative boxes.
 
-These metrics drive bond end-gaps, label placement, and halo buffers so layout
-does not rely on a fixed ``0.62 em`` advance guess.
+Metrics come from the Rust ``ttf-parser`` stack (``xpict._native``).
 """
 
 from __future__ import annotations
@@ -12,12 +11,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from functools import lru_cache
 
-from fontTools.pens.boundsPen import BoundsPen
-
-from xpict.draw.font_face import ContourPen, FaceStyle, face_style, glyph_set_cmap_upem, ttfont
+from xpict import _native
+from xpict.draw.font_face import FaceStyle, face_style
 from xpict.draw.metrics import FONT_PX, LABEL_GAP_PX
 from xpict.draw.richtext import StyledText, TextRun
-from xpict.native_bridge import Shape
 
 
 @dataclass(frozen=True)
@@ -115,11 +112,7 @@ class TextMetrics:
         *,
         anchor: str = "middle",
     ) -> tuple[Box | None, Box, float]:
-        """Return ``(ink, typo, origin_x)`` with baseline at ``y``.
-
-        ``origin_x`` is the left edge of the advance. ``x`` follows SVG
-        ``text-anchor``.
-        """
+        """Return ``(ink, typo, origin_x)`` with baseline at ``y``."""
         if anchor == "middle":
             origin_x = x - 0.5 * self.advance
         elif anchor == "end":
@@ -143,12 +136,7 @@ class TextMetrics:
         return ink, typo, origin_x
 
     def clearance(self, *, pad: float | None = None) -> float:
-        """Isotropic bond inset for a middle-anchored label on the atom.
-
-        Half of the larger of advance and ink width, plus ``LABEL_GAP_PX`` so
-        the stroke stops outside the white glyph halo (and leaves a readable
-        gap on light or dark host pages).
-        """
+        """Isotropic bond inset for a middle-anchored label on the atom."""
         margin = LABEL_GAP_PX if pad is None else pad
         half = 0.5 * self.advance
         if self.ink is not None:
@@ -156,28 +144,17 @@ class TextMetrics:
         return half + margin
 
 
-@lru_cache(maxsize=1)
-def face_metrics() -> FontFaceMetrics:
-    font = ttfont()
-    upem = float(font["head"].unitsPerEm)
-    hhea = font["hhea"]
-    os2 = font["OS/2"]
-    cap = float(getattr(os2, "sCapHeight", 0) or 0)
-    xh = float(getattr(os2, "sxHeight", 0) or 0)
-    if cap <= 0:
-        g = glyph_metrics("H")
-        cap = float(g.ink_ymax or 0.0)
-    if xh <= 0:
-        g = glyph_metrics("x")
-        xh = float(g.ink_ymax or 0.0)
+@lru_cache(maxsize=4)
+def face_metrics(style: FaceStyle = "regular") -> FontFaceMetrics:
+    upem, ascent, descent, line_gap, cap, xh, stem = _native.face_metrics(style)
     return FontFaceMetrics(
-        upem=upem,
-        ascent=float(hhea.ascent),
-        descent=float(hhea.descent),
-        line_gap=float(hhea.lineGap),
-        cap_height=cap,
-        x_height=xh,
-        stem_em=_measure_stem_em(),
+        upem=float(upem),
+        ascent=float(ascent),
+        descent=float(descent),
+        line_gap=float(line_gap),
+        cap_height=float(cap),
+        x_height=float(xh),
+        stem_em=float(stem),
     )
 
 
@@ -187,51 +164,19 @@ def glyph_metrics(char: str, style: FaceStyle = "regular") -> GlyphMetrics:
     if not char:
         return GlyphMetrics("", ".null", 0.0, None, None, None, None)
     ch = char[0]
-    glyph_set, cmap, upem = glyph_set_cmap_upem(style)
-    name = cmap.get(ord(ch))
-    if name is None:
-        return GlyphMetrics(ch, ".notdef", 0.5 * upem, None, None, None, None)
-    glyph = glyph_set[name]  # type: ignore[index]
-    bp = BoundsPen(glyph_set)
-    glyph.draw(bp)
-    if bp.bounds is None:
-        return GlyphMetrics(ch, name, float(glyph.width), None, None, None, None)
-    xmin, ymin, xmax, ymax = bp.bounds
+    advance, ink = _native.glyph_metrics(ch, style)
+    if ink is None:
+        return GlyphMetrics(ch, ch, float(advance), None, None, None, None)
+    xmin, ymin, xmax, ymax = ink
     return GlyphMetrics(
         ch,
-        name,
-        float(glyph.width),
+        ch,
+        float(advance),
         float(xmin),
         float(ymin),
         float(xmax),
         float(ymax),
     )
-
-
-def _measure_stem_em() -> float:
-    """Vertical stem width of H in em, via outline coverage at mid-cap."""
-    glyph_set, cmap, upem = glyph_set_cmap_upem()
-    name = cmap.get(ord("H"))
-    if name is None:
-        return 0.0933
-    pen = ContourPen(glyph_set)
-    glyph_set[name].draw(pen)  # type: ignore[index]
-    contours: list[list[tuple[float, float]]] = []
-    for contour in pen.contours:
-        if len(contour) < 3:
-            continue
-        contours.append([(float(x), float(y)) for x, y in contour])
-    if not contours:
-        return 0.0933
-    geom = Shape.from_contours_evenodd(contours)
-    if geom.is_empty or geom.bounds is None:
-        return 0.0933
-    _minx, miny, _maxx, maxy = geom.bounds
-    y = miny + 0.75 * (maxy - miny)
-    span = geom.horizontal_span_at(y)
-    if span <= 0:
-        return 0.0933
-    return float(span) / upem
 
 
 def measure_styled(styled: StyledText, font_size: float = FONT_PX) -> TextMetrics:
@@ -241,17 +186,14 @@ def measure_styled(styled: StyledText, font_size: float = FONT_PX) -> TextMetric
 
 @lru_cache(maxsize=256)
 def measure_text(text: str, font_size: float = FONT_PX) -> TextMetrics:
-    """Advance / boxes for markup or plain text at ``font_size``.
-
-    Parses markup to :class:`StyledText`, then measures with the matching faces.
-    """
+    """Advance / boxes for markup or plain text at ``font_size``."""
     return measure_styled(StyledText.from_markup(text), font_size)
 
 
 def _measure_plain(
     text: str, font_size: float, *, style: FaceStyle = "regular"
 ) -> TextMetrics:
-    face = face_metrics()
+    face = face_metrics(style)
     scale = font_size / face.upem
     advance_em = 0.0
     ink_xmin = ink_ymin = ink_xmax = ink_ymax = None
@@ -348,11 +290,7 @@ def text_box(
     pad: float = 0.0,
     which: str = "ink",
 ) -> Box:
-    """Absolute SVG box for ``text`` with baseline at ``(x, y)`` per anchor.
-
-    ``which`` is ``\"ink\"`` (tight glyph bounds) or ``\"typo\"`` (ascender line).
-    Falls back to typo when the run has no ink.
-    """
+    """Absolute SVG box for ``text`` with baseline at ``(x, y)`` per anchor."""
     m = measure_text(text, font_size)
     ink, typo, _ = m.at(x, y, anchor=anchor)
     box = ink if which == "ink" and ink is not None else typo

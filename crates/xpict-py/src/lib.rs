@@ -69,6 +69,82 @@ fn elk_layout_json(graph_json: &str) -> PyResult<String> {
     xpict_core::elk_layout_json(graph_json).map_err(PyRuntimeError::new_err)
 }
 
+fn parse_face_style(style: &str) -> xpict_core::font::FaceStyle {
+    match style {
+        "bold" => xpict_core::font::FaceStyle::Bold,
+        "italic" => xpict_core::font::FaceStyle::Italic,
+        "bold_italic" => xpict_core::font::FaceStyle::BoldItalic,
+        _ => xpict_core::font::FaceStyle::Regular,
+    }
+}
+
+/// `(upem, ascent, descent, line_gap, cap_height, x_height, stem_em)`.
+#[pyfunction]
+#[pyo3(signature = (style="regular"))]
+fn face_metrics(style: &str) -> (f64, f64, f64, f64, f64, f64, f64) {
+    let m = xpict_core::font::face_metrics(parse_face_style(style));
+    (
+        m.upem,
+        m.ascent,
+        m.descent,
+        m.line_gap,
+        m.cap_height,
+        m.x_height,
+        m.stem_em,
+    )
+}
+
+/// `(advance, ink_xmin, ink_ymin, ink_xmax, ink_ymax)` — ink may be None via NaN sentinel…  
+/// Returns `(advance, Option<(xmin,ymin,xmax,ymax)>)`.
+#[pyfunction]
+#[pyo3(signature = (ch, style="regular"))]
+fn glyph_metrics(ch: &str, style: &str) -> (f64, Option<(f64, f64, f64, f64)>) {
+    let c = ch.chars().next().unwrap_or('\0');
+    match xpict_core::font::glyph_metrics(c, parse_face_style(style)) {
+        Some(g) if g.has_ink() => (
+            g.advance,
+            Some((
+                g.ink_xmin.unwrap(),
+                g.ink_ymin.unwrap(),
+                g.ink_xmax.unwrap(),
+                g.ink_ymax.unwrap(),
+            )),
+        ),
+        Some(g) => (g.advance, None),
+        None => (0.0, None),
+    }
+}
+
+/// Outline plain text in font space; returns `(Shape|None, advance_em)`.
+#[pyfunction]
+#[pyo3(signature = (text, style="regular"))]
+fn outline_run_em(text: &str, style: &str) -> (Option<PyShape>, f64) {
+    let (shape, adv) = xpict_core::font::outline_run_em(text, parse_face_style(style));
+    (shape.map(PyShape::wrap), adv)
+}
+
+/// Compile plain text to SVG-space Shape.
+#[pyfunction]
+#[pyo3(signature = (text, x, y, font_size, anchor="middle", style="regular"))]
+fn compile_text_shapes(
+    text: &str,
+    x: f64,
+    y: f64,
+    font_size: f64,
+    anchor: &str,
+    style: &str,
+) -> Option<PyShape> {
+    xpict_core::font::compile_text_shapes(
+        text,
+        x,
+        y,
+        font_size,
+        anchor,
+        parse_face_style(style),
+    )
+    .map(PyShape::wrap)
+}
+
 /// Multipolygon geometry (Shapely stand-in).
 #[pyclass(name = "Shape")]
 #[derive(Clone)]
@@ -212,6 +288,10 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(capsule_halo_path_d, m)?)?;
     m.add_function(wrap_pyfunction!(disk_halo_path_d, m)?)?;
     m.add_function(wrap_pyfunction!(elk_layout_json, m)?)?;
+    m.add_function(wrap_pyfunction!(face_metrics, m)?)?;
+    m.add_function(wrap_pyfunction!(glyph_metrics, m)?)?;
+    m.add_function(wrap_pyfunction!(outline_run_em, m)?)?;
+    m.add_function(wrap_pyfunction!(compile_text_shapes, m)?)?;
     m.add_class::<PyShape>()?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     m.add("BOND_PX", metrics::BOND_PX)?;
@@ -220,5 +300,6 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("SHADE_FRAC", metrics::SHADE_FRAC)?;
     m.add("HAS_ELK", true)?;
     m.add("HAS_GEOM", true)?;
+    m.add("HAS_FONT", true)?;
     Ok(())
 }
