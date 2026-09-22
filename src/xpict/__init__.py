@@ -6,7 +6,7 @@ from xpict.api import Pict, render
 from xpict.contracts.nodes import PictSpec
 from xpict.warnings import PictBackendWarning
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 __all__ = [
     "Pict",

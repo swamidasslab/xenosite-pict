@@ -1,6 +1,6 @@
 {
   "name": "@swamidasslab/xpict",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "TypeScript + WASM bindings for xpict (shared Rust core) — for xenosite.org",
   "type": "module",
   "license": "MIT",
