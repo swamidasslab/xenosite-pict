@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Literal
 
 from xpict.align import align_layouts
-from xpict.backends import get_backend
+from xpict.backends import BACKEND_PREFERENCE, get_backend
 from xpict.contracts.layout import LayoutResult, MoleculeLayout
 from xpict.contracts.nodes import PictSpec, expand_pict
 from xpict.contracts.spec import LegacyPictSpec
@@ -17,9 +17,21 @@ OutputFormat = Literal["svg", "html"]
 
 
 def _resolve_backend_name(requested: str | None) -> str:
-    """Default: native. Indigo only when requested (alternate backend)."""
+    """Default: RDKit when installed, else native. Indigo only if requested."""
     if requested:
         return requested.lower()
+    for name in BACKEND_PREFERENCE:
+        if name == "indigo":
+            continue  # alternate — never auto-pick
+        if name == "native":
+            return "native"
+        if name == "rdkit":
+            try:
+                import rdkit  # noqa: F401
+
+                return "rdkit"
+            except ImportError:
+                continue
     return "native"
 
 

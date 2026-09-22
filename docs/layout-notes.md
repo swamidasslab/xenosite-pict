@@ -17,31 +17,31 @@ that as the guide:
 Hard cases (bridged cages, congested chains, stereo centers, macrocycles) are the
 test of quality — not benzene.
 
-## Strategic target: native depictor; Indigo as alternate backend
+## Strategic target: RDKit for coords+align now; native long-term; Indigo alternate
 
-**If** an internal (`native`) layout + draw stack is *demonstrably* good enough,
-we do not need a multi-engine layout ladder.
+**Focus (current):** call **RDKit at each language edge** for:
 
-“Good enough” is **not** assumed. It must be shown on a growing hard-case gallery
-(rings, chains, stereo, collisions) side-by-side with Indigo / RDKit / CDK-quality
-*references* (read their sources; we do not ship a multi-backend ladder).
+1. **2D coordinates** — `backend="rdkit"` (Python `rdkit` / JS `@rdkit/rdkit`)
+2. **Template alignment** — existing `align_rdkit` / MinimalLib; pass maps into Rust
 
-Until that bar is cleared:
+**Do not** link RDKit into `xpict-core` (no Rust RDKit / no WASM chem wrapper).
 
-1. Learn algorithms from Indigo / RDKit / CoordGen / CDK (read their sources).
-2. Own the **drawing** path now (skeleton → offsets → wedges; our SVG).
-3. Grow **native layout** toward those algorithms (rings → chains → stereo placement).
-4. Keep **Indigo** as an **optional alternate layout backend** (`backend="indigo"`)
-   for demos and comparison — not the product default. No RDKit / Open Babel
-   layout backends. **Chematic is out** (no perception extra, no layout).
+**Alternate path:** **Indigo** layout + **fake/rigid align** implemented in Rust
+(Kabsch / shared transforms only — no template depict).
 
-Default backend is **native**. Perception (SSSR, aromaticity, stereo flags) stays
-in our stack (native / Rust over time), not a third-party chem kernel.
+**Long-term:** grow **native** layout+draw until the hard-case gallery is green;
+RDKit remains the quality reference and the practical default while that matures.
+**Chematic is out.**
 
-Shipping depiction as **Rust** (`xpict-core` + PyO3 + WASM) is the dual-language
-path — prove algorithms in Python, then port. Keep Python as the algorithm lab
-until skeleton → offsets → wedges and the native layout quality bar are
-demonstrated — then port, don’t invent twice.
+Until native wins:
+
+1. Learn algorithms from RDKit / Indigo / CoordGen / CDK (read their sources).
+2. Own the **drawing** path (skeleton → offsets → wedges; our SVG), migrating into Rust.
+3. Prefer **RDKit** for production-ish coords and alignment on both Python and JS.
+4. Keep **Indigo** as optional alternate layout for comparison / environments without RDKit.
+
+Shipping shared ink (fonts, geometry, bond math) as **Rust** (`xpict-core` + PyO3 +
+WASM) is the dual-language path — prove in Python, then port.
 
 **Incremental path:** workspace crate [`crates/xpict-core`](../crates/xpict-core)
 holds shared pure algorithms. **Priority ports** (remove Python-only ship deps and
@@ -52,36 +52,27 @@ unify JS):
 | `geom` | Shapely buffer/union/holes | `geo` + `i_overlay` (or Clipper) | Halos, glyph counters, annotate |
 | `font` | fontTools + Liberation TTFs | `ttf-parser` / `skrifa` | Atom labels / captions → SVG paths |
 | `metrics` / `plotdot` / `bonds` | Done (partial) | — | Already in core + bindings |
+| `align` (rigid) | Python Kabsch | pure Rust | Indigo / no-RDKit fake align |
 
 Capsule/disk halos already call Rust. Glyph `halo_from_shapes` / label outlines
 should move next so JS never needs Shapely or fontTools.
 
-Migrate after Python parity tests exist; do not invent depiction rules only in Rust.
-
-### Alignment: RDKit at the language edges — never in Rust
-
-`diagram.align` / `align_layouts` already prefers **RDKit template alignment**
-when installed (`align_rdkit.py`); rigid Kabsch is the fallback.
-
-**Do not** pull RDKit into `xpict-core` (no `rdkit-sys`, no Rust chem wrappers).
-RDKit’s C++ stack does not ship a clean WASM story that way. Instead:
+### Alignment + coords: RDKit at the edges — never in Rust
 
 | Layer | Who | Job |
 | --- | --- | --- |
-| Call RDKit | **Python** `rdkit` / **JS** `@rdkit/rdkit` MinimalLib | Template depict, MCS / substructure matches, chem identity |
-| Common math | **`xpict-core`** (PyO3 + WASM) | Rigid transforms, score embeddings, apply maps to coords — pure numbers |
+| 2D layout | **Python** `rdkit` / **JS** `@rdkit/rdkit` | `Compute2DCoords`, wedges, kekulize |
+| Template align | same RDKit packages | MCS / `coordMap` template depict |
+| Common math | **`xpict-core`** | Rigid Kabsch, score embeddings, apply maps — pure numbers |
 
-Flow: language edge asks RDKit → gets atom maps + coordinates → passes arrays into
-Rust helpers → gets aligned layouts back. Same Rust for both runtimes.
-
-Do **not** add RDKit as a general layout backend ladder. Use it where it already
-wins at the edges: **alignment** (and as an algorithm reference for native layout).
+Flow: language edge asks RDKit → gets atoms/bonds/coords (and align maps) →
+Rust draw + optional rigid-align helpers. Indigo skip RDKit align → Rust fake align.
 
 ### Layout backends
 
-1. **native** — default; grow to proven depictor (product goal).
-2. **Indigo** — **alternate** optional layout (`xpict[indigo]`, `backend="indigo"`).
-3. **RDKit** — **alignment only**, called from Python/JS themselves — not linked into Rust.
+1. **rdkit** — preferred when installed (focus now).
+2. **native** — in-house; long-term product path.
+3. **indigo** — alternate; pair with Rust rigid/fake align.
 
 CoordGen / CDK remain **algorithm references**, not installed layout backends.
 
@@ -195,8 +186,8 @@ coords for those molecules:
 - [~] Stereo — tetrahedral `@`/`@@` wedges (parity heuristic); E/Z from `/` `\` enforced on native coords
 - [x] Side-by-side gallery vs Indigo on the same SMILES set (`poc-e-*`)
 
-Until that checklist is green, keep **Indigo** available as an **alternate**
-backend for side-by-side demos. Default remains **native**.
+Until that checklist is green, **prefer RDKit** for demos that need trustworthy
+coords; keep Indigo available as alternate; keep growing native.
 
 ## ELK for multi-mol diagrams
 

@@ -23,13 +23,13 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-# Alternate 2D layout backend (native is default).
+# Preferred 2D layout + template alignment (Python). JS uses @rdkit/rdkit separately.
+rdkit = ["rdkit>=2024.3"]
+# Alternate 2D layout; pair with rigid/fake align in Rust (no RDKit template).
 indigo = [
     "epam-indigo>=1.19",
 ]
-# Template alignment only — not a layout backend. Absent ⇒ rigid rotate/translate.
-rdkit = ["rdkit>=2024.3"]
-all = ["xpict[indigo,rdkit]"]
+all = ["xpict[rdkit,indigo]"]
 
 [project.urls]
 Homepage = "https://github.com/swamidasslab/xenosite-pict"

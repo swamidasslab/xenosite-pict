@@ -17,9 +17,9 @@ is fixed. If nothing is near zero, the largest subgraph is still used so a
 template can redraw a different shape.
 
 ``align_layouts`` picks RDKit when it imports, and falls back to rigid if
-template depiction fails or RDKit is absent. This is not a layout backend
-and does not replace Indigo or native coordinate generation for the
-reference molecule.
+template depiction fails or RDKit is absent. RDKit is also the preferred
+**layout** backend for 2D coords (``backends.rdkit_layout``); Indigo layouts
+should use rigid / fake align only.
 """
 
 from __future__ import annotations

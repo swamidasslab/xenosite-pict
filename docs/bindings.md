@@ -66,16 +66,17 @@ Crates to prefer when filling stubs: **`ttf-parser`/`skrifa`** (fonts),
 **`geo` + `i_overlay`** (boolean + buffer). Keep Liberation files under
 `src/xpict/data/fonts/` (or `crates/xpict-core/fonts/`) so both bindings share bytes.
 
-## Alignment (RDKit at the edges, Rust for shared math)
+## Coords + alignment (RDKit at the edges, Rust for shared math)
 
-Layout coords: **native** (default) or **Indigo** (alternate). **Molecule alignment**
-calls RDKit **from each language’s own binding** — never via a Rust RDKit crate
-(that path does not compile cleanly to our WASM core).
+**Focus:** each language calls **RDKit** for 2D layout and template alignment.
+**Never** put RDKit inside `xpict-core` (won't WASM cleanly).
 
-| Runtime | RDKit call site | Then |
-| --- | --- | --- |
-| Python | `xpict[rdkit]` → `align_rdkit.RdkitAligner` | Pass maps/coords into `xpict-core` helpers |
-| Browser | `@rdkit/rdkit` MinimalLib (JS) | Same: maps/coords → `initNative()` / align helpers |
+| Runtime | 2D coords | Template align | Then |
+| --- | --- | --- | --- |
+| Python | `backend="rdkit"` (`xpict[rdkit]`) | `align_rdkit.RdkitAligner` | Draw / rigid helpers via `_native` |
+| Browser | `@rdkit/rdkit` MinimalLib | same package | `initNative()` draw / rigid helpers |
 
-`xpict-core` stays chem-engine-free: rigid Kabsch, scoring, applying transforms.
-Rigid-only path when RDKit is absent. See `docs/layout-notes.md`.
+**Indigo alternate:** `backend="indigo"` + **fake/rigid align** in Rust only
+(no RDKit template). Rigid-only also when RDKit is absent.
+
+See `docs/layout-notes.md`.
