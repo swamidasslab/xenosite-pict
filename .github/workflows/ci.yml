@@ -2,9 +2,10 @@
 #
 # Rust:   cargo test + llvm-cov on xpict-core (≥97% lines; push to 100%)
 # JS:     tsc --strict
-# Python: pyright (strict) + pytest on 3.11–3.13 (Linux) + native smoke on
-#         macos-latest / windows-latest
-# RDKit:  install only on one Python job (3.12); elsewhere skip RDKit tests.
+# Python: pytest on 3.11–3.13 (Linux) + native smoke on macos/windows;
+#         pyright runs on the single 3.12 + rdkit job (optional import resolve)
+# RDKit:  prebuilt PyPI wheel only on Linux 3.12 (pytest + pyright); elsewhere
+#         RDKit tests skip via importorskip/skipif
 # PyPI wheels (all arches): see build-python-wheels.yml / pypi.yml / release.yml
 
 name: CI
@@ -86,37 +87,8 @@ jobs:
       - name: Strict TypeScript check (pocs)
         run: npm run check:pocs
 
-  python-typecheck:
-    name: Python strict pyright
-    needs: [rust]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: ". -> target"
-          shared-key: pyright
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-        with:
-          python-version: "3.12"
-          enable-cache: true
-
-      # No RDKit: pyright does not need the chem extra; keep the job light.
-      - name: Sync Python deps (dev)
-        run: uv sync --group dev
-
-      - name: Strict pyright
-        run: uv run pyright
-
   python-test:
-    name: Python pytest ${{ matrix.python-version }}${{ matrix.with_rdkit && ' + rdkit' || '' }}
+    name: Python pytest ${{ matrix.python-version }}${{ matrix.with_rdkit && ' + rdkit + pyright' || '' }}
     needs: [rust]
     runs-on: ubuntu-latest
     strategy:
@@ -125,8 +97,8 @@ jobs:
         include:
           - python-version: "3.11"
             with_rdkit: false
-          # Single CI env that installs the prebuilt PyPI rdkit wheel and runs
-          # RDKit-backed tests. Other jobs skip those via importorskip/skipif.
+          # Single CI env with the prebuilt PyPI rdkit wheel: pytest (incl.
+          # RDKit tests) + pyright. Other jobs skip RDKit tests.
           - python-version: "3.12"
             with_rdkit: true
           - python-version: "3.13"
@@ -160,6 +132,10 @@ jobs:
       - name: Confirm RDKit import
         if: matrix.with_rdkit
         run: uv run python -c "import rdkit; print('rdkit', rdkit.__version__)"
+
+      - name: Strict pyright
+        if: matrix.with_rdkit
+        run: uv run pyright
 
       - name: Pytest
         run: uv run pytest -q
