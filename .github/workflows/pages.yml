@@ -2,20 +2,14 @@
 #
 # Site: https://swamidasslab.github.io/xenosite-pict/
 # Source: demo/  (assembled with built ESM + wasm under pkg/)
+#
+# Runs on every push to main (and manual dispatch) — not tag-gated.
 
 name: Deploy demo to GitHub Pages
 
 on:
   push:
     branches: [main]
-    paths:
-      - "demo/**"
-      - "js/**"
-      - "crates/xpict-wasm/**"
-      - "crates/xpict-core/**"
-      - "scripts/build_pages.sh"
-      - "scripts/build_bindings.sh"
-      - ".github/workflows/pages.yml"
   workflow_dispatch:
 
 permissions:
@@ -62,12 +56,12 @@ jobs:
         run: npm ci
 
       - name: Build Pages site
-        run: bash scripts/build_pages.sh demo/_site
+        run: bash scripts/build_pages.sh "$GITHUB_WORKSPACE/_site"
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: demo/_site
+          path: _site
 
   deploy:
     needs: build
