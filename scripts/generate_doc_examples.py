@@ -2,7 +2,6 @@
 """Generate SVG depiction examples for the MkDocs gallery.
 
 Documents use the live nested subset of PictSpec (``type`` / ``children``).
-Atom marks are intentionally omitted until paint is fixed.
 """
 
 from __future__ import annotations

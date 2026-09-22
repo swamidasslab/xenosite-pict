@@ -38,7 +38,7 @@ for (let i = 0; i < 6; i++) {
 }
 
 const next = xpict.mol("Cc1ccccc1");
-const alignedToMol = await xpict.render(next, { align_to: mol, mark_atoms: [0] });
+const alignedToMol = await xpict.render(next, { align_to: mol });
 for (let i = 1; i <= 6; i++) {
   const a = alignedToMol.coords[i]!;
   const hit = rendered.coords.some(

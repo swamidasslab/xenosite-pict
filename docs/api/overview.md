@@ -12,7 +12,7 @@ Two layers (same paint):
    `mol` → `render(opts?)` → `Rendered` → `toSvg(scene)`  
    Imperative options (`color`, `atom_shade`, `star_labels`, `align_to`, …).
 
-There is **no** top-level `molecules` list. Chem scripts:
+Nested JSON uses `type: "mol"` or `type: "group"` + `children`. Chem scripts:
 [Label markup](../label-markup.md) (CX limits vs JSON `rgroups` /
 `star_labels`).
 

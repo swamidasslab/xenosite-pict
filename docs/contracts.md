@@ -11,8 +11,7 @@ Pydantic under ``xpict.contracts`` — **strict subset** of future nested
 | ``Scene`` (+ primitives) | Paint ABI (Rust / JS / Python serializers) |
 | ``MoleculeLayout`` / ``LayoutResult`` | Backend layout result |
 
-Every live document must also validate as ``xpict.future.PictSpec``. There is
-**no** ``molecules`` list key on the preferred surface.
+Every live document must also validate as ``xpict.future.PictSpec``.
 
 JSON Schema (committed):
 

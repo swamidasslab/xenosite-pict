@@ -1,7 +1,7 @@
 # Gallery
 
 Publication-style SVG from the **live nested document** (`type: "mol"` /
-`type: "group"`). Atom marks are omitted here until paint is fixed.
+`type: "group"`).
 
 Regenerate:
 

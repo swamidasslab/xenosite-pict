@@ -78,12 +78,11 @@ let results = depict(&DepictSpec::Group {
 ```
 
 Live contract: `DepictSpec` / `MolNode` in `xpict.contracts.depict` —
-every live doc must validate as future `PictSpec`. There is **no**
-`molecules` list key. Nested diagrams / ELK / reaction chrome stay under
-`xpict.future` until they graduate.
+every live doc must validate as future `PictSpec`. Nested diagrams / ELK /
+reaction chrome stay under `xpict.future` until they graduate.
 
 **Document fields today:** `smiles` / `cxsmiles` / `molfile`, `id`, `color`,
-`shade`, `rgroups`. (Publication atom marks are not advertised yet.)
+`shade`, `rgroups`.
 
 ### Simple: single-molecule client
 

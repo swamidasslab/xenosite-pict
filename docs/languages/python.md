@@ -10,7 +10,7 @@ pip install 'xpict[rdkit]'
 ## Preferred: nested document
 
 Strict subset of future `PictSpec` — `type: "mol"` or `type: "group"` +
-`children` (no `molecules` list):
+`children`:
 
 ```python
 from xpict import render
