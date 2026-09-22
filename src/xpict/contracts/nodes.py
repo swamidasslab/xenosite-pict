@@ -1,8 +1,12 @@
 """Nested figure object algebra — canonical PictSpec tree.
 
-Every node has ``type``, optional ``id`` / ``panel`` / ``layout`` / ``children``.
-Legacy flat ``{molecules, diagram}`` documents are lifted on validate and can be
-flattened back for the current render pipeline.
+Every node has ``type``, optional ``id`` / ``panel`` / ``layout``.
+Containers (``group`` / ``grid`` / ``stack`` / ``reaction`` / ``network``)
+also have ``children``. Leaves (``mol``, ``arrow``, ``image``, …) do not —
+molecule chrome stays on mol fields (``annotations``, ``rtable``, …).
+
+Legacy flat ``{molecules, diagram}`` documents are lifted on validate and can
+be flattened back for the current render pipeline.
 """
 
 from __future__ import annotations
@@ -114,6 +118,11 @@ class NodeCommon(StrictModel):
     )
     layout: LayoutSpec = Field(default_factory=LayoutSpec)
     meta: dict[str, Any] = Field(default_factory=dict)
+
+
+class ContainerCommon(NodeCommon):
+    """Node that owns nested children (group / grid / stack / reaction / network)."""
+
     children: list[Node] = Field(
         default_factory=list,
         description="Owned nested nodes (same discriminated union as the document root)",
@@ -223,7 +232,7 @@ class RefNode(NodeCommon):
 
 
 class AnnotationNode(NodeCommon):
-    """Annotation as a nested object (alternative to mol.annotations list)."""
+    """Standalone annotation node (prefer ``mol.annotations`` when targeting a mol)."""
 
     type: Literal["annotation"] = "annotation"
     kind: AnnotKind = AnnotKind.callout
@@ -242,23 +251,23 @@ class AnnotationNode(NodeCommon):
         return self
 
 
-class GroupNode(NodeCommon):
+class GroupNode(ContainerCommon):
     type: Literal["group"] = "group"
 
 
-class GridNode(NodeCommon):
+class GridNode(ContainerCommon):
     type: Literal["grid"] = "grid"
 
 
-class StackNode(NodeCommon):
+class StackNode(ContainerCommon):
     type: Literal["stack"] = "stack"
 
 
-class ReactionNode(NodeCommon):
+class ReactionNode(ContainerCommon):
     type: Literal["reaction"] = "reaction"
 
 
-class NetworkNode(NodeCommon):
+class NetworkNode(ContainerCommon):
     type: Literal["network"] = "network"
 
 
@@ -283,6 +292,7 @@ Node = Annotated[
 # Rebuild forward refs for children: list[Node]
 for _cls in (
     NodeCommon,
+    ContainerCommon,
     MolNode,
     ArrowNode,
     TextNode,
@@ -404,40 +414,20 @@ def _ensure_mol_id(node: MolNode, used: set[str], index: int) -> str:
 
 def mol_to_molecule_spec(node: MolNode) -> MoleculeSpec:
     """Project a mol node to the chemistry MoleculeSpec used by backends."""
-    label = node.layout.label
-    # Nested annotation nodes → AnnotationSpec list
-    annotations = list(node.annotations)
-    rtable = node.rtable
-    for child in node.children:
-        if isinstance(child, AnnotationNode):
-            annotations.append(
-                AnnotationSpec(
-                    kind=child.kind,
-                    atoms=child.atoms,
-                    bonds=child.bonds,
-                    ring=child.ring,
-                    label=child.label,
-                    color=child.color,
-                    arrow=child.arrow,
-                    prefer=child.prefer,
-                )
-            )
-        elif isinstance(child, TableNode) and rtable is None:
-            rtable = RTableSpec(groups=child.columns, rows=_stringify_rows(child.rows))
     return MoleculeSpec(
         id=node.id,
         smiles=node.smiles,
         cxsmiles=node.cxsmiles,
         esmiles=node.esmiles,
         molfile=node.molfile,
-        label=label,
+        label=node.layout.label,
         ids=node.ids,
         rings=node.rings,
         rgroups=node.rgroups,
         ring_attachments=node.ring_attachments,
-        rtable=rtable,
+        rtable=node.rtable,
         marks=node.marks,
-        annotations=annotations,
+        annotations=list(node.annotations),
         shade=node.shade,
         color=node.color,
     )
@@ -720,6 +710,7 @@ __all__ = [
     "NetworkNode",
     "Node",
     "NodeCommon",
+    "ContainerCommon",
     "PictSpec",
     "ReactionNode",
     "RefNode",

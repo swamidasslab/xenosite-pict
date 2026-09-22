@@ -80,14 +80,10 @@ def test_grid_with_panel_and_table_validates():
                     "panel": "a",
                     "smiles": "*C",
                     "rgroups": ["R"],
-                    "children": [
-                        {
-                            "type": "table",
-                            "layout": {"attach": "below"},
-                            "columns": ["R"],
-                            "rows": [["Me"], ["Et"]],
-                        }
-                    ],
+                    "rtable": {
+                        "groups": ["R"],
+                        "rows": [["Me"], ["Et"]],
+                    },
                 },
                 {"type": "image", "panel": "b", "src": "nmr.png"},
             ],
@@ -97,7 +93,19 @@ def test_grid_with_panel_and_table_validates():
     mol = tree.root.children[0]
     assert isinstance(mol, MolNode)
     assert mol.panel == "a"
-    assert isinstance(mol.children[0], TableNode)
+    assert mol.rtable is not None
+    assert not hasattr(mol, "children") or "children" not in MolNode.model_fields
+
+
+def test_mol_rejects_children():
+    with pytest.raises(Exception):
+        PictSpec.model_validate(
+            {
+                "type": "mol",
+                "smiles": "CCO",
+                "children": [{"type": "table", "rows": []}],
+            }
+        )
 
 
 def test_roundtrip_legacy_via_pictspec():
