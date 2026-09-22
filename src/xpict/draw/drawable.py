@@ -17,12 +17,13 @@ from xpict.contracts.spec import (
     ShadeSpec,
 )
 from xpict.draw.annotate import render_annotation
-from xpict.draw.bonds import DrawnBond, bond_strokes, join_centered_multibonds, shorten
+from xpict.draw.bonds import DrawnBond, bond_strokes, join_centered_multibonds
 from xpict.draw.collision import CollisionGrid
 from xpict.draw.colormap import colormap_rgb
 from xpict.draw.drawn import Drawn, Halo, emit_drawn
 from xpict.draw.glyphs import compile_text_shapes
 from xpict.draw.halo import disk_shape
+from xpict.draw.label_place import PlacedLabel, place_backbone
 from xpict.draw.markush import apply_rgroup_texts, ring_attachment_annotations
 from xpict.draw.metrics import (
     BOND_PX,
@@ -40,13 +41,12 @@ from xpict.draw.metrics import (
     SHADE_FRAC,
     STROKE_PX,
     coord_scale,
-    label_clearance,
 )
 from xpict.draw.mol_title import LabelPack, pack_label
 from xpict.draw.paths import hull_path_d, ink_from_path_prim, polyline_d
 from xpict.draw.plotdot import PlotDot
 from xpict.draw.rings import bond_interior_normals, find_sssr
-from xpict.draw.text_metrics import label_baseline_offset, text_box
+from xpict.draw.text_metrics import text_box
 
 # xenopict drawer groups: shading → mol_halo → lines → text → overlay.
 # Halo must sit above shade so white knockouts cut channels for bonds.
@@ -89,6 +89,9 @@ class MolContext:
     halo_enabled: bool = True
     label_pack: LabelPack | None = None
     halo: Halo = field(default_factory=Halo)
+    # Parallel to ``layout.bonds`` / ``coords`` — from Rust ``place_backbone``.
+    placed_bonds: list[tuple[float, float, float, float]] = field(default_factory=list)
+    placed_labels: list[PlacedLabel | None] = field(default_factory=list)
 
     def points(self, atoms: Sequence[int] | None) -> list[tuple[float, float]]:
         if not atoms:
@@ -192,9 +195,8 @@ def mol_occupancy(
     for i, text in enumerate(texts):
         x, y = coords[i]
         if text:
-            ly = y + label_baseline_offset(FONT_PX)
             box = text_box(
-                text, x, ly, font_size=FONT_PX, which="ink", pad=LABEL_GAP_PX * 0.25
+                text, x, y, font_size=FONT_PX, which="ink", pad=LABEL_GAP_PX * 0.25
             )
             grid.mark_box(*box.as_tuple())
         else:
@@ -296,15 +298,15 @@ class BondsDrawable(Drawable):
             bond_interior_normals(rings, coords_by_index) if rings else {}
         )
         prepared: list[DrawnBond] = []
-        for bond in ctx.layout.bonds:
+        for bi, bond in enumerate(ctx.layout.bonds):
             i0, i1 = ctx.atom_pos.get(bond.begin), ctx.atom_pos.get(bond.end)
             if i0 is None or i1 is None:
                 continue
-            x1, y1 = ctx.coords[i0]
-            x2, y2 = ctx.coords[i1]
-            g1 = label_clearance(ctx.texts[i0]) if ctx.texts[i0] else 0.0
-            g2 = label_clearance(ctx.texts[i1]) if ctx.texts[i1] else 0.0
-            x1, y1, x2, y2 = shorten(x1, y1, x2, y2, g1, g2)
+            if bi < len(ctx.placed_bonds):
+                x1, y1, x2, y2 = ctx.placed_bonds[bi]
+            else:
+                x1, y1 = ctx.coords[i0]
+                x2, y2 = ctx.coords[i1]
             key = (
                 (bond.begin, bond.end)
                 if bond.begin < bond.end
@@ -369,13 +371,17 @@ class BondsDrawable(Drawable):
 
 @dataclass
 class AtomLabelsDrawable(Drawable):
-    """Heteroatom labels and radical dots."""
+    """Heteroatom labels and radical dots.
+
+    Label strings/positions come from Rust ``place_backbone`` (center glyph on
+    the atom; traveling H flips ``OH``→``HO`` on the west side).
+    """
 
     def draw(self, ctx: MolContext) -> Drawn | None:
         drawn = Drawn(layer="labels", halo=True, halo_cls="halo label-halo")
         for i, atom in enumerate(ctx.layout.atoms):
-            label = ctx.texts[i]
             x, y = ctx.coords[i]
+            placed = ctx.placed_labels[i] if i < len(ctx.placed_labels) else None
             if atom.radical > 0:
                 nbr_angs = []
                 for bond in ctx.layout.bonds:
@@ -402,7 +408,7 @@ class AtomLabelsDrawable(Drawable):
                     ang = best_mid
                 else:
                     ang = -math.pi / 2
-                base = RADICAL_BASE if label else RADICAL_BASE_BARE
+                base = RADICAL_BASE if placed is not None else RADICAL_BASE_BARE
                 n = min(atom.radical, 3)
                 for k in range(n):
                     spread = (k - (n - 1) / 2) * 0.35
@@ -424,19 +430,25 @@ class AtomLabelsDrawable(Drawable):
                     if ink is not None:
                         drawn.ink.append(ink)
                         drawn.ink_dists.append(HALO_GAP_PX)
-            if not label:
+            if placed is None:
                 continue
-            label_y = y + label_baseline_offset(FONT_PX)
             drawn.primitives.append(
                 TextPrim(
-                    x=x,
-                    y=label_y,
-                    text=label,
+                    x=placed.origin_x,
+                    y=placed.y,
+                    text=placed.text,
                     font_size=FONT_PX,
+                    anchor="start",
                     cls=f"atom-{atom.index} label",
                 )
             )
-            ink = compile_text_shapes(label, x, label_y, font_size=FONT_PX)
+            ink = compile_text_shapes(
+                placed.text,
+                placed.origin_x,
+                placed.y,
+                font_size=FONT_PX,
+                anchor="start",
+            )
             if ink is not None:
                 drawn.ink.append(ink)
                 drawn.ink_dists.append(HALO_GAP_PX)
@@ -593,6 +605,14 @@ def paint_molecule(
             coords = [(x + label_pack.dx, y + label_pack.dy) for x, y in coords]
         width, height = label_pack.width, label_pack.height
 
+    atom_indices = [a.index for a in layout.atoms]
+    placed_bonds, placed_labels = place_backbone(
+        coords,
+        texts,
+        layout.bonds,
+        atom_indices=atom_indices,
+    )
+
     ctx = MolContext(
         layout=layout,
         coords=coords,
@@ -604,6 +624,8 @@ def paint_molecule(
         layers={name: Layer(name=name) for name in LAYER_ORDER},  # type: ignore[arg-type]
         halo_enabled=halo,
         label_pack=label_pack,
+        placed_bonds=placed_bonds,
+        placed_labels=placed_labels,
     )
     annot_boxes: list[tuple[float, float, float, float]] = []
     for drawable in molecule_drawables(mol_spec):

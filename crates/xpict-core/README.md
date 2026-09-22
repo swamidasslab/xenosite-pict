@@ -14,6 +14,7 @@ Python (PyO3) and JS (WASM) share one implementation.
 | `elk` | Multi-mol diagram placement (elkrs) | `diagram/elk.py` |
 | `geom` | Buffer / union / counters (`i_overlay` Shape) | `draw/halo.py`, `glyphs.py` |
 | `font` | Liberation outlines + advances (`ttf-parser`) | `draw/font_face.py`, `glyphs.py` |
+| `labels` | Atom-label orientation + backbone insets | `draw/label_place.py` |
 | `rings` *(stub)* | SSSR helpers, interior normals | `draw/rings.py` |
 
 **Not** in this crate (yet or ever as invent-your-own): chem layout backends

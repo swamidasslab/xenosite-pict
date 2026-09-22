@@ -145,6 +145,82 @@ fn compile_text_shapes(
     .map(PyShape::wrap)
 }
 
+/// Place backbone bond ends + atom labels. Coords are caller SVG positions.
+///
+/// `atoms`: list of `(x, y, label|None)`.
+/// `bonds`: list of `(begin, end)` indices into atoms.
+/// Returns `(bond_ends, labels)` where each bond end is `(x1,y1,x2,y2)` and
+/// each label is `None` or `(text, origin_x, y, atom_x, atom_y, side, clearance)`
+/// with `side` in `{"east","west"}`.
+#[pyfunction]
+#[pyo3(signature = (atoms, bonds, font_size=None))]
+fn place_backbone(
+    atoms: Vec<(f64, f64, Option<String>)>,
+    bonds: Vec<(usize, usize)>,
+    font_size: Option<f64>,
+) -> (
+    Vec<(f64, f64, f64, f64)>,
+    Vec<Option<(String, f64, f64, f64, f64, String, f64)>>,
+) {
+    let font_px = font_size.unwrap_or(metrics::FONT_PX);
+    let atoms: Vec<xpict_core::labels::AtomIn> = atoms
+        .into_iter()
+        .map(|(x, y, label)| xpict_core::labels::AtomIn { x, y, label })
+        .collect();
+    let bonds: Vec<xpict_core::labels::BondIn> = bonds
+        .into_iter()
+        .map(|(begin, end)| xpict_core::labels::BondIn { begin, end })
+        .collect();
+    let (outs, labs) = xpict_core::labels::place_backbone(&atoms, &bonds, font_px);
+    let bond_ends = outs
+        .into_iter()
+        .map(|b| (b.x1, b.y1, b.x2, b.y2))
+        .collect();
+    let labels = labs
+        .into_iter()
+        .map(|opt| {
+            opt.map(|p| {
+                let side = match p.side {
+                    xpict_core::labels::LabelSide::East => "east".to_string(),
+                    xpict_core::labels::LabelSide::West => "west".to_string(),
+                };
+                (
+                    p.text,
+                    p.origin_x,
+                    p.y,
+                    p.atom_x,
+                    p.atom_y,
+                    side,
+                    p.clearance,
+                )
+            })
+        })
+        .collect();
+    (bond_ends, labels)
+}
+
+/// Split label into `(center, traveling)` parts.
+#[pyfunction]
+fn split_atom_label(raw: &str) -> (String, String) {
+    let p = xpict_core::labels::split_label(raw);
+    (p.center, p.traveling)
+}
+
+/// Compose display string for a side (`"east"` / `"west"`).
+#[pyfunction]
+fn compose_atom_label(center: &str, traveling: &str, side: &str) -> String {
+    let parts = xpict_core::labels::LabelParts {
+        center: center.to_string(),
+        traveling: traveling.to_string(),
+    };
+    let side = if side.eq_ignore_ascii_case("west") {
+        xpict_core::labels::LabelSide::West
+    } else {
+        xpict_core::labels::LabelSide::East
+    };
+    xpict_core::labels::compose_label(&parts, side)
+}
+
 /// Multipolygon geometry (Shapely stand-in).
 #[pyclass(name = "Shape")]
 #[derive(Clone)]
@@ -301,6 +377,9 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(glyph_metrics, m)?)?;
     m.add_function(wrap_pyfunction!(outline_run_em, m)?)?;
     m.add_function(wrap_pyfunction!(compile_text_shapes, m)?)?;
+    m.add_function(wrap_pyfunction!(place_backbone, m)?)?;
+    m.add_function(wrap_pyfunction!(split_atom_label, m)?)?;
+    m.add_function(wrap_pyfunction!(compose_atom_label, m)?)?;
     m.add_class::<PyShape>()?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     m.add("BOND_PX", metrics::BOND_PX)?;
