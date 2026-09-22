@@ -52,6 +52,9 @@ adding exports.
 **Priority:** finish `geom` (Shapely stand-in) and `font` (Liberation outlines) in
 this crate so Python can drop those deps and JS does not reimplement them.
 
+**Not in this crate:** RDKit or any chem engine. Python/JS call RDKit themselves
+for alignment; Rust only gets numeric maps/coordinates.
+
 ## LLM-assisted ports (no Rust required to start)
 
 You do not need to author Rust by hand. A workable loop:
