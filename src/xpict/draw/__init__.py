@@ -7,7 +7,7 @@ from xpict.draw.scene_builder import (
     molecule_to_viewport,
     viewport_size,
 )
-from xpict.draw.svg import scene_to_html, scene_to_svg
+from xpict.draw.svg import scene_to_html, scene_to_svg, svg_to_data_uri, svg_to_img_tag
 
 __all__ = [
     "build_scene",
@@ -18,5 +18,7 @@ __all__ = [
     "paint_molecule",
     "scene_to_html",
     "scene_to_svg",
+    "svg_to_data_uri",
+    "svg_to_img_tag",
     "viewport_size",
 ]

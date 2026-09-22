@@ -3,11 +3,17 @@
 Text primitives are drawn as glyph **paths** (Liberation Sans outlines), not
 ``<text>``/``<tspan>``. Markup (``\\alpha``, ``**bold**``, …) is expanded when
 outlining so bold/italic pick the matching bundled face.
+
+HTML embeds the SVG as a ``data:image/svg+xml`` ``<img>`` so the browser
+treats width/height as a replaced-element intrinsic size (no inline-SVG CSS
+stretch when several depictions sit side by side).
 """
 
 from __future__ import annotations
 
 import html
+import re
+from urllib.parse import quote
 from xml.etree.ElementTree import Element, SubElement, tostring
 
 from xpict.contracts.scene import (
@@ -20,6 +26,9 @@ from xpict.contracts.scene import (
 )
 from xpict.draw.glyphs import compile_text_path_d
 from xpict.draw.richtext import StyledText
+
+_SVG_ROOT_ATTR = re.compile(r"<svg\b([^>]*)>", re.IGNORECASE | re.DOTALL)
+_SVG_ATTR = re.compile(r'([\w:-]+)="([^"]*)"')
 
 
 def _render_primitive(parent: Element, prim: Primitive) -> None:
@@ -82,19 +91,24 @@ def _render_viewport(
     *,
     layers: tuple[str, ...] | None = None,
 ) -> None:
-    g = SubElement(
-        parent, "g", {"class": "xpict-mol", "transform": f"translate({vp.x},{vp.y})"}
-    )
-    if vp.id:
-        g.set("data-id", vp.id)
     want = set(layers) if layers is not None else None
+    prims: list[tuple[str, list]] = []
     for layer in vp.layers:
         if want is not None and layer.name not in want:
             continue
         if not layer.primitives:
             continue
-        lg = SubElement(g, "g", {"class": f"layer-{layer.name}", "id": layer.name})
-        for prim in layer.primitives:
+        prims.append((layer.name, layer.primitives))
+    if not prims:
+        return
+    g = SubElement(
+        parent, "g", {"class": "xpict-mol", "transform": f"translate({vp.x},{vp.y})"}
+    )
+    if vp.id:
+        g.set("data-id", vp.id)
+    for name, primitives in prims:
+        lg = SubElement(g, "g", {"class": f"layer-{name}", "id": name})
+        for prim in primitives:
             _render_primitive(lg, prim)
 
 
@@ -106,6 +120,55 @@ def _fmt_user(value: float) -> str:
 def _fmt_css_px(value: float) -> str:
     """Format an intrinsic CSS size so browsers lay the SVG out at content size."""
     return f"{_fmt_user(value)}px"
+
+
+def _strip_xml_decl(svg: str) -> str:
+    if svg.startswith("<?xml"):
+        return svg.split("\n", 1)[1] if "\n" in svg else svg.split("?>", 1)[-1]
+    return svg
+
+
+def svg_root_size_px(svg: str) -> tuple[str, str] | None:
+    """Return ``(width, height)`` numeric strings from an SVG root, if present."""
+    m = _SVG_ROOT_ATTR.search(svg)
+    if not m:
+        return None
+    attrs = dict(_SVG_ATTR.findall(m.group(1)))
+    w = attrs.get("width", "").removesuffix("px")
+    h = attrs.get("height", "").removesuffix("px")
+    if not w or not h:
+        return None
+    return w, h
+
+
+def svg_to_data_uri(svg: str) -> str:
+    """Encode an SVG document as a ``data:image/svg+xml`` URI for ``<img src>``.
+
+    Percent-encoding keeps the payload URL-safe; browsers use the SVG's own
+    ``width``/``height`` as the image's intrinsic size.
+    """
+    body = _strip_xml_decl(svg).strip()
+    return "data:image/svg+xml;charset=utf-8," + quote(body, safe="")
+
+
+def svg_to_img_tag(
+    svg: str,
+    *,
+    alt: str = "xpict",
+    cls: str = "xpict",
+) -> str:
+    """Wrap ``svg`` in an ``<img>`` whose ``src`` is a data URI.
+
+    ``width``/``height`` attributes mirror the SVG root so layout is correct
+    before (and without relying on) CSS.
+    """
+    uri = svg_to_data_uri(svg)
+    size = svg_root_size_px(svg)
+    size_attrs = f' width="{size[0]}" height="{size[1]}"' if size else ""
+    return (
+        f'<img class="{html.escape(cls)}" src="{uri}"{size_attrs} '
+        f'alt="{html.escape(alt)}" decoding="async"/>'
+    )
 
 
 def scene_to_svg(scene: Scene) -> str:
@@ -140,22 +203,20 @@ def scene_to_svg(scene: Scene) -> str:
 
 
 def scene_to_html(scene: Scene, *, title: str | None = None) -> str:
-    svg = scene_to_svg(scene)
-    if svg.startswith("<?xml"):
-        svg = svg.split("\n", 1)[1]
-    t = html.escape(title or "xpict")
+    t = title or "xpict"
+    img = svg_to_img_tag(scene_to_svg(scene), alt=t)
+    te = html.escape(t)
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>{t}</title>
+<title>{te}</title>
 <style>
   body {{ margin: 0; font-family: system-ui, sans-serif; background: #fafafa; }}
   .xpict-page {{ padding: 1rem; box-sizing: border-box; }}
-  /* Honor SVG width/height attrs (intrinsic size). Shrink only if the page is
-     narrower — never stretch separate depictions up to a shared column width. */
-  .xpict-page svg.xpict {{
+  /* Data-URI <img> uses SVG width/height as intrinsic size; shrink only. */
+  .xpict-page img.xpict {{
     display: inline-block;
     vertical-align: middle;
     width: auto;
@@ -173,7 +234,7 @@ def scene_to_html(scene: Scene, *, title: str | None = None) -> str:
 </head>
 <body>
 <main class="xpict-page">
-{svg}
+{img}
 </main>
 </body>
 </html>

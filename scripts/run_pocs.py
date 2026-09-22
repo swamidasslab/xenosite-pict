@@ -15,6 +15,7 @@ from pathlib import Path
 from xpict import Pict, render
 from xpict.contracts.nodes import PictSpec
 from xpict.diagram.elk import elk_graph, layout_diagram
+from xpict.draw.svg import svg_to_img_tag
 from xpict.warnings import PictBackendWarning
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -482,9 +483,7 @@ def write_gallery(out: Path, backend: str, only: list[Path] | None = None) -> Pa
             body = f"<p class='missing'>Missing artifact: {path.name}</p>"
         else:
             svg = path.read_text(encoding="utf-8")
-            if svg.startswith("<?xml"):
-                svg = svg.split("\n", 1)[1]
-            body = f'<div class="frame">{svg}</div>'
+            body = f'<div class="frame">{svg_to_img_tag(svg, alt=title)}</div>'
         sections.append(
             f"""
 <article class="card">
@@ -564,7 +563,7 @@ def write_gallery(out: Path, backend: str, only: list[Path] | None = None) -> Pa
     overflow: auto;
     padding: 0.75rem;
   }}
-  .frame svg {{
+  .frame img.xpict {{
     display: inline-block;
     vertical-align: middle;
     width: auto;

@@ -1,11 +1,12 @@
-"""SVG root width/height drive intrinsic layout (no stretch-to-column)."""
+"""SVG root width/height + data-URI <img> for intrinsic layout."""
 
 from __future__ import annotations
 
 import re
+from urllib.parse import unquote
 
 from xpict import Pict
-from xpict.draw.svg import scene_to_html
+from xpict.draw.svg import svg_to_data_uri, svg_to_img_tag
 
 
 _ROOT = re.compile(r"<svg\b([^>]*)>", re.DOTALL)
@@ -45,18 +46,28 @@ def test_separate_mol_svgs_keep_distinct_intrinsic_sizes():
     assert eh > 0 and ph > 0
 
 
-def test_scene_to_html_preserves_intrinsic_css():
+def test_scene_to_html_embeds_data_uri_img():
     html = Pict(backend="native", format="html").render(
         {"molecules": [{"smiles": "CCO"}]}
     )
+    assert 'src="data:image/svg+xml;charset=utf-8,' in html
+    assert "<img class=\"xpict\"" in html
+    assert re.search(r'<img[^>]*\bwidth="[0-9.]+"', html)
+    assert re.search(r'<img[^>]*\bheight="[0-9.]+"', html)
+    # No inline <svg> in the page body — sizing comes from the image intrinsic.
+    body = html.split("<main", 1)[1]
+    assert "<svg" not in body
+    assert "img.xpict" in html
     assert "width: auto" in html
-    assert "height: auto" in html
-    assert "inline-block" in html
-    assert "flex: 0 0 auto" in html
-    # Do not force every mol SVG to fill the page width.
-    assert "max-width: 100%; height: auto; display: block" not in html
-    attrs = _root_attrs(html)
-    assert attrs["width"].endswith("px")
-    assert attrs["height"].endswith("px")
-    # scene_to_html imports still used by format=html path
-    assert scene_to_html  # noqa: B018 — imported for API stability
+
+
+def test_svg_to_data_uri_roundtrips_markup():
+    svg = Pict(backend="native").render({"molecules": [{"smiles": "CCO"}]})
+    uri = svg_to_data_uri(svg)
+    assert uri.startswith("data:image/svg+xml;charset=utf-8,")
+    payload = unquote(uri.split(",", 1)[1])
+    assert payload.lstrip().startswith("<svg")
+    assert 'width="' in payload
+    tag = svg_to_img_tag(svg, alt="ethanol")
+    assert 'alt="ethanol"' in tag
+    assert 'width="' in tag and 'height="' in tag

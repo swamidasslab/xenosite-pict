@@ -35,7 +35,8 @@ def test_pict_html():
         {"molecules": [{"smiles": "CCO", "marks": [{"atoms": [0]}]}]}
     )
     assert "<!DOCTYPE html>" in html
-    assert "<svg" in html
+    assert "data:image/svg+xml" in html
+    assert "<img" in html
 
 
 def test_grid_two_mols():
