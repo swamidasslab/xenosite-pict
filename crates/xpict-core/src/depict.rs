@@ -497,9 +497,9 @@ fn paint_marks(
     let mut out = Vec::new();
     let r = BOND_PX * MARK_FRAC;
     // xenopict: mark halo via `<use href="#mark" stroke="#555" …>`; mark ink
-    // sits in a separate group with stroke-width scale×0.1 / opacity 0.7.
-    // Backbone `set_backbone_color` does **not** recolor marks — ink stays
-    // black like the default lines stroke, never `mol.color`.
+    // sits in a separate group with stroke-width scale×0.1 / opacity 0.7 but
+    // **no stroke color**, so only the gray halo is visible. We paint ink as
+    // `#555` too. Backbone color never recolors marks.
     // shapely `resolution=6` → 24 verts/circle; keep capsules smooth.
     const CAPSULE_QUAD_SEGS: u32 = 16;
 
@@ -559,7 +559,7 @@ fn paint_marks(
     }
 
     // Mark ink (xenopict mark group: fill none, stroke-width scale×0.1, opacity 0.7).
-    // Stroke color is always black — xenopict does not recolor marks with the backbone.
+    // Stroke color matches the visible xenopict halo gray (`#555`).
     for &ai in &mol.mark_atoms {
         let Some(&i) = by_index.get(&ai) else {
             continue;
@@ -949,8 +949,8 @@ mod tests {
         );
         assert!((op - 0.7).abs() < 1e-9);
         assert_eq!(
-            stroke, "#000000",
-            "mark ink is always black (xenopict); not mol.color"
+            stroke, "#555",
+            "mark ink is xenopict gray (#555); not mol.color / black"
         );
         // Colored backbone must not recolor marks.
         mol.color = Some("#0b6e4f".into());
@@ -968,7 +968,7 @@ mod tests {
             } if c.contains(" mark") && !c.contains("halo") => Some(s.clone()),
             _ => None,
         });
-        assert_eq!(ink.as_deref(), Some("#000000"));
+        assert_eq!(ink.as_deref(), Some("#555"));
         let halo = marks.primitives.iter().any(|p| match p {
             Primitive::Circle {
                 stroke: Some(s),

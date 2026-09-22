@@ -45,8 +45,12 @@ pub const MARK_STROKE_FRAC: f64 = 0.1;
 pub const MARK_HALO_STROKE_FRAC: f64 = 0.2;
 pub const MARK_OPACITY: f64 = 0.7;
 pub const MARK_HALO_OPACITY: f64 = 0.45;
-/// xenopict mark ink (default lines stroke); never follows molecule color.
-pub const MARK_INK_COLOR: &str = "#000000";
+/// xenopict mark ink stroke color.
+///
+/// The mark `<g>` sets stroke-width/opacity but no stroke color, so only the
+/// `#555` halo `<use>` is visible. Use the same gray for ink so we match what
+/// xenopict actually paints (not black, and never `mol.color`).
+pub const MARK_INK_COLOR: &str = "#555";
 /// xenopict mark halo `<use stroke>`.
 pub const MARK_HALO_COLOR: &str = "#555";
 /// RDKit ``DrawText::SUBS_SCALE`` / ``SUPER_SCALE`` for H-counts and charges.
