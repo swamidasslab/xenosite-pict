@@ -9,6 +9,11 @@ export function centeredDisplacements(order: number, off: number): Float64Array;
 
 export function coreVersion(): string;
 
+/**
+ * `MoleculeIn` JSON → `Scene` JSON (MVP paint ABI).
+ */
+export function depictMolecule(molecule_json: string): string;
+
 export function diskHaloPathD(cx: number, cy: number, ink_radius: number, grow: number): string | undefined;
 
 export function multiBondOffset(length: number): number;
@@ -37,6 +42,7 @@ export interface InitOutput {
     readonly capsuleHaloPathD: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number];
     readonly centeredDisplacements: (a: number, b: number) => [number, number];
     readonly coreVersion: () => [number, number];
+    readonly depictMolecule: (a: number, b: number) => [number, number, number, number];
     readonly diskHaloPathD: (a: number, b: number, c: number, d: number) => [number, number];
     readonly multiBondOffset: (a: number) => number;
     readonly offsetPx: () => number;
@@ -47,6 +53,8 @@ export interface InitOutput {
     readonly __wbindgen_externrefs: WebAssembly.Table;
     readonly __wbindgen_free: (a: number, b: number, c: number) => void;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
+    readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
+    readonly __externref_table_dealloc: (a: number) => void;
     readonly __wbindgen_start: () => void;
 }
 

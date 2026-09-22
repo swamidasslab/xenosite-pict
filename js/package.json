@@ -27,11 +27,13 @@
     "build:wasm": "../scripts/build_bindings.sh wasm",
     "build": "npm run build:wasm && tsc -p tsconfig.json",
     "check": "tsc -p tsconfig.json --noEmit",
-    "test:native": "node src/native.smoke.mjs",
-    "test": "npm run check && npm run test:native"
+    "check:pocs": "tsc --strict --module ES2022 --moduleResolution bundler --target ES2022 --esModuleInterop --skipLibCheck --types node --noEmit pocs/elk_layout.ts",
+    "test:native": "tsx src/native.smoke.ts",
+    "test": "npm run check && npm run check:pocs && npm run test:native"
   },
   "devDependencies": {
     "@types/node": "^22.20.4",
+    "tsx": "^4.23.15",
     "typescript": "^5.6.0"
   },
   "optionalDependencies": {

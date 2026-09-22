@@ -47,7 +47,7 @@ JS `plotdotDisks` takes `coords: [x,y][]`; the wasm layer flattens to
 1. `xpict-core` + Rust unit test  
 2. Wrap in **both** `xpict-py` and `xpict-wasm`  
 3. Expose via `native_bridge.py` and `js/src/native.ts`  
-4. Parity test in Python; `js/src/native.smoke.mjs` for a quick wasm check  
+4. Parity test in Python; `js/src/native.smoke.ts` for a quick wasm check  
 
 ## Roadmap: kill Shapely / fontTools on the ship path
 

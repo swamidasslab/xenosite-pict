@@ -3,10 +3,23 @@
  *
  * Call ``await initNative()`` once before using exports. Rebuild with:
  * ``./scripts/build_bindings.sh wasm``
- *
- * Types are declared here so ``tsc`` works before wasm-pack has run; the
- * implementation loads ``./wasm/xpict_core.js`` produced by wasm-pack.
  */
+
+import init, {
+  bondPx as wasmBondPx,
+  capsuleHaloPathD as wasmCapsuleHaloPathD,
+  centeredDisplacements as wasmCenteredDisplacements,
+  coreVersion as wasmCoreVersion,
+  depictMolecule as wasmDepictMolecule,
+  diskHaloPathD as wasmDiskHaloPathD,
+  multiBondOffset as wasmMultiBondOffset,
+  offsetPx as wasmOffsetPx,
+  plotdotDisks as wasmPlotdotDisks,
+  plotdotRings as wasmPlotdotRings,
+  shadeFrac as wasmShadeFrac,
+  strokePx as wasmStrokePx,
+  type InitInput,
+} from "./wasm/xpict_core.js";
 
 export type ShadeDisk = {
   radiusFrac: number;
@@ -15,44 +28,27 @@ export type ShadeDisk = {
   y: number;
 };
 
-type WasmModule = {
-  default: (moduleOrPath?: unknown) => Promise<unknown>;
-  multiBondOffset(length: number): number;
-  centeredDisplacements(order: number, off: number): Float64Array | number[];
-  plotdotRings(z: number, levels: number): Float64Array | number[];
-  plotdotDisks(zs: number[] | Float64Array, coords: number[] | Float64Array, levels: number): Float64Array | number[];
-  capsuleHaloPathD(
-    x1: number,
-    y1: number,
-    x2: number,
-    y2: number,
-    inkRadius: number,
-    grow: number
-  ): string | undefined;
-  diskHaloPathD(
-    cx: number,
-    cy: number,
-    inkRadius: number,
-    grow: number
-  ): string | undefined;
-  bondPx(): number;
-  offsetPx(): number;
-  strokePx(): number;
-  shadeFrac(): number;
-  coreVersion(): string;
-};
+let ready = false;
+let initPromise: Promise<void> | null = null;
 
-let mod: WasmModule | null = null;
-let initPromise: Promise<WasmModule> | null = null;
+function toF64(values: ArrayLike<number>): Float64Array {
+  return values instanceof Float64Array ? values : Float64Array.from(values);
+}
 
 /** Load the wasm module (idempotent). Works in browser and Node. */
-export async function initNative(moduleOrPath?: unknown): Promise<void> {
-  if (mod) return;
+export async function initNative(
+  moduleOrPath?: InitInput | { module_or_path: InitInput | Promise<InitInput> }
+): Promise<void> {
+  if (ready) return;
   if (!initPromise) {
     initPromise = (async () => {
-      const wasm = (await import("./wasm/xpict_core.js")) as WasmModule;
-      let arg = moduleOrPath;
-      if (arg === undefined && typeof process !== "undefined" && process.versions?.node) {
+      let arg: InitInput | { module_or_path: InitInput | Promise<InitInput> } | undefined =
+        moduleOrPath;
+      if (
+        arg === undefined &&
+        typeof process !== "undefined" &&
+        process.versions?.node
+      ) {
         // --target web uses fetch(); Node needs bytes or a Response.
         const { readFile } = await import("node:fs/promises");
         const { fileURLToPath } = await import("node:url");
@@ -69,32 +65,33 @@ export async function initNative(moduleOrPath?: unknown): Promise<void> {
       } else if (arg instanceof Uint8Array) {
         arg = { module_or_path: arg };
       }
-      await wasm.default(arg);
-      return wasm;
+      await init(arg);
+      ready = true;
     })();
   }
-  mod = await initPromise;
+  await initPromise;
 }
 
-function requireMod(): WasmModule {
-  if (!mod) {
+function requireReady(): void {
+  if (!ready) {
     throw new Error(
       "xpict native wasm not initialized — call await initNative() first (run ./scripts/build_bindings.sh wasm)"
     );
   }
-  return mod;
 }
 
 export function isNativeReady(): boolean {
-  return mod !== null;
+  return ready;
 }
 
 export function multiBondOffset(length: number): number {
-  return requireMod().multiBondOffset(length);
+  requireReady();
+  return wasmMultiBondOffset(length);
 }
 
 export function centeredDisplacements(order: number, off: number): number[] {
-  return Array.from(requireMod().centeredDisplacements(order, off));
+  requireReady();
+  return Array.from(wasmCenteredDisplacements(order, off));
 }
 
 /** PlotDot rings as `{ radiusFrac, colorZ }[]`. */
@@ -102,10 +99,11 @@ export function plotdotRings(
   z: number,
   levels = 4
 ): Array<{ radiusFrac: number; colorZ: number }> {
-  const flat = Array.from(requireMod().plotdotRings(z, levels));
+  requireReady();
+  const flat = Array.from(wasmPlotdotRings(z, levels));
   const out: Array<{ radiusFrac: number; colorZ: number }> = [];
   for (let i = 0; i + 1 < flat.length; i += 2) {
-    out.push({ radiusFrac: flat[i], colorZ: flat[i + 1] });
+    out.push({ radiusFrac: flat[i]!, colorZ: flat[i + 1]! });
   }
   return out;
 }
@@ -116,18 +114,21 @@ export function plotdotDisks(
   coords: Array<[number, number]>,
   levels = 4
 ): ShadeDisk[] {
+  requireReady();
   const flatCoords: number[] = [];
   for (const [x, y] of coords) {
     flatCoords.push(x, y);
   }
-  const flat = Array.from(requireMod().plotdotDisks(zs, flatCoords, levels));
+  const flat = Array.from(
+    wasmPlotdotDisks(toF64(zs), toF64(flatCoords), levels)
+  );
   const out: ShadeDisk[] = [];
   for (let i = 0; i + 3 < flat.length; i += 4) {
     out.push({
-      radiusFrac: flat[i],
-      colorZ: flat[i + 1],
-      x: flat[i + 2],
-      y: flat[i + 3],
+      radiusFrac: flat[i]!,
+      colorZ: flat[i + 1]!,
+      x: flat[i + 2]!,
+      y: flat[i + 3]!,
     });
   }
   return out;
@@ -141,7 +142,8 @@ export function capsuleHaloPathD(
   inkRadius: number,
   grow: number
 ): string | undefined {
-  return requireMod().capsuleHaloPathD(x1, y1, x2, y2, inkRadius, grow) ?? undefined;
+  requireReady();
+  return wasmCapsuleHaloPathD(x1, y1, x2, y2, inkRadius, grow) ?? undefined;
 }
 
 export function diskHaloPathD(
@@ -150,25 +152,37 @@ export function diskHaloPathD(
   inkRadius: number,
   grow: number
 ): string | undefined {
-  return requireMod().diskHaloPathD(cx, cy, inkRadius, grow) ?? undefined;
+  requireReady();
+  return wasmDiskHaloPathD(cx, cy, inkRadius, grow) ?? undefined;
+}
+
+/** MVP paint: `MoleculeIn` JSON → `Scene` JSON. */
+export function depictMolecule(moleculeJson: string): string {
+  requireReady();
+  return wasmDepictMolecule(moleculeJson);
 }
 
 export function bondPx(): number {
-  return requireMod().bondPx();
+  requireReady();
+  return wasmBondPx();
 }
 
 export function offsetPx(): number {
-  return requireMod().offsetPx();
+  requireReady();
+  return wasmOffsetPx();
 }
 
 export function strokePx(): number {
-  return requireMod().strokePx();
+  requireReady();
+  return wasmStrokePx();
 }
 
 export function shadeFrac(): number {
-  return requireMod().shadeFrac();
+  requireReady();
+  return wasmShadeFrac();
 }
 
 export function coreVersion(): string {
-  return requireMod().coreVersion();
+  requireReady();
+  return wasmCoreVersion();
 }

@@ -41,6 +41,7 @@ export {
   plotdotDisks,
   capsuleHaloPathD,
   diskHaloPathD,
+  depictMolecule,
   bondPx,
   offsetPx,
   strokePx,

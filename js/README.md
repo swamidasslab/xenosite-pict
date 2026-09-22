@@ -1,4 +1,4 @@
-# @xenosite/xpict (JS / TypeScript)
+# @xenosite/xpict (TypeScript)
 
 Browser and Node client for xpict contracts, plus **shared Rust core** via WASM
 (same algorithms as Python `xpict._native`).
@@ -36,5 +36,5 @@ npm install
 npm run check      # tsc
 npm run build:wasm # wasm-pack → src/wasm/
 npm run build      # wasm + tsc → dist/
-npm test           # check + native smoke
+npm test           # check + native smoke (tsx)
 ```
