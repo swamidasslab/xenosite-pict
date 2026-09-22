@@ -1,6 +1,17 @@
 /* @ts-self-types="./xpict_core.d.ts" */
 
 /**
+ * @param {string} symbol
+ * @returns {number | undefined}
+ */
+export function atomicNumber(symbol) {
+    const ptr0 = passStringToWasm0(symbol, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.atomicNumber(ptr0, len0);
+    return ret === Number.MAX_SAFE_INTEGER ? undefined : ret;
+}
+
+/**
  * @returns {number}
  */
 export function bondPx() {
@@ -99,6 +110,45 @@ export function diskHaloPathD(cx, cy, ink_radius, grow) {
 }
 
 /**
+ * @param {number} z
+ * @returns {string}
+ */
+export function elementSymbol(z) {
+    let deferred1_0;
+    let deferred1_1;
+    try {
+        const ret = wasm.elementSymbol(z);
+        deferred1_0 = ret[0];
+        deferred1_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+    }
+}
+
+/**
+ * Kabsch 2D. Flat `[x,y,…]` pairs for src and dst.
+ * Returns `[cos, sin, tx, ty, det]`.
+ * @param {Float64Array} src
+ * @param {Float64Array} dst
+ * @param {boolean} allow_reflect
+ * @returns {Float64Array}
+ */
+export function kabsch2d(src, dst, allow_reflect) {
+    const ptr0 = passArrayF64ToWasm0(src, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passArrayF64ToWasm0(dst, wasm.__wbindgen_malloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ret = wasm.kabsch2d(ptr0, len0, ptr1, len1, allow_reflect);
+    if (ret[3]) {
+        throw takeFromExternrefTable0(ret[2]);
+    }
+    var v3 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+    return v3;
+}
+
+/**
  * @param {number} length
  * @returns {number}
  */
@@ -144,6 +194,33 @@ export function plotdotRings(z, levels) {
     var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
     wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
     return v1;
+}
+
+/**
+ * Rigid-align other coords onto a template.
+ *
+ * `template` / `other`: flat `[index, x, y, …]`.
+ * `mapping`: flat `[otherIndex, templateIndex, …]`.
+ * Returns flat `[index, x, y, …]` for the transformed other atoms.
+ * @param {Float64Array} template
+ * @param {Float64Array} other
+ * @param {Int32Array} mapping
+ * @returns {Float64Array}
+ */
+export function rigidAlignCoords(template, other, mapping) {
+    const ptr0 = passArrayF64ToWasm0(template, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passArrayF64ToWasm0(other, wasm.__wbindgen_malloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ptr2 = passArray32ToWasm0(mapping, wasm.__wbindgen_malloc);
+    const len2 = WASM_VECTOR_LEN;
+    const ret = wasm.rigidAlignCoords(ptr0, len0, ptr1, len1, ptr2, len2);
+    if (ret[3]) {
+        throw takeFromExternrefTable0(ret[2]);
+    }
+    var v4 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+    return v4;
 }
 
 /**
@@ -202,12 +279,27 @@ function getStringFromWasm0(ptr, len) {
     return decodeText(ptr >>> 0, len);
 }
 
+let cachedUint32ArrayMemory0 = null;
+function getUint32ArrayMemory0() {
+    if (cachedUint32ArrayMemory0 === null || cachedUint32ArrayMemory0.byteLength === 0) {
+        cachedUint32ArrayMemory0 = new Uint32Array(wasm.memory.buffer);
+    }
+    return cachedUint32ArrayMemory0;
+}
+
 let cachedUint8ArrayMemory0 = null;
 function getUint8ArrayMemory0() {
     if (cachedUint8ArrayMemory0 === null || cachedUint8ArrayMemory0.byteLength === 0) {
         cachedUint8ArrayMemory0 = new Uint8Array(wasm.memory.buffer);
     }
     return cachedUint8ArrayMemory0;
+}
+
+function passArray32ToWasm0(arg, malloc) {
+    const ptr = malloc(arg.length * 4, 4) >>> 0;
+    getUint32ArrayMemory0().set(arg, ptr / 4);
+    WASM_VECTOR_LEN = arg.length;
+    return ptr;
 }
 
 function passArrayF64ToWasm0(arg, malloc) {
@@ -295,6 +387,7 @@ function __wbg_finalize_init(instance, module) {
     wasm = instance.exports;
     wasmModule = module;
     cachedFloat64ArrayMemory0 = null;
+    cachedUint32ArrayMemory0 = null;
     cachedUint8ArrayMemory0 = null;
     wasm.__wbindgen_start();
     return wasm;

@@ -6,6 +6,7 @@
  */
 
 import { ensureRdkit, type RdkitMol, type RdkitModule } from "../rdkit-loader.js";
+import { elementSymbol } from "../elements.js";
 
 /** Bond length target in drawing units (matches Rust `SCALE` / Python). */
 export const SCALE = 20;
@@ -51,22 +52,6 @@ type RdkitMolJson = {
   }>;
 };
 
-const Z_TO_EL: Record<number, string> = {
-  1: "H",
-  5: "B",
-  6: "C",
-  7: "N",
-  8: "O",
-  9: "F",
-  14: "Si",
-  15: "P",
-  16: "S",
-  17: "Cl",
-  35: "Br",
-  53: "I",
-  0: "*",
-};
-
 const ALIGN_OPTS = JSON.stringify({
   useCoordGen: false,
   allowOptionalAttachments: true,
@@ -75,7 +60,7 @@ const ALIGN_OPTS = JSON.stringify({
 
 function elementFromZ(z: number | undefined): string {
   if (z === undefined) return "C";
-  return Z_TO_EL[z] ?? `X${z}`;
+  return elementSymbol(z);
 }
 
 function atomLabel(element: string, impHs: number, charge: number): string | undefined {

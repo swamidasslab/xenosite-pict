@@ -18,6 +18,8 @@ import init, {
   plotdotRings as wasmPlotdotRings,
   shadeFrac as wasmShadeFrac,
   strokePx as wasmStrokePx,
+  elementSymbol as wasmElementSymbol,
+  atomicNumber as wasmAtomicNumber,
   type InitInput,
 } from "./wasm/xpict_core.js";
 
@@ -187,4 +189,17 @@ export function shadeFrac(): number {
 export function coreVersion(): string {
   requireReady();
   return wasmCoreVersion();
+}
+
+/** Atomic number → element symbol (`0` → `*`). */
+export function elementSymbol(z: number): string {
+  requireReady();
+  return wasmElementSymbol(z);
+}
+
+/** Element symbol → atomic number (case-insensitive). */
+export function atomicNumber(symbol: string): number | undefined {
+  requireReady();
+  const z = wasmAtomicNumber(symbol);
+  return z === undefined ? undefined : z;
 }

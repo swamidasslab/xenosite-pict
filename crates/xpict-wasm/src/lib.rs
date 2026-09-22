@@ -157,6 +157,16 @@ pub fn shade_frac() -> f64 {
     metrics::SHADE_FRAC
 }
 
+#[wasm_bindgen(js_name = elementSymbol)]
+pub fn element_symbol(z: u32) -> String {
+    xpict_core::element_symbol(z).to_string()
+}
+
+#[wasm_bindgen(js_name = atomicNumber)]
+pub fn atomic_number(symbol: &str) -> Option<u32> {
+    xpict_core::atomic_number(symbol)
+}
+
 #[wasm_bindgen(js_name = coreVersion)]
 pub fn core_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()

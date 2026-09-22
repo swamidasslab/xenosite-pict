@@ -37,6 +37,18 @@ fn depict_molecule(molecule_json: &str) -> PyResult<String> {
         .map_err(|e| PyRuntimeError::new_err(format!("Scene JSON: {e}")))
 }
 
+/// Element symbol for atomic number (`0` → ``*``, `1` → ``H``, …).
+#[pyfunction]
+fn element_symbol(z: u32) -> &'static str {
+    xpict_core::element_symbol(z)
+}
+
+/// Atomic number for an element symbol (case-insensitive).
+#[pyfunction]
+fn atomic_number(symbol: &str) -> Option<u32> {
+    xpict_core::atomic_number(symbol)
+}
+
 /// Kabsch 2D: paired ``src`` → ``dst``. Returns ``(cos, sin, tx, ty, det)``.
 #[pyfunction]
 #[pyo3(signature = (src, dst, allow_reflect=true))]
@@ -410,6 +422,8 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(multi_bond_offset, m)?)?;
     m.add_function(wrap_pyfunction!(centered_displacements, m)?)?;
     m.add_function(wrap_pyfunction!(depict_molecule, m)?)?;
+    m.add_function(wrap_pyfunction!(element_symbol, m)?)?;
+    m.add_function(wrap_pyfunction!(atomic_number, m)?)?;
     m.add_function(wrap_pyfunction!(kabsch_2d, m)?)?;
     m.add_function(wrap_pyfunction!(rigid_align_coords, m)?)?;
     m.add_function(wrap_pyfunction!(plotdot_rings, m)?)?;

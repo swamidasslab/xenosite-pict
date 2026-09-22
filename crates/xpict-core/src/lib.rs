@@ -10,6 +10,7 @@
 pub mod align;
 pub mod bonds;
 pub mod depict;
+pub mod elements;
 #[cfg(feature = "elk")]
 pub mod elk;
 pub mod font;
@@ -27,6 +28,7 @@ pub use bonds::{
     line_intersect, multi_bond_offset, BondStrokes, DrawnBond, StrokePath,
 };
 pub use depict::depict_molecule;
+pub use elements::{atomic_number, element_symbol, SYMBOLS};
 #[cfg(feature = "elk")]
 pub use elk::layout_json as elk_layout_json;
 pub use geom::{capsule_halo_path_d, disk_halo_path_d, polygon_to_svg_d};

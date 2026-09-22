@@ -20,6 +20,14 @@ await initNative({
 const off = multiBondOffset(20);
 if (Math.abs(off - 3) > 1e-9) throw new Error(`offset ${off}`);
 
+const { elementSymbol, atomicNumber } = await import("./elements.js");
+if (elementSymbol(0) !== "*" || elementSymbol(6) !== "C" || elementSymbol(118) !== "Og") {
+  throw new Error("elementSymbol table incomplete");
+}
+if (atomicNumber("fe") !== 26 || atomicNumber("*") !== 0) {
+  throw new Error("atomicNumber lookup failed");
+}
+
 const rings = plotdotRings(1.0, 4);
 if (rings.length !== 4) throw new Error(`rings len ${rings.length}`);
 if (Math.abs(offsetPx() - 3) > 1e-9) throw new Error("OFFSET_PX");
