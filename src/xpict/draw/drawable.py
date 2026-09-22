@@ -25,6 +25,7 @@ from xpict.draw.glyphs import compile_text_shapes
 from xpict.draw.halo import disk_shape
 from xpict.draw.label_place import PlacedLabel, place_backbone
 from xpict.draw.markush import apply_rgroup_texts, ring_attachment_annotations
+from xpict import _native
 from xpict.draw.metrics import (
     BOND_PX,
     COLLISION_CELL_PX,
@@ -448,24 +449,46 @@ class AtomLabelsDrawable(Drawable):
                         drawn.ink_dists.append(HALO_GAP_PX)
             if placed is None:
                 continue
-            drawn.primitives.append(
-                TextPrim(
-                    x=placed.origin_x,
-                    y=placed.y,
-                    text=placed.text,
-                    font_size=FONT_PX,
-                    fill=self.color,
-                    anchor="start",
-                    cls=f"atom-{atom.index} label",
+            if placed.path_d:
+                drawn.primitives.append(
+                    PathPrim(
+                        d=placed.path_d,
+                        stroke="none",
+                        fill=self.color,
+                        stroke_width=0.0,
+                        opacity=1.0,
+                        cls=f"atom-{atom.index} label",
+                        data_text=placed.text,
+                    )
                 )
-            )
-            ink = compile_text_shapes(
-                placed.text,
-                placed.origin_x,
-                placed.y,
-                font_size=FONT_PX,
-                anchor="start",
-            )
+                ink = _native.label_ink_shape(
+                    placed.raw or placed.text,
+                    placed.origin_x,
+                    placed.y,
+                    placed.atom_x,
+                    placed.atom_y,
+                    placed.side,
+                    FONT_PX,
+                )
+            else:
+                drawn.primitives.append(
+                    TextPrim(
+                        x=placed.origin_x,
+                        y=placed.y,
+                        text=placed.text,
+                        font_size=FONT_PX,
+                        fill=self.color,
+                        anchor="start",
+                        cls=f"atom-{atom.index} label",
+                    )
+                )
+                ink = compile_text_shapes(
+                    placed.text,
+                    placed.origin_x,
+                    placed.y,
+                    font_size=FONT_PX,
+                    anchor="start",
+                )
             if ink is not None:
                 drawn.ink.append(ink)
                 drawn.ink_dists.append(HALO_GAP_PX)

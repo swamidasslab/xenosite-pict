@@ -63,6 +63,8 @@ def _render_primitive(parent: Element, prim: Primitive) -> None:
             attrs["stroke-dasharray"] = prim.stroke_dasharray
         if prim.cls:
             attrs["class"] = prim.cls
+        if prim.data_text:
+            attrs["data-text"] = prim.data_text
         SubElement(parent, "path", attrs)
     elif isinstance(prim, CirclePrim):
         attrs = {

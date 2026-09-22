@@ -198,13 +198,10 @@ fn compile_text_shapes(
     .map(PyShape::wrap)
 }
 
-/// Place backbone bond ends + atom labels. Coords are caller SVG positions.
-///
-/// `atoms`: list of `(x, y, label|None)`.
-/// `bonds`: list of `(begin, end)` indices into atoms.
 /// Returns `(bond_ends, labels)` where each bond end is `(x1,y1,x2,y2)` and
-/// each label is `None` or `(text, origin_x, y, atom_x, atom_y, side, clearance)`
-/// with `side` in `{"east","west"}`.
+/// each label is `None` or
+/// `(text, origin_x, y, atom_x, atom_y, side, clearance, path_d, raw)`
+/// with `side` in `{"east","west","north","south"}`.
 #[pyfunction]
 #[pyo3(signature = (atoms, bonds, font_size=None))]
 fn place_backbone(
@@ -213,7 +210,7 @@ fn place_backbone(
     font_size: Option<f64>,
 ) -> (
     Vec<(f64, f64, f64, f64)>,
-    Vec<Option<(String, f64, f64, f64, f64, String, f64)>>,
+    Vec<Option<(String, f64, f64, f64, f64, String, f64, String, String)>>,
 ) {
     let font_px = font_size.unwrap_or(metrics::FONT_PX);
     let atoms: Vec<xpict_core::labels::AtomIn> = atoms
@@ -236,6 +233,8 @@ fn place_backbone(
                 let side = match p.side {
                     xpict_core::labels::LabelSide::East => "east".to_string(),
                     xpict_core::labels::LabelSide::West => "west".to_string(),
+                    xpict_core::labels::LabelSide::North => "north".to_string(),
+                    xpict_core::labels::LabelSide::South => "south".to_string(),
                 };
                 (
                     p.text,
@@ -245,6 +244,8 @@ fn place_backbone(
                     p.atom_y,
                     side,
                     p.clearance,
+                    p.path_d,
+                    p.raw,
                 )
             })
         })
@@ -265,13 +266,48 @@ fn compose_atom_label(center: &str, traveling: &str, side: &str) -> String {
     let parts = xpict_core::labels::LabelParts {
         center: center.to_string(),
         traveling: traveling.to_string(),
+        charge: 0,
     };
-    let side = if side.eq_ignore_ascii_case("west") {
-        xpict_core::labels::LabelSide::West
-    } else {
-        xpict_core::labels::LabelSide::East
+    let side = match side.to_ascii_lowercase().as_str() {
+        "west" => xpict_core::labels::LabelSide::West,
+        "north" => xpict_core::labels::LabelSide::North,
+        "south" => xpict_core::labels::LabelSide::South,
+        _ => xpict_core::labels::LabelSide::East,
     };
     xpict_core::labels::compose_label(&parts, side)
+}
+
+/// Glyph ink shape for a placed chem label (halo occupancy).
+#[pyfunction]
+#[pyo3(signature = (raw, origin_x, y, atom_x, atom_y, side, font_size=None))]
+fn label_ink_shape(
+    raw: &str,
+    origin_x: f64,
+    y: f64,
+    atom_x: f64,
+    atom_y: f64,
+    side: &str,
+    font_size: Option<f64>,
+) -> Option<PyShape> {
+    let font_px = font_size.unwrap_or(metrics::FONT_PX);
+    let side = match side.to_ascii_lowercase().as_str() {
+        "west" => xpict_core::labels::LabelSide::West,
+        "north" => xpict_core::labels::LabelSide::North,
+        "south" => xpict_core::labels::LabelSide::South,
+        _ => xpict_core::labels::LabelSide::East,
+    };
+    let pl = xpict_core::labels::PlacedLabel {
+        raw: raw.to_string(),
+        text: String::new(),
+        origin_x,
+        y,
+        atom_x,
+        atom_y,
+        side,
+        clearance: 0.0,
+        path_d: String::new(),
+    };
+    xpict_core::labels::label_ink_shape(&pl, font_px).map(PyShape::wrap)
 }
 
 /// Multipolygon geometry (Shapely stand-in).
@@ -438,6 +474,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(place_backbone, m)?)?;
     m.add_function(wrap_pyfunction!(split_atom_label, m)?)?;
     m.add_function(wrap_pyfunction!(compose_atom_label, m)?)?;
+    m.add_function(wrap_pyfunction!(label_ink_shape, m)?)?;
     m.add_class::<PyShape>()?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     m.add("BOND_PX", metrics::BOND_PX)?;

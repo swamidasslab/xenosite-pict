@@ -151,8 +151,8 @@ def test_anion_is_not_a_radical_dot():
 def test_ammonium_label_has_hydrogens_and_charge():
     backend = _backend()
     svg = render({"molecules": [{"smiles": "[NH4+]"}]}, backend=backend)
-    assert "NH4" in svg
-    assert "+" in svg
+    assert "NH4" in svg or "NH₄" in svg
+    assert "+" in svg or "⁺" in svg or "＋" in svg
 
 
 def test_wedge_and_hash_and_wavy_and_crossed_in_svg():
