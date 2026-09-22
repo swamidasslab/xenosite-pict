@@ -61,3 +61,35 @@ def test_legacy_molecule_halo_lifts_to_document():
         {"molecules": [{"smiles": "CCO", "halo": False}]}
     )
     assert spec.halo is False
+
+
+def test_shading_does_not_opt_into_document_halo():
+    """Shade disks paint under the knockout but never join it."""
+    from xpict import Pict
+    from xpict.contracts.nodes import PictSpec
+    from xpict.draw.drawable import paint_molecule
+
+    bare = PictSpec.model_validate({"molecules": [{"smiles": "CCO"}], "halo": True})
+    shaded = PictSpec.model_validate(
+        {
+            "molecules": [
+                {
+                    "smiles": "CCO",
+                    "shade": {"atoms": [0.2, 0.5, 0.9], "vmin": 0.0, "vmax": 1.0},
+                }
+            ],
+            "halo": True,
+        }
+    )
+    pict = Pict(backend="native")
+    bare_layout = pict.layout(bare).molecules[0]
+    shaded_layout = pict.layout(shaded).molecules[0]
+    _, bare_halo = paint_molecule(bare_layout, bare.molecules[0], halo=True)
+    vp, shaded_halo = paint_molecule(shaded_layout, shaded.molecules[0], halo=True)
+    assert any(
+        getattr(p, "cls", None) == "shade"
+        for layer in vp.layers
+        for p in layer.primitives
+    )
+    assert len(shaded_halo.jobs) == len(bare_halo.jobs)
+    assert shaded_halo.to_prim().d == bare_halo.to_prim().d

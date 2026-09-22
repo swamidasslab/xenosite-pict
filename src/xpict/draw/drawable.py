@@ -220,6 +220,8 @@ def _normalize_shade_scores(zs: list[float], vmin: float, vmax: float) -> list[f
 
 @dataclass
 class ShadeDrawable(Drawable):
+    """SoM / score shading disks — painted under the halo; does not opt in."""
+
     spec: ShadeSpec
 
     def draw(self, ctx: MolContext) -> Drawn | None:
@@ -240,7 +242,7 @@ class ShadeDrawable(Drawable):
         diverging = vmin < 0.0 < vmax
         # xenopict ``shade()``: scale*0.9, or scale*0.8 when atoms and bonds both set.
         base_r = BOND_PX * (0.8 if atom_zs and bond_zs else SHADE_FRAC)
-        drawn = Drawn(layer="shading", halo_cls="halo")
+        drawn = Drawn(layer="shading", halo=False)
         cmap = self.spec.colormap
 
         def _emit(zs: list[float], coords: list[tuple[float, float]]) -> None:

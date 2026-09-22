@@ -28,8 +28,8 @@ class Drawn:
     """One drawable's contribution to the scene.
 
     Set ``halo=True`` to opt this drawable's ``ink`` into the shared
-    :class:`Halo` (backbone, element symbols, annotations). Captions and
-    diagram overlays leave it ``False``.
+    :class:`Halo` (backbone, element symbols, annotations). Shading,
+    captions, marks, and diagram overlays leave it ``False``.
     """
 
     primitives: list[Primitive] = field(default_factory=list)

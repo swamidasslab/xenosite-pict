@@ -86,7 +86,7 @@ def build_scene(
     """Assemble viewports + overlays; one document :class:`~xpict.draw.drawn.Halo`.
 
     Drawables opt into that halo (backbone, element symbols, annotations).
-    Molecule captions and diagram arrows do not.
+    Shading, molecule captions, and diagram arrows do not.
     """
     spec = _flat(spec)
     painted: list[tuple[Viewport, Halo]] = [
