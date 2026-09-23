@@ -132,6 +132,16 @@ JS align demo: https://swamidasslab.github.io/xenosite-pict/js/demo/
    (Python / JS)         (RDKit.js)         (RDKit + FFI)
 ```
 
+## Develop
+
+```bash
+make help            # build / test / pages / publish helpers
+make agent-install   # Python venv + native extension
+make test
+```
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`AGENTS.md`](AGENTS.md).
+
 ## License
 
 MIT

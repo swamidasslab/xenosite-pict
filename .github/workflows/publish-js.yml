@@ -43,9 +43,6 @@ jobs:
   publish:
     needs: checks
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: js
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -77,19 +74,14 @@ jobs:
           cache-dependency-path: js/package-lock.json
 
       - name: Install JS deps
-        run: npm ci
+        run: make js-deps
 
-      - name: Strict TypeScript check
-        run: npm run check
-
-      - name: Build wasm + TypeScript
-        run: npm run build
-
-      - name: Test
-        run: npm test
+      - name: Strict check + build + smoke
+        run: make js-ci
 
       - name: Set version from tag
         if: startsWith(github.ref, 'refs/tags/js/v')
+        working-directory: js
         run: |
           VER="${GITHUB_REF_NAME#js/v}"
           echo "Publishing version $VER"
@@ -98,9 +90,10 @@ jobs:
 
       - name: Version policy (workflow_dispatch)
         if: github.event_name == 'workflow_dispatch'
-        run: bash ../scripts/check_version_policy.sh "$(node -p "require('./package.json').version")"
+        run: make check-versions
 
       - name: Retarget package name for GitHub Packages
+        working-directory: js
         run: |
           # GH Packages requires @OWNER/name; source stays @xenosite for npmjs later.
           npm pkg set name=@swamidasslab/xpict
@@ -110,10 +103,11 @@ jobs:
 
       - name: Pack (dry run)
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
-        run: npm pack
+        run: make publish-dry-js
 
       - name: Publish to GitHub Packages
         if: ${{ github.event_name != 'workflow_dispatch' || !inputs.dry_run }}
+        working-directory: js
         run: npm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

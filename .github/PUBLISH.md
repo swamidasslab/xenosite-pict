@@ -35,13 +35,13 @@ The **public API** to document and version is the single-molecule client:
 1. Bump **every** package to the new `X.Y.0` in one PR:
 
    ```bash
-   python3 scripts/bump_version.py 0.2.0
-   bash scripts/check_version_policy.sh --product 0.2.0
+   make bump VERSION=0.2.0
    ```
 
    That updates JS, Python (`pyproject` + `__version__`), and all Rust crates
-   (including the `xpict` → `xpict-core` dep). `release.yml` runs the same
-   script on tag so a `release/v*` push publishes every surface at that version.
+   (including the `xpict` → `xpict-core` dep), then runs the product version
+   policy check. `release.yml` runs the same recipe on tag so a `release/v*`
+   push publishes every surface at that version.
 2. Merge; CI green.
 3. Tag and push:
 
@@ -124,8 +124,8 @@ git tag rust/v0.1.5 && git push origin rust/v0.1.5
 5. Local dry-run:
 
    ```bash
-   cargo publish -p xpict-core --dry-run
-   CPLUS_INCLUDE_PATH="$(pwd)/crates/xpict/compat/rdkit" cargo publish -p xpict --dry-run
+   make publish-dry-core
+   make publish-dry-rust
    ```
 
 `xpict` **requires system RDKit + Boost** at compile time (see `crates/xpict/README.md`).
@@ -173,8 +173,8 @@ automatically**. Patches: `git tag py/vX.Y.Z && git push`. Manual:
 Actions → pypi → Run workflow.
 
 ```bash
-uv sync --extra rdkit
-uv run maturin build --release -m crates/xpict-py/Cargo.toml
+make sync
+make publish-dry-python
 ```
 
 ---

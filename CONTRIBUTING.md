@@ -28,14 +28,18 @@ Please prefer a small issue or PR over a large speculative redesign of the shipp
 ## Development
 
 ```bash
-./scripts/build_bindings.sh all
-uv sync --extra rdkit
-uv run pytest -q
-cd js && npm test
-cargo test -p xpict-core
+make help              # documented targets (build / test / publish helpers)
+make agent-install     # uv sync + maturin develop
+make test              # Rust core + Python + JS
+make pages             # MkDocs site → _site/
 ```
 
+Equivalent without Make: see the `Makefile` recipes (they wrap
+`scripts/build_bindings.sh`, `uv`, `cargo`, and `npm`).
+
 Label markup: [`docs/label-markup.md`](docs/label-markup.md).
+Publish / tags: [`.github/PUBLISH.md`](.github/PUBLISH.md).
+Cloud / coding agents: [`AGENTS.md`](AGENTS.md).
 
 ## License
 

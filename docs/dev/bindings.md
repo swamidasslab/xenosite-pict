@@ -23,17 +23,14 @@ local Depictor FFI for 2D/align. It is **not** linked into `xpict-py` or
 ## One-shot setup
 
 ```bash
-# Python venv + Rust extension
-uv sync --group dev
-./scripts/build_bindings.sh all
-
-# Verify
-pytest tests/test_native_rust.py -q
-cd js && npm test
-cargo test -p xpict-core
+make agent-install     # uv sync --group dev --extra rdkit + maturin develop
+make test              # or: make test-rust / test-python / test-js
 # optional native package (system RDKit):
-cargo test -p xpict
+make test-rust-native
 ```
+
+`make help` lists build / check / pages / publish-dry targets. CI and Pages
+workflows call the same recipes after installing toolchains.
 
 | | Python | JavaScript (MVP) | Native Rust |
 | --- | --- | --- | --- |
