@@ -11,7 +11,7 @@ use xpict_core::doc::{assign_mol_ids, plan_edge, render_doc};
 use crate::edge_plan::process_edge_plan_with_frames;
 use crate::{Error, Rendered, SvgAtom, SvgBond};
 
-pub use xpict_core::{DepictSpec, MolNode, ShadeSpec};
+pub use xpict_core::{AlignTo, AlignToSpec, DepictSpec, MolNode, ShadeSpec};
 
 /// Alias of [`MolNode`].
 pub type MolSpec = MolNode;

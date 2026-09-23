@@ -4,7 +4,7 @@ Full nested ``PictSpec`` / shorthand / diagram chrome lives under
 ``xpict.future`` for design review until those features ship.
 """
 
-from xpict.contracts.depict import DepictSpec, MolSpec
+from xpict.contracts.depict import AlignToSpec, DepictSpec, MolSpec
 from xpict.contracts.edge import (
     AlignOpts,
     CoordGenMoleculeResult,

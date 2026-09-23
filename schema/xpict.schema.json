@@ -1,5 +1,61 @@
 {
   "$defs": {
+    "AlignToSpec": {
+      "additionalProperties": false,
+      "description": "Object form of document ``align_to`` (template ref + align opts).",
+      "properties": {
+        "ref": {
+          "description": "Id of the template mol in this group",
+          "title": "Ref",
+          "type": "string"
+        },
+        "atom_map": {
+          "anyOf": [
+            {
+              "items": {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ],
+                "type": "array"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Pairs (query_atom, template_atom) vs the template. Skips MCS when set.",
+          "title": "Atom Map"
+        },
+        "min_atoms": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override minimum mapped atoms before align is trusted",
+          "title": "Min Atoms"
+        }
+      },
+      "required": [
+        "ref"
+      ],
+      "title": "AlignToSpec",
+      "type": "object"
+    },
     "GroupNode": {
       "additionalProperties": false,
       "description": "Group \u2014 subset of future ``GroupNode`` (mol children only today).",
@@ -171,38 +227,15 @@
               "type": "string"
             },
             {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Id of another mol in this group to use as align template. When omitted and the group has align=true, defaults to the first child.",
-          "title": "Align To"
-        },
-        "atom_map": {
-          "anyOf": [
-            {
-              "items": {
-                "maxItems": 2,
-                "minItems": 2,
-                "prefixItems": [
-                  {
-                    "type": "integer"
-                  },
-                  {
-                    "type": "integer"
-                  }
-                ],
-                "type": "array"
-              },
-              "type": "array"
+              "$ref": "#/$defs/AlignToSpec"
             },
             {
               "type": "null"
             }
           ],
           "default": null,
-          "description": "Pairs (query_atom, template_atom) vs the implicit / align_to template. Skips MCS when set.",
-          "title": "Atom Map"
+          "description": "Align template: id string, or object ``{ref, atom_map?, min_atoms?}``. When omitted and the group has align=true, defaults to the first child.",
+          "title": "Align To"
         }
       },
       "title": "MolNode",

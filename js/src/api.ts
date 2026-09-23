@@ -147,10 +147,15 @@ export type MolNode = {
    * Ink weight relative to house (`1`). Min `2/3` (Regular stem).
    */
   weight?: number;
-  /** Id of another mol in this group to use as align template. */
-  align_to?: string;
-  /** Pairs `[queryAtom, templateAtom]` vs the template; skips MCS when set. */
-  atom_map?: Array<[number, number]>;
+  /**
+   * Align template: id string, or `{ ref, atom_map?, min_atoms? }`.
+   * When omitted and the group has ``align: true``, defaults to the first child.
+   */
+  align_to?: string | {
+    ref: string;
+    atom_map?: Array<[number, number]> | null;
+    min_atoms?: number | null;
+  };
 };
 
 /** Group — ``children`` of mol nodes only (today). */

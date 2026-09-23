@@ -328,7 +328,6 @@ fn depict_cx_markush_alias() {
         scale: None,
         weight: None,
         align_to: None,
-        atom_map: None,
     })
     .unwrap();
     let svg = out[0].to_svg();
@@ -353,7 +352,6 @@ fn depict_star_labels() {
         scale: None,
         weight: None,
         align_to: None,
-        atom_map: None,
     })
     .unwrap();
     let svg = out[0].to_svg();

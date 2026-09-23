@@ -125,6 +125,23 @@ class ContainerCommon(NodeCommon):
     )
 
 
+class AlignToSpec(StrictModel):
+    """Object form of document ``align_to`` (template ref + align opts)."""
+
+    ref: str = Field(description="Id of the template mol in this group")
+    atom_map: list[tuple[int, int]] | None = Field(
+        default=None,
+        description=(
+            "Pairs (query_atom, template_atom) vs the template. Skips MCS when set."
+        ),
+    )
+    min_atoms: int | None = Field(
+        default=None,
+        description="Override minimum mapped atoms before align is trusted",
+        ge=1,
+    )
+
+
 class MolNode(NodeCommon):
     """Molecule object (chemistry payload + optional nested annotations/tables)."""
 
@@ -137,18 +154,12 @@ class MolNode(NodeCommon):
     rings: dict[str, list[int]] = Field(default_factory=dict)
     rgroups: _RGroupsInput = None
     star_labels: list[str | None] | None = None
-    align_to: str | None = Field(
+    align_to: str | AlignToSpec | None = Field(
         default=None,
         description=(
-            "Id of another mol in this group to use as align template. "
+            "Align template: id string, or object "
+            "``{ref, atom_map?, min_atoms?}``. "
             "When omitted and the group has align=true, defaults to the first child."
-        ),
-    )
-    atom_map: list[tuple[int, int]] | None = Field(
-        default=None,
-        description=(
-            "Pairs (query_atom, template_atom) vs the implicit / align_to template. "
-            "Skips MCS when set."
         ),
     )
     ring_attachments: list[RingAttachmentSpec] = Field(default_factory=list)
