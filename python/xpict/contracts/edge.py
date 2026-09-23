@@ -12,7 +12,6 @@ class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     def model_dump(self, *args, **kwargs):
-        # Match Rust ``skip_serializing_if = Option::is_none`` / empty skips.
         kwargs.setdefault("exclude_none", True)
         return super().model_dump(*args, **kwargs)
 
@@ -74,7 +73,6 @@ class MolTemplate(StrictModel):
     template_for: list[MolTemplate] = Field(default_factory=list, description='Children that use this node as their align template.')
 
 
-# How coords were produced for one molecule.
 CoordMethod = Literal['free', 'atom_map', 'mcs', 'none']
 
 

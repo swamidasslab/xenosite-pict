@@ -12,7 +12,6 @@ class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     def model_dump(self, *args, **kwargs):
-        # Match Rust ``skip_serializing_if = Option::is_none`` / empty skips.
         kwargs.setdefault("exclude_none", True)
         return super().model_dump(*args, **kwargs)
 
@@ -28,7 +27,6 @@ class AlignToSpec(StrictModel):
     min_atoms: int | None = Field(None, description='Override [`crate::edge::MIN_MCS_ATOMS`] when set.')
 
 
-# Document align target: id string or `{ "ref", "atom_map"?, "min_atoms"? }`.
 AlignTo = str | AlignToSpec
 
 
@@ -41,7 +39,6 @@ class ShadeSpec(StrictModel):
     vmin: float = 0.0
 
 
-# Discriminator for mol nodes (`"type": "mol"`).
 MolNodeKind = Literal['mol']
 
 
@@ -67,24 +64,29 @@ class GroupNode(StrictModel):
     id: str | None = None
 
 
-DepictRoot = Annotated[MolNode | GroupNode, Field(discriminator='type')]
+DepictSpecRoot = Annotated[MolNode | GroupNode, Field(discriminator='type')]
 
-class DepictSpec(RootModel[DepictRoot]):
-    """Declarative document (strict subset of future PictSpec)."""
+class DepictSpec(RootModel[DepictSpecRoot]):
+    """Declarative document (`mol` or `group` root)."""
+
     def model_dump(self, *args, **kwargs):
-        kwargs.setdefault("exclude_none", True)
+        kwargs.setdefault('exclude_none', True)
         return super().model_dump(*args, **kwargs)
 
     def model_dump_json(self, *args, **kwargs):
-        kwargs.setdefault("exclude_none", True)
+        kwargs.setdefault('exclude_none', True)
         return super().model_dump_json(*args, **kwargs)
-
-    def mols(self) -> list[MolNode]:
-        root = self.root
-        if isinstance(root, MolNode):
-            return [root]
-        return list(root.children)
 
 
 
 MolSpec = MolNode
+
+def mols(self) -> list[MolNode]:
+    """Flatten mol root or group children (host helper, not on the wire)."""
+    root = self.root
+    if isinstance(root, MolNode):
+        return [root]
+    return list(root.children)
+
+
+DepictSpec.mols = mols  # type: ignore[method-assign]

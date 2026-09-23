@@ -12,7 +12,6 @@ class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     def model_dump(self, *args, **kwargs):
-        # Match Rust ``skip_serializing_if = Option::is_none`` / empty skips.
         kwargs.setdefault("exclude_none", True)
         return super().model_dump(*args, **kwargs)
 
@@ -21,11 +20,9 @@ class StrictModel(BaseModel):
         return super().model_dump_json(*args, **kwargs)
 
 
-# Horizontal text anchor (SVG `text-anchor`).
 TextAnchor = Literal['start', 'middle', 'end']
 
 
-# Layer name inside a molecule viewport.
 LayerName = Literal['shading', 'halo', 'bonds', 'labels', 'marks', 'overlay']
 
 
