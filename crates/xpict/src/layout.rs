@@ -144,7 +144,8 @@ fn layout_out_to_molecule(
         shade_vmax: None,
         mark_atoms: Vec::new(),
         mark_bonds: Vec::new(),
-        bold_labels: false,
+        weight: 1.0,
+        scale: 1.0,
     }
 }
 

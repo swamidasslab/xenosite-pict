@@ -15,7 +15,7 @@
 use crate::font::{self, ChemGlyph, FaceStyle, ScriptRole};
 use crate::geom::Shape;
 use crate::markup;
-use crate::metrics::LABEL_GAP_PX;
+use crate::metrics::{label_weight_standoff_px, LABEL_GAP_PX};
 
 /// Which side the traveling text extends toward (RDKit OrientType).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -533,20 +533,21 @@ fn clearance_toward(
     ink: Option<(f64, f64, f64, f64)>,
     ux: f64,
     uy: f64,
+    standoff: f64,
 ) -> f64 {
     let half = 0.5 * advance;
     let ink_reach = ink
         .map(|(x0, x1, y0, y1)| aabb_support(x0, x1, y0, y1, ux, uy).max(0.0))
         .unwrap_or(0.0);
-    half.max(ink_reach) + LABEL_GAP_PX
+    half.max(ink_reach) + LABEL_GAP_PX + standoff
 }
 
-fn clearance_isotropic(advance: f64, ink: Option<(f64, f64, f64, f64)>) -> f64 {
+fn clearance_isotropic(advance: f64, ink: Option<(f64, f64, f64, f64)>, standoff: f64) -> f64 {
     let mut half = 0.5 * advance;
     if let Some((x0, x1, _, _)) = ink {
         half = half.max(0.5 * (x1 - x0));
     }
-    half + LABEL_GAP_PX
+    half + LABEL_GAP_PX + standoff
 }
 
 /// Outline chem label glyphs at the placed origin (SVG +Y down).
@@ -621,13 +622,35 @@ pub fn place_label(
     font_px: f64,
     style: FaceStyle,
 ) -> PlacedLabel {
+    place_label_weighted(
+        raw,
+        atom_x,
+        atom_y,
+        side,
+        font_px,
+        style,
+        crate::metrics::WEIGHT_MIN,
+    )
+}
+
+/// Like [`place_label`], with mol ``weight`` increasing bond↔label clearance.
+pub fn place_label_weighted(
+    raw: &str,
+    atom_x: f64,
+    atom_y: f64,
+    side: LabelSide,
+    font_px: f64,
+    style: FaceStyle,
+    weight: f64,
+) -> PlacedLabel {
     let parts = split_label(raw);
     let text = compose_label(&parts, side);
     let (center_adv, ink) = center_glyph_ink_rel(&parts, side, font_px, style);
     let prefix = prefix_before_center(&parts, side, font_px, style);
     let origin_x = atom_x - prefix - 0.5 * center_adv;
     let y = atom_y + baseline_offset(font_px, style);
-    let clearance = clearance_isotropic(center_adv, ink);
+    let standoff = label_weight_standoff_px(weight);
+    let clearance = clearance_isotropic(center_adv, ink, standoff);
     let path_d = outline_placed(&parts, side, origin_x, y, atom_x, atom_y, font_px, style)
         .map(|s| s.to_svg_d())
         .unwrap_or_default();
@@ -712,12 +735,16 @@ pub struct BondOut {
 }
 
 /// Place all atom labels and shorten bond endpoints into label clearances.
+///
+/// ``weight`` (≥ 1) thickens bond↔label standoff so fat ink clears fat stems.
 pub fn place_backbone(
     atoms: &[AtomIn],
     bonds: &[BondIn],
     font_px: f64,
     style: FaceStyle,
+    weight: f64,
 ) -> (Vec<BondOut>, Vec<Option<PlacedLabel>>) {
+    let standoff = label_weight_standoff_px(weight);
     let n = atoms.len();
     let mut nbrs: Vec<Vec<(f64, f64)>> = vec![Vec::new(); n];
     for b in bonds {
@@ -740,7 +767,9 @@ pub fn place_backbone(
         let elem = parts.center.as_str();
         let side = label_side_for((atom.x, atom.y), &nbrs[i], Some(elem));
         metrics.push(Some(center_glyph_ink_rel(&parts, side, font_px, style)));
-        labels.push(Some(place_label(raw, atom.x, atom.y, side, font_px, style)));
+        labels.push(Some(place_label_weighted(
+            raw, atom.x, atom.y, side, font_px, style, weight,
+        )));
     }
 
     let mut out_bonds = Vec::with_capacity(bonds.len());
@@ -762,11 +791,11 @@ pub fn place_backbone(
         let ux = dx / len;
         let uy = dy / len;
         let gap1 = match metrics[b.begin] {
-            Some((adv, ink)) => clearance_toward(adv, ink, ux, uy),
+            Some((adv, ink)) => clearance_toward(adv, ink, ux, uy, standoff),
             None => 0.0,
         };
         let gap2 = match metrics[b.end] {
-            Some((adv, ink)) => clearance_toward(adv, ink, -ux, -uy),
+            Some((adv, ink)) => clearance_toward(adv, ink, -ux, -uy, standoff),
             None => 0.0,
         };
         let (x1, y1, x2, y2) = shorten_bond(a.x, a.y, c.x, c.y, gap1, gap2);
@@ -920,15 +949,41 @@ mod tests {
     fn n_diagonal_clearance_uses_ink_support() {
         let parts = split_label("N");
         let (adv, ink) = center_glyph_ink_rel(&parts, LabelSide::East, FONT_PX, FaceStyle::Regular);
-        let horiz = clearance_toward(adv, ink, 1.0, 0.0);
+        let horiz = clearance_toward(adv, ink, 1.0, 0.0, 0.0);
         let diag = clearance_toward(
             adv,
             ink,
             std::f64::consts::FRAC_1_SQRT_2,
             std::f64::consts::FRAC_1_SQRT_2,
+            0.0,
         );
         assert!((horiz - (0.5 * adv + LABEL_GAP_PX)).abs() < 1e-6);
         assert!(diag > horiz + 0.3);
+    }
+
+    #[test]
+    fn backbone_weight_increases_bond_label_standoff() {
+        use crate::metrics::label_weight_standoff_px;
+        let atoms = vec![
+            AtomIn {
+                x: 0.0,
+                y: 0.0,
+                label: None,
+            },
+            AtomIn {
+                x: 40.0,
+                y: 0.0,
+                label: Some("OH".into()),
+            },
+        ];
+        let bonds = vec![BondIn { begin: 0, end: 1 }];
+        let (out1, labs1) = place_backbone(&atoms, &bonds, FONT_PX, FaceStyle::Regular, 1.0);
+        let (out2, labs2) = place_backbone(&atoms, &bonds, FONT_PX, FaceStyle::Regular, 2.0);
+        let c1 = labs1[1].as_ref().unwrap().clearance;
+        let c2 = labs2[1].as_ref().unwrap().clearance;
+        let extra = label_weight_standoff_px(2.0) - label_weight_standoff_px(1.0);
+        assert!((c2 - c1 - extra).abs() < 1e-6);
+        assert!((40.0 - out1[0].x2) < (40.0 - out2[0].x2) - 0.5);
     }
 
     #[test]
@@ -946,7 +1001,13 @@ mod tests {
             },
         ];
         let bonds = vec![BondIn { begin: 0, end: 1 }];
-        let (out, labels) = place_backbone(&atoms, &bonds, FONT_PX, FaceStyle::Regular);
+        let (out, labels) = place_backbone(
+            &atoms,
+            &bonds,
+            FONT_PX,
+            FaceStyle::Regular,
+            crate::metrics::WEIGHT_MIN,
+        );
         assert!(labels[1].is_some());
         let lab = labels[1].as_ref().unwrap();
         assert_eq!(lab.text, "OH");
@@ -969,7 +1030,13 @@ mod tests {
             },
         ];
         let bonds = vec![BondIn { begin: 0, end: 1 }];
-        let (out, labels) = place_backbone(&atoms, &bonds, FONT_PX, FaceStyle::Regular);
+        let (out, labels) = place_backbone(
+            &atoms,
+            &bonds,
+            FONT_PX,
+            FaceStyle::Regular,
+            crate::metrics::WEIGHT_MIN,
+        );
         let lab = labels[1].as_ref().unwrap();
         let n_adv = advance_px("N", FONT_PX, FaceStyle::Regular);
         let gap = ((out[0].x2 - 30.0).powi(2) + (out[0].y2 - 30.0).powi(2)).sqrt();
@@ -1071,7 +1138,7 @@ mod tests {
             label: Some("O".into()),
         }];
         let bonds = vec![BondIn { begin: 0, end: 9 }];
-        let (out, labels) = place_backbone(&atoms, &bonds, FONT_PX, FaceStyle::Regular);
+        let (out, labels) = place_backbone(&atoms, &bonds, FONT_PX, FaceStyle::Regular, 1.0);
         assert!(labels[0].is_some());
         assert_eq!(out[0].x1, 0.0);
         assert_eq!(out[0].x2, 0.0);
@@ -1100,6 +1167,7 @@ mod tests {
             &[BondIn { begin: 0, end: 1 }],
             FONT_PX,
             FaceStyle::Regular,
+            1.0,
         );
         assert!(labels[0].is_none());
         assert!(labels[1].is_none());

@@ -33,7 +33,7 @@ Flow: **`mol(source)` → `render(opts?)` → `Rendered` → `toSvg(scene)`**.
     const rendered = await xpict.render(benzene, {
       color: "#0b6e4f",
       atom_shade: [0, 0, 0.2, 0, 0, 0.9],
-      bold_labels: false,
+      weight: 1.0,
     });
     const svg = xpict.toSvg(rendered.scene);
 
@@ -55,7 +55,7 @@ Flow: **`mol(source)` → `render(opts?)` → `Rendered` → `toSvg(scene)`**.
     rendered = render(benzene, {
         "color": "#0b6e4f",
         "atom_shade": [0, 0, 0.2, 0, 0, 0.9],
-        "bold_labels": False,
+        "weight": 1.0,
     })
     svg = to_svg(rendered.scene)
 
@@ -109,7 +109,8 @@ Flow: **`mol(source)` → `render(opts?)` → `Rendered` → `toSvg(scene)`**.
 | `color` | Backbone / label ink |
 | `atom_shade` / `bond_shade` | Plot-dot shading scores (layout order) |
 | `star_labels` | Labels for `*` atoms (encounter order); chem markup supported |
-| `bold_labels` | Bold Liberation + thicker stem-keyed strokes |
+| `weight` | Ink weight relative to house (`1.0`); min `2/3` (Regular stem) |
+| `scale` | Uniform diagram scale (`1.0` = house size) |
 | `align_to` | Pose of another mol (`Mol` / `Rendered` in JS & Python; molblock in Rust) |
 | `id` | Optional molecule id on the paint ABI |
 
@@ -120,9 +121,9 @@ When `star_labels` is omitted, CXSMILES `|$…$|` aliases apply by atom index.
 ## Declarative document
 
 Nested JSON: `type: "mol"` or `type: "group"` + `children`. Fields today:
-structure strings, `id`, `color`, `shade`, `star_labels`. Markush text uses
-`star_labels` (encounter order; chem markup OK) or CXSMILES aliases
-(`|$R1;;;;;$|`). A document `rgroups` key is **not** public yet.
+structure strings, `id`, `color`, `shade`, `star_labels`, `scale`, `weight`.
+Markush text uses `star_labels` (encounter order; chem markup OK) or CXSMILES
+aliases (`|$R1;;;;;$|`). A document `rgroups` key is **not** public yet.
 
 This document model is a **strict subset** of future `PictSpec` and is being
 expanded as features graduate from `xpict.future`.

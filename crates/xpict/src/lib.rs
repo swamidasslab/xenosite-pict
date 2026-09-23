@@ -171,7 +171,10 @@ pub struct MolRenderOptions {
     pub mark_atoms: Option<Vec<i32>>,
     pub mark_bonds: Option<Vec<(i32, i32)>>,
     pub star_labels: Option<Vec<Option<String>>>,
-    pub bold_labels: Option<bool>,
+    /// Uniform diagram scale (``1.0`` = house size).
+    pub scale: Option<f64>,
+    /// Ink weight relative to house (``1.0``); min ~``2/3``.
+    pub weight: Option<f64>,
     /// Template molblock for RDKit depiction matching.
     pub align_to: Option<String>,
 }
@@ -253,8 +256,11 @@ fn apply_opts(mut molecule: MoleculeIn, opts: &MolRenderOptions, source: &str) -
     if let Some(ref marks) = opts.mark_bonds {
         molecule.mark_bonds = marks.clone();
     }
-    if let Some(bold) = opts.bold_labels {
-        molecule.bold_labels = bold;
+    if let Some(scale) = opts.scale {
+        molecule.scale = scale;
+    }
+    if let Some(weight) = opts.weight {
+        molecule.weight = weight;
     }
     if let Some(ref labels) = opts.star_labels {
         molecule = apply_star_labels(molecule, labels);

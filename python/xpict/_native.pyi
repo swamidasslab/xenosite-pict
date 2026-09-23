@@ -103,6 +103,7 @@ def place_backbone(
     atoms: list[tuple[float, float, str | None]],
     bonds: list[tuple[int, int]],
     font_size: float | None = None,
+    weight: float = 1.0,
 ) -> tuple[
     list[tuple[float, float, float, float]],
     list[tuple[str, float, float, float, float, str, float, str, str] | None],

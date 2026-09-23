@@ -60,6 +60,19 @@ class MolNode(StrictModel):
             "Wins over CXSMILES aliases when both are present."
         ),
     )
+    scale: float = Field(
+        default=1.0,
+        description="Uniform diagram scale (font, stroke, geometry). 1.0 = house size.",
+        gt=0,
+    )
+    weight: float = Field(
+        default=1.0,
+        description=(
+            "Ink weight relative to house size (1.0). "
+            "May go down to 2/3 (Regular stem); typical thicken up to ~2."
+        ),
+        ge=2.0 / 3.0,
+    )
 
     @model_validator(mode="after")
     def _need_structure(self) -> MolNode:

@@ -21,7 +21,7 @@ from xpict.draw.annotate import render_annotation
 from xpict.draw.bonds import DrawnBond, bond_strokes, join_centered_multibonds
 from xpict.draw.collision import CollisionGrid
 from xpict.draw.colormap import colormap_rgb
-from xpict.draw.drawn import Drawn, Halo, emit_drawn
+from xpict.draw.drawn import Drawn, Halo, emit_drawn, scale_halo, scale_viewport
 from xpict.draw.glyphs import compile_text_shapes
 from xpict.draw.halo import disk_shape
 from xpict.draw.label_place import PlacedLabel, place_backbone
@@ -30,8 +30,6 @@ from xpict.draw.metrics import (
     BOND_PX,
     COLLISION_CELL_PX,
     FONT_PX,
-    HALO_GAP_PX,
-    HALO_STROKE,
     LABEL_GAP_PX,
     MARK_FRAC,
     MARK_HALO_COLOR,
@@ -47,6 +45,10 @@ from xpict.draw.metrics import (
     SHADE_FRAC,
     STROKE_PX,
     coord_scale,
+    halo_gap_for_weight,
+    halo_stroke_for_weight,
+    label_weight_grow_px,
+    stroke_px_for_weight,
 )
 from xpict.draw.mol_title import LabelPack, pack_label
 from xpict.draw.paths import hull_path_d, ink_from_path_prim
@@ -103,6 +105,8 @@ class MolContext:
     # Parallel to ``layout.bonds`` / ``coords`` — from Rust ``place_backbone``.
     placed_bonds: list[tuple[float, float, float, float]] = field(default_factory=list)
     placed_labels: list[PlacedLabel | None] = field(default_factory=list)
+    # Mol ``weight`` (>= 1): thickens bond stroke and label glyph buffers.
+    weight: float = 1.0
 
     def points(self, atoms: Sequence[int] | None) -> list[tuple[float, float]]:
         if not atoms:
@@ -321,6 +325,10 @@ class BondsDrawable(Drawable):
                 )
             )
         join_centered_multibonds(prepared)
+        stroke_px = stroke_px_for_weight(ctx.weight)
+        halo_sw = halo_stroke_for_weight(ctx.weight)
+        halo_gap = halo_gap_for_weight(ctx.weight)
+        scale_sw = stroke_px / STROKE_PX if STROKE_PX > 0 else 1.0
         drawn = Drawn(layer="bonds", halo=True, halo_cls="halo")
         for bond in prepared:
             strokes = bond_strokes(
@@ -350,12 +358,14 @@ class BondsDrawable(Drawable):
                 p.cls = f"{tag} {p.cls or 'bond-stereo'}"
                 parts.append(p)
             for p in parts:
+                if abs(scale_sw - 1.0) >= 1e-12:
+                    p.stroke_width = p.stroke_width * scale_sw
                 drawn.primitives.append(p)
                 ink = ink_from_path_prim(p)
                 if ink is None:
                     continue
-                ink_r = max(p.stroke_width, STROKE_PX) * 0.5
-                dist = max(HALO_GAP_PX, 0.25 * HALO_STROKE - ink_r)
+                ink_r = max(p.stroke_width, stroke_px) * 0.5
+                dist = max(halo_gap, 0.25 * halo_sw - ink_r)
                 drawn.ink.append(ink)
                 drawn.ink_dists.append(dist)
         return drawn if drawn.primitives else None
@@ -373,6 +383,7 @@ class AtomLabelsDrawable(Drawable):
 
     def draw(self, ctx: MolContext) -> Drawn | None:
         drawn = Drawn(layer="labels", halo=True, halo_cls="halo label-halo")
+        halo_gap = halo_gap_for_weight(ctx.weight)
         for i, atom in enumerate(ctx.layout.atoms):
             x, y = ctx.coords[i]
             placed = ctx.placed_labels[i] if i < len(ctx.placed_labels) else None
@@ -421,10 +432,40 @@ class AtomLabelsDrawable(Drawable):
                     ink = disk_shape(cx, cy, RADICAL_DOT_R)
                     if ink is not None:
                         drawn.ink.append(ink)
-                        drawn.ink_dists.append(HALO_GAP_PX)
+                        drawn.ink_dists.append(halo_gap)
             if placed is None:
                 continue
-            if placed.path_d:
+            grow = label_weight_grow_px(ctx.weight)
+            ink = None
+            if placed.path_d or placed.raw or placed.text:
+                ink = _native.label_ink_shape(
+                    placed.raw or placed.text,
+                    placed.origin_x,
+                    placed.y,
+                    placed.atom_x,
+                    placed.atom_y,
+                    placed.side,
+                    FONT_PX,
+                )
+            if ink is not None and grow > 1e-9:
+                ink = ink.buffer(grow)
+            if ink is not None:
+                d = ink.to_svg_d()
+                if d:
+                    drawn.primitives.append(
+                        PathPrim(
+                            d=d,
+                            stroke="none",
+                            fill=self.color,
+                            stroke_width=0.0,
+                            opacity=1.0,
+                            cls=f"atom-{atom.index} label",
+                            data_text=placed.text,
+                        )
+                    )
+                drawn.ink.append(ink)
+                drawn.ink_dists.append(halo_gap)
+            elif placed.path_d:
                 drawn.primitives.append(
                     PathPrim(
                         d=placed.path_d,
@@ -435,15 +476,6 @@ class AtomLabelsDrawable(Drawable):
                         cls=f"atom-{atom.index} label",
                         data_text=placed.text,
                     )
-                )
-                ink = _native.label_ink_shape(
-                    placed.raw or placed.text,
-                    placed.origin_x,
-                    placed.y,
-                    placed.atom_x,
-                    placed.atom_y,
-                    placed.side,
-                    FONT_PX,
                 )
             else:
                 drawn.primitives.append(
@@ -464,9 +496,11 @@ class AtomLabelsDrawable(Drawable):
                     font_size=FONT_PX,
                     anchor="start",
                 )
-            if ink is not None:
-                drawn.ink.append(ink)
-                drawn.ink_dists.append(HALO_GAP_PX)
+                if ink is not None:
+                    if grow > 1e-9:
+                        ink = ink.buffer(grow)
+                    drawn.ink.append(ink)
+                    drawn.ink_dists.append(halo_gap)
         return drawn if drawn.primitives else None
 
 
@@ -674,6 +708,7 @@ def paint_molecule(
         texts,
         layout.bonds,
         atom_indices=atom_indices,
+        weight=float(mol_spec.weight),
     )
 
     ctx = MolContext(
@@ -689,6 +724,7 @@ def paint_molecule(
         label_pack=label_pack,
         placed_bonds=placed_bonds,
         placed_labels=placed_labels,
+        weight=float(mol_spec.weight),
     )
     annot_boxes: list[tuple[float, float, float, float]] = []
     for drawable in molecule_drawables(mol_spec):
@@ -701,6 +737,11 @@ def paint_molecule(
     ctx.grow_to_boxes(annot_boxes)
     vp = ctx.to_viewport()
     vp = vp.model_copy(update={"id": layout.id or mol_spec.id})
+    user_scale = float(mol_spec.scale)
+    if user_scale > 0.0 and abs(user_scale - 1.0) >= 1e-12:
+        vp = scale_viewport(vp, user_scale)
+        mol_halo = scale_halo(ctx.halo, user_scale) if halo else Halo()
+        return vp, mol_halo
     return vp, ctx.halo if halo else Halo()
 
 

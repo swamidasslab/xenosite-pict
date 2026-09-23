@@ -309,6 +309,8 @@ fn depict_cx_markush_alias() {
         color: None,
         shade: None,
         star_labels: None,
+        scale: None,
+        weight: None,
     })
     .unwrap();
     let svg = out[0].to_svg();
@@ -330,6 +332,8 @@ fn depict_star_labels() {
         color: None,
         shade: None,
         star_labels: Some(vec![Some("$R_1$".into())]),
+        scale: None,
+        weight: None,
     })
     .unwrap();
     let svg = out[0].to_svg();

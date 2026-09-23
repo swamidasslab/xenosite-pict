@@ -32,8 +32,9 @@ $\alpha$-D-Glc
 $\beta_{D}$
 ```
 
-Molecule-level `bold_labels` (simple API) sets the base face; markup
-bold/italic OR on top (so `*cis*` with bold labels → BoldItalic).
+Molecule-level ``weight`` (default ``1`` = house) thickens Regular glyph
+outlines and bond stroke (min ``2/3`` = Regular stem); markup bold/italic
+still OR face flags on top (so ``*cis*`` → Italic, or ``\textbf{…}`` → Bold).
 
 ## How labels get into paint
 
@@ -82,7 +83,7 @@ ChemAxon.
 // star_labels: encounter order of * atoms
 await xpict.render(xpict.mol("*c1ccccc1Cl"), {
   star_labels: ["$R_1$"], // or "R_{1}"
-  bold_labels: true,
+  weight: 1.0, // house; min 2/3, typical thicken up to ~2
 });
 ```
 

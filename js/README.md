@@ -26,7 +26,7 @@ const aligned = await xpict.render(xpict.mol("Cc1ccccc1"), { align_to: benzene }
 
 ### `render` options
 
-`color`, `atom_shade`, `bond_shade`, `star_labels`, `bold_labels`,
+`color`, `atom_shade`, `bond_shade`, `star_labels`, `weight`,
 `align_to` (`Mol` | `Rendered`), `id`.
 
 ## Declarative document

@@ -26,7 +26,7 @@ aligned = render(mol("Cc1ccccc1"), {"align_to": benzene})  # or align_to=rendere
 ```
 
 `align_to` accepts a prior `Mol` or `Rendered`. Options: `color`, `atom_shade`,
-`bond_shade`, `star_labels`, `bold_labels`, `align_to`, `id`.
+`bond_shade`, `star_labels`, `weight`, `scale`, `align_to`, `id`.
 
 <div class="example-out" markdown>
 

@@ -155,7 +155,7 @@ fn bold_base_ors_with_markup_italic() {
     let g = parse_label_markup("*cis*", FaceStyle::Bold);
     assert!(
         g.iter().all(|x| x.face == FaceStyle::BoldItalic),
-        "bold_labels + *italic* → BoldItalic, got {:?}",
+        "Bold base + *italic* → BoldItalic, got {:?}",
         g.iter().map(|x| x.face).collect::<Vec<_>>()
     );
     let pl = place_label("*cis*", 0.0, 0.0, LabelSide::East, FONT_PX, FaceStyle::Bold);
@@ -243,7 +243,7 @@ fn backbone_places_bold_markup_and_glca() {
         BondIn { begin: 0, end: 1 },
         BondIn { begin: 0, end: 2 },
     ];
-    let (ends, labels) = place_backbone(&atoms, &bonds, FONT_PX, FaceStyle::Regular);
+    let (ends, labels) = place_backbone(&atoms, &bonds, FONT_PX, FaceStyle::Regular, 1.0);
     assert_eq!(ends.len(), 2);
     let r = labels[1].as_ref().expect("**R**");
     assert_eq!(r.text, "R");

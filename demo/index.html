@@ -67,9 +67,16 @@
             <input id="align" name="align" type="checkbox" checked />
             <span>Align molecule 2 to molecule 1</span>
           </label>
-          <label class="check">
-            <input id="bold_labels" name="bold_labels" type="checkbox" />
-            <span>Bold labels + stem-keyed stroke</span>
+          <label>
+            <span>Weight <em>(1 = house, min 2/3)</em></span>
+            <input
+              id="weight"
+              name="weight"
+              type="number"
+              min="0.6666666666666666"
+              step="0.1"
+              value="1"
+            />
           </label>
           <label>
             <span>Molecule 1 star labels <em>(* order, comma-separated)</em></span>

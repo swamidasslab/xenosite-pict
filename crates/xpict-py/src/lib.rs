@@ -203,16 +203,18 @@ fn compile_text_shapes(
 /// `(text, origin_x, y, atom_x, atom_y, side, clearance, path_d, raw)`
 /// with `side` in `{"east","west","north","south"}`.
 #[pyfunction]
-#[pyo3(signature = (atoms, bonds, font_size=None))]
+#[pyo3(signature = (atoms, bonds, font_size=None, weight=None))]
 fn place_backbone(
     atoms: Vec<(f64, f64, Option<String>)>,
     bonds: Vec<(usize, usize)>,
     font_size: Option<f64>,
+    weight: Option<f64>,
 ) -> (
     Vec<(f64, f64, f64, f64)>,
     Vec<Option<(String, f64, f64, f64, f64, String, f64, String, String)>>,
 ) {
     let font_px = font_size.unwrap_or(metrics::FONT_PX);
+    let weight = weight.unwrap_or(1.0);
     let atoms: Vec<xpict_core::labels::AtomIn> = atoms
         .into_iter()
         .map(|(x, y, label)| xpict_core::labels::AtomIn { x, y, label })
@@ -226,6 +228,7 @@ fn place_backbone(
         &bonds,
         font_px,
         xpict_core::font::FaceStyle::Regular,
+        weight,
     );
     let bond_ends = outs
         .into_iter()

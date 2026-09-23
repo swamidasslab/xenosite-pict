@@ -46,7 +46,7 @@ const aligned = await xpict.render(xpict.mol("Cc1ccccc1"), {
 
 ### `render` options
 
-`color`, `atom_shade`, `bond_shade`, `star_labels`, `bold_labels`, `align_to`
+`color`, `atom_shade`, `bond_shade`, `star_labels`, `weight`, `scale`, `align_to`
 (`Mol` | `Rendered`), `id`.
 
 RDKit + WASM initialize on first `render` / `depict`.

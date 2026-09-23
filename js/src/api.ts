@@ -93,10 +93,12 @@ export type MolRenderOptions = {
    */
   star_labels?: Array<string | null>;
   /**
-   * Bold Liberation labels + bond stroke keyed to bold stem thickness.
-   * Default off — toggle for readability / parametric layout stress test.
+   * Ink weight relative to house size (`1` = default). Min `2/3` (Regular
+   * stem); typical thicken up to ~2.
    */
-  bold_labels?: boolean;
+  weight?: number;
+  /** Uniform diagram scale (`1` = house size). */
+  scale?: number;
   align_to?: AlignTarget;
 };
 
@@ -127,6 +129,12 @@ export type MolNode = {
    * Wins over CXSMILES aliases when both are present.
    */
   star_labels?: Array<string | null>;
+  /** Uniform diagram scale (`1` = house size). */
+  scale?: number;
+  /**
+   * Ink weight relative to house (`1`). Min `2/3` (Regular stem).
+   */
+  weight?: number;
 };
 
 /** Group — ``children`` of mol nodes only (today). */
@@ -257,7 +265,8 @@ function applyOpts(
   if (opts.shade_vmax !== undefined) out.shade_vmax = opts.shade_vmax;
   if (opts.mark_atoms !== undefined) out.mark_atoms = opts.mark_atoms;
   if (opts.mark_bonds !== undefined) out.mark_bonds = opts.mark_bonds;
-  if (opts.bold_labels !== undefined) out.bold_labels = opts.bold_labels;
+  if (opts.weight !== undefined) out.weight = opts.weight;
+  if (opts.scale !== undefined) out.scale = opts.scale;
   // Explicit star_labels (encounter order) wins; otherwise CX by atom index.
   if (opts.star_labels !== undefined) {
     out = applyStarLabels(out, opts.star_labels);
@@ -376,6 +385,8 @@ async function depict(spec: DepictSpec): Promise<Rendered[]> {
       atom_shade: entry.shade?.atoms,
       bond_shade: entry.shade?.bonds,
       star_labels: entry.star_labels,
+      scale: entry.scale,
+      weight: entry.weight,
       // Document shade defaults to 0..1 (serde/JS); pass through so paint
       // never auto-windows to the data range.
       shade_vmin: entry.shade?.vmin ?? 0,

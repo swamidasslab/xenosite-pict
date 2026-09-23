@@ -707,8 +707,8 @@ fn centered_strokes(
 /// `trims` are per-line inset distances at `(x1, y1)` then `(x2, y2)`
 /// for a centered multiple bond (see [`join_centered_multibonds`]).
 ///
-/// `stroke_width` defaults to [`STROKE_PX`] when `None` — pass a stem-keyed
-/// width when `bold_labels` thickens ink.
+/// `stroke_width` defaults to [`STROKE_PX`] when `None` — pass a weight-scaled
+/// width when mol ``weight`` thickens ink.
 #[allow(clippy::too_many_arguments)]
 pub fn bond_strokes(
     x1: f64,

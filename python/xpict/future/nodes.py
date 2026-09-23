@@ -143,6 +143,19 @@ class MolNode(NodeCommon):
     annotations: list[AnnotationSpec] = Field(default_factory=list)
     shade: ShadeSpec | None = None
     color: str | None = None
+    scale: float = Field(
+        default=1.0,
+        description="Uniform diagram scale (font, stroke, geometry). 1.0 = house size.",
+        gt=0,
+    )
+    weight: float = Field(
+        default=1.0,
+        description=(
+            "Ink weight relative to house size (1.0). "
+            "May go down to 2/3 (Regular stem); typical thicken up to ~2."
+        ),
+        ge=2.0 / 3.0,
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -421,6 +434,8 @@ def mol_to_molecule_spec(node: MolNode) -> MoleculeSpec:
         annotations=list(node.annotations),
         shade=node.shade,
         color=node.color,
+        scale=node.scale,
+        weight=node.weight,
     )
 
 

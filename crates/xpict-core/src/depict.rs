@@ -11,8 +11,8 @@ use crate::colormap::colormap_rgb;
 use crate::font::FaceStyle;
 use crate::labels::{self, place_backbone};
 use crate::metrics::{
-    halo_stroke_from_stroke, label_stem_em, stroke_px_from_stem, BOND_PX, FONT_PX, HALO_GAP_PX,
-    HALO_OPACITY, MARK_FRAC, PAD_PX, SHADE_FRAC,
+    halo_gap_for_weight, halo_stroke_for_weight, label_weight_grow_px, stroke_px_for_weight,
+    BOND_PX, FONT_PX, HALO_OPACITY, MARK_FRAC, PAD_PX, SHADE_FRAC,
 };
 use crate::plotdot::PlotDot;
 use crate::rings::{bond_interior_normals, find_sssr};
@@ -25,12 +25,12 @@ use crate::scene::{
 /// Layers (bottom → top): shading → bonds → labels → marks.
 pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
     let color = mol.color.as_deref().unwrap_or("#111");
-    let face = if mol.bold_labels {
-        FaceStyle::Bold
-    } else {
-        FaceStyle::Regular
-    };
-    let stroke_px = stroke_px_from_stem(label_stem_em(mol.bold_labels));
+    let face = FaceStyle::Regular;
+    // User-facing weight (default 1 = house). Helpers convert via diagram_weight.
+    let weight = mol.weight;
+    let _ = mol.diagram_weight(); // validate early
+    let stroke_px = stroke_px_for_weight(weight);
+    let label_grow = label_weight_grow_px(weight);
     let by_index: HashMap<i32, usize> = mol
         .atoms
         .iter()
@@ -94,7 +94,7 @@ pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
             end: *by_index.get(&b.end).unwrap_or(&0),
         })
         .collect();
-    let (shortened, placed) = place_backbone(&label_atoms, &label_bonds, FONT_PX, face);
+    let (shortened, placed) = place_backbone(&label_atoms, &label_bonds, FONT_PX, face, weight);
 
     // Ring bonds get interior normals → short inside offsets (not acyclic extend).
     let ring_coords: HashMap<i32, (f64, f64)> = mol
@@ -179,14 +179,19 @@ pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
         if matches!(pl.side, labels::LabelSide::North | labels::LabelSide::South) {
             height = height.max(pl.atom_y + FONT_PX * 1.6 + pad * 0.25);
         }
-        if let Some(ink) = labels::label_ink_shape(pl, FONT_PX, face) {
-            label_ink_for_halo.push(ink);
+        let Some(mut ink) = labels::label_ink_shape(pl, FONT_PX, face) else {
+            continue;
+        };
+        if label_grow > 1e-9 {
+            ink = ink.buffer(label_grow);
         }
-        if pl.path_d.is_empty() {
+        let d = ink.to_svg_d();
+        label_ink_for_halo.push(ink);
+        if d.is_empty() {
             continue;
         }
         label_prims.push(Primitive::Path {
-            d: pl.path_d.clone(),
+            d,
             stroke: Some("none".into()),
             fill: Some(color.to_string()),
             stroke_width: 0.0,
@@ -200,7 +205,7 @@ pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
 
     let shade_prims = paint_shade(mol, &by_index, dx, dy);
     let mark_prims = paint_marks(mol, &by_index, dx, dy);
-    let halo_prims = paint_halo(&bond_strokes_for_halo, &label_ink_for_halo, stroke_px);
+    let halo_prims = paint_halo(&bond_strokes_for_halo, &label_ink_for_halo, stroke_px, weight);
 
     let mut layers = Vec::new();
     if !shade_prims.is_empty() {
@@ -228,7 +233,7 @@ pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
         });
     }
 
-    Scene {
+    let scene = Scene {
         width,
         height,
         viewports: vec![Viewport {
@@ -241,7 +246,9 @@ pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
         }],
         overlays: Vec::new(),
         halo: halo_prims,
-    }
+    };
+    // Uniform diagram scale (font outlines, stroke, pad, geometry).
+    scene.scale_uniform(mol.diagram_scale())
 }
 
 /// Explicit ``label``, else heteroatom / charged symbol (carbons stay silent).
@@ -371,13 +378,15 @@ fn normalize_shade_scores(zs: &[f64], vmin: f64, vmax: f64) -> Vec<f64> {
 
 /// White knockout under bonds/labels so shade disks don't cover ink.
 ///
-/// xenopict: union of per-ink buffers at [`HALO_GAP_PX`] (with a floor from
-/// stroke thickness). Requires the `geom` feature (WASM enables it via `font`).
+/// xenopict: union of per-ink buffers at a weight-scaled gap (√weight vs linear
+/// ink), with a floor from halo stroke thickness. Requires the `geom` feature
+/// (WASM enables it via `font`).
 #[cfg(feature = "geom")]
 fn paint_halo(
     bond_strokes: &[StrokePath],
     label_ink: &[crate::geom::Shape],
     stroke_px: f64,
+    weight: f64,
 ) -> Vec<Primitive> {
     use crate::geom::Shape;
 
@@ -428,10 +437,10 @@ fn paint_halo(
     let Some(ink) = ink.filter(|s| !s.is_empty()) else {
         return Vec::new();
     };
-    // Match Python BondsDrawable: max(HALO_GAP, 0.25*HALO_STROKE - ink_r).
+    // Match Python BondsDrawable: max(halo_gap(w), 0.25*halo_stroke(w) - ink_r).
     let ink_r = stroke_px * 0.5;
-    let halo_stroke = halo_stroke_from_stroke(stroke_px);
-    let dist = HALO_GAP_PX.max(0.25 * halo_stroke - ink_r);
+    let halo_stroke = halo_stroke_for_weight(weight);
+    let dist = halo_gap_for_weight(weight).max(0.25 * halo_stroke - ink_r);
     let grown = ink.halo(dist);
     if grown.is_empty() {
         return Vec::new();
@@ -458,6 +467,7 @@ fn paint_halo(
     _bond_strokes: &[StrokePath],
     _label_ink: &[crate::geom::Shape],
     _stroke_px: f64,
+    _weight: f64,
 ) -> Vec<Primitive> {
     Vec::new()
 }
@@ -651,7 +661,8 @@ mod tests {
             shade_vmax: None,
             mark_atoms: vec![],
             mark_bonds: vec![],
-            bold_labels: false,
+            weight: 1.0,
+            scale: 1.0,
         }
     }
 
@@ -697,7 +708,8 @@ mod tests {
             shade_vmax: None,
             mark_atoms: vec![],
             mark_bonds: vec![],
-            bold_labels: false,
+            weight: 1.0,
+            scale: 1.0,
         }
     }
 
@@ -740,7 +752,8 @@ mod tests {
             shade_vmax: None,
             mark_atoms: vec![],
             mark_bonds: vec![],
-            bold_labels: false,
+            weight: 1.0,
+            scale: 1.0,
         };
         assert_eq!(mol.atoms[0].symbol(), "C");
         assert_eq!(mol.atoms[1].symbol(), "O");
@@ -819,10 +832,10 @@ mod tests {
     }
 
     #[test]
-    fn bold_labels_thicken_bond_stroke() {
-        use crate::metrics::{label_stem_em, stroke_px_from_stem, STROKE_PX};
+    fn mol_weight_thickens_bond_stroke() {
+        use crate::metrics::{stroke_px_for_weight, STROKE_PX};
         let mut mol = ethanol();
-        mol.bold_labels = true;
+        mol.weight = 2.0;
         let scene = depict_molecule(&mol);
         let bonds = scene.viewports[0]
             .layers
@@ -837,12 +850,47 @@ mod tests {
                 _ => None,
             })
             .expect("bond stroke");
-        let expected = stroke_px_from_stem(label_stem_em(true));
+        let expected = stroke_px_for_weight(2.0);
         assert!(
             (sw - expected).abs() < 0.02,
-            "bold stroke {sw} vs {expected}"
+            "weight stroke {sw} vs {expected}"
         );
         assert!(sw > STROKE_PX + 0.3);
+    }
+
+    #[test]
+    fn mol_scale_doubles_scene_size_and_stroke() {
+        let base = depict_molecule(&ethanol());
+        let mut mol = ethanol();
+        mol.scale = 2.0;
+        let scaled = depict_molecule(&mol);
+        assert!((scaled.width - 2.0 * base.width).abs() < 1e-6);
+        assert!((scaled.height - 2.0 * base.height).abs() < 1e-6);
+        let base_sw = base.viewports[0]
+            .layers
+            .iter()
+            .find(|l| l.name == LayerName::Bonds)
+            .unwrap()
+            .primitives
+            .iter()
+            .find_map(|p| match p {
+                Primitive::Path { stroke_width, .. } if *stroke_width > 0.0 => Some(*stroke_width),
+                _ => None,
+            })
+            .unwrap();
+        let scaled_sw = scaled.viewports[0]
+            .layers
+            .iter()
+            .find(|l| l.name == LayerName::Bonds)
+            .unwrap()
+            .primitives
+            .iter()
+            .find_map(|p| match p {
+                Primitive::Path { stroke_width, .. } if *stroke_width > 0.0 => Some(*stroke_width),
+                _ => None,
+            })
+            .unwrap();
+        assert!((scaled_sw - 2.0 * base_sw).abs() < 1e-6);
     }
 
     #[test]
@@ -913,7 +961,8 @@ mod tests {
             shade_vmax: None,
             mark_atoms: vec![],
             mark_bonds: vec![],
-            bold_labels: false,
+            weight: 1.0,
+            scale: 1.0,
         };
         let scene = depict_molecule(&mol);
         let layer = scene.viewports[0]
@@ -1207,7 +1256,8 @@ mod tests {
             shade_vmax: None,
             mark_atoms: vec![1],
             mark_bonds: vec![],
-            bold_labels: false,
+            weight: 1.0,
+            scale: 1.0,
         };
         let scene = depict_molecule(&mol);
         let names: std::collections::HashSet<_> = scene.viewports[0]
@@ -1290,7 +1340,8 @@ mod tests {
             shade_vmax: None,
             mark_atoms: vec![],
             mark_bonds: vec![],
-            bold_labels: false,
+            weight: 1.0,
+            scale: 1.0,
         };
         let scene = depict_molecule(&empty);
         assert_eq!(scene.viewports[0].id.as_deref(), Some("empty"));
@@ -1318,7 +1369,8 @@ mod tests {
             shade_vmax: None,
             mark_atoms: vec![],
             mark_bonds: vec![],
-            bold_labels: false,
+            weight: 1.0,
+            scale: 1.0,
         };
         let scene = depict_molecule(&mol);
         let labels = scene.viewports[0]
@@ -1378,7 +1430,8 @@ mod tests {
             shade_vmax: None,
             mark_atoms: vec![],
             mark_bonds: vec![],
-            bold_labels: false,
+            weight: 1.0,
+            scale: 1.0,
         };
         let scene = depict_molecule(&mol);
         let labels = scene.viewports[0]
@@ -1436,7 +1489,8 @@ mod tests {
             shade_vmax: None,
             mark_atoms: vec![],
             mark_bonds: vec![],
-            bold_labels: false,
+            weight: 1.0,
+            scale: 1.0,
         };
         let scene = depict_molecule(&mol);
         assert!(scene.height > PAD_PX * 2.0);
@@ -1611,7 +1665,8 @@ mod tests {
             shade_vmax: None,
             mark_atoms: vec![],
             mark_bonds: vec![],
-            bold_labels: false,
+            weight: 1.0,
+            scale: 1.0,
         };
         let scene = depict_molecule(&mol);
         assert!(!scene.halo.is_empty());

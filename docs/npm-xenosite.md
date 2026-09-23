@@ -36,7 +36,7 @@ const aligned = await xpict.render(xpict.mol("Cc1ccccc1"), {
 ```
 
 **`render` options:** `color`, `atom_shade`, `bond_shade`, `star_labels`,
-`bold_labels`, `id`, `align_to` (`Mol` | `Rendered`).
+`weight`, `id`, `align_to` (`Mol` | `Rendered`).
 
 ### Declarative document
 

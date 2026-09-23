@@ -185,6 +185,10 @@ export interface MoleculeSpec {
    * Wins over `rgroups` / CX aliases when set.
    */
   star_labels?: (string | null)[];
+  /** Uniform diagram scale (`1` = house size). */
+  scale?: number;
+  /** Ink weight relative to house (`1`). Min `2/3` (Regular stem). */
+  weight?: number;
   /** Ring-centered attachments (uncertain site); label required. */
   ring_attachments?: RingAttachmentSpec[];
   /** R-group table (`rows` matrix or `{groups, rows}`). */

@@ -91,19 +91,22 @@ def test_shade_default_window_not_auto_from_data():
 
     from xpict import render
 
+    backend = _chem_backend()
     mid = render(
         {
             "type": "mol",
             "smiles": "CCO",
             "shade": {"atoms": [0.0, 0.0, 0.45]},
-        }
+        },
+        backend=backend,
     )
     hot = render(
         {
             "type": "mol",
             "smiles": "CCO",
             "shade": {"atoms": [0.0, 0.0, 1.0]},
-        }
+        },
+        backend=backend,
     )
 
     def max_shade_r(svg: str) -> float:
