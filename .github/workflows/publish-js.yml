@@ -4,8 +4,9 @@
 #   - tag js/v*  (e.g. js/v0.1.1) → sets version from tag and publishes
 #   - workflow_dispatch → publishes package.json version as-is
 #
-# One-time: npmjs.org org/user owns scope @xenosite; repo secret NPM_TOKEN
-# (Automation). Consumers: npm install @xenosite/xpict (no .npmrc).
+# One-time: npmjs.org org/user owns scope @xenosite; environment secret
+# NPM_TOKEN on the `npm` GitHub Environment (Automation token). Consumers:
+# npm install @xenosite/xpict (no .npmrc).
 #
 # Gated on CI (Rust test+coverage, strict tsc, pyright, pytest).
 
@@ -36,6 +37,7 @@ jobs:
   publish:
     needs: checks
     runs-on: ubuntu-latest
+    environment: npm
     defaults:
       run:
         working-directory: js

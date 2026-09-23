@@ -13,7 +13,8 @@ git push origin js/v0.1.1
 ```
 
 Or **Actions → Publish JS package → Run workflow**.  
-Requires repo secret **`NPM_TOKEN`** (npm Automation token for `@xenosite`).
+Requires environment secret **`NPM_TOKEN`** on the **`npm`** GitHub Environment
+(npm Automation token for `@xenosite`).
 
 ## Install
 
