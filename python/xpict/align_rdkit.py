@@ -9,12 +9,45 @@ from __future__ import annotations
 
 import math
 
-from xpict.align import RigidAligner, choose_mapping, mcs_mapping, with_warning
+from xpict.align import RigidAligner, choose_mapping, with_warning
 from xpict.contracts.layout import BondLayout, MoleculeLayout
 
 _MIN_MAP = 3
 _PLACE_CAP = 8
 _ORDER_CAP = 24
+
+
+def _matched_has_unsaturated(mol, atom_match: tuple[int, ...], pattern) -> bool:
+    """True if any matched bond is aromatic or order ≥ 1.5."""
+    for bond in pattern.GetBonds():
+        a = atom_match[bond.GetBeginAtomIdx()]
+        b = atom_match[bond.GetEndAtomIdx()]
+        mb = mol.GetBondBetweenAtoms(int(a), int(b))
+        if mb is None:
+            continue
+        if mb.GetIsAromatic() or mb.GetBondTypeAsDouble() >= 1.5:
+            return True
+    return False
+
+
+def _mcs_saturation_compatible(mol_a, mol_b, pattern) -> bool:
+    """Reject saturated-aliphatic ↔ unsaturated MCS (e.g. cyclohexane ↔ quinone).
+
+    ``BondCompare.CompareAny`` still finds aromatic ↔ kekulé / quinone; this
+    filter drops matches where one side's mapped bonds are all single/non-aromatic
+    and the other's are not. Keep in sync with JS ``mcsSaturationCompatible``.
+    """
+    matches_a = mol_a.GetSubstructMatches(pattern)
+    matches_b = mol_b.GetSubstructMatches(pattern)
+    if not matches_a or not matches_b:
+        return False
+    for ma in matches_a:
+        ua = _matched_has_unsaturated(mol_a, ma, pattern)
+        for mb in matches_b:
+            ub = _matched_has_unsaturated(mol_b, mb, pattern)
+            if ua == ub:
+                return True
+    return False
 
 
 def _substruct_orders(mol, pattern) -> list[tuple[int, ...]]:
@@ -54,7 +87,8 @@ def _fmcs_mapping(ref: MoleculeLayout, other: MoleculeLayout) -> dict[int, int] 
     rd_to_other = {rd: lay for lay, rd in other_to_rd.items()}
     try:
         # BondCompare.CompareAny: aromatic ↔ kekulé / quinone (parity with
-        # Rust/JS MCS_DETAILS_JSON BondCompare Any).
+        # Rust/JS MCS_DETAILS_JSON BondCompare Any). Saturation filter rejects
+        # aliphatic rings matching quinone / aromatic templates.
         mcs = rdFMCS.FindMCS(
             [ref_mol, other_mol],
             timeout=2,
@@ -70,6 +104,8 @@ def _fmcs_mapping(ref: MoleculeLayout, other: MoleculeLayout) -> dict[int, int] 
     except Exception:
         pattern = None
     if pattern is None:
+        return None
+    if not _mcs_saturation_compatible(ref_mol, other_mol, pattern):
         return None
     ref_orders = _substruct_orders(ref_mol, pattern)
     other_orders = _substruct_orders(other_mol, pattern)
@@ -220,7 +256,8 @@ def _bonds_after_depict(mol, bonds: list[BondLayout], to_rd: dict[int, int], smi
 class RdkitAligner(RigidAligner):
     """Template depiction via RDKit ``GenerateDepictionMatching2DStructure``.
 
-    MCS uses ``BondCompare.CompareAny`` (parity with Rust/JS ``align_opts``).
+    MCS uses ``BondCompare.CompareAny`` (parity with Rust/JS ``align_opts``)
+    plus a saturation filter so aliphatic rings do not match quinones.
     The reference layout / pose mol is never modified.
     """
 
@@ -228,11 +265,9 @@ class RdkitAligner(RigidAligner):
     supports_template = True
 
     def map_atoms(self, ref: MoleculeLayout, other: MoleculeLayout) -> dict[int, int] | None:
-        return choose_mapping(
-            ref,
-            other,
-            [_fmcs_mapping(ref, other), mcs_mapping(ref, other)],
-        )
+        # FMCS + saturation filter only. Do not fall back to element-only MCS:
+        # that remaps cyclohexane onto quinone and rigid-fallback warps layout.
+        return _fmcs_mapping(ref, other)
 
     def depict_on_template(
         self,
@@ -277,6 +312,8 @@ class RdkitAligner(RigidAligner):
         except Exception:
             pattern = None
         if pattern is None:
+            return None
+        if not _mcs_saturation_compatible(ref_pose, other_mol, pattern):
             return None
 
         params = rdDepictor.ConstrainedDepictionParams()
