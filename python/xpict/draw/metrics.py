@@ -61,7 +61,7 @@ def diagram_weight(weight: float = 1.0) -> float:
     Raises:
         ValueError: if ``weight`` is non-finite or ``< WEIGHT_MIN``.
     """
-    if weight is None or not math.isfinite(weight) or weight < WEIGHT_MIN - 1e-12:
+    if not math.isfinite(weight) or weight < WEIGHT_MIN - 1e-12:
         raise ValueError(
             f"mol weight must be finite and >= {WEIGHT_MIN}, got {weight!r}"
         )
