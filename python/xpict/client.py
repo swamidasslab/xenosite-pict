@@ -125,8 +125,6 @@ def render(
 ) -> Rendered:
     """Layout → native ``depict_molecule`` → ``Rendered`` (JS ``xpict.render``)."""
     m = mol(input) if isinstance(input, str) else input
-    if not isinstance(m, Mol):
-        raise TypeError("render() expects a Mol or SMILES/molfile string")
     options = _coerce_opts(opts)
 
     template: str | None = None
@@ -175,10 +173,8 @@ def _coerce_opts(
         return MolRenderOptions()
     if isinstance(opts, MolRenderOptions):
         return opts
-    if isinstance(opts, dict):
-        known = {f.name for f in fields(MolRenderOptions)}
-        return MolRenderOptions(**{k: v for k, v in opts.items() if k in known})
-    raise TypeError("opts must be MolRenderOptions or dict")
+    known = {f.name for f in fields(MolRenderOptions)}
+    return MolRenderOptions(**{k: v for k, v in opts.items() if k in known})
 
 
 def _ensure_frame(target: AlignTarget) -> str:
@@ -278,9 +274,9 @@ def _parse_rdkit(source: str):
     else:
         # Prefer full CX when present so atom count matches aliases.
         rmol = Chem.MolFromSmiles(text)
-        if rmol is None:
+        if rmol is None:  # pyright: ignore[reportUnnecessaryComparison]
             rmol = Chem.MolFromSmiles(_smiles_base(text))
-    if rmol is None:
+    if rmol is None:  # pyright: ignore[reportUnnecessaryComparison]
         raise ValueError(f"RDKit could not parse molecule ({text[:80]})")
     try:
         Chem.Kekulize(rmol, clearAromaticFlags=True)
@@ -297,7 +293,6 @@ def _mol_to_molecule_in(
     flip_max_y: float,
     source: str,
 ) -> dict[str, Any]:
-    from rdkit import Chem
     from rdkit.Chem import rdmolops
 
     conf = rmol.GetConformer()
@@ -370,7 +365,7 @@ def _layout_with_rdkit(
         tmpl = Chem.MolFromMolBlock(
             _sanitize_dummy_molblock(template), sanitize=True, removeHs=False
         )
-        if tmpl is None:
+        if tmpl is None:  # pyright: ignore[reportUnnecessaryComparison]
             raise ValueError("align_to template molblock could not be parsed")
         # Never mutate the caller's template pose.
         ref_pose = Chem.Mol(tmpl)
@@ -397,7 +392,7 @@ def _layout_with_rdkit(
         aligned_ok = False
         if smarts:
             pattern = Chem.MolFromSmarts(smarts)
-            if pattern is not None:
+            if pattern is not None:  # pyright: ignore[reportUnnecessaryComparison]
                 params = rdDepictor.ConstrainedDepictionParams()
                 params.allowRGroups = True
                 params.acceptFailure = False
