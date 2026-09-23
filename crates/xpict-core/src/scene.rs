@@ -598,4 +598,165 @@ mod tests {
         assert!(s.overlays.is_empty());
         assert!(s.halo.is_empty());
     }
+
+    #[test]
+    fn mol_scale_weight_defaults_and_fallbacks() {
+        // Omitted fields → serde defaults (covers default_mol_weight / scale).
+        let mol: MoleculeIn = serde_json::from_str(
+            r#"{"id":"m","atoms":[],"bonds":[]}"#,
+        )
+        .unwrap();
+        assert!((mol.scale - 1.0).abs() < 1e-12);
+        assert!((mol.weight - 1.0).abs() < 1e-12);
+        assert!((mol.diagram_scale() - 1.0).abs() < 1e-12);
+        assert!((mol.diagram_weight() - crate::metrics::WEIGHT_AT_ONE).abs() < 1e-12);
+
+        let mut bad = mol.clone();
+        bad.scale = 0.0;
+        assert!((bad.diagram_scale() - 1.0).abs() < 1e-12);
+        bad.scale = f64::NAN;
+        assert!((bad.diagram_scale() - 1.0).abs() < 1e-12);
+        bad.scale = -2.0;
+        assert!((bad.diagram_scale() - 1.0).abs() < 1e-12);
+        bad.scale = 1.5;
+        assert!((bad.diagram_scale() - 1.5).abs() < 1e-12);
+
+        // skip_serializing_if: defaults omitted; non-defaults kept.
+        let json_default = serde_json::to_value(&mol).unwrap();
+        assert!(json_default.get("scale").is_none());
+        assert!(json_default.get("weight").is_none());
+        let mut thick = mol;
+        thick.weight = 2.0;
+        thick.scale = 1.5;
+        let json_thick = serde_json::to_value(&thick).unwrap();
+        assert_eq!(json_thick["weight"], 2.0);
+        assert_eq!(json_thick["scale"], 1.5);
+    }
+
+    #[test]
+    fn scale_path_d_and_dasharray_cover_token_shapes() {
+        assert_eq!(scale_path_d("M 0 0", 1.0), "M 0 0");
+        assert_eq!(scale_path_d("", 2.0), "");
+        // Signed ints, decimals, scientific notation.
+        let d = scale_path_d("M -1.5e1 +2.0E+1 L 3 4Z", 2.0);
+        assert!(d.contains("-30.00") || d.contains("-30"), "{d}");
+        assert!(d.contains("40.00") || d.contains("40"), "{d}");
+        assert!(d.ends_with('Z') || d.contains('Z'), "{d}");
+
+        assert_eq!(scale_dasharray("1 2", 1.0), "1 2");
+        assert_eq!(scale_dasharray("1,2 3", 2.0), "2.00 4.00 6.00");
+        // Non-numeric token preserved.
+        assert_eq!(scale_dasharray("1 foo", 2.0), "2.00 foo");
+    }
+
+    #[test]
+    fn scale_uniform_covers_path_circle_text_and_identity() {
+        let path = Primitive::Path {
+            d: "M 10 0 L 20 0".into(),
+            stroke: Some("#111".into()),
+            fill: Some("none".into()),
+            stroke_width: 1.0,
+            opacity: 1.0,
+            stroke_dasharray: Some("2 1".into()),
+            stroke_linecap: Some("round".into()),
+            class: Some("bond".into()),
+            data_text: None,
+        };
+        let circle = Primitive::Circle {
+            cx: 5.0,
+            cy: 6.0,
+            r: 2.0,
+            fill: None,
+            stroke: Some("#f00".into()),
+            stroke_width: 0.5,
+            opacity: 0.7,
+            class: Some("mark".into()),
+        };
+        let text = Primitive::Text {
+            x: 1.0,
+            y: 2.0,
+            text: "C".into(),
+            fill: "#000".into(),
+            font_size: 12.0,
+            anchor: TextAnchor::Middle,
+            class: None,
+        };
+
+        // Identity early-outs.
+        assert_eq!(path.scale_uniform(1.0), path);
+        assert_eq!(circle.scale_uniform(1.0), circle);
+        assert_eq!(text.scale_uniform(1.0), text);
+
+        match path.scale_uniform(2.0) {
+            Primitive::Path {
+                d,
+                stroke_width,
+                stroke_dasharray,
+                ..
+            } => {
+                assert!(d.contains("20.00") && d.contains("40.00"), "{d}");
+                assert!((stroke_width - 2.0).abs() < 1e-12);
+                assert_eq!(stroke_dasharray.as_deref(), Some("4.00 2.00"));
+            }
+            _ => panic!("path"),
+        }
+        match circle.scale_uniform(2.0) {
+            Primitive::Circle {
+                cx,
+                cy,
+                r,
+                stroke_width,
+                ..
+            } => {
+                assert!((cx - 10.0).abs() < 1e-12);
+                assert!((cy - 12.0).abs() < 1e-12);
+                assert!((r - 4.0).abs() < 1e-12);
+                assert!((stroke_width - 1.0).abs() < 1e-12);
+            }
+            _ => panic!("circle"),
+        }
+        match text.scale_uniform(2.0) {
+            Primitive::Text {
+                x,
+                y,
+                font_size,
+                ..
+            } => {
+                assert!((x - 2.0).abs() < 1e-12);
+                assert!((y - 4.0).abs() < 1e-12);
+                assert!((font_size - 24.0).abs() < 1e-12);
+            }
+            _ => panic!("text"),
+        }
+
+        let vp = Viewport {
+            id: Some("m0".into()),
+            x: 1.0,
+            y: 2.0,
+            width: 10.0,
+            height: 20.0,
+            layers: vec![Layer {
+                name: LayerName::Marks,
+                primitives: vec![circle.clone()],
+            }],
+        };
+        assert_eq!(vp.scale_uniform(1.0), vp);
+        let vp2 = vp.scale_uniform(2.0);
+        assert!((vp2.x - 2.0).abs() < 1e-12);
+        assert!((vp2.width - 20.0).abs() < 1e-12);
+
+        let scene = Scene {
+            width: 10.0,
+            height: 20.0,
+            viewports: vec![vp],
+            overlays: vec![text],
+            halo: vec![path],
+        };
+        assert_eq!(scene.scale_uniform(1.0), scene);
+        let s2 = scene.scale_uniform(2.0);
+        assert!((s2.width - 20.0).abs() < 1e-12);
+        assert!((s2.height - 40.0).abs() < 1e-12);
+        assert_eq!(s2.overlays.len(), 1);
+        assert_eq!(s2.halo.len(), 1);
+    }
 }
