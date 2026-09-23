@@ -291,11 +291,9 @@ fn paint_shade(
     if atom_zs.is_empty() && bond_zs.is_empty() {
         return Vec::new();
     }
-    let mut samples: Vec<f64> = Vec::new();
-    samples.extend_from_slice(atom_zs);
-    samples.extend_from_slice(bond_zs);
-    let vmin = samples.iter().cloned().fold(f64::INFINITY, f64::min);
-    let vmax = samples.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    // Fixed window by default — never auto-scale to the data range.
+    let vmin = mol.shade_vmin.unwrap_or(0.0);
+    let vmax = mol.shade_vmax.unwrap_or(1.0);
     let diverging = vmin < 0.0 && vmax > 0.0;
     let base_r = BOND_PX
         * (if !atom_zs.is_empty() && !bond_zs.is_empty() {
@@ -649,6 +647,8 @@ mod tests {
             color: None,
             atom_shade: None,
             bond_shade: None,
+            shade_vmin: None,
+            shade_vmax: None,
             mark_atoms: vec![],
             mark_bonds: vec![],
             bold_labels: false,
@@ -693,6 +693,8 @@ mod tests {
             color: Some("#336699".into()),
             atom_shade: None,
             bond_shade: None,
+            shade_vmin: None,
+            shade_vmax: None,
             mark_atoms: vec![],
             mark_bonds: vec![],
             bold_labels: false,
@@ -734,6 +736,8 @@ mod tests {
             color: None,
             atom_shade: None,
             bond_shade: None,
+            shade_vmin: None,
+            shade_vmax: None,
             mark_atoms: vec![],
             mark_bonds: vec![],
             bold_labels: false,
@@ -905,6 +909,8 @@ mod tests {
             color: None,
             atom_shade: None,
             bond_shade: None,
+            shade_vmin: None,
+            shade_vmax: None,
             mark_atoms: vec![],
             mark_bonds: vec![],
             bold_labels: false,
@@ -1197,6 +1203,8 @@ mod tests {
             color: None,
             atom_shade: Some(vec![0.0, 0.85]),
             bond_shade: None,
+            shade_vmin: None,
+            shade_vmax: None,
             mark_atoms: vec![1],
             mark_bonds: vec![],
             bold_labels: false,
@@ -1230,11 +1238,20 @@ mod tests {
                 _ => None,
             })
             .collect();
-        // z=0 filtered; z=0.85 → 4 PlotDot rings at the O atom.
+        // z=0 filtered; z=0.85 on fixed 0..1 window → 4 PlotDot rings at O.
         assert_eq!(disks.len(), 4);
         let base_r = BOND_PX * SHADE_FRAC;
         let max_r = disks.iter().map(|(_, _, r)| *r).fold(0.0_f64, f64::max);
-        assert!((max_r - base_r).abs() < 1e-6, "outer shade radius = {max_r}");
+        // PlotDot outer ring for |z|=0.85 is ~0.922×base — not stretched to 1.0.
+        let expected = base_r * (0.85_f64).sqrt(); // rings use sqrt steps; 0.85→√0.85
+        assert!(
+            (max_r - expected).abs() < 1e-6,
+            "outer shade radius = {max_r}, expected {expected}"
+        );
+        assert!(
+            max_r < base_r - 1e-6,
+            "0.85 must not auto-window to full strength (got {max_r} vs base {base_r})"
+        );
         let (sx, sy, _) = disks[0];
         assert!(disks.iter().all(|(x, y, _)| (*x - sx).abs() < 1e-9 && (*y - sy).abs() < 1e-9));
 
@@ -1269,6 +1286,8 @@ mod tests {
             color: None,
             atom_shade: None,
             bond_shade: None,
+            shade_vmin: None,
+            shade_vmax: None,
             mark_atoms: vec![],
             mark_bonds: vec![],
             bold_labels: false,
@@ -1295,6 +1314,8 @@ mod tests {
             color: None,
             atom_shade: None,
             bond_shade: None,
+            shade_vmin: None,
+            shade_vmax: None,
             mark_atoms: vec![],
             mark_bonds: vec![],
             bold_labels: false,
@@ -1353,6 +1374,8 @@ mod tests {
             color: None,
             atom_shade: None,
             bond_shade: None,
+            shade_vmin: None,
+            shade_vmax: None,
             mark_atoms: vec![],
             mark_bonds: vec![],
             bold_labels: false,
@@ -1409,6 +1432,8 @@ mod tests {
             color: None,
             atom_shade: None,
             bond_shade: None,
+            shade_vmin: None,
+            shade_vmax: None,
             mark_atoms: vec![],
             mark_bonds: vec![],
             bold_labels: false,
@@ -1440,6 +1465,9 @@ mod tests {
     #[test]
     fn shade_negative_and_diverging() {
         let mut mol = ethanol();
+        // Explicit diverging window — defaults are vmin=0, vmax=1 (no auto-window).
+        mol.shade_vmin = Some(-1.0);
+        mol.shade_vmax = Some(1.0);
         mol.atom_shade = Some(vec![-0.8, -0.2, 0.0]);
         let scene = depict_molecule(&mol);
         let shade = scene.viewports[0]
@@ -1473,6 +1501,49 @@ mod tests {
         assert!(
             fills.iter().any(|f| f.starts_with("rgb(")),
             "diverging colormap must emit rgb() fills"
+        );
+    }
+
+    #[test]
+    fn shade_default_window_is_zero_to_one() {
+        let mut mol = ethanol();
+        // Peak score 0.45 must stay mid-strength — not stretched to vmax of data.
+        mol.atom_shade = Some(vec![0.0, 0.0, 0.45]);
+        let scene = depict_molecule(&mol);
+        let shade = scene.viewports[0]
+            .layers
+            .iter()
+            .find(|l| l.name == LayerName::Shading)
+            .expect("shading");
+        assert!(
+            !shade.primitives.is_empty(),
+            "0.45 on a 0..1 window should still paint"
+        );
+        // Auto-windowing to max=0.45 would normalize to 1.0 and grow the disk;
+        // with fixed vmax=1 the radius stays clearly below a full-strength hit.
+        let mut mol_hot = ethanol();
+        mol_hot.atom_shade = Some(vec![0.0, 0.0, 1.0]);
+        let hot = depict_molecule(&mol_hot);
+        let hot_shade = hot.viewports[0]
+            .layers
+            .iter()
+            .find(|l| l.name == LayerName::Shading)
+            .expect("shading");
+        let max_r = |scene_shade: &crate::scene::Layer| {
+            scene_shade
+                .primitives
+                .iter()
+                .filter_map(|p| match p {
+                    Primitive::Circle { r, .. } => Some(r),
+                    _ => None,
+                })
+                .fold(0.0_f64, |a, b| a.max(*b))
+        };
+        assert!(
+            max_r(shade) < max_r(hot_shade) * 0.85,
+            "0.45 must not be auto-stretched to full strength (got {} vs hot {})",
+            max_r(shade),
+            max_r(hot_shade)
         );
     }
 
@@ -1536,6 +1607,8 @@ mod tests {
             color: None,
             atom_shade: Some(vec![0.5, 0.5]),
             bond_shade: None,
+            shade_vmin: None,
+            shade_vmax: None,
             mark_atoms: vec![],
             mark_bonds: vec![],
             bold_labels: false,

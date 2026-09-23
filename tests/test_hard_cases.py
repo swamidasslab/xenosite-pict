@@ -33,6 +33,7 @@ from xpict.draw.drawable import (
     normalize_coords,
 )
 from xpict.draw.plotdot import PlotDot
+from xpict.future.spec import ShadeSpec
 from xpict.draw.rings import (
     HARD_RING_CASES,
     RingAttachment,
@@ -82,6 +83,48 @@ def test_shade_normalize_nonnegative_keeps_zero_white():
     assert out[2] == pytest.approx(0.9)
     assert out[4] == pytest.approx(0.5)
     assert _shade_rgb(out[0]) == "rgb(255,255,255)"
+
+
+def test_shade_default_window_not_auto_from_data():
+    """Omitting vmin/vmax must use 0..1 — not stretch to max(data)."""
+    import re
+
+    from xpict import render
+
+    mid = render(
+        {
+            "type": "mol",
+            "smiles": "CCO",
+            "shade": {"atoms": [0.0, 0.0, 0.45]},
+        }
+    )
+    hot = render(
+        {
+            "type": "mol",
+            "smiles": "CCO",
+            "shade": {"atoms": [0.0, 0.0, 1.0]},
+        }
+    )
+
+    def max_shade_r(svg: str) -> float:
+        rs = [
+            float(m.group(1))
+            for m in re.finditer(r'class="shade"[^>]*\br="([0-9.]+)"', svg)
+        ]
+        if not rs:
+            rs = [
+                float(m.group(1))
+                for m in re.finditer(
+                    r'\br="([0-9.]+)"[^>]*class="shade"', svg
+                )
+            ]
+        assert rs, f"no shade circles in svg: {svg[:200]}"
+        return max(rs)
+
+    mid_r = max_shade_r(mid)
+    hot_r = max_shade_r(hot)
+    assert mid_r < hot_r * 0.85, f"0.45 auto-stretched? mid={mid_r} hot={hot_r}"
+    assert ShadeSpec().vmin == 0.0 and ShadeSpec().vmax == 1.0
 
 
 def test_shade_normalize_diverging_preserves_sign():

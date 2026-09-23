@@ -165,6 +165,10 @@ export type MoleculeIn = {
   color?: string;
   atom_shade?: number[];
   bond_shade?: number[];
+  /** Shade window low (default 0). Not inferred from data. */
+  shade_vmin?: number;
+  /** Shade window high (default 1). Not inferred from data. */
+  shade_vmax?: number;
   mark_atoms?: number[];
   mark_bonds?: Array<[number, number]>;
   /**
