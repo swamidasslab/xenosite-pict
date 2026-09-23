@@ -8,6 +8,7 @@ import {
   type LayoutMeta,
   type MoleculeIn,
 } from "./layout/rdkit-layout.js";
+import { validateEdgePlanJson } from "./native.js";
 
 export const MIN_MCS_ATOMS = 3;
 
@@ -62,22 +63,9 @@ function sourceOf(node: MolTemplate): string {
   throw new Error(`MolTemplate ${node.id}: empty structure`);
 }
 
+/** Structural checks via Rust core (wasm must be initialized). */
 export function validateEdgePlan(plan: EdgePlan): EdgePlan {
-  if (plan.version !== 1) throw new Error(`unsupported EdgePlan version ${plan.version}`);
-  const seen = new Set<string>();
-  const walk = (node: MolTemplate, isRoot: boolean) => {
-    if (seen.has(node.id)) throw new Error(`duplicate MolTemplate id ${node.id}`);
-    seen.add(node.id);
-    sourceOf(node);
-    if (isRoot && node.align != null) {
-      throw new Error(`MolTemplate ${node.id}: roots must have align=null`);
-    }
-    for (const c of node.template_for ?? []) walk(c, false);
-  };
-  for (const task of plan.tasks) {
-    for (const root of task.roots) walk(root, true);
-  }
-  return plan;
+  return JSON.parse(validateEdgePlanJson(JSON.stringify(plan))) as EdgePlan;
 }
 
 export function buildAlignPlan(opts: {

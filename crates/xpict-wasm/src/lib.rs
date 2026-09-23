@@ -1,7 +1,7 @@
 //! wasm-bindgen surface for **xpict** — paint + document two-pass.
 //!
 //! Document path: ``planEdge`` → host ``processEdgePlan`` → ``renderDoc``.
-//! CX / star / shade chrome lives in core ``render_doc`` — not client code.
+//! Validation / CX / star / shade chrome live in core — not client code.
 
 #![forbid(unsafe_code)]
 
@@ -15,6 +15,15 @@ pub fn depict_molecule(molecule_json: &str) -> Result<String, JsValue> {
         .map_err(|e| JsValue::from_str(&format!("MoleculeIn JSON: {e}")))?;
     let scene = xpict_core::depict_molecule(&mol);
     serde_json::to_string(&scene).map_err(|e| JsValue::from_str(&format!("Scene JSON: {e}")))
+}
+
+/// Validate `EdgePlan` JSON (unique ids, structure fields, root align=null).
+#[wasm_bindgen(js_name = validateEdgePlan)]
+pub fn validate_edge_plan(plan_json: &str) -> Result<String, JsValue> {
+    let plan: xpict_core::EdgePlan = serde_json::from_str(plan_json)
+        .map_err(|e| JsValue::from_str(&format!("EdgePlan JSON: {e}")))?;
+    plan.validate().map_err(|e| JsValue::from_str(&e))?;
+    serde_json::to_string(&plan).map_err(|e| JsValue::from_str(&format!("EdgePlan JSON: {e}")))
 }
 
 /// Pass 1: `DepictSpec` JSON → `EdgePlan` JSON (or ``null`` when empty).

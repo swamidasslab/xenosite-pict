@@ -47,10 +47,20 @@ cargo test -p xpict
 
 Python keeps the full `_native` surface (offsets, plotdots, halos, ELK, …).
 JS wasm binds paint + document two-pass (`depictMolecule`, `planEdge`,
-`renderDoc`); RDKit layout/align stay in TS. Chrome (CX / star_labels /
-shade / color) is applied in core ``render_doc`` — clients only process
-``EdgePlan`` between passes.
+`renderDoc`, `validateEdgePlan`); RDKit layout/align stay in TS. Chrome
+(CX / star_labels / shade / color) and EdgePlan structural validation are
+applied in core — clients only process ``EdgePlan`` between passes.
 The native `crates/xpict` package is **not** linked into py/wasm.
+
+### Where to test
+
+| Logic | Test once in |
+| --- | --- |
+| CX parse / apply, `plan_edge`, `render_doc` chrome, EdgePlan validate | `xpict-core` |
+| RDKit / MinimalLib `process_edge_plan` (atom_map, MCS, fallback) | each host (Rust `xpict`, Python, JS) |
+| Public `depict` / `render` wiring | one smoke per language |
+
+Do **not** re-assert core behavior in Py + JS + Rust host suites.
 
 ## Adding a shared export
 

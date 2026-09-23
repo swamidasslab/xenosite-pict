@@ -11,17 +11,10 @@ import pytest
 
 from xpict import Pict, PictBackendWarning, render
 from xpict.align import _mcs_mapping, align_layouts
-from xpict.structure import cx_atom_labels
 
 
 def _backend() -> str:
     return layout_backend()
-
-
-def test_cx_atom_labels_parse():
-    labs = cx_atom_labels("*C1ccccc1 |$R1;;;;;$|")
-    assert labs[0] == "R1"
-    assert labs[1] is None
 
 
 def test_rdkit_parses_star_and_charge():

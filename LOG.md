@@ -5,9 +5,11 @@
 - Centralized document two-pass in ``xpict-core``: ``plan_edge`` → host
   ``process_edge_plan`` → ``render_doc``. CX / star / shade / color chrome
   applied in core ``render_doc`` (not client CX helpers). Native Rust + JS
-  ``depict`` use this path; py/wasm expose ``plan_edge`` / ``render_doc`` only.
+  ``depict`` use this path; py/wasm expose plan/validate/render_doc.
+- EdgePlan ``validate`` + CX parse live in core; host suites only smoke RDKit
+  ``process_edge_plan`` (no triplicated plan/CX/validate tests).
 - Moved CXSMILES parse + ``apply_cx_by_index`` into ``xpict-core::cxsmiles``;
-  Rust single-mol ``apply_opts`` calls core (no new client FFI for CX).
+  Rust single-mol ``apply_opts`` calls core (no client CX FFI).
 
 ## 2026-09-22
 

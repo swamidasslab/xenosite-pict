@@ -8,6 +8,7 @@ import init, {
   depictMolecule as wasmDepictMolecule,
   planEdge as wasmPlanEdge,
   renderDoc as wasmRenderDoc,
+  validateEdgePlan as wasmValidateEdgePlan,
   type InitInput,
 } from "./wasm/xpict_core.js";
 
@@ -64,6 +65,12 @@ function requireReady(): void {
 export function depictMolecule(moleculeJson: string): string {
   requireReady();
   return wasmDepictMolecule(moleculeJson);
+}
+
+/** Validate EdgePlan JSON via Rust core. */
+export function validateEdgePlanJson(planJson: string): string {
+  requireReady();
+  return wasmValidateEdgePlan(planJson);
 }
 
 /** Pass 1: DepictSpec JSON → EdgePlan JSON (or null). */

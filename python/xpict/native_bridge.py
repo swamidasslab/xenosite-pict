@@ -81,6 +81,11 @@ def _as_json(obj: Any) -> str:
     return json.dumps(obj)
 
 
+def validate_edge_plan(plan: dict[str, Any] | str | Any) -> dict[str, Any]:
+    """Structural checks via Rust core."""
+    return json.loads(_rust.validate_edge_plan(_as_json(plan)))
+
+
 def plan_edge(spec: dict[str, Any] | str | Any) -> dict[str, Any] | None:
     """Pass 1: DepictSpec → EdgePlan (Rust core). ``None`` when empty."""
     raw = _rust.plan_edge(_as_json(spec))

@@ -37,6 +37,16 @@ fn depict_molecule(molecule_json: &str) -> PyResult<String> {
         .map_err(|e| PyRuntimeError::new_err(format!("Scene JSON: {e}")))
 }
 
+/// Validate `EdgePlan` JSON (unique ids, structure fields, root align=null).
+#[pyfunction]
+fn validate_edge_plan(plan_json: &str) -> PyResult<String> {
+    let plan: xpict_core::EdgePlan = serde_json::from_str(plan_json)
+        .map_err(|e| PyRuntimeError::new_err(format!("EdgePlan JSON: {e}")))?;
+    plan.validate().map_err(PyRuntimeError::new_err)?;
+    serde_json::to_string(&plan)
+        .map_err(|e| PyRuntimeError::new_err(format!("EdgePlan JSON: {e}")))
+}
+
 /// Pass 1: `DepictSpec` JSON → `EdgePlan` JSON (or ``null`` when empty).
 #[pyfunction]
 fn plan_edge(spec_json: &str) -> PyResult<String> {
@@ -499,6 +509,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(multi_bond_offset, m)?)?;
     m.add_function(wrap_pyfunction!(centered_displacements, m)?)?;
     m.add_function(wrap_pyfunction!(depict_molecule, m)?)?;
+    m.add_function(wrap_pyfunction!(validate_edge_plan, m)?)?;
     m.add_function(wrap_pyfunction!(plan_edge, m)?)?;
     m.add_function(wrap_pyfunction!(render_doc, m)?)?;
     m.add_function(wrap_pyfunction!(element_symbol, m)?)?;

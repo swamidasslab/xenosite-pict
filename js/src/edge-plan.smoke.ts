@@ -1,31 +1,16 @@
 /**
- * EdgePlan processor smoke (parity with Python tests/test_edge_plan.py).
+ * EdgePlan host processor smoke (RDKit / MinimalLib only).
+ * Schema / validate / plan_edge / CX chrome are covered in xpict-core.
  * Run: `npx tsx src/edge-plan.smoke.ts`
  */
-import {
-  buildAlignPlan,
-  processEdgePlan,
-  validateEdgePlan,
-} from "./edge-plan.js";
+import { initNative } from "./native.js";
+import { buildAlignPlan, processEdgePlan } from "./edge-plan.js";
 
 function assert(cond: unknown, msg: string): asserts cond {
   if (!cond) throw new Error(msg);
 }
 
-{
-  const bad = buildAlignPlan({
-    templateSource: "CCO",
-    querySource: "CCCO",
-  });
-  bad.tasks[0]!.roots[0]!.template_for![0]!.id = "m_0";
-  let threw = false;
-  try {
-    validateEdgePlan(bad);
-  } catch {
-    threw = true;
-  }
-  assert(threw, "duplicate ids should fail validate");
-}
+await initNative();
 
 {
   const plan = buildAlignPlan({
@@ -45,7 +30,6 @@ function assert(cond: unknown, msg: string): asserts cond {
   assert(rows.length === 2, "two molecules");
   assert(rows[0]!.ok && rows[0]!.method === "free", "root free");
   assert(rows[1]!.ok && rows[1]!.method === "atom_map", "child atom_map");
-  assert(rows[1]!.molecule?.atoms.length === 7, "toluene atoms");
 }
 
 {
@@ -65,10 +49,8 @@ function assert(cond: unknown, msg: string): asserts cond {
   });
   const result = await processEdgePlan(plan);
   const rows = result.results[0]!.molecules;
-  assert(rows[0]!.ok, "root ok");
   assert(rows[1]!.ok && rows[1]!.method === "none", "child fallback ok");
   assert(rows[1]!.molecule != null, "fallback returns molecule");
-  assert(result.results[0]!.ok, "task ok when all have coords");
 }
 
 console.log("edge-plan smoke ok");

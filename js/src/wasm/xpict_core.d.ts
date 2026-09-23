@@ -16,6 +16,11 @@ export function planEdge(spec_json: string): string;
  */
 export function renderDoc(spec_json: string, edge_json: string): string;
 
+/**
+ * Validate `EdgePlan` JSON (unique ids, structure fields, root align=null).
+ */
+export function validateEdgePlan(plan_json: string): string;
+
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
 export interface InitOutput {
@@ -23,6 +28,7 @@ export interface InitOutput {
     readonly depictMolecule: (a: number, b: number, c: number) => void;
     readonly planEdge: (a: number, b: number, c: number) => void;
     readonly renderDoc: (a: number, b: number, c: number, d: number, e: number) => void;
+    readonly validateEdgePlan: (a: number, b: number, c: number) => void;
     readonly __wbindgen_add_to_stack_pointer: (a: number) => number;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
