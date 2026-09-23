@@ -138,6 +138,81 @@ fn align_mcs_phenol_quinone() {
     assert_mcs_overlay(&q_on_ph, &ph, 6, "quinone→phenol");
 }
 
+/// Asymmetric para-halo pair — F coincides under any valid embedding.
+#[test]
+fn align_asymmetric_para_halo() {
+    let mut tmpl = mol("Fc1ccc(Cl)cc1").unwrap();
+    let t = tmpl.render(MolRenderOptions::default()).unwrap();
+    let mut query = mol("Fc1ccc(Br)cc1").unwrap();
+    let q = query
+        .render(MolRenderOptions {
+            align_to: Some(t.frame().to_string()),
+            ..Default::default()
+        })
+        .unwrap();
+    assert_mcs_overlay(&q, &t, 7, "F-Cl→F-Br");
+    let f_t = t
+        .molecule
+        .atoms
+        .iter()
+        .find(|a| a.symbol() == "F")
+        .expect("template F");
+    let f_q = q
+        .molecule
+        .atoms
+        .iter()
+        .find(|a| a.symbol() == "F")
+        .expect("query F");
+    assert!(
+        near(f_t.x, f_t.y, f_q.x, f_q.y, 0.2),
+        "asymmetric: F atoms should coincide"
+    );
+}
+
+/// Multiple queries onto one pose must not rewrite the template frame.
+#[test]
+fn align_multi_query_leaves_template_frame() {
+    let mut tmpl = mol("c1ccc(O)cc1").unwrap();
+    let t0 = tmpl.render(MolRenderOptions::default()).unwrap();
+    let frame = t0.frame().to_string();
+    let before: Vec<(i32, f64, f64)> = t0
+        .molecule
+        .atoms
+        .iter()
+        .map(|a| (a.index, a.x, a.y))
+        .collect();
+
+    for smi in ["O=C1C=CC(=O)C=C1", "c1ccccc1CC", "Fc1ccccc1O"] {
+        let mut q = mol(smi).unwrap();
+        let aligned = q
+            .render(MolRenderOptions {
+                align_to: Some(frame.clone()),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_mcs_overlay(&aligned, &t0, 6, smi);
+        // Cached pose string is unchanged input — queries never write back.
+        assert_eq!(frame, t0.frame());
+    }
+
+    // Align phenol onto the frozen frame: atoms must sit on the original pose
+    // (any symmetric ring flip still overlays the same point set).
+    let mut again = mol("c1ccc(O)cc1").unwrap();
+    let on_frame = again
+        .render(MolRenderOptions {
+            align_to: Some(frame),
+            ..Default::default()
+        })
+        .unwrap();
+    for a in &on_frame.molecule.atoms {
+        let hit = before
+            .iter()
+            .any(|&(_, x, y)| near(a.x, a.y, x, y, 0.2));
+        assert!(hit, "atom {} not on original template pose", a.index);
+    }
+    let _ = before;
+}
+
 #[test]
 fn depict_nested_group() {
     use xpict::{depict, DepictSpec, MolNode};
