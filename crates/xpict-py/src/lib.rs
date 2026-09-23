@@ -37,6 +37,38 @@ fn depict_molecule(molecule_json: &str) -> PyResult<String> {
         .map_err(|e| PyRuntimeError::new_err(format!("Scene JSON: {e}")))
 }
 
+/// Pass 1: `DepictSpec` JSON → `EdgePlan` JSON (or ``null`` when empty).
+#[pyfunction]
+fn plan_edge(spec_json: &str) -> PyResult<String> {
+    let spec: xpict_core::DepictSpec = serde_json::from_str(spec_json)
+        .map_err(|e| PyRuntimeError::new_err(format!("DepictSpec JSON: {e}")))?;
+    let plan = xpict_core::plan_edge(&spec).map_err(PyRuntimeError::new_err)?;
+    serde_json::to_string(&plan)
+        .map_err(|e| PyRuntimeError::new_err(format!("EdgePlan JSON: {e}")))
+}
+
+/// Pass 2: `DepictSpec` + `EdgeResult` JSON → list of `{id, molecule, scene}`.
+#[pyfunction]
+fn render_doc(spec_json: &str, edge_json: &str) -> PyResult<String> {
+    let spec: xpict_core::DepictSpec = serde_json::from_str(spec_json)
+        .map_err(|e| PyRuntimeError::new_err(format!("DepictSpec JSON: {e}")))?;
+    let edge: xpict_core::EdgeResult = serde_json::from_str(edge_json)
+        .map_err(|e| PyRuntimeError::new_err(format!("EdgeResult JSON: {e}")))?;
+    let painted = xpict_core::render_doc(&spec, &edge).map_err(PyRuntimeError::new_err)?;
+    let rows: Vec<serde_json::Value> = painted
+        .into_iter()
+        .map(|p| {
+            serde_json::json!({
+                "id": p.id,
+                "molecule": p.molecule,
+                "scene": p.scene,
+            })
+        })
+        .collect();
+    serde_json::to_string(&rows)
+        .map_err(|e| PyRuntimeError::new_err(format!("DocPaint JSON: {e}")))
+}
+
 /// Element symbol for atomic number (`0` → ``*``, `1` → ``H``, …).
 #[pyfunction]
 fn element_symbol(z: u32) -> &'static str {
@@ -467,6 +499,8 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(multi_bond_offset, m)?)?;
     m.add_function(wrap_pyfunction!(centered_displacements, m)?)?;
     m.add_function(wrap_pyfunction!(depict_molecule, m)?)?;
+    m.add_function(wrap_pyfunction!(plan_edge, m)?)?;
+    m.add_function(wrap_pyfunction!(render_doc, m)?)?;
     m.add_function(wrap_pyfunction!(element_symbol, m)?)?;
     m.add_function(wrap_pyfunction!(atomic_number, m)?)?;
     m.add_function(wrap_pyfunction!(kabsch_2d, m)?)?;

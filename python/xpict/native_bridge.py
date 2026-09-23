@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -69,6 +70,32 @@ def elk_layout_json(graph_json: str) -> str | None:
     if fn is None:
         return None
     return str(fn(graph_json))
+
+
+def _as_json(obj: Any) -> str:
+    if isinstance(obj, str):
+        return obj
+    dump = getattr(obj, "model_dump", None)
+    if callable(dump):
+        return json.dumps(dump(mode="json"))
+    return json.dumps(obj)
+
+
+def plan_edge(spec: dict[str, Any] | str | Any) -> dict[str, Any] | None:
+    """Pass 1: DepictSpec → EdgePlan (Rust core). ``None`` when empty."""
+    raw = _rust.plan_edge(_as_json(spec))
+    return json.loads(raw)
+
+
+def render_doc(
+    spec: dict[str, Any] | str | Any, edge: dict[str, Any] | str | Any
+) -> list[dict[str, Any]]:
+    """Pass 2: DepictSpec + EdgeResult → DocPaint rows (Rust core).
+
+    Chrome (CX / star_labels / shade / color) is applied in core — callers
+    only process the EdgePlan between passes.
+    """
+    return json.loads(_rust.render_doc(_as_json(spec), _as_json(edge)))
 
 
 def halo_path_d_for_ink(ink: InkGeometry, dist: float) -> str | None:

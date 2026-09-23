@@ -7,6 +7,8 @@ import re
 from xpict.future.spec import MoleculeSpec
 
 # ChemAxon ``|$alias1;alias2;$|`` atom-label block inside CXSMILES.
+# Layout backends still need this until they stop writing labels themselves;
+# document paint applies CX in Rust ``render_doc``.
 _CX_ATOM_LABELS = re.compile(r"\|\$([^|]*)\$\|")
 
 
@@ -31,7 +33,6 @@ def cx_atom_labels(smiles_or_cx: str) -> list[str | None]:
     if not m:
         return []
     raw = m.group(1)
-    # Trailing empty field before final ``$`` is common: ``a;b;``.
     parts = raw.split(";")
     if parts and parts[-1] == "":
         parts = parts[:-1]

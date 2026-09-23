@@ -10,7 +10,9 @@
 pub mod align;
 pub mod bonds;
 pub mod colormap;
+pub mod cxsmiles;
 pub mod depict;
+pub mod doc;
 pub mod edge;
 pub mod elements;
 #[cfg(feature = "elk")]
@@ -32,7 +34,12 @@ pub use bonds::{
     line_intersect, multi_bond_offset, BondStrokes, DrawnBond, StrokePath,
 };
 pub use colormap::{colormap_rgb, sample_colormap, XENOSITE};
+pub use cxsmiles::{apply_cx_by_index, cx_atom_labels, cx_source, smiles_base};
 pub use depict::depict_molecule;
+pub use doc::{
+    apply_star_labels, assign_mol_ids, plan_edge, render_doc, DepictSpec, DocPaint, MolNode,
+    ShadeSpec,
+};
 pub use edge::{
     AlignOpts, CoordGenMoleculeResult, CoordMethod, EdgePlan, EdgeResult, EdgeTask,
     EdgeTaskResult, MolTemplate, MIN_MCS_ATOMS as EDGE_MIN_MCS_ATOMS,

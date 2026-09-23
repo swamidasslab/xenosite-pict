@@ -11,6 +11,7 @@ graphics** (SVG paths). Used from Rust, Python, and JS/WASM.
 | Kekulé bonds, wedges, marks, shade, color | Shipped |
 | Atom labels + chem markup (`$R_1$`, `R^2`, `\alpha`, bold/italic) | Shipped |
 | Halo / glyph outlines (Liberation Sans) | Shipped |
+| Document two-pass (`plan_edge` / `render_doc`) + CX chrome | Shipped |
 | Multi-mol / ELK / reactions | Design only (`xpict.future`) |
 
 ```bash

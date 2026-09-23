@@ -4,7 +4,7 @@ use rdkit::{ROMol, RWMol};
 use xpict_core::scene::{AtomIn, BondIn, MoleculeIn};
 use xpict_core::SCALE;
 
-use crate::cxsmiles::smiles_base;
+use xpict_core::smiles_base;
 use crate::ffi::ffi::{self, LayoutOut};
 use crate::Error;
 

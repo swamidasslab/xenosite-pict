@@ -6,11 +6,23 @@
  */
 export function depictMolecule(molecule_json: string): string;
 
+/**
+ * Pass 1: `DepictSpec` JSON → `EdgePlan` JSON (or ``null`` when empty).
+ */
+export function planEdge(spec_json: string): string;
+
+/**
+ * Pass 2: `DepictSpec` + `EdgeResult` JSON → DocPaint list JSON.
+ */
+export function renderDoc(spec_json: string, edge_json: string): string;
+
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly depictMolecule: (a: number, b: number, c: number) => void;
+    readonly planEdge: (a: number, b: number, c: number) => void;
+    readonly renderDoc: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly __wbindgen_add_to_stack_pointer: (a: number) => number;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;

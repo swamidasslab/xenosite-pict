@@ -28,7 +28,9 @@ Committed JSON Schema:
 (default ``1`` = house; min ``2/3``), ``scale``, ``align_to``, ``atom_map``
 (``(query, template)`` pairs; requires ``align_to``; skips MCS), ``id``. The
 document path uses this layer internally where it
-exists.
+exists. Prefer the document two-pass (``plan_edge`` /
+``process_edge_plan`` / ``render_doc``) for nested ``DepictSpec``.
+
 
 ## Future (design)
 
@@ -52,3 +54,15 @@ Label scripts: [Label markup](label-markup.md).
 
 If a backend cannot honor an option, it must
 ``warnings.warn(..., PictBackendWarning)`` and continue best-effort.
+
+## Document two-pass (EdgePlan)
+
+Hosts do **not** apply CX / star / shade chrome themselves. Flow:
+
+1. Core ``plan_edge(DepictSpec)`` → ``EdgePlan`` (coord_gen forest)
+2. Host ``process_edge_plan`` (RDKit layout / align) → ``EdgeResult``
+3. Core ``render_doc(DepictSpec, EdgeResult)`` → painted scenes
+   (CX aliases, ``star_labels``, color, shade, scale, weight)
+
+Schema: ``schema/edge-plan.schema.json``, ``schema/edge-result.schema.json``.
+

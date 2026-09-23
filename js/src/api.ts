@@ -26,11 +26,21 @@ import {
   type MoleculeIn,
 } from "./layout/rdkit-layout.js";
 import { ensureRdkit, isRdkitReady } from "./rdkit-loader.js";
-import { depictMolecule, initNative, isNativeReady } from "./native.js";
+import {
+  depictMolecule,
+  initNative,
+  isNativeReady,
+  planEdgeJson,
+  renderDocJson,
+} from "./native.js";
 import { atomsInSvgFrame, type SvgAtom, type SvgBond } from "./frame.js";
 import { sceneToSvg, type Scene } from "./draw/scene-svg.js";
 import { elementSymbol } from "./elements.js";
 import { cxAtomLabels } from "./cxsmiles.js";
+import {
+  processEdgePlanWithFrames,
+  type EdgePlan,
+} from "./edge-plan.js";
 
 export type { SvgAtom, SvgBond } from "./frame.js";
 export type {
@@ -137,12 +147,21 @@ export type MolNode = {
    * Ink weight relative to house (`1`). Min `2/3` (Regular stem).
    */
   weight?: number;
+  /** Id of another mol in this group to use as align template. */
+  align_to?: string;
+  /** Pairs `[queryAtom, templateAtom]` vs the template; skips MCS when set. */
+  atom_map?: Array<[number, number]>;
 };
 
 /** Group — ``children`` of mol nodes only (today). */
 export type GroupNode = {
   type: "group";
   id?: string;
+  /**
+   * When true, later children align onto the first (or each child's
+   * ``align_to``). Builds an EdgePlan coord_gen forest.
+   */
+  align?: boolean;
   children: MolNode[];
 };
 
@@ -371,36 +390,59 @@ function structureFromMolNode(entry: MolNode): string {
   return raw;
 }
 
-function molNodesFromSpec(spec: DepictSpec): MolNode[] {
-  if (spec.type === "mol") return [spec];
-  if (spec.type === "group") return spec.children ?? [];
-  throw new Error('DepictSpec root must have type "mol" or "group"');
-}
+type DocPaint = {
+  id: string;
+  molecule: MoleculeIn;
+  scene: Scene;
+};
 
 /**
- * Declarative document → ``Rendered[]`` (nested PictSpec subset).
- * Implemented via the single-mol ``mol`` / ``render`` client.
+ * Declarative document → ``Rendered[]``.
+ * Core ``planEdge`` → host ``processEdgePlan`` → core ``renderDoc``
+ * (CX / star / shade chrome applied in core).
  */
 async function depict(spec: DepictSpec): Promise<Rendered[]> {
-  const out: Rendered[] = [];
-  for (const entry of molNodesFromSpec(spec)) {
-    const m = mol(structureFromMolNode(entry));
-    const opts: MolRenderOptions = {
-      id: entry.id,
-      color: entry.color,
-      atom_shade: entry.shade?.atoms,
-      bond_shade: entry.shade?.bonds,
-      star_labels: entry.star_labels,
-      scale: entry.scale,
-      weight: entry.weight,
-      // Document shade defaults to 0..1 (serde/JS); pass through so paint
-      // never auto-windows to the data range.
-      shade_vmin: entry.shade?.vmin ?? 0,
-      shade_vmax: entry.shade?.vmax ?? 1,
-    };
-    out.push(await render(m, opts));
+  await ensureReady();
+  const plan = JSON.parse(planEdgeJson(JSON.stringify(spec))) as EdgePlan | null;
+  if (plan == null) return [];
+  const { result: edge, frames } = await processEdgePlanWithFrames(plan);
+  const painted = JSON.parse(
+    renderDocJson(JSON.stringify(spec), JSON.stringify(edge))
+  ) as DocPaint[];
+
+  const byId = new Map<string, MolNode>();
+  const nodes =
+    spec.type === "mol"
+      ? [spec]
+      : spec.type === "group"
+        ? (spec.children ?? [])
+        : [];
+  for (const [i, n] of nodes.entries()) {
+    byId.set(n.id?.trim() || `m_${i}`, n);
   }
-  return out;
+
+  return painted.map((row) => {
+    const node = byId.get(row.id);
+    const source = node ? structureFromMolNode(node) : row.id;
+    const framed = atomsInSvgFrame(row.molecule);
+    return {
+      width: row.scene.width,
+      height: row.scene.height,
+      scene: row.scene,
+      molecule: row.molecule,
+      source,
+      frame_molblock: frames.get(row.id) ?? "",
+      coords: toCoordList(row.molecule.atoms),
+      svg_coords: framed,
+      bonds: (row.molecule.bonds ?? []).map((b) => ({
+        index: b.index,
+        begin: b.begin,
+        end: b.end,
+        order: b.order,
+        ...(b.stereo ? { stereo: b.stereo } : {}),
+      })),
+    };
+  });
 }
 
 /** Public lib namespace. */

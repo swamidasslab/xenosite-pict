@@ -118,8 +118,16 @@ export function buildAlignPlan(opts: {
  * `ok: true` when coords were produced.
  */
 export async function processEdgePlan(plan: EdgePlan): Promise<EdgeResult> {
+  return (await processEdgePlanWithFrames(plan)).result;
+}
+
+/** Like [`processEdgePlan`], plus pose molblocks keyed by mol id. */
+export async function processEdgePlanWithFrames(
+  plan: EdgePlan
+): Promise<{ result: EdgeResult; frames: Map<string, string> }> {
   validateEdgePlan(plan);
   const results: CoordGenTaskResult[] = [];
+  const allFrames = new Map<string, string>();
 
   for (const task of plan.tasks) {
     const rows: CoordGenMoleculeResult[] = [];
@@ -127,7 +135,6 @@ export async function processEdgePlan(plan: EdgePlan): Promise<EdgeResult> {
 
     const visit = async (node: MolTemplate, parentId: string | null) => {
       const source = sourceOf(node);
-      const minAtoms = node.align?.min_atoms ?? MIN_MCS_ATOMS;
       const atomMap = node.align?.atom_map ?? null;
 
       const freeLayout = async () =>
@@ -150,7 +157,7 @@ export async function processEdgePlan(plan: EdgePlan): Promise<EdgeResult> {
             id: node.id,
             template,
             atomMap,
-            minAtoms,
+            minAtoms: node.align?.min_atoms ?? MIN_MCS_ATOMS,
           });
           if (laid.meta.method === "atom_map" || laid.meta.method === "mcs") {
             rows.push({
@@ -206,6 +213,7 @@ export async function processEdgePlan(plan: EdgePlan): Promise<EdgeResult> {
     for (const root of task.roots) {
       await visit(root, null);
     }
+    for (const [k, v] of poses) allFrames.set(k, v);
     results.push({
       type: "coord_gen",
       ok: rows.every((r) => r.ok),
@@ -213,5 +221,5 @@ export async function processEdgePlan(plan: EdgePlan): Promise<EdgeResult> {
     });
   }
 
-  return { version: 1, results };
+  return { result: { version: 1, results }, frames: allFrames };
 }
