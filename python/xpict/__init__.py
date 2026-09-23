@@ -1,10 +1,11 @@
 """xpict — molecule depiction.
 
-**Preferred:** nested document (``DepictSpec`` — ``type: "mol"`` /
-``type: "group"`` + ``children``), a strict subset of future ``PictSpec``.
+**Declarative document:** nested ``DepictSpec`` (``type: "mol"`` /
+``type: "group"`` + ``children``), a strict subset of future ``PictSpec`` that
+is still expanding.
 
-**Simple (JS/Rust today):** ``mol`` / ``render`` / ``to_svg`` for single-mol
-callers; the document path uses that layer internally.
+**Single molecule (JS/Rust):** ``mol`` / ``render`` / ``to_svg`` for one-mol
+callers. That Mol-object client is not on PyPI yet — use ``render(doc)`` here.
 """
 
 from __future__ import annotations
@@ -24,7 +25,7 @@ __all__ = [
     "MolSpec",
     "Pict",
     "PictBackendWarning",
-    "PictSpec",  # future — prefer MolSpec / DepictSpec for new code
+    "PictSpec",  # future nested document — use DepictSpec for the live subset
     "Scene",
     "render",
     "__version__",

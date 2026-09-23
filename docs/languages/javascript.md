@@ -1,43 +1,84 @@
 # JavaScript
 
-Package **`@xenosite/xpict`** on npm — WASM paint (`xpict-core`) plus RDKit.js
-at the layout edge.
+Package **`@xenosite/xpict`** on npm — WASM paint plus RDKit.js at the layout
+edge.
 
 ```bash
 npm install @xenosite/xpict
 ```
 
-## Preferred: nested document
+## Single molecule
 
 ```js
 import { xpict } from "@xenosite/xpict";
 
+const home = xpict.mol("c1ccccc1");
+const rendered = await xpict.render(home, {
+  color: "#0b6e4f",
+  atom_shade: [0, 0, 0.2, 0, 0, 0.9],
+  star_labels: ["$R_1$"], // when the source has *
+});
+document.body.innerHTML = xpict.toSvg(rendered.scene);
+
+const aligned = await xpict.render(xpict.mol("Cc1ccccc1"), {
+  align_to: home, // or align_to: rendered
+});
+```
+
+<div class="example-out" markdown>
+
+<figure markdown="span">
+![Benzene colored](../assets/examples/benzene_color.svg)
+<figcaption>`color`</figcaption>
+</figure>
+
+<figure markdown="span">
+![Toluene](../assets/examples/toluene.svg)
+<figcaption>`align_to` query</figcaption>
+</figure>
+
+<figure markdown="span">
+![Star R₁](../assets/examples/star_r1.svg)
+<figcaption>`star_labels`</figcaption>
+</figure>
+
+</div>
+
+### `render` options
+
+`color`, `atom_shade`, `bond_shade`, `star_labels`, `bold_labels`, `align_to`
+(`Mol` | `Rendered`), `id`.
+
+RDKit + WASM initialize on first `render` / `depict`.
+
+## Declarative document
+
+Nested JSON (`type: "mol"` or `type: "group"` + `children`) — expanding toward
+full `PictSpec`:
+
+```js
 const [r] = await xpict.depict({
   type: "mol",
-  smiles: "c1ccccc1",
+  smiles: "CCO",
   color: "#0b6e4f",
-  shade: { atoms: [0, 0, 0.2, 0, 0, 0.9], vmin: 0, vmax: 1 },
+  shade: { atoms: [0.0, 0.2, 0.9], vmin: 0, vmax: 1 },
 });
 document.body.innerHTML = xpict.toSvg(r.scene);
 ```
 
-## Simple: single molecule
+<div class="example-out" markdown>
 
-```js
-const home = xpict.mol("c1ccccc1");
-const { scene } = await xpict.render(home, {
-  color: "#0b6e4f",
-  star_labels: ["$R_1$"], // when source has *
-});
-document.body.innerHTML = xpict.toSvg(scene);
+<figure markdown="span">
+![Ethanol shade](../assets/examples/ethanol_shade.svg)
+<figcaption>Document `shade`</figcaption>
+</figure>
 
-const aligned = await xpict.render(xpict.mol("Cc1ccccc1"), { align_to: home });
-```
+<figure markdown="span">
+![Markush](../assets/examples/markush.svg)
+<figcaption>CX Markush on a mol node</figcaption>
+</figure>
 
-### Simple `render` options
-
-`color`, `atom_shade`, `bond_shade`, `star_labels`, `bold_labels`, `align_to`
-(`Mol` | `Rendered`), `id`.
+</div>
 
 [Label markup](../label-markup.md) · [TypeDoc](../api/javascript.md) ·
 [Align demo](../js/demo/)

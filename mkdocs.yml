@@ -102,12 +102,13 @@ nav:
       - Rust: languages/rust.md
   - Guide:
       - Label markup: label-markup.md
-      - Bindings: bindings.md
       - Contracts: contracts.md
-      - Publish: publish.md
-      - Migration: migration-xenosite.md
-      - Layout notes: layout-notes.md
       - npm / xenosite: npm-xenosite.md
+  - Maintainers:
+      - Publish: publish.md
+      - Bindings: bindings.md
+      - Layout notes: layout-notes.md
+      - Migration: migration-xenosite.md
 
 extra:
   social:

@@ -1,16 +1,8 @@
 # Gallery
 
-Publication-style SVG from the **live nested document** (`type: "mol"` /
-`type: "group"`).
+Publication-style SVG from xpict (same paint as the library APIs).
 
-Regenerate:
-
-```bash
-uv run python scripts/generate_doc_examples.py
-```
-
-Label scripts: [Label markup](label-markup.md) (CX braced aliases; simple
-`star_labels` on the single-mol client).
+Label scripts: [Label markup](label-markup.md).
 
 ## Structures
 
@@ -60,7 +52,7 @@ Label scripts: [Label markup](label-markup.md) (CX braced aliases; simple
 
 ## Markush labels
 
-CX braced markup on the live document (`R_{1}` inside the trailer):
+CX braced markup (`R_{1}` inside the trailer):
 
 <div class="gallery-grid" markdown>
 
@@ -69,11 +61,16 @@ CX braced markup on the live document (`R_{1}` inside the trailer):
 <figcaption>CX — <code>|$R_{1};;;;;$|</code> → R₁</figcaption>
 </figure>
 
+<figure markdown="span">
+![Star R₁](assets/examples/star_r1.svg)
+<figcaption>Simple client — <code>star_labels: ["$R_1$"]</code></figcaption>
+</figure>
+
 </div>
 
 ## Sparse shade
 
-Most atom scores are zero; a few sites are hot (SoM-style):
+Most atom scores are zero; a few sites are hot:
 
 <div class="gallery-grid" markdown>
 

@@ -3,8 +3,19 @@
 //! Layout uses the crates.io [`rdkit`] package (SMILES/molblock) plus a local
 //! Depictor FFI for 2D coords / template align. Paint is [`xpict_core`].
 //!
-//! **Preferred** — nested document ([`depict`] / [`DepictSpec`]), a strict
-//! subset of future PictSpec (`type: "mol"` | `type: "group"` + `children`):
+//! **Single molecule** — `mol` / `render` / `to_svg`; `align_to` is a pose
+//! molblock:
+//!
+//! ```ignore
+//! use xpict::{mol, MolRenderOptions};
+//!
+//! let mut m = mol("CCO")?;
+//! let rendered = m.render(MolRenderOptions::default())?;
+//! let svg = rendered.to_svg();
+//! ```
+//!
+//! **Declarative document** — [`depict`] / [`DepictSpec`], a strict subset of
+//! future PictSpec (`type: "mol"` | `type: "group"` + `children`):
 //!
 //! ```ignore
 //! use xpict::{depict, DepictSpec, MolNode};
@@ -15,17 +26,6 @@
 //!         MolNode { smiles: Some("CCCO".into()), ..Default::default() },
 //!     ],
 //! })?;
-//! ```
-//!
-//! **Simple** — single molecule (`mol` / `render` / `to_svg`); `align_to` is a
-//! pose molblock:
-//!
-//! ```ignore
-//! use xpict::{mol, MolRenderOptions};
-//!
-//! let mut m = mol("CCO")?;
-//! let rendered = m.render(MolRenderOptions::default())?;
-//! let svg = rendered.to_svg();
 //! ```
 
 #![allow(clippy::module_name_repetitions)]

@@ -72,9 +72,9 @@ That outer `|$ … $|` is CX syntax, not xpict math mode. Consequences:
 | Multi-char markup with `;` | **No** | `;` separates CX alias slots |
 
 **Rule of thumb:** use CX for plain aliases or braced scripts (`R_{1}`,
-`R_{12}`). For richer markup (`$R_1$`, Greek, bold), use the simple client's
-`star_labels` (not a document `rgroups` key — that stays in `xpict.future`
-until it graduates).
+`R_{12}`). For richer markup (`$R_1$`, Greek, bold), use the single-molecule
+`star_labels` option (not a document `rgroups` key — that stays in
+`xpict.future` until it graduates).
 
 ## JSON opts and the document schema
 
@@ -100,7 +100,7 @@ mol.render(MolRenderOptions {
 
 `star_labels` **wins over** CX aliases when both are present.
 
-### Preferred document (nested subset of PictSpec)
+### Declarative document (nested subset of PictSpec)
 
 Live docs carry structure + shade + color. Markush text on the document path
 is CX braced aliases today:

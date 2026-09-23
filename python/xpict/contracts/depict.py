@@ -1,13 +1,13 @@
 """Live declarative document — strict subset of ``xpict.future`` PictSpec.
 
-Preferred public document shape matches the nested future tree, trimmed to
-what paint supports today:
+Public document shape matches the nested future tree, trimmed to what paint
+supports today:
 
 - Root is a ``type: "mol"`` leaf, or a ``type: "group"`` with ``children``
 - Molecule discriminator is ``type: "mol"``
 - Shade via ``shade: {atoms, bonds, …}``
 - Markush / star text via CXSMILES aliases (chem markup ``R_{1}``) or the
-  simple client's ``star_labels`` — not a document ``rgroups`` key yet
+  single-mol client's ``star_labels`` — not a document ``rgroups`` key yet
 
 Everything here must validate as :class:`~xpict.future.nodes.PictSpec`.
 Richer nodes (reaction, annotations, ``rgroups``, …) stay in
@@ -76,7 +76,7 @@ DepictRoot = Annotated[MolNode | GroupNode, Field(discriminator="type")]
 
 
 class DepictSpec(RootModel[DepictRoot]):
-    """Preferred declarative document (strict subset of future PictSpec)."""
+    """Declarative document (strict subset of future PictSpec)."""
 
     def mols(self) -> list[MolNode]:
         root = self.root

@@ -154,7 +154,7 @@ const both = await xpict.render(xpict.mol("*C* |$R1;;R2;$|"));
   }
 }
 
-// Preferred document: nested PictSpec subset → Rendered[]
+// Document Markush: CX braced markup (no public rgroups key yet).
 const batch = await xpict.depict({
   type: "group",
   children: [

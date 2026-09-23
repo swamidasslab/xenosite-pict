@@ -1,9 +1,10 @@
 # xpict (native Rust)
 
-**Declarative molecule depiction** — Rust API matching Python and JavaScript.
+**Molecule depiction** — Rust API matching Python and JavaScript.
 
-**Preferred:** nested [`DepictSpec`](https://docs.rs/xpict) (`mol` / `group`).  
-**Simple:** `mol` / `render` / `to_svg`.
+**Single molecule:** `mol` / `render` / `to_svg`.  
+**Declarative document:** nested [`DepictSpec`](https://docs.rs/xpict) (`mol` /
+`group`) — expanding toward full PictSpec.
 
 **Layout:** crates.io [`rdkit`](https://crates.io/crates/rdkit) + Depictor FFI.  
 **Paint:** [`xpict-core`](https://crates.io/crates/xpict-core).  

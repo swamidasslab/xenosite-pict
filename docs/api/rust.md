@@ -1,7 +1,7 @@
 # Rust API
 
-rustdoc for the paint core and (when system RDKit is available) the native
-crate.
+rustdoc for the paint core. The native `xpict` crate (RDKit) is documented on
+[docs.rs](https://docs.rs/xpict) when published.
 
 <div class="api-frame" markdown="0">
   <iframe
@@ -13,10 +13,7 @@ crate.
 
 | Crate | Docs |
 | --- | --- |
-| `xpict-core` | [rustdoc](../../rustdoc/xpict_core/index.html) |
-| `xpict` | Built when RDKit headers are present; otherwise see [crates.io](https://docs.rs/xpict) |
+| `xpict-core` | [rustdoc on this site](../../rustdoc/xpict_core/index.html) |
+| `xpict` | [docs.rs/xpict](https://docs.rs/xpict) |
 
 [Open rustdoc full page](../../rustdoc/xpict_core/index.html){ target=_blank }
-
-Regenerate with `cargo doc -p xpict-core --no-deps` (Pages build does this
-automatically into `/rustdoc/`).
