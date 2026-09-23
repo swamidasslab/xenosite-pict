@@ -15,8 +15,8 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "docs" / "assets" / "examples"
 
 
-def _sparse(n: int, hot: dict[int, float], *, fill: float = 0.0) -> list[float]:
-    """Per-atom shade vector: mostly ``fill``, with a few hot indices."""
+def _shade_vec(n: int, hot: dict[int, float], *, fill: float = 0.0) -> list[float]:
+    """Per-atom shade vector of length ``n``; ``hot`` overrides selected indices."""
     zs = [fill] * n
     for i, z in hot.items():
         if 0 <= i < n:
@@ -50,7 +50,7 @@ CASES: dict[str, dict] = {
         # Real ChemAxon CXSMILES atom alias (literal R1).
         "cxsmiles": "*c1ccccc1Cl |$R1;;;;;$|",
     },
-    # Shade examples: a few hot atoms, rest quiet (keep depictions readable).
+    # Shade walkthrough examples (keep scores light so drawings stay readable).
     "aspirin_shade": {
         "type": "mol",
         "smiles": "CC(=O)Oc1ccccc1C(=O)O",

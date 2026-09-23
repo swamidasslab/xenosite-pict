@@ -70,7 +70,7 @@ ChemAxon CXSMILES aliases, or `star_labels` with chem markup for subscripts:
 
 ## Shading atoms and bonds
 
-Atom (and bond) scores drive plot-dot shading — most sites quiet, a few hot:
+Per-atom and per-bond scores paint as plot-dot shading:
 
 <div class="gallery-grid" markdown>
 
