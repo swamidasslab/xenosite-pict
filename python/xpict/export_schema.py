@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import Any
 
 from xpict.contracts.depict import DepictSpec
-from xpict.contracts.scene import Scene
 from xpict.future.nodes import PictSpec
 
 _REPO_SCHEMA = Path(__file__).resolve().parents[2] / "schema"
@@ -297,11 +296,9 @@ def export_schemas(out_dir: Path | None = None, *, minify: bool = True) -> dict[
     future_dir = (out_dir / "future") if out_dir is not None else _FUTURE_SCHEMA
     future_dir.mkdir(parents=True, exist_ok=True)
 
-    # Live edge schemas are owned by Rust (schemars via ``make types``).
-    # layout.schema.json removed — LayoutResult was never a live cross-lang ABI.
+    # Live edge + scene schemas are owned by Rust (schemars via ``make types``).
     live = {
         "xpict.schema.json": DepictSpec.model_json_schema(),
-        "scene.schema.json": Scene.model_json_schema(),
     }
     future = {
         "xpict.schema.json": factor_node_common_allof(PictSpec.model_json_schema()),
@@ -314,11 +311,15 @@ def export_schemas(out_dir: Path | None = None, *, minify: bool = True) -> dict[
         path = target / name
         path.write_text(json.dumps(schema, indent=2) + "\n", encoding="utf-8")
         written[name] = path
-    # Preserve Rust-owned edge schemas when present (export does not rewrite them).
-    for edge_name in ("edge-plan.schema.json", "edge-result.schema.json"):
-        edge_path = target / edge_name
-        if edge_path.is_file():
-            written[edge_name] = edge_path
+    # Preserve Rust-owned schemas when present (export does not rewrite them).
+    for rust_name in (
+        "edge-plan.schema.json",
+        "edge-result.schema.json",
+        "scene.schema.json",
+    ):
+        rust_path = target / rust_name
+        if rust_path.is_file():
+            written[rust_name] = rust_path
     for name, schema in future.items():
         if minify:
             schema = minify_json_schema(schema)

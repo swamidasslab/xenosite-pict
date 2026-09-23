@@ -1,4 +1,4 @@
-//! Export live EdgePlan / EdgeResult JSON Schema from Rust (schemars).
+//! Export live JSON Schema from Rust (schemars): EdgePlan / EdgeResult / Scene.
 //!
 //! ```text
 //! cargo run -p xpict-core --example export_live_schema --features codegen
@@ -8,7 +8,17 @@ use std::fs;
 use std::path::PathBuf;
 
 use schemars::schema_for;
-use xpict_core::{EdgePlan, EdgeResult};
+use xpict_core::{EdgePlan, EdgeResult, Scene};
+
+fn write(root: &std::path::Path, name: &str, schema: schemars::schema::RootSchema) {
+    let path = root.join(name);
+    fs::write(
+        &path,
+        serde_json::to_string_pretty(&schema).expect("serialize schema") + "\n",
+    )
+    .unwrap_or_else(|e| panic!("write {}: {e}", path.display()));
+    println!("wrote {}", path.display());
+}
 
 fn main() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -16,22 +26,7 @@ fn main() {
         .join("schema");
     fs::create_dir_all(&root).expect("schema dir");
 
-    let plan = schema_for!(EdgePlan);
-    let result = schema_for!(EdgeResult);
-
-    let plan_path = root.join("edge-plan.schema.json");
-    let result_path = root.join("edge-result.schema.json");
-    fs::write(
-        &plan_path,
-        serde_json::to_string_pretty(&plan).expect("serialize plan schema") + "\n",
-    )
-    .expect("write edge-plan.schema.json");
-    fs::write(
-        &result_path,
-        serde_json::to_string_pretty(&result).expect("serialize result schema") + "\n",
-    )
-    .expect("write edge-result.schema.json");
-
-    println!("wrote {}", plan_path.display());
-    println!("wrote {}", result_path.display());
+    write(&root, "edge-plan.schema.json", schema_for!(EdgePlan));
+    write(&root, "edge-result.schema.json", schema_for!(EdgeResult));
+    write(&root, "scene.schema.json", schema_for!(Scene));
 }

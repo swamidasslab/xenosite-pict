@@ -21,6 +21,11 @@ export type {
   ScenePrimitive,
   SceneLayer,
   SceneViewport,
+  Primitive,
+  Layer,
+  Viewport,
+  LayerName,
+  TextAnchor,
 } from "./api.js";
 export {
   buildAlignPlan,

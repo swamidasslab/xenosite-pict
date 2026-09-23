@@ -48,6 +48,11 @@ export type {
   ScenePrimitive,
   SceneLayer,
   SceneViewport,
+  Primitive,
+  Layer,
+  Viewport,
+  LayerName,
+  TextAnchor,
 } from "./draw/scene-svg.js";
 
 /** Input molecule — SMILES/molfile plus optional cached alignment frame. */

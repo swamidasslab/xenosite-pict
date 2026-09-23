@@ -1,6 +1,6 @@
 # Plan: Rust-first live contracts
 
-**Status:** in progress (Phase 0 spike done → pivot).  
+**Status:** in progress (EdgePlan + Scene cut over; DepictSpec next).  
 **Original proposal:** [typebridge](https://crates.io/crates/typebridge).  
 **Chosen toolchain after spike:** **schemars** (JSON Schema) + **ts-rs** (TypeScript). Python Pydantic for live stays hand-written for now (see below).
 
@@ -64,10 +64,10 @@ Commands:
 ## Phased delivery (revised)
 
 0. ~~Spike typebridge~~ → **done; pivoted**  
-1. **Infra + EdgePlan/EdgeResult** — annotate edge + `MoleculeIn` inputs; generate TS + schema; JS imports generated types; Python hand + fixture parity  
-2. **DepictSpec / MolNode / AlignTo** — same pattern  
-3. **Scene** paint ABI types  
-4. Retire Pydantic as live schema SoT in `export_schema.py` (future-only); drop layout from live contract docs  
+1. ~~**Infra + EdgePlan/EdgeResult**~~ — annotate edge + `MoleculeIn` inputs; generate TS + schema; JS imports generated types; Python hand + fixture parity  
+2. ~~**Scene** paint ABI~~ — `Primitive` / `Layer` / `Viewport` / `Scene` via ts-rs + `schema/scene.schema.json`; JS `scene-svg` imports generated (aliases `ScenePrimitive` etc. kept); Python Scene stays hand (may carry host-only `font_family` / `meta` until aligned)  
+3. **DepictSpec / MolNode / AlignTo** — same pattern  
+4. Retire Pydantic as live schema SoT in `export_schema.py` (future-only)  
 5. Revisit Python codegen if/when an emitter matches StrictModel quality (or write a thin custom one)
 
 ## What stays hand-written

@@ -1,5 +1,4 @@
 // Auto-generated barrel — do not edit (make types).
-// Source: xpict-core edge + MoleculeIn (ts-rs).
 
 export type { AlignOpts } from "./AlignOpts.js";
 export type { MolTemplate } from "./MolTemplate.js";

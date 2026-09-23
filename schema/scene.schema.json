@@ -1,409 +1,304 @@
 {
-  "$defs": {
-    "CirclePrim": {
-      "additionalProperties": false,
-      "properties": {
-        "kind": {
-          "const": "circle",
-          "default": "circle",
-          "title": "Kind",
-          "type": "string"
-        },
-        "cx": {
-          "title": "Cx",
-          "type": "number"
-        },
-        "cy": {
-          "title": "Cy",
-          "type": "number"
-        },
-        "r": {
-          "title": "R",
-          "type": "number"
-        },
-        "fill": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Fill"
-        },
-        "stroke": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Stroke"
-        },
-        "stroke_width": {
-          "default": 1.0,
-          "title": "Stroke Width",
-          "type": "number"
-        },
-        "opacity": {
-          "default": 1.0,
-          "title": "Opacity",
-          "type": "number"
-        },
-        "cls": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Cls"
-        }
-      },
-      "required": [
-        "cx",
-        "cy",
-        "r"
-      ],
-      "title": "CirclePrim",
-      "type": "object"
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Scene",
+  "description": "Full drawable document before SVG/HTML serialization.\n\nPython `contracts.scene.Scene` and JS consumers should mirror this shape (JSON round-trip is the ABI).",
+  "type": "object",
+  "required": [
+    "height",
+    "viewports",
+    "width"
+  ],
+  "properties": {
+    "halo": {
+      "description": "Single document-space unioned knockout under molecule ink.",
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/Primitive"
+      }
     },
+    "height": {
+      "type": "number",
+      "format": "double"
+    },
+    "overlays": {
+      "description": "Document-space primitives (reaction arrows) above viewports.",
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/Primitive"
+      }
+    },
+    "viewports": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/Viewport"
+      }
+    },
+    "width": {
+      "type": "number",
+      "format": "double"
+    }
+  },
+  "definitions": {
     "Layer": {
-      "additionalProperties": false,
-      "properties": {
-        "name": {
-          "enum": [
-            "shading",
-            "halo",
-            "bonds",
-            "labels",
-            "marks",
-            "overlay"
-          ],
-          "title": "Name",
-          "type": "string"
-        },
-        "primitives": {
-          "items": {
-            "anyOf": [
-              {
-                "$ref": "#/$defs/PathPrim"
-              },
-              {
-                "$ref": "#/$defs/CirclePrim"
-              },
-              {
-                "$ref": "#/$defs/TextPrim"
-              }
-            ]
-          },
-          "title": "Primitives",
-          "type": "array"
-        }
-      },
+      "type": "object",
       "required": [
         "name"
       ],
-      "title": "Layer",
-      "type": "object"
-    },
-    "PathPrim": {
-      "additionalProperties": false,
       "properties": {
-        "kind": {
-          "const": "path",
-          "default": "path",
-          "title": "Kind",
-          "type": "string"
+        "name": {
+          "$ref": "#/definitions/LayerName"
         },
-        "d": {
-          "title": "D",
-          "type": "string"
-        },
-        "stroke": {
-          "anyOf": [
-            {
+        "primitives": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Primitive"
+          }
+        }
+      }
+    },
+    "LayerName": {
+      "description": "Layer name inside a molecule viewport.",
+      "type": "string",
+      "enum": [
+        "shading",
+        "halo",
+        "bonds",
+        "labels",
+        "marks",
+        "overlay"
+      ]
+    },
+    "Primitive": {
+      "description": "One drawable primitive in SVG space (+Y down).",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "d",
+            "kind"
+          ],
+          "properties": {
+            "cls": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "d": {
               "type": "string"
             },
-            {
-              "type": "null"
-            }
-          ],
-          "default": "#000",
-          "title": "Stroke"
-        },
-        "fill": {
-          "anyOf": [
-            {
-              "type": "string"
+            "data_text": {
+              "description": "Plain label string for ``data-text`` (glyph paths only).",
+              "type": [
+                "string",
+                "null"
+              ]
             },
-            {
-              "type": "null"
-            }
-          ],
-          "default": "none",
-          "title": "Fill"
-        },
-        "stroke_width": {
-          "default": 1.5,
-          "title": "Stroke Width",
-          "type": "number"
-        },
-        "opacity": {
-          "default": 1.0,
-          "title": "Opacity",
-          "type": "number"
-        },
-        "stroke_dasharray": {
-          "anyOf": [
-            {
-              "type": "string"
+            "fill": {
+              "type": [
+                "string",
+                "null"
+              ]
             },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Stroke Dasharray"
-        },
-        "stroke_linecap": {
-          "anyOf": [
-            {
+            "kind": {
+              "type": "string",
               "enum": [
-                "butt",
-                "round",
-                "square"
-              ],
-              "type": "string"
+                "path"
+              ]
             },
-            {
-              "type": "null"
+            "opacity": {
+              "default": 1.0,
+              "type": "number",
+              "format": "double"
+            },
+            "stroke": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "stroke_dasharray": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "stroke_linecap": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "stroke_width": {
+              "default": 1.5,
+              "type": "number",
+              "format": "double"
             }
-          ],
-          "default": null,
-          "title": "Stroke Linecap"
+          }
         },
-        "cls": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
+        {
+          "type": "object",
+          "required": [
+            "cx",
+            "cy",
+            "kind",
+            "r"
           ],
-          "default": null,
-          "title": "Cls"
+          "properties": {
+            "cls": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "cx": {
+              "type": "number",
+              "format": "double"
+            },
+            "cy": {
+              "type": "number",
+              "format": "double"
+            },
+            "fill": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "circle"
+              ]
+            },
+            "opacity": {
+              "default": 1.0,
+              "type": "number",
+              "format": "double"
+            },
+            "r": {
+              "type": "number",
+              "format": "double"
+            },
+            "stroke": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "stroke_width": {
+              "default": 1.5,
+              "type": "number",
+              "format": "double"
+            }
+          }
         },
-        "data_text": {
-          "anyOf": [
-            {
+        {
+          "description": "Logical text; serializers outline to glyph paths (Liberation) or emit `<text>` when the host prefers.",
+          "type": "object",
+          "required": [
+            "kind",
+            "text",
+            "x",
+            "y"
+          ],
+          "properties": {
+            "anchor": {
+              "default": "middle",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TextAnchor"
+                }
+              ]
+            },
+            "cls": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "fill": {
+              "default": "#000",
               "type": "string"
             },
-            {
-              "type": "null"
+            "font_size": {
+              "default": 12.0,
+              "type": "number",
+              "format": "double"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "text"
+              ]
+            },
+            "text": {
+              "type": "string"
+            },
+            "x": {
+              "type": "number",
+              "format": "double"
+            },
+            "y": {
+              "type": "number",
+              "format": "double"
             }
-          ],
-          "default": null,
-          "title": "Data Text"
+          }
         }
-      },
-      "required": [
-        "d"
-      ],
-      "title": "PathPrim",
-      "type": "object"
+      ]
     },
-    "TextPrim": {
-      "additionalProperties": false,
-      "properties": {
-        "kind": {
-          "const": "text",
-          "default": "text",
-          "title": "Kind",
-          "type": "string"
-        },
-        "x": {
-          "title": "X",
-          "type": "number"
-        },
-        "y": {
-          "title": "Y",
-          "type": "number"
-        },
-        "text": {
-          "title": "Text",
-          "type": "string"
-        },
-        "fill": {
-          "default": "#000",
-          "title": "Fill",
-          "type": "string"
-        },
-        "font_size": {
-          "default": 12.0,
-          "title": "Font Size",
-          "type": "number"
-        },
-        "font_family": {
-          "default": "Liberation Sans, Helvetica, Arial, sans-serif",
-          "title": "Font Family",
-          "type": "string"
-        },
-        "anchor": {
-          "default": "middle",
-          "enum": [
-            "start",
-            "middle",
-            "end"
-          ],
-          "title": "Anchor",
-          "type": "string"
-        },
-        "cls": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Cls"
-        }
-      },
-      "required": [
-        "x",
-        "y",
-        "text"
-      ],
-      "title": "TextPrim",
-      "type": "object"
+    "TextAnchor": {
+      "description": "Horizontal text anchor (SVG `text-anchor`).",
+      "type": "string",
+      "enum": [
+        "start",
+        "middle",
+        "end"
+      ]
     },
     "Viewport": {
-      "additionalProperties": false,
-      "description": "A molecule viewport placed in a diagram (after ELK/grid).",
+      "description": "One molecule viewport in a diagram (after ELK/grid placement).",
+      "type": "object",
+      "required": [
+        "height",
+        "width"
+      ],
       "properties": {
+        "height": {
+          "type": "number",
+          "format": "double"
+        },
         "id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Id"
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "layers": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Layer"
+          }
+        },
+        "width": {
+          "type": "number",
+          "format": "double"
         },
         "x": {
           "default": 0.0,
-          "title": "X",
-          "type": "number"
+          "type": "number",
+          "format": "double"
         },
         "y": {
           "default": 0.0,
-          "title": "Y",
-          "type": "number"
-        },
-        "width": {
-          "title": "Width",
-          "type": "number"
-        },
-        "height": {
-          "title": "Height",
-          "type": "number"
-        },
-        "layers": {
-          "items": {
-            "$ref": "#/$defs/Layer"
-          },
-          "title": "Layers",
-          "type": "array"
+          "type": "number",
+          "format": "double"
         }
-      },
-      "required": [
-        "width",
-        "height"
-      ],
-      "title": "Viewport",
-      "type": "object"
+      }
     }
-  },
-  "additionalProperties": false,
-  "description": "Full drawable document before SVG/HTML serialization.",
-  "properties": {
-    "width": {
-      "title": "Width",
-      "type": "number"
-    },
-    "height": {
-      "title": "Height",
-      "type": "number"
-    },
-    "viewports": {
-      "items": {
-        "$ref": "#/$defs/Viewport"
-      },
-      "title": "Viewports",
-      "type": "array"
-    },
-    "overlays": {
-      "description": "Document-space primitives (reaction/network arrows) drawn above viewports",
-      "items": {
-        "anyOf": [
-          {
-            "$ref": "#/$defs/PathPrim"
-          },
-          {
-            "$ref": "#/$defs/CirclePrim"
-          },
-          {
-            "$ref": "#/$defs/TextPrim"
-          }
-        ]
-      },
-      "title": "Overlays",
-      "type": "array"
-    },
-    "halo": {
-      "description": "Single document-space unioned knockout, under molecule ink",
-      "items": {
-        "anyOf": [
-          {
-            "$ref": "#/$defs/PathPrim"
-          },
-          {
-            "$ref": "#/$defs/CirclePrim"
-          },
-          {
-            "$ref": "#/$defs/TextPrim"
-          }
-        ]
-      },
-      "title": "Halo",
-      "type": "array"
-    },
-    "meta": {
-      "additionalProperties": true,
-      "title": "Meta",
-      "type": "object"
-    }
-  },
-  "required": [
-    "width",
-    "height",
-    "viewports"
-  ],
-  "title": "Scene",
-  "type": "object"
+  }
 }
