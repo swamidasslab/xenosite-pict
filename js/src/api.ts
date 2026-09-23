@@ -97,8 +97,8 @@ export type MolRenderOptions = {
 };
 
 /**
- * Live mol node — strict subset of future PictSpec ``type: "mol"``.
- * Star / Markush text: CX braced aliases on ``cxsmiles``, or simple
+ * Mol node — strict subset of future PictSpec ``type: "mol"``.
+ * Star / Markush text: CX braced aliases on ``cxsmiles``, or
  * ``star_labels`` on ``render`` — document ``rgroups`` is not public yet.
  */
 export type MolNode = {
@@ -118,7 +118,7 @@ export type MolNode = {
   };
 };
 
-/** Live group — ``children`` of mol nodes only (today). */
+/** Group — ``children`` of mol nodes only (today). */
 export type GroupNode = {
   type: "group";
   id?: string;

@@ -162,10 +162,10 @@ uv run maturin build --release -m crates/xpict-py/Cargo.toml
 
 ## 4. Public API vs future declarative tree
 
-**Ship / document now:** nested live ``DepictSpec`` (``type: "mol"`` |
-``type: "group"`` + ``children``) — strict subset of future PictSpec. Simple
-``mol`` / ``render`` / ``toSvg`` for single-mol callers. Live Pydantic is
-``xpict.contracts.depict``; JSON Schema is ``schema/xpict.schema.json``.
+**Ship / document now:** nested ``DepictSpec`` (``type: "mol"`` /
+``type: "group"`` + ``children``) — strict subset of future PictSpec. Also
+``mol`` / ``render`` / ``toSvg`` for single-mol callers. Pydantic:
+``xpict.contracts.depict``; JSON Schema: ``schema/xpict.schema.json``.
 
 **Not the publish surface yet:** full nested ``PictSpec`` under ``xpict.future`` /
 ``schema/future/``.

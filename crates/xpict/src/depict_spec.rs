@@ -1,10 +1,10 @@
-//! Live declarative document — strict subset of future ``PictSpec``.
+//! Declarative document — strict subset of future ``PictSpec``.
 //!
 //! Root is ``type: "mol"`` or ``type: "group"`` with ``children``. Calls the
 //! simple [`crate::render`] / [`crate::mol`] client internally.
 //!
 //! Markush / star text: CXSMILES aliases or simple [`MolRenderOptions::star_labels`].
-//! Document ``rgroups`` is not on the live public surface yet.
+//! Document ``rgroups`` is not on the public document API yet.
 
 use serde::{Deserialize, Serialize};
 
@@ -25,7 +25,7 @@ pub struct ShadeSpec {
     pub vmax: Option<f64>,
 }
 
-/// Live mol node — subset of future ``MolNode``.
+/// Mol node — subset of future ``MolNode``.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct MolNode {
     #[serde(rename = "type", default = "mol_type")]

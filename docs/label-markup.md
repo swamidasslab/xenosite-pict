@@ -102,8 +102,8 @@ mol.render(MolRenderOptions {
 
 ### Declarative document (nested subset of PictSpec)
 
-Live docs carry structure + shade + color. Markush text on the document path
-is CX braced aliases today:
+Document nodes carry structure + shade + color. Markush text on this path is
+CX braced aliases today:
 
 ```json
 {
@@ -117,9 +117,8 @@ is CX braced aliases today:
 }
 ```
 
-A document-level `rgroups` field is **not** on the live public surface yet
-(it remains on future `PictSpec` / `MoleculeSpec`). Use CX or simple
-`star_labels` until it graduates.
+A document-level `rgroups` field is **not** public yet (it remains on future
+`PictSpec` / `MoleculeSpec`). Use CX or `star_labels` until it graduates.
 
 ## Picking a path
 

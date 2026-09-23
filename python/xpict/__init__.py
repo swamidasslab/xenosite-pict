@@ -25,7 +25,7 @@ __all__ = [
     "MolSpec",
     "Pict",
     "PictBackendWarning",
-    "PictSpec",  # future nested document — use DepictSpec for the live subset
+    "PictSpec",  # future nested document — use DepictSpec for the shipped subset
     "Scene",
     "render",
     "__version__",
