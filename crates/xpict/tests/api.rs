@@ -76,6 +76,143 @@ fn align_to_rendered_pose() {
     assert_eq!(aligned.molecule.atoms.len(), 4);
 }
 
+fn near(ax: f64, ay: f64, bx: f64, by: f64, tol: f64) -> bool {
+    (ax - bx).hypot(ay - by) < tol
+}
+
+/// MCS overlay: at least `min_hits` query atoms land on some template atom.
+fn assert_mcs_overlay(query: &xpict::Rendered, template: &xpict::Rendered, min_hits: usize, label: &str) {
+    let mut hits = 0usize;
+    for a in &query.molecule.atoms {
+        if template
+            .molecule
+            .atoms
+            .iter()
+            .any(|b| near(a.x, a.y, b.x, b.y, 0.2))
+        {
+            hits += 1;
+        }
+    }
+    assert!(
+        hits >= min_hits,
+        "{label}: expected ≥{min_hits} MCS hits, got {hits}"
+    );
+}
+
+#[test]
+fn align_mcs_ethyl_pentyl_both_ways() {
+    let mut ethyl = mol("c1ccccc1CC").unwrap();
+    let e = ethyl.render(MolRenderOptions::default()).unwrap();
+    let mut pentyl = mol("c1ccccc1CCCCC").unwrap();
+    let p_on_e = pentyl
+        .render(MolRenderOptions {
+            align_to: Some(e.frame().to_string()),
+            ..Default::default()
+        })
+        .unwrap();
+    assert_mcs_overlay(&p_on_e, &e, 8, "pentyl→ethyl");
+
+    let mut pentyl2 = mol("c1ccccc1CCCCC").unwrap();
+    let p = pentyl2.render(MolRenderOptions::default()).unwrap();
+    let mut ethyl2 = mol("c1ccccc1CC").unwrap();
+    let e_on_p = ethyl2
+        .render(MolRenderOptions {
+            align_to: Some(p.frame().to_string()),
+            ..Default::default()
+        })
+        .unwrap();
+    assert_mcs_overlay(&e_on_p, &p, 8, "ethyl→pentyl");
+}
+
+#[test]
+fn align_mcs_phenol_quinone() {
+    let mut phenol = mol("c1ccc(O)cc1").unwrap();
+    let ph = phenol.render(MolRenderOptions::default()).unwrap();
+    let mut quinone = mol("O=C1C=CC(=O)C=C1").unwrap();
+    let q_on_ph = quinone
+        .render(MolRenderOptions {
+            align_to: Some(ph.frame().to_string()),
+            ..Default::default()
+        })
+        .unwrap();
+    assert_mcs_overlay(&q_on_ph, &ph, 6, "quinone→phenol");
+}
+
+/// Asymmetric para-halo pair — F coincides under any valid embedding.
+#[test]
+fn align_asymmetric_para_halo() {
+    let mut tmpl = mol("Fc1ccc(Cl)cc1").unwrap();
+    let t = tmpl.render(MolRenderOptions::default()).unwrap();
+    let mut query = mol("Fc1ccc(Br)cc1").unwrap();
+    let q = query
+        .render(MolRenderOptions {
+            align_to: Some(t.frame().to_string()),
+            ..Default::default()
+        })
+        .unwrap();
+    assert_mcs_overlay(&q, &t, 7, "F-Cl→F-Br");
+    let f_t = t
+        .molecule
+        .atoms
+        .iter()
+        .find(|a| a.symbol() == "F")
+        .expect("template F");
+    let f_q = q
+        .molecule
+        .atoms
+        .iter()
+        .find(|a| a.symbol() == "F")
+        .expect("query F");
+    assert!(
+        near(f_t.x, f_t.y, f_q.x, f_q.y, 0.2),
+        "asymmetric: F atoms should coincide"
+    );
+}
+
+/// Multiple queries onto one pose must not rewrite the template frame.
+#[test]
+fn align_multi_query_leaves_template_frame() {
+    let mut tmpl = mol("c1ccc(O)cc1").unwrap();
+    let t0 = tmpl.render(MolRenderOptions::default()).unwrap();
+    let frame = t0.frame().to_string();
+    let before: Vec<(i32, f64, f64)> = t0
+        .molecule
+        .atoms
+        .iter()
+        .map(|a| (a.index, a.x, a.y))
+        .collect();
+
+    for smi in ["O=C1C=CC(=O)C=C1", "c1ccccc1CC", "Fc1ccccc1O"] {
+        let mut q = mol(smi).unwrap();
+        let aligned = q
+            .render(MolRenderOptions {
+                align_to: Some(frame.clone()),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_mcs_overlay(&aligned, &t0, 6, smi);
+        // Cached pose string is unchanged input — queries never write back.
+        assert_eq!(frame, t0.frame());
+    }
+
+    // Align phenol onto the frozen frame: atoms must sit on the original pose
+    // (any symmetric ring flip still overlays the same point set).
+    let mut again = mol("c1ccc(O)cc1").unwrap();
+    let on_frame = again
+        .render(MolRenderOptions {
+            align_to: Some(frame),
+            ..Default::default()
+        })
+        .unwrap();
+    for a in &on_frame.molecule.atoms {
+        let hit = before
+            .iter()
+            .any(|&(_, x, y)| near(a.x, a.y, x, y, 0.2));
+        assert!(hit, "atom {} not on original template pose", a.index);
+    }
+    let _ = before;
+}
+
 #[test]
 fn depict_nested_group() {
     use xpict::{depict, DepictSpec, MolNode};

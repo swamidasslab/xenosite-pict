@@ -20,13 +20,22 @@ export type RdkitMol = {
   normalize_depiction(): number;
   generate_aligned_coords(templateMol: RdkitMol, options: string): string;
   get_substruct_match(templateMol: RdkitMol): string;
+  get_substruct_matches(templateMol: RdkitMol): string;
+};
+
+export type RdkitMolList = {
+  append(mol: RdkitMol): void;
 };
 
 export type RdkitModule = {
   version(): string;
   get_mol(input: string, details_json?: string): RdkitMol | null;
+  get_qmol(smarts: string): RdkitMol | null;
+  MolList: new () => RdkitMolList;
+  get_mcs_as_json(mols: RdkitMolList, details_json?: string): string;
+  get_mcs_as_smarts(mols: RdkitMolList, details_json?: string): string;
+  get_mcs_as_mol(mols: RdkitMolList, details_json?: string): RdkitMol | null;
 };
-
 export type RdkitLoadOptions = {
   /** Browser: URL of `RDKit_minimal.js` (default: unpkg matching our dep). */
   scriptUrl?: string;

@@ -44,6 +44,7 @@ fn main() {
 
     for lib in [
         "RDKitDepictor",
+        "RDKitFMCS",
         "RDKitFileParsers",
         "RDKitGraphMol",
         "RDKitSmilesParse",

@@ -53,7 +53,14 @@ def _fmcs_mapping(ref: MoleculeLayout, other: MoleculeLayout) -> dict[int, int] 
     rd_to_ref = {rd: lay for lay, rd in ref_to_rd.items()}
     rd_to_other = {rd: lay for lay, rd in other_to_rd.items()}
     try:
-        mcs = rdFMCS.FindMCS([ref_mol, other_mol], timeout=2)
+        # BondCompare.CompareAny: aromatic ↔ kekulé / quinone (parity with
+        # Rust/JS MCS_DETAILS_JSON BondCompare Any).
+        mcs = rdFMCS.FindMCS(
+            [ref_mol, other_mol],
+            timeout=2,
+            atomCompare=rdFMCS.AtomCompare.CompareElements,
+            bondCompare=rdFMCS.BondCompare.CompareAny,
+        )
     except Exception:
         return None
     if getattr(mcs, "canceled", False) or mcs.numAtoms < _MIN_MAP:
@@ -89,19 +96,11 @@ def rdkit_available() -> bool:
         return False
 
 
-def _mean_bond_length(layout: MoleculeLayout) -> float:
-    by_index = {a.index: a for a in layout.atoms}
-    lengths: list[float] = []
-    for bond in layout.bonds:
-        a = by_index.get(bond.begin)
-        b = by_index.get(bond.end)
-        if a is None or b is None:
-            continue
-        lengths.append(math.hypot(a.x - b.x, a.y - b.y))
-    if not lengths:
-        return -1.0
-    mean = sum(lengths) / len(lengths)
-    return mean if mean > 1e-6 else -1.0
+def _plain_smiles(smiles: str | None) -> str | None:
+    if not smiles:
+        return None
+    text = smiles.split("|", 1)[0].strip()
+    return text or None
 
 
 def _bond_type(order: float):
@@ -155,13 +154,6 @@ def layout_to_rdkit(layout: MoleculeLayout):
         conformer.SetAtomPosition(to_rd[atom.index], (atom.x, atom.y, 0.0))
     mol.AddConformer(conformer, assignId=True)
     return mol, to_rd
-
-
-def _plain_smiles(smiles: str | None) -> str | None:
-    if not smiles:
-        return None
-    text = smiles.split("|", 1)[0].strip()
-    return text or None
 
 
 def _copy_chirality(mol, smiles: str | None) -> bool:
@@ -226,7 +218,11 @@ def _bonds_after_depict(mol, bonds: list[BondLayout], to_rd: dict[int, int], smi
 
 
 class RdkitAligner(RigidAligner):
-    """Template depiction. ``rigid_align`` is inherited for the fallback."""
+    """Template depiction via RDKit ``GenerateDepictionMatching2DStructure``.
+
+    MCS uses ``BondCompare.CompareAny`` (parity with Rust/JS ``align_opts``).
+    The reference layout / pose mol is never modified.
+    """
 
     name = "rdkit"
     supports_template = True
@@ -246,54 +242,76 @@ class RdkitAligner(RigidAligner):
         *,
         smiles: str | None = None,
     ) -> MoleculeLayout | None:
-        from rdkit.Chem import rdDepictor
-        from rdkit.Geometry import Point2D
+        from rdkit import Chem
+        from rdkit.Chem import rdDepictor, rdFMCS
 
-        built = layout_to_rdkit(other)
-        if built is None:
+        del mapping  # MCS pattern drives Depictor; mapping is for rigid fallback only
+
+        built_ref = layout_to_rdkit(ref)
+        built_other = layout_to_rdkit(other)
+        if built_ref is None or built_other is None:
             return None
-        mol, to_rd = built
-        ref_xy = {atom.index: (atom.x, atom.y) for atom in ref.atoms}
-        coord_map = {}
-        used: list[tuple[int, int]] = []
-        for other_i, ref_i in mapping.items():
-            if other_i not in to_rd or ref_i not in ref_xy:
-                continue
-            x, y = ref_xy[ref_i]
-            coord_map[to_rd[other_i]] = Point2D(float(x), float(y))
-            used.append((other_i, ref_i))
-        if len(coord_map) < _MIN_MAP:
-            return None
-        bond_length = _mean_bond_length(ref)
+        ref_mol, _ref_to_rd = built_ref
+        other_mol, to_rd = built_other
+        # Copy so Depictor cannot touch the caller's reference pose.
+        ref_pose = Chem.Mol(ref_mol)
+        ref_before = [
+            (ref_pose.GetConformer().GetAtomPosition(i).x,
+             ref_pose.GetConformer().GetAtomPosition(i).y)
+            for i in range(ref_pose.GetNumAtoms())
+        ]
+
         try:
-            rdDepictor.Compute2DCoords(
-                mol,
-                False,
-                True,
-                coord_map,
-                0,
-                0,
-                0,
-                False,
-                bond_length,
-                True,
-                False,
+            mcs = rdFMCS.FindMCS(
+                [ref_pose, other_mol],
+                timeout=2,
+                atomCompare=rdFMCS.AtomCompare.CompareElements,
+                bondCompare=rdFMCS.BondCompare.CompareAny,
             )
         except Exception:
             return None
-        conformer = mol.GetConformer()
-        max_err = 0.0
-        for other_i, ref_i in used:
-            point = conformer.GetAtomPosition(to_rd[other_i])
-            x, y = ref_xy[ref_i]
-            max_err = max(max_err, math.hypot(point.x - x, point.y - y))
-        # Constraints are hard. If they were ignored, rigid alignment is safer.
-        if max_err > 1e-3:
+        if getattr(mcs, "canceled", False) or mcs.numAtoms < _MIN_MAP:
             return None
-        atoms = []
-        for atom in other.atoms:
-            point = conformer.GetAtomPosition(to_rd[atom.index])
-            atoms.append(atom.model_copy(update={"x": float(point.x), "y": float(point.y)}))
-        bonds = _bonds_after_depict(mol, other.bonds, to_rd, smiles)
+        try:
+            pattern = Chem.MolFromSmarts(mcs.smartsString)
+        except Exception:
+            pattern = None
+        if pattern is None:
+            return None
+
+        params = rdDepictor.ConstrainedDepictionParams()
+        params.allowRGroups = True
+        params.acceptFailure = False
+        try:
+            match = rdDepictor.GenerateDepictionMatching2DStructure(
+                other_mol, ref_pose, -1, pattern, params
+            )
+        except Exception:
+            return None
+        if not match:
+            return None
+
+        ref_after = [
+            (ref_pose.GetConformer().GetAtomPosition(i).x,
+             ref_pose.GetConformer().GetAtomPosition(i).y)
+            for i in range(ref_pose.GetNumAtoms())
+        ]
+        if any(
+            math.hypot(ax - bx, ay - by) > 1e-9
+            for (ax, ay), (bx, by) in zip(ref_before, ref_after, strict=True)
+        ):
+            return None
+
+        conformer = other_mol.GetConformer()
+        atoms = [
+            atom.model_copy(
+                update={
+                    "x": float(conformer.GetAtomPosition(to_rd[atom.index]).x),
+                    "y": float(conformer.GetAtomPosition(to_rd[atom.index]).y),
+                }
+            )
+            for atom in other.atoms
+        ]
+        bonds = _bonds_after_depict(other_mol, other.bonds, to_rd, smiles)
         laid = other.model_copy(update={"atoms": atoms, "bonds": bonds})
         return with_warning(laid, "alignment: rdkit template depiction")
