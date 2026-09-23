@@ -88,10 +88,17 @@ export interface MolNode extends NodeBase {
    * Wins over `rgroups` / CX aliases when set. Prefer on the public document API.
    */
   star_labels?: (string | null)[];
-  /** Id of another mol in this group to use as align template. */
-  align_to?: string | null;
-  /** Pairs `[queryAtom, templateAtom]` vs the template; skips MCS when set. */
-  atom_map?: Array<[number, number]> | null;
+  /**
+   * Align template: id string, or `{ ref, atom_map?, min_atoms? }`.
+   */
+  align_to?:
+    | string
+    | null
+    | {
+        ref: string;
+        atom_map?: Array<[number, number]> | null;
+        min_atoms?: number | null;
+      };
   ring_attachments?: RingAttachmentSpec[];
   rtable?: string[][] | RTableSpec;
   marks?: MarkSpec[];

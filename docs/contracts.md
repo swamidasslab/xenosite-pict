@@ -41,10 +41,13 @@ Full nested ``PictSpec`` lives in ``xpict.future`` and
 
 - **Mol node:** ``smiles`` / ``cxsmiles`` / ``molfile``, ``id``, ``color``,
   ``shade``, ``star_labels`` (chem markup; encounter order), ``scale``,
-  ``weight``. Markush / star text also via CXSMILES aliases when ``star_labels``
+  ``weight``, ``align_to`` (id string or ``{ref, atom_map?, min_atoms?}``).
+  Markush / star text also via CXSMILES aliases when ``star_labels``
   is omitted.
+- **Group:** ``align`` (bool) — when true, later children align onto the first
+  (or each child's ``align_to``).
 - **Single-mol ``render`` only:** ``align_to`` as Mol / Rendered (or pose
-  molblock), plus flat ``atom_shade`` / ``bond_shade``.
+  molblock), plus flat ``atom_shade`` / ``bond_shade`` / ``atom_map``.
   Document ``rgroups`` is not public yet.
 - **Runtime only:** layout backend, output format.
 
@@ -63,6 +66,10 @@ Hosts do **not** apply CX / star / shade chrome themselves. Flow:
 2. Host ``process_edge_plan`` (RDKit layout / align) → ``EdgeResult``
 3. Core ``render_doc(DepictSpec, EdgeResult)`` → painted scenes
    (CX aliases, ``star_labels``, color, shade, scale, weight)
+
+Document mol ``align_to`` is an id string or
+``{ "ref": id, "atom_map"?, "min_atoms"? }`` (maps to EdgePlan ``AlignOpts``).
+Group ``align: true`` builds the forest with default parent = first child.
 
 Schema: ``schema/edge-plan.schema.json``, ``schema/edge-result.schema.json``.
 

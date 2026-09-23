@@ -49,6 +49,48 @@ impl Default for ShadeSpec {
     }
 }
 
+/// Object form of document ``align_to`` (template ref + EdgePlan-style opts).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AlignToSpec {
+    /// Id of the template mol in this group.
+    #[serde(rename = "ref")]
+    pub ref_id: String,
+    /// Pairs `(query, template)` vs the template; skips MCS when set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub atom_map: Option<Vec<(u32, u32)>>,
+    /// Override [`crate::edge::MIN_MCS_ATOMS`] when set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_atoms: Option<u32>,
+}
+
+/// Document align target: id string or `{ "ref", "atom_map"?, "min_atoms"? }`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum AlignTo {
+    /// Shorthand for `{ "ref": "…" }`.
+    Ref(String),
+    Spec(AlignToSpec),
+}
+
+impl AlignTo {
+    pub fn ref_id(&self) -> &str {
+        match self {
+            AlignTo::Ref(s) => s.as_str(),
+            AlignTo::Spec(s) => s.ref_id.as_str(),
+        }
+    }
+
+    pub fn align_opts(&self) -> AlignOpts {
+        match self {
+            AlignTo::Ref(_) => AlignOpts::default(),
+            AlignTo::Spec(s) => AlignOpts {
+                atom_map: s.atom_map.clone(),
+                min_atoms: s.min_atoms,
+            },
+        }
+    }
+}
+
 /// Mol node — subset of future ``MolNode``.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct MolNode {
@@ -72,12 +114,9 @@ pub struct MolNode {
     pub scale: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub weight: Option<f64>,
-    /// Id of another mol in this group to use as align template.
+    /// Template id string, or `{ "ref", "atom_map"?, "min_atoms"? }`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub align_to: Option<String>,
-    /// Pairs `(query, template)` vs the template; skips MCS when set.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub atom_map: Option<Vec<(u32, u32)>>,
+    pub align_to: Option<AlignTo>,
 }
 
 fn mol_type() -> String {
@@ -108,9 +147,7 @@ pub enum DepictSpec {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         weight: Option<f64>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        align_to: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        atom_map: Option<Vec<(u32, u32)>>,
+        align_to: Option<AlignTo>,
     },
     Group {
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -138,7 +175,6 @@ impl DepictSpec {
                 scale,
                 weight,
                 align_to,
-                atom_map,
             } => vec![MolNode {
                 type_: "mol".into(),
                 smiles: smiles.clone(),
@@ -151,7 +187,6 @@ impl DepictSpec {
                 scale: *scale,
                 weight: *weight,
                 align_to: align_to.clone(),
-                atom_map: atom_map.clone(),
             }],
             DepictSpec::Group { children, .. } => children.clone(),
         }
@@ -216,9 +251,10 @@ pub fn plan_edge(spec: &DepictSpec) -> Result<Option<EdgePlan>, String> {
         parent_of[0] = None;
         for i in 1..mols.len() {
             if let Some(ref target) = mols[i].align_to {
+                let name = target.ref_id();
                 let j = *id_to_idx
-                    .get(target.as_str())
-                    .ok_or_else(|| format!("align_to unknown id {target}"))?;
+                    .get(name)
+                    .ok_or_else(|| format!("align_to unknown id {name}"))?;
                 if j == i {
                     return Err(format!("mol {} cannot align_to itself", ids[i]));
                 }
@@ -233,9 +269,9 @@ pub fn plan_edge(spec: &DepictSpec) -> Result<Option<EdgePlan>, String> {
         .iter()
         .enumerate()
         .map(|(i, m)| {
-            let align_opts = parent_of[i].map(|_| AlignOpts {
-                atom_map: m.atom_map.clone(),
-                min_atoms: None,
+            let align_opts = parent_of[i].map(|_| match &m.align_to {
+                Some(a) => a.align_opts(),
+                None => AlignOpts::default(),
             });
             MolTemplate {
                 id: ids[i].clone(),
@@ -492,7 +528,11 @@ mod tests {
                 },
                 MolNode {
                     smiles: Some("Cc1ccccc1".into()),
-                    atom_map: Some(vec![(1, 0), (2, 1), (3, 2)]),
+                    align_to: Some(AlignTo::Spec(AlignToSpec {
+                        ref_id: "ref".into(),
+                        atom_map: Some(vec![(1, 0), (2, 1), (3, 2)]),
+                        min_atoms: None,
+                    })),
                     ..Default::default()
                 },
             ],
@@ -526,7 +566,6 @@ mod tests {
             scale: None,
             weight: None,
             align_to: None,
-            atom_map: None,
         };
         let plan = plan_edge(&spec).unwrap().unwrap();
         let id = match &plan.tasks[0] {
@@ -562,7 +601,6 @@ mod tests {
             scale: None,
             weight: None,
             align_to: None,
-            atom_map: None,
         };
         let mol = MoleculeIn {
             id: Some("m".into()),
@@ -689,7 +727,7 @@ mod tests {
                 },
                 MolNode {
                     smiles: Some("CC".into()),
-                    align_to: Some("missing".into()),
+                    align_to: Some(AlignTo::Ref("missing".into())),
                     ..Default::default()
                 },
             ],
@@ -708,7 +746,7 @@ mod tests {
                 MolNode {
                     id: Some("b".into()),
                     smiles: Some("CC".into()),
-                    align_to: Some("b".into()),
+                    align_to: Some(AlignTo::Ref("b".into())),
                     ..Default::default()
                 },
             ],
@@ -735,7 +773,7 @@ mod tests {
                 MolNode {
                     id: Some("q".into()),
                     smiles: Some("CCC".into()),
-                    align_to: Some("mid".into()),
+                    align_to: Some(AlignTo::Ref("mid".into())),
                     ..Default::default()
                 },
             ],
@@ -826,7 +864,6 @@ mod tests {
             scale: Some(1.5),
             weight: Some(1.2),
             align_to: None,
-            atom_map: None,
         };
         let mut mol = ethanol_mol("s");
         mol.atoms[0].element = Some("*".into());
@@ -864,7 +901,6 @@ mod tests {
             scale: None,
             weight: None,
             align_to: None,
-            atom_map: None,
         };
         let missing = EdgeResult::new_v1(vec![EdgeTaskResult::CoordGen {
             ok: false,
@@ -911,5 +947,19 @@ mod tests {
         };
         assert!(g.align_enabled());
         assert!(g.mols().is_empty());
+    }
+
+    #[test]
+    fn align_to_json_string_or_object() {
+        let s: AlignTo = serde_json::from_str(r#""ref""#).unwrap();
+        assert_eq!(s.ref_id(), "ref");
+        let o: AlignTo = serde_json::from_str(
+            r#"{"ref":"mid","atom_map":[[1,0],[2,1]],"min_atoms":4}"#,
+        )
+        .unwrap();
+        assert_eq!(o.ref_id(), "mid");
+        let opts = o.align_opts();
+        assert_eq!(opts.atom_map.as_ref().unwrap().len(), 2);
+        assert_eq!(opts.min_atoms, Some(4));
     }
 }

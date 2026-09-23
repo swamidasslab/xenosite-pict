@@ -41,7 +41,7 @@ mod svg;
 pub use align_opts::{
     align_succeeded, minimallib_align_details, MCS_DETAILS_JSON, MIN_MCS_ATOMS,
 };
-pub use depict_spec::{depict, DepictSpec, MolNode, MolSpec, ShadeSpec};
+pub use depict_spec::{depict, AlignTo, AlignToSpec, DepictSpec, MolNode, MolSpec, ShadeSpec};
 pub use edge_plan::{build_align_plan, process_edge_plan, process_edge_plan_with_frames};
 pub use xpict_core::{cx_atom_labels, smiles_base};
 

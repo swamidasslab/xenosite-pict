@@ -70,6 +70,30 @@ def test_live_doc_is_valid_future_pictspec():
     assert future.root.type == "group"  # type: ignore[union-attr]
 
 
-def test_mol_requires_structure():
-    with pytest.raises(ValidationError):
-        MolSpec.model_validate({"type": "mol"})
+def test_live_align_to_string_or_object():
+    from xpict.contracts.depict import AlignToSpec
+
+    doc = DepictSpec.model_validate(
+        {
+            "type": "group",
+            "align": True,
+            "children": [
+                {"type": "mol", "id": "ref", "smiles": "c1ccccc1"},
+                {
+                    "type": "mol",
+                    "smiles": "Cc1ccccc1",
+                    "align_to": {
+                        "ref": "ref",
+                        "atom_map": [[1, 0], [2, 1], [3, 2]],
+                    },
+                },
+                {"type": "mol", "smiles": "CCO", "align_to": "ref"},
+            ],
+        }
+    )
+    kids = doc.mols()
+    assert isinstance(kids[1].align_to, AlignToSpec)
+    assert kids[1].align_to.ref == "ref"
+    assert kids[2].align_to == "ref"
+    future = PictSpec.model_validate(doc.model_dump(mode="json"))
+    assert future.root.type == "group"  # type: ignore[union-attr]

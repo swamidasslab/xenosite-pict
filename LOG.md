@@ -6,6 +6,8 @@
   ``process_edge_plan`` → ``render_doc``. CX / star / shade / color chrome
   applied in core ``render_doc`` (not client CX helpers). Native Rust + JS
   ``depict`` use this path; py/wasm expose plan/validate/render_doc.
+- Document ``align_to`` is id string or ``{ref, atom_map?, min_atoms?}``
+  (no top-level mol ``atom_map``).
 - EdgePlan ``validate`` + CX parse live in core; host suites only smoke RDKit
   ``process_edge_plan`` (no triplicated plan/CX/validate tests).
 - Moved CXSMILES parse + ``apply_cx_by_index`` into ``xpict-core::cxsmiles``;
