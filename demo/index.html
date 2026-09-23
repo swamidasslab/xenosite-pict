@@ -96,7 +96,7 @@
         </fieldset>
 
         <fieldset class="options">
-          <legend>Options</legend>
+          <legend>Shading</legend>
           <div class="opt-grid">
             <label>
               <span>Template color</span>
@@ -107,36 +107,14 @@
               <input id="color2" name="color2" type="color" value="#0b6e4f" />
             </label>
             <label class="wide">
-              <span>Mark atoms <em>(query indices, comma-separated)</em></span>
-              <input
-                id="mark_atoms"
-                name="mark_atoms"
-                type="text"
-                spellcheck="false"
-                placeholder="e.g. 0 or 0,1,2"
-                value=""
-              />
-            </label>
-            <label class="wide">
-              <span>Mark bonds <em>(query begin-end pairs)</em></span>
-              <input
-                id="mark_bonds"
-                name="mark_bonds"
-                type="text"
-                spellcheck="false"
-                placeholder="e.g. 0-1,1-2"
-                value=""
-              />
-            </label>
-            <label class="wide">
-              <span>Atom shade <em>(query, one float per atom)</em></span>
+              <span>Atom shade <em>(query, one float per atom — sparse is fine)</em></span>
               <input
                 id="atom_shade"
                 name="atom_shade"
                 type="text"
                 spellcheck="false"
-                placeholder="e.g. 0.8,0,0,0,0,0,0"
-                value=""
+                placeholder="e.g. 0,0,0.2,0,0,0.9,0,0"
+                value="0,0.15,0,0.55,0,0,0.9,0"
               />
             </label>
             <label class="wide">
@@ -146,8 +124,8 @@
                 name="bond_shade"
                 type="text"
                 spellcheck="false"
-                placeholder="e.g. 0.5,0,0,…"
-                value=""
+                placeholder="e.g. 0,0,0.4,0,…"
+                value="0,0.2,0,0.5,0,0,0.7,0"
               />
             </label>
           </div>
