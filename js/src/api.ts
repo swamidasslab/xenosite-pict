@@ -100,6 +100,8 @@ export type MolRenderOptions = {
   /** Uniform diagram scale (`1` = house size). */
   scale?: number;
   align_to?: AlignTarget;
+  /** Pairs `[queryAtom, templateAtom]`. Requires `align_to`; skips MCS. */
+  atom_map?: Array<[number, number]>;
 };
 
 /**
@@ -314,11 +316,15 @@ async function render(
 
   let laid: MoleculeIn;
   let poseMolblock: string;
+  if (opts.atom_map && !opts.align_to) {
+    throw new Error("atom_map requires align_to");
+  }
   if (opts.align_to) {
     const template = await ensureFrame(opts.align_to);
     const result = await layoutWithRdkit(m.source, {
       template,
       id: opts.id,
+      atomMap: opts.atom_map ?? null,
     });
     laid = result.molecule;
     poseMolblock = result.molblock;

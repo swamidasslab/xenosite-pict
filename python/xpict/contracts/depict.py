@@ -73,6 +73,20 @@ class MolNode(StrictModel):
         ),
         ge=2.0 / 3.0,
     )
+    align_to: str | None = Field(
+        default=None,
+        description=(
+            "Id of another mol in this group to use as align template. "
+            "When omitted and the group has align=true, defaults to the first child."
+        ),
+    )
+    atom_map: list[tuple[int, int]] | None = Field(
+        default=None,
+        description=(
+            "Pairs (query_atom, template_atom) vs the implicit / align_to template. "
+            "Skips MCS when set."
+        ),
+    )
 
     @model_validator(mode="after")
     def _need_structure(self) -> MolNode:
@@ -87,6 +101,13 @@ class GroupNode(StrictModel):
 
     type: Literal["group"] = "group"
     id: str | None = Field(default=None, description="Optional stable id")
+    align: bool = Field(
+        default=False,
+        description=(
+            "When true, later children align onto the first (or each child's "
+            "align_to id). Builds an EdgePlan coord_gen forest."
+        ),
+    )
     children: list[MolNode] = Field(
         default_factory=list,
         description="Owned mol nodes (discriminated by ``type``)",

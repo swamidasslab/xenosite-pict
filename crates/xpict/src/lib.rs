@@ -33,6 +33,7 @@
 mod align_opts;
 mod cxsmiles;
 mod depict_spec;
+mod edge_plan;
 mod ffi;
 mod layout;
 mod svg;
@@ -42,9 +43,16 @@ pub use align_opts::{
 };
 pub use cxsmiles::{cx_atom_labels, smiles_base};
 pub use depict_spec::{depict, DepictSpec, MolNode, MolSpec, ShadeSpec};
+pub use edge_plan::{build_align_plan, process_edge_plan};
 
-pub use layout::{layout_with_rdkit, sanitize_dummy_molblock, source_to_molblock};
+pub use layout::{
+    layout_with_rdkit, layout_with_rdkit_meta, sanitize_dummy_molblock, source_to_molblock,
+};
 pub use svg::scene_to_svg;
+pub use xpict_core::edge::{
+    AlignOpts as EdgeAlignOpts, CoordGenMoleculeResult, CoordMethod, EdgePlan, EdgeResult,
+    EdgeTask, EdgeTaskResult, MolTemplate,
+};
 pub use xpict_core::scene::{AtomIn, BondIn, MoleculeIn, Scene};
 pub use xpict_core::{depict_molecule, SCALE};
 
@@ -177,6 +185,8 @@ pub struct MolRenderOptions {
     pub weight: Option<f64>,
     /// Template molblock for RDKit depiction matching.
     pub align_to: Option<String>,
+    /// Pairs ``(query_atom, template_atom)``. Requires ``align_to``; skips MCS.
+    pub atom_map: Option<Vec<(u32, u32)>>,
 }
 
 fn is_star(a: &CoreAtom) -> bool {
@@ -293,9 +303,16 @@ pub fn mol(smiles_or_molfile: impl AsRef<str>) -> Result<Mol, Error> {
 /// Layout → Rust ``depict_molecule`` → [`Rendered`] (JS ``xpict.render``).
 pub fn render(input: &mut Mol, opts: MolRenderOptions) -> Result<Rendered, Error> {
     let template = opts.align_to.as_deref().filter(|s| !s.is_empty());
+    if opts.atom_map.is_some() && template.is_none() {
+        return Err(Error::Parse("atom_map requires align_to".into()));
+    }
 
-    let (laid, pose_mb) =
-        layout_with_rdkit(&input.source, template, opts.id.clone())?;
+    let (laid, pose_mb, _) = layout_with_rdkit_meta(
+        &input.source,
+        template,
+        opts.atom_map.as_deref(),
+        opts.id.clone(),
+    )?;
     if input.frame_molblock.is_none() {
         input.frame_molblock = Some(pose_mb.clone());
     }

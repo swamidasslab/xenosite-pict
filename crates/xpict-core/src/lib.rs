@@ -11,6 +11,7 @@ pub mod align;
 pub mod bonds;
 pub mod colormap;
 pub mod depict;
+pub mod edge;
 pub mod elements;
 #[cfg(feature = "elk")]
 pub mod elk;
@@ -32,6 +33,10 @@ pub use bonds::{
 };
 pub use colormap::{colormap_rgb, sample_colormap, XENOSITE};
 pub use depict::depict_molecule;
+pub use edge::{
+    AlignOpts, CoordGenMoleculeResult, CoordMethod, EdgePlan, EdgeResult, EdgeTask,
+    EdgeTaskResult, MolTemplate, MIN_MCS_ATOMS as EDGE_MIN_MCS_ATOMS,
+};
 pub use elements::{atomic_number, element_symbol, SYMBOLS};
 #[cfg(feature = "elk")]
 pub use elk::layout_json as elk_layout_json;

@@ -5,6 +5,15 @@ Full nested ``PictSpec`` / shorthand / diagram chrome lives under
 """
 
 from xpict.contracts.depict import DepictSpec, MolSpec
+from xpict.contracts.edge import (
+    AlignOpts,
+    CoordGenMoleculeResult,
+    CoordGenTask,
+    CoordGenTaskResult,
+    EdgePlan,
+    EdgeResult,
+    MolTemplate,
+)
 from xpict.contracts.layout import (
     AtomLayout,
     BondLayout,
@@ -22,13 +31,20 @@ from xpict.contracts.scene import (
 )
 
 __all__ = [
+    "AlignOpts",
     "AtomLayout",
     "BondLayout",
     "CirclePrim",
+    "CoordGenMoleculeResult",
+    "CoordGenTask",
+    "CoordGenTaskResult",
     "DepictSpec",
+    "EdgePlan",
+    "EdgeResult",
     "Layer",
     "LayoutResult",
     "MolSpec",
+    "MolTemplate",
     "MoleculeLayout",
     "PathPrim",
     "Primitive",

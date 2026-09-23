@@ -23,8 +23,17 @@ export type {
   SceneViewport,
 } from "./api.js";
 export {
-  cxAtomLabels,
-  smilesBase,
-  smilesStarAtomIndices,
-  starLabelsFromCxsmiles,
-} from "./cxsmiles.js";
+  buildAlignPlan,
+  processEdgePlan,
+  validateEdgePlan,
+  MIN_MCS_ATOMS as EDGE_MIN_MCS_ATOMS,
+} from "./edge-plan.js";
+export type {
+  AlignOpts as EdgeAlignOpts,
+  CoordGenMoleculeResult,
+  CoordGenTask,
+  CoordGenTaskResult,
+  EdgePlan,
+  EdgeResult,
+  MolTemplate,
+} from "./edge-plan.js";

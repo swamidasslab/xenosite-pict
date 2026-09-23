@@ -1,0 +1,167 @@
+{
+  "$defs": {
+    "AlignOpts": {
+      "additionalProperties": false,
+      "description": "Align this mol onto its parent template (``MolTemplate.align``).",
+      "properties": {
+        "atom_map": {
+          "anyOf": [
+            {
+              "items": {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ],
+                "type": "array"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Pairs (query_atom, template_atom). Omit \u2192 edge runs MCS. Present \u2192 skip MCS and use this map.",
+          "title": "Atom Map"
+        },
+        "min_atoms": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Minimum mapped atoms (default 3 = MIN_MCS_ATOMS).",
+          "title": "Min Atoms"
+        }
+      },
+      "title": "AlignOpts",
+      "type": "object"
+    },
+    "CoordGenTask": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "coord_gen",
+          "default": "coord_gen",
+          "title": "Type",
+          "type": "string"
+        },
+        "roots": {
+          "description": "Independent align trees (each root laid out freely)",
+          "items": {
+            "$ref": "#/$defs/MolTemplate"
+          },
+          "title": "Roots",
+          "type": "array"
+        }
+      },
+      "required": [
+        "roots"
+      ],
+      "title": "CoordGenTask",
+      "type": "object"
+    },
+    "MolTemplate": {
+      "additionalProperties": false,
+      "description": "One node in a coord_gen forest (root = free layout; children align to parent).",
+      "properties": {
+        "id": {
+          "description": "Rust-assigned unique id; round-trips to the doc node",
+          "title": "Id",
+          "type": "string"
+        },
+        "smiles": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Smiles"
+        },
+        "cxsmiles": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cxsmiles"
+        },
+        "molfile": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Molfile"
+        },
+        "align": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AlignOpts"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Opts for aligning onto the parent; null on roots"
+        },
+        "template_for": {
+          "description": "Children that use this node as their align template",
+          "items": {
+            "$ref": "#/$defs/MolTemplate"
+          },
+          "title": "Template For",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "MolTemplate",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Host callback request \u2014 today only ``coord_gen``; more task types later.",
+  "properties": {
+    "version": {
+      "const": 1,
+      "default": 1,
+      "title": "Version",
+      "type": "integer"
+    },
+    "tasks": {
+      "items": {
+        "$ref": "#/$defs/CoordGenTask"
+      },
+      "title": "Tasks",
+      "type": "array"
+    }
+  },
+  "title": "EdgePlan",
+  "type": "object"
+}

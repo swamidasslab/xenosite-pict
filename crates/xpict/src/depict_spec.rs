@@ -187,6 +187,7 @@ pub fn depict(spec: &DepictSpec) -> Result<Vec<Rendered>, Error> {
             scale: entry.scale,
             weight: entry.weight,
             align_to: None,
+            atom_map: None,
         };
         out.push(render(&mut mol, opts)?);
     }

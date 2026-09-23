@@ -357,22 +357,72 @@ function mcsIsotopeSmarts(
   }
 }
 
+export type LayoutMeta = {
+  method: "free" | "atom_map" | "mcs" | "none";
+  used_map?: Array<[number, number]>;
+};
+
 export type LayoutResult = {
   molecule: MoleculeIn;
   /** Coord-bearing molblock of the laid-out mol — pack into Rendered for align_to. */
   molblock: string;
+  meta: LayoutMeta;
 };
 
+/** Unique isotopes on mapped atoms (same iso on query+template for each pair). */
+function tagExplicitMapIsotopes(
+  rdkit: RdkitModule,
+  mol: RdkitMol,
+  atomMap: Array<[number, number]>,
+  side: "query" | "template"
+): RdkitMol | null {
+  const json = JSON.parse(mol.get_json()) as RdkitMolJson;
+  const n = json.molecules[0]?.atoms.length ?? 0;
+  const isoByAtom = new Array<number>(n).fill(0);
+  atomMap.forEach(([q, t], i) => {
+    const idx = side === "query" ? q : t;
+    if (idx >= 0 && idx < n) isoByAtom[idx] = 9100 + i;
+  });
+  const lines = mol.get_molblock().replace(/\r\n/g, "\n").split("\n");
+  const end = lines.findIndex((l) => l.startsWith("M  END"));
+  if (end < 0) return null;
+  const pairs: string[] = [];
+  for (let i = 0; i < n; i++) {
+    if (isoByAtom[i]! > 0) {
+      pairs.push(String(i + 1).padStart(4) + String(isoByAtom[i]!).padStart(4));
+    }
+  }
+  if (!pairs.length) return null;
+  const chunks: string[] = [];
+  for (let i = 0; i < pairs.length; i += 8) {
+    const slice = pairs.slice(i, i + 8);
+    chunks.push("M  ISO" + String(slice.length).padStart(3) + slice.join(""));
+  }
+  lines.splice(end, 0, ...chunks);
+  const tagged = rdkit.get_mol(lines.join("\n"));
+  if (!tagged || !tagged.is_valid()) {
+    tagged?.delete();
+    return null;
+  }
+  return tagged;
+}
+
 /**
- * Layout `source` (SMILES / molfile). When `template` is set, RDKit MCS-aligns
- * onto that pose via MinimalLib ``generate_aligned_coords`` + isotope MCS
- * ``referenceSmarts`` on hybridization-tagged copies.
+ * Layout `source` (SMILES / molfile). When `template` is set, RDKit aligns
+ * onto that pose (explicit ``atomMap`` or MCS isotope SMARTS).
  */
 export async function layoutWithRdkit(
   source: string,
-  opts: { template?: string | null; id?: string } = {}
+  opts: {
+    template?: string | null;
+    id?: string;
+    /** Pairs [query, template]; skips MCS when set. */
+    atomMap?: Array<[number, number]> | null;
+    minAtoms?: number;
+  } = {}
 ): Promise<LayoutResult> {
   const rdkit = await ensureRdkit();
+  const floor = opts.minAtoms ?? MIN_MCS_ATOMS;
   const mol = getMol(rdkit, source);
   let templateMol: RdkitMol | null = null;
   let taggedMol: RdkitMol | null = null;
@@ -382,24 +432,54 @@ export async function layoutWithRdkit(
       templateMol = getMol(rdkit, opts.template);
       ensureCoords(templateMol);
 
-      taggedTemplate = tagHybridizationIsotopes(rdkit, templateMol);
-      taggedMol = tagHybridizationIsotopes(rdkit, mol);
       let aligned = "";
-      if (taggedTemplate && taggedMol) {
-        const smarts = mcsIsotopeSmarts(rdkit, taggedMol, taggedTemplate);
-        if (smarts) {
-          aligned = taggedMol.generate_aligned_coords(
-            taggedTemplate,
-            minimallibAlignDetails(smarts)
-          );
+      let method: LayoutMeta["method"] = "none";
+      let used_map: Array<[number, number]> | undefined;
+
+      if (opts.atomMap && opts.atomMap.length >= floor) {
+        taggedTemplate = tagExplicitMapIsotopes(
+          rdkit,
+          templateMol,
+          opts.atomMap,
+          "template"
+        );
+        taggedMol = tagExplicitMapIsotopes(rdkit, mol, opts.atomMap, "query");
+        if (taggedTemplate && taggedMol) {
+          const smarts = mcsIsotopeSmarts(rdkit, taggedMol, taggedTemplate);
+          if (smarts) {
+            aligned = taggedMol.generate_aligned_coords(
+              taggedTemplate,
+              minimallibAlignDetails(smarts)
+            );
+            if (alignSucceeded(aligned) && taggedMol.is_valid()) {
+              method = "atom_map";
+              used_map = opts.atomMap.map(([q, t]) => [q, t]);
+            }
+          }
+        }
+      } else if (!opts.atomMap) {
+        taggedTemplate = tagHybridizationIsotopes(rdkit, templateMol);
+        taggedMol = tagHybridizationIsotopes(rdkit, mol);
+        if (taggedTemplate && taggedMol) {
+          const smarts = mcsIsotopeSmarts(rdkit, taggedMol, taggedTemplate);
+          if (smarts) {
+            aligned = taggedMol.generate_aligned_coords(
+              taggedTemplate,
+              minimallibAlignDetails(smarts)
+            );
+            if (alignSucceeded(aligned) && taggedMol.is_valid()) {
+              method = "mcs";
+            }
+          }
         }
       }
-      if (!alignSucceeded(aligned) || !taggedMol?.is_valid()) {
-        // No usable MCS / match — free layout (do not pretend we aligned).
+
+      if (method === "none" || !taggedMol?.is_valid()) {
         ensureCoords(mol);
         return {
           molecule: toMoleculeIn(mol, { id: opts.id }),
           molblock: sanitizeDummyMolblock(mol.get_molblock()),
+          meta: { method: "none" },
         };
       }
 
@@ -418,12 +498,14 @@ export async function layoutWithRdkit(
         molblock: sanitizeDummyMolblock(
           stripMolblockIsotopes(taggedMol.get_molblock())
         ),
+        meta: { method, used_map },
       };
     }
     ensureCoords(mol);
     return {
       molecule: toMoleculeIn(mol, { id: opts.id }),
       molblock: sanitizeDummyMolblock(mol.get_molblock()),
+      meta: { method: "free" },
     };
   } finally {
     mol.delete();
