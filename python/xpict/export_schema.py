@@ -289,7 +289,12 @@ def factor_node_common_allof(schema: dict[str, Any]) -> dict[str, Any]:
 
 
 def export_schemas(out_dir: Path | None = None, *, minify: bool = True) -> dict[str, Path]:
-    """Write live schemas under ``schema/`` and the full PictSpec under ``schema/future/``."""
+    """Write future PictSpec under ``schema/future/``; preserve Rust live schemas.
+
+    Live ``xpict`` / edge / scene schemas are owned by ``make types`` (schemars).
+    When those files already exist under ``out_dir`` (or the repo ``schema/``),
+    they are listed in the return map but not rewritten.
+    """
     target = out_dir or schema_dir()
     target.mkdir(parents=True, exist_ok=True)
     future_dir = (out_dir / "future") if out_dir is not None else _FUTURE_SCHEMA
