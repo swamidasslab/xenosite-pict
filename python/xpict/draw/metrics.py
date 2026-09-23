@@ -48,8 +48,9 @@ STROKE_FRAC = round(FONT_STEM_EM * FONT_FRAC, 3)  # 0.042 → 0.84 px
 
 # Absolute ink at user-facing ``weight = 1`` (house look). Public weight is
 # relative to this; absolute floor stays 1 (Regular stem) → user min 2/3.
-# Ink mapping itself lives in ``xpict-core``; these helpers exist only for the
-# legacy Python document paint path until that routes through ``depict_molecule``.
+# Mapping lives in ``xpict-core``; these helpers remain only while the
+# document ``render`` path still paints bonds/labels in Python instead of
+# calling ``depict_molecule``.
 WEIGHT_AT_ONE = 1.5
 WEIGHT_MIN = 1.0 / WEIGHT_AT_ONE
 
