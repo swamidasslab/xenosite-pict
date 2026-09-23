@@ -165,7 +165,7 @@ jobs:
         run: uv run pytest -q
 
   # Smoke: abi3 extension builds and tests on Apple Silicon + Windows x64.
-  # No RDKit here — skip RDKit tests; Linux 3.12 job covers them.
+  # No RDKit here — layout tests skip; Linux jobs cover RDKit layout.
   python-native-smoke:
     name: Python native smoke (${{ matrix.os }})
     needs: [rust]
