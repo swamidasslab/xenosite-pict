@@ -317,7 +317,7 @@ def poc_pipeline(out: Path, backend: str) -> Path:
             "Indigo layout → own skeleton/offset/wedge SVG",
             "ELK pathway placement via elkrs",
             "Branched scheme uses ELK orthogonal edge routes → overlay arrows",
-            "Shade/marks on aspirin as SoM-style annotation",
+            "Shade/marks on aspirin as site-of-metabolism annotation",
         ],
     }
     (out / "poc-d-pipeline.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")

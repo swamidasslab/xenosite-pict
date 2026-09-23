@@ -42,7 +42,7 @@ def test_gallery_phenol_star_cx_r1():
     assert "R1" in texts, f"expected literal R1 from CX alias, got {texts}"
 
 
-def test_sparse_shade_paints_few_disks():
+def test_shade_does_not_flood_disks():
     _require_rdkit()
     doc = {
         "type": "mol",
@@ -57,7 +57,7 @@ def test_sparse_shade_paints_few_disks():
     svg = render(doc, backend="rdkit")
     n_shade = len(re.findall(r'class="shade"', svg))
     assert n_shade > 0
-    assert n_shade < 12, f"sparse shade should not flood disks ({n_shade})"
+    assert n_shade < 12, f"shade should stay readable, not flood disks ({n_shade})"
 
 
 def test_committed_markush_svg_has_r1():
