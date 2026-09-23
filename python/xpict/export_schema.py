@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from xpict.contracts.depict import DepictSpec
+from xpict.contracts.edge import EdgePlan, EdgeResult
 from xpict.contracts.layout import LayoutResult
 from xpict.contracts.scene import Scene
 from xpict.future.nodes import PictSpec
@@ -302,6 +303,8 @@ def export_schemas(out_dir: Path | None = None, *, minify: bool = True) -> dict[
         "xpict.schema.json": DepictSpec.model_json_schema(),
         "layout.schema.json": LayoutResult.model_json_schema(),
         "scene.schema.json": Scene.model_json_schema(),
+        "edge-plan.schema.json": EdgePlan.model_json_schema(),
+        "edge-result.schema.json": EdgeResult.model_json_schema(),
     }
     future = {
         "xpict.schema.json": factor_node_common_allof(PictSpec.model_json_schema()),

@@ -151,12 +151,23 @@ fn layout_out_to_molecule(
 
 /// Layout ``source`` (SMILES / CXSMILES / molfile) with optional template align.
 ///
-/// Returns ``(MoleculeIn in SCALE space, pose molblock)``.
+/// Returns ``(MoleculeIn in SCALE space, pose molblock, matched)``.
 pub fn layout_with_rdkit(
     source: &str,
     template_molblock: Option<&str>,
     id: Option<String>,
 ) -> Result<(MoleculeIn, String), Error> {
+    let (mol, pose, _) = layout_with_rdkit_meta(source, template_molblock, None, id)?;
+    Ok((mol, pose))
+}
+
+/// Like [`layout_with_rdkit`], plus whether Depictor matched and optional used map.
+pub fn layout_with_rdkit_meta(
+    source: &str,
+    template_molblock: Option<&str>,
+    atom_map: Option<&[(u32, u32)]>,
+    id: Option<String>,
+) -> Result<(MoleculeIn, String, bool), Error> {
     let mb = source_to_molblock(source)?;
     let tmpl = template_molblock.unwrap_or("").to_string();
     let tmpl = if tmpl.is_empty() {
@@ -165,7 +176,16 @@ pub fn layout_with_rdkit(
         sanitize_dummy_molblock(&tmpl)
     };
 
-    let laid = ffi::prepare_layout(&mb, &tmpl).map_err(|e| Error::Layout(e.to_string()))?;
+    let laid = if let Some(map) = atom_map {
+        let flat: Vec<i32> = map
+            .iter()
+            .flat_map(|(q, t)| [*q as i32, *t as i32])
+            .collect();
+        ffi::prepare_layout_mapped(&mb, &tmpl, &flat)
+            .map_err(|e| Error::Layout(e.to_string()))?
+    } else {
+        ffi::prepare_layout(&mb, &tmpl).map_err(|e| Error::Layout(e.to_string()))?
+    };
 
     let coords: Vec<(f64, f64)> = laid.atoms.iter().map(|a| (a.x, a.y)).collect();
     let bond_pairs: Vec<(i32, i32)> = laid.bonds.iter().map(|b| (b.begin, b.end)).collect();
@@ -197,5 +217,5 @@ pub fn layout_with_rdkit(
 
     let molecule = layout_out_to_molecule(&laid, id, scale, flip_max_y);
     let pose = sanitize_dummy_molblock(&laid.molblock);
-    Ok((molecule, pose))
+    Ok((molecule, pose, laid.matched_template))
 }

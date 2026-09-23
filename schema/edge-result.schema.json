@@ -1,0 +1,137 @@
+{
+  "$defs": {
+    "CoordGenMoleculeResult": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "ok": {
+          "description": "True when usable coords were produced (aligned or free-layout fallback). False only when even unaligned coord gen failed.",
+          "title": "Ok",
+          "type": "boolean"
+        },
+        "method": {
+          "description": "free = unconstrained; atom_map / mcs = aligned; none = align requested but failed \u2014 automatic free-layout fallback",
+          "enum": [
+            "free",
+            "atom_map",
+            "mcs",
+            "none"
+          ],
+          "title": "Method",
+          "type": "string"
+        },
+        "used_map": {
+          "anyOf": [
+            {
+              "items": {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ],
+                "type": "array"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "(query, template) pairs when a map was applied",
+          "title": "Used Map"
+        },
+        "molecule": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "MoleculeIn JSON (atoms/bonds/coords); present whenever ok is true",
+          "title": "Molecule"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Note when method is none (fallback) or ok is false",
+          "title": "Error"
+        }
+      },
+      "required": [
+        "id",
+        "ok",
+        "method"
+      ],
+      "title": "CoordGenMoleculeResult",
+      "type": "object"
+    },
+    "CoordGenTaskResult": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "coord_gen",
+          "default": "coord_gen",
+          "title": "Type",
+          "type": "string"
+        },
+        "ok": {
+          "description": "True when every molecule entry has ok=true (coords for all ids)",
+          "title": "Ok",
+          "type": "boolean"
+        },
+        "molecules": {
+          "description": "Flat list \u2014 align failures still appear with free-layout coords",
+          "items": {
+            "$ref": "#/$defs/CoordGenMoleculeResult"
+          },
+          "title": "Molecules",
+          "type": "array"
+        }
+      },
+      "required": [
+        "ok",
+        "molecules"
+      ],
+      "title": "CoordGenTaskResult",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": 1,
+      "default": 1,
+      "title": "Version",
+      "type": "integer"
+    },
+    "results": {
+      "items": {
+        "$ref": "#/$defs/CoordGenTaskResult"
+      },
+      "title": "Results",
+      "type": "array"
+    }
+  },
+  "title": "EdgeResult",
+  "type": "object"
+}

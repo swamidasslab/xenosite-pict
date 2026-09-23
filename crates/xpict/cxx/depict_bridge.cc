@@ -204,4 +204,62 @@ LayoutOut prepare_layout(rust::Str molblock, rust::Str template_molblock) {
   return out;
 }
 
+LayoutOut prepare_layout_mapped(rust::Str molblock, rust::Str template_molblock,
+                                rust::Slice<const std::int32_t> atom_map_qt) {
+  std::string mb(molblock);
+  std::string tmpl_mb(template_molblock);
+  auto mol = parse_molblock(mb);
+  try_kekulize(*mol);
+
+  bool matched = false;
+  if (!tmpl_mb.empty() && atom_map_qt.size() >= 2 &&
+      atom_map_qt.size() % 2 == 0) {
+    auto tmpl = parse_molblock(tmpl_mb);
+    if (tmpl->getNumConformers() == 0) {
+      RDDepict::compute2DCoords(*tmpl);
+    }
+    RDKit::MatchVectType atomMap;
+    const auto nq = mol->getNumAtoms();
+    const auto nt = tmpl->getNumAtoms();
+    for (size_t i = 0; i + 1 < atom_map_qt.size(); i += 2) {
+      const auto q = atom_map_qt[i];
+      const auto t = atom_map_qt[i + 1];
+      if (q < 0 || t < 0 || static_cast<unsigned>(q) >= nq ||
+          static_cast<unsigned>(t) >= nt) {
+        continue;
+      }
+      // Depictor: (referenceIdx, queryIdx)
+      atomMap.emplace_back(t, q);
+    }
+    if (atomMap.size() >= kMinMcsAtoms) {
+      RDDepict::ConstrainedDepictionParams p;
+      p.allowRGroups = true;
+      p.acceptFailure = false;
+      try {
+        RDDepict::generateDepictionMatching2DStructure(*mol, *tmpl, atomMap, -1,
+                                                       p);
+        matched = true;
+      } catch (...) {
+        ensure_2d(*mol);
+        matched = false;
+      }
+    } else {
+      ensure_2d(*mol);
+    }
+  } else if (tmpl_mb.empty()) {
+    ensure_2d(*mol);
+  } else {
+    // Fall back to MCS when map empty / odd.
+    auto tmpl = parse_molblock(tmpl_mb);
+    if (tmpl->getNumConformers() == 0) {
+      RDDepict::compute2DCoords(*tmpl);
+    }
+    matched = align_to_template(*mol, *tmpl);
+  }
+
+  LayoutOut out = extract(*mol);
+  out.matched_template = matched;
+  return out;
+}
+
 } // namespace xpict_depict

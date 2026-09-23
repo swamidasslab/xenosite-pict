@@ -18,12 +18,15 @@ Committed JSON Schema:
 - ``schema/xpict.schema.json`` — ``DepictSpec``
 - ``schema/scene.schema.json`` — scene graph
 - ``schema/layout.schema.json`` — layout result
+- ``schema/edge-plan.schema.json`` / ``edge-result.schema.json`` — host
+  ``EdgePlan`` / ``EdgeResult`` (``coord_gen`` forest + flat molecule rows)
 
 ## Single-molecule client
 
 ``mol`` / ``render`` / ``toSvg`` (JS, Python, Rust) — imperative one-mol API. Options:
 ``color``, ``atom_shade``, ``bond_shade``, ``star_labels``, ``weight``
-(default ``1`` = house; min ``2/3``), ``scale``, ``align_to``, ``id``. The
+(default ``1`` = house; min ``2/3``), ``scale``, ``align_to``, ``atom_map``
+(``(query, template)`` pairs; requires ``align_to``; skips MCS), ``id``. The
 document path uses this layer internally where it
 exists.
 

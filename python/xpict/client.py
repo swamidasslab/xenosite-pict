@@ -38,7 +38,7 @@ class Mol:
     def ensure_frame(self) -> str:
         """Materialize (and cache) a coord-bearing molblock for ``align_to``."""
         if not self.frame_molblock:
-            _mol_in, pose = _layout_with_rdkit(self.source, template=None, id=None)
+            _mol_in, pose, _meta = _layout_with_rdkit(self.source, template=None, id=None)
             del _mol_in
             self.frame_molblock = pose
         return self.frame_molblock
@@ -100,6 +100,8 @@ class MolRenderOptions:
     weight: float | None = None
     scale: float | None = None
     align_to: Mol | Rendered | None = None
+    #: Pairs ``(query_atom, template_atom)``. Requires ``align_to``; skips MCS.
+    atom_map: list[tuple[int, int]] | None = None
 
 
 AlignTarget = Mol | Rendered
@@ -131,8 +133,15 @@ def render(
     template: str | None = None
     if options.align_to is not None:
         template = _ensure_frame(options.align_to)
+    elif options.atom_map is not None:
+        raise ValueError("atom_map requires align_to")
 
-    laid, pose_mb = _layout_with_rdkit(m.source, template=template, id=options.id)
+    laid, pose_mb, _meta = _layout_with_rdkit(
+        m.source,
+        template=template,
+        id=options.id,
+        atom_map=options.atom_map,
+    )
     if m.frame_molblock is None and template is None:
         m.frame_molblock = pose_mb
 
@@ -345,13 +354,36 @@ def _mol_to_molecule_in(
     return out
 
 
+def layout_with_rdkit(
+    source: str,
+    *,
+    template: str | None = None,
+    id: str | None = None,
+    atom_map: list[tuple[int, int]] | None = None,
+    min_atoms: int | None = None,
+) -> tuple[dict[str, Any], str, dict[str, Any]]:
+    """Public RDKit layout helper used by the EdgePlan processor."""
+    return _layout_with_rdkit(
+        source,
+        template=template,
+        id=id,
+        atom_map=atom_map,
+        min_atoms=min_atoms,
+    )
+
+
 def _layout_with_rdkit(
     source: str,
     *,
     template: str | None,
     id: str | None,
-) -> tuple[dict[str, Any], str]:
-    """RDKit layout (+ optional MCS align) → MoleculeIn in SCALE space + pose."""
+    atom_map: list[tuple[int, int]] | None = None,
+    min_atoms: int | None = None,
+) -> tuple[dict[str, Any], str, dict[str, Any]]:
+    """RDKit layout (+ optional MCS / explicit atom-map align) → MoleculeIn + pose + meta.
+
+    Meta is ``{"method": "free"|"atom_map"|"mcs"|"none", "used_map": ...}``.
+    """
     try:
         from rdkit import Chem
         from rdkit.Chem import rdDepictor, rdFMCS
@@ -360,7 +392,10 @@ def _layout_with_rdkit(
             "Single-mol render requires rdkit. Install with: pip install 'xpict[rdkit]'"
         ) from e
 
+    floor = _MIN_MCS_ATOMS if min_atoms is None else int(min_atoms)
     rmol = _parse_rdkit(source)
+    method = "free"
+    used_map: list[tuple[int, int]] | None = None
 
     if template:
         tmpl = Chem.MolFromMolBlock(
@@ -370,41 +405,55 @@ def _layout_with_rdkit(
             raise ValueError("align_to template molblock could not be parsed")
         # Never mutate the caller's template pose.
         ref_pose = Chem.Mol(tmpl)
-        ensure_coords = not ref_pose.GetNumConformers()
-        if ensure_coords:
+        if not ref_pose.GetNumConformers():
             rdDepictor.Compute2DCoords(ref_pose)
 
         aligned_ok = False
         try:
-            from xpict.align_rdkit import mcs_params
+            map_for_depict: list[tuple[int, int]] | None = None
+            if atom_map is not None:
+                # Public pairs are (query, template); Depictor wants (template, query).
+                if len(atom_map) >= floor:
+                    map_for_depict = [(t, q) for q, t in atom_map]
+                    used_map = list(atom_map)
+                    method = "atom_map"
+            else:
+                from xpict.align_rdkit import mcs_params
 
-            mcs = rdFMCS.FindMCS([ref_pose, rmol], mcs_params())
-            if (
-                not getattr(mcs, "canceled", False)
-                and mcs.numAtoms >= _MIN_MCS_ATOMS
-            ):
-                pattern = Chem.MolFromSmarts(mcs.smartsString)
-                if pattern is not None:  # pyright: ignore[reportUnnecessaryComparison]
-                    ref_match = ref_pose.GetSubstructMatch(pattern)
-                    mol_match = rmol.GetSubstructMatch(pattern)
-                    if (
-                        len(ref_match) >= _MIN_MCS_ATOMS
-                        and len(ref_match) == len(mol_match)
-                    ):
-                        # Atom matches only — do not pass the MCS bond pattern.
-                        atom_map = list(zip(ref_match, mol_match, strict=True))
-                        params = rdDepictor.ConstrainedDepictionParams()
-                        params.allowRGroups = True
-                        params.acceptFailure = False
-                        rdDepictor.GenerateDepictionMatching2DStructure(
-                            rmol, ref_pose, atom_map, -1, params
-                        )
-                        aligned_ok = True
+                mcs = rdFMCS.FindMCS([ref_pose, rmol], mcs_params())
+                if (
+                    not getattr(mcs, "canceled", False)
+                    and mcs.numAtoms >= floor
+                ):
+                    pattern = Chem.MolFromSmarts(mcs.smartsString)
+                    if pattern is not None:  # pyright: ignore[reportUnnecessaryComparison]
+                        ref_match = ref_pose.GetSubstructMatch(pattern)
+                        mol_match = rmol.GetSubstructMatch(pattern)
+                        if len(ref_match) >= floor and len(ref_match) == len(mol_match):
+                            map_for_depict = list(
+                                zip(ref_match, mol_match, strict=True)
+                            )
+                            used_map = list(
+                                zip(mol_match, ref_match, strict=True)
+                            )
+                            method = "mcs"
+
+            if map_for_depict is not None:
+                params = rdDepictor.ConstrainedDepictionParams()
+                params.allowRGroups = True
+                params.acceptFailure = False
+                rdDepictor.GenerateDepictionMatching2DStructure(
+                    rmol, ref_pose, map_for_depict, -1, params
+                )
+                aligned_ok = True
         except Exception:
             aligned_ok = False
+            method = "none"
+            used_map = None
 
         if not aligned_ok:
-            # Free layout — do not pretend we aligned.
+            method = "none"
+            used_map = None
             if not rmol.GetNumConformers():
                 rdDepictor.Compute2DCoords(rmol)
             coords = [
@@ -421,7 +470,6 @@ def _layout_with_rdkit(
             scale = _mean_bond_scale(coords, bond_pairs)
             flip_max_y = max((y for _, y in coords), default=0.0)
         else:
-            # Match template frame scale / flip (JS / Rust layoutWithRdkit).
             t_coords = [
                 (
                     float(ref_pose.GetConformer().GetAtomPosition(i).x),
@@ -456,7 +504,7 @@ def _layout_with_rdkit(
         rmol, id=id, scale=scale, flip_max_y=flip_max_y, source=source
     )
     pose = _sanitize_dummy_molblock(Chem.MolToMolBlock(rmol))
-    return molecule, pose
+    return molecule, pose, {"method": method, "used_map": used_map}
 
 
 def _is_star(atom: dict[str, Any]) -> bool:

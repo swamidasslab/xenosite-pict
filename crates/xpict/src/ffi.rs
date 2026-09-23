@@ -36,5 +36,10 @@ pub mod ffi {
         include!("depict_bridge.h");
 
         fn prepare_layout(molblock: &str, template_molblock: &str) -> Result<LayoutOut>;
+        fn prepare_layout_mapped(
+            molblock: &str,
+            template_molblock: &str,
+            atom_map_qt: &[i32],
+        ) -> Result<LayoutOut>;
     }
 }

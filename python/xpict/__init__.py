@@ -37,15 +37,20 @@ from xpict.contracts.scene import Scene
 from xpict.warnings import PictBackendWarning
 
 # Lab / future nested document.
+from xpict.edge_plan import build_align_plan, process_edge_plan, validate_edge_plan
+from xpict.contracts.edge import EdgePlan, EdgeResult, MolTemplate
 from xpict.future import PictSpec
 
 __version__ = "0.3.0"
 
 __all__ = [
     "DepictSpec",
+    "EdgePlan",
+    "EdgeResult",
     "Mol",
     "MolRenderOptions",
     "MolSpec",
+    "MolTemplate",
     "Pict",
     "PictBackendWarning",
     "PictSpec",  # future nested document — use DepictSpec for the shipped subset
@@ -53,10 +58,13 @@ __all__ = [
     "Scene",
     "SvgAtom",
     "SvgBond",
+    "build_align_plan",
     "depict",
     "mol",
+    "process_edge_plan",
     "render",
     "to_svg",
+    "validate_edge_plan",
     "__version__",
 ]
 

@@ -23,6 +23,12 @@
           "description": "Optional stable id",
           "title": "Id"
         },
+        "align": {
+          "default": false,
+          "description": "When true, later children align onto the first (or each child's align_to id). Builds an EdgePlan coord_gen forest.",
+          "title": "Align",
+          "type": "boolean"
+        },
         "children": {
           "description": "Owned mol nodes (discriminated by ``type``)",
           "items": {
@@ -158,6 +164,45 @@
           "minimum": 0.6666666666666666,
           "title": "Weight",
           "type": "number"
+        },
+        "align_to": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Id of another mol in this group to use as align template. When omitted and the group has align=true, defaults to the first child.",
+          "title": "Align To"
+        },
+        "atom_map": {
+          "anyOf": [
+            {
+              "items": {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ],
+                "type": "array"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Pairs (query_atom, template_atom) vs the implicit / align_to template. Skips MCS when set.",
+          "title": "Atom Map"
         }
       },
       "title": "MolNode",
@@ -165,7 +210,7 @@
     },
     "ShadeSpec": {
       "additionalProperties": false,
-      "description": "Continuous per-atom / per-bond scores for colormap shading.",
+      "description": "Continuous per-atom / per-bond scores for colormap shading.\n\nScores are interpreted on a fixed ``[vmin, vmax]`` window (default\n``0``\u2026``1``). They are **not** auto-scaled to the data range.",
       "properties": {
         "atoms": {
           "anyOf": [
@@ -206,28 +251,16 @@
           "type": "string"
         },
         "vmin": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Vmin"
+          "default": 0.0,
+          "description": "Shade window low (default 0)",
+          "title": "Vmin",
+          "type": "number"
         },
         "vmax": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Vmax"
+          "default": 1.0,
+          "description": "Shade window high (default 1)",
+          "title": "Vmax",
+          "type": "number"
         }
       },
       "title": "ShadeSpec",

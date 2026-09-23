@@ -1136,7 +1136,7 @@
     },
     "ShadeSpec": {
       "additionalProperties": false,
-      "description": "Continuous per-atom / per-bond scores for colormap shading.",
+      "description": "Continuous per-atom / per-bond scores for colormap shading.\n\nScores are interpreted on a fixed ``[vmin, vmax]`` window (default\n``0``\u2026``1``). They are **not** auto-scaled to the data range.",
       "properties": {
         "atoms": {
           "anyOf": [
@@ -1177,28 +1177,16 @@
           "type": "string"
         },
         "vmin": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Vmin"
+          "default": 0.0,
+          "description": "Shade window low (default 0)",
+          "title": "Vmin",
+          "type": "number"
         },
         "vmax": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Vmax"
+          "default": 1.0,
+          "description": "Shade window high (default 1)",
+          "title": "Vmax",
+          "type": "number"
         }
       },
       "title": "ShadeSpec",
