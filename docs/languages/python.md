@@ -24,7 +24,7 @@ svg = render({
 svg = render({
     "type": "group",
     "children": [
-        {"type": "mol", "smiles": "*c1ccccc1Cl", "rgroups": ["$R_1$"]},
+        {"type": "mol", "cxsmiles": "*c1ccccc1Cl |$R_{1};;;;;$|"},
         {"type": "mol", "cxsmiles": "*c1ccc(O)cc1 |$R_{1};;;;;$|"},
     ],
 })

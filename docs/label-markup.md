@@ -42,7 +42,7 @@ Three common inputs converge on the same markup parser:
 ```mermaid
 flowchart LR
   CX["CXSMILES |$…$| aliases"] --> L[atom label string]
-  RG["doc rgroups / simple star_labels"] --> L
+  SL["simple star_labels"] --> L
   STRUCT["structural NH2 / charge"] --> L
   L --> M["xpict-core markup"]
   M --> G[glyph paths + data-text]
@@ -72,7 +72,9 @@ That outer `|$ … $|` is CX syntax, not xpict math mode. Consequences:
 | Multi-char markup with `;` | **No** | `;` separates CX alias slots |
 
 **Rule of thumb:** use CX for plain aliases or braced scripts (`R_{1}`,
-`R_{12}`). For anything richer, put the markup on the JSON / document path.
+`R_{12}`). For richer markup (`$R_1$`, Greek, bold), use the simple client's
+`star_labels` (not a document `rgroups` key — that stays in `xpict.future`
+until it graduates).
 
 ## JSON opts and the document schema
 
@@ -100,13 +102,8 @@ mol.render(MolRenderOptions {
 
 ### Preferred document (nested subset of PictSpec)
 
-```json
-{
-  "type": "mol",
-  "smiles": "*c1ccccc1Cl",
-  "rgroups": ["$R_1$"]
-}
-```
+Live docs carry structure + shade + color. Markush text on the document path
+is CX braced aliases today:
 
 ```json
 {
@@ -120,17 +117,17 @@ mol.render(MolRenderOptions {
 }
 ```
 
-`rgroups` is a list in star encounter order (or an ordinal dict). Same markup
-strings as `star_labels`. CX can still supply simple / braced aliases when you
-omit `rgroups`.
+A document-level `rgroups` field is **not** on the live public surface yet
+(it remains on future `PictSpec` / `MoleculeSpec`). Use CX or simple
+`star_labels` until it graduates.
 
 ## Picking a path
 
 | Goal | Prefer |
 | --- | --- |
 | Round-trip a CXSMILES from another tool | CX trailer; braced `R_{1}` if you need scripts |
-| Publication Markush with `$R_1$`, Greek, bold | `rgroups` / `star_labels` JSON |
-| Both CX topology and rich labels | CX for structure; override labels via JSON |
+| Publication Markush with `$R_1$`, Greek, bold | simple `star_labels` |
+| Both CX topology and rich labels | CX for structure; override via `star_labels` |
 
 ## Not supported (on purpose)
 

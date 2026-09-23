@@ -58,15 +58,16 @@ for (let i = 1; i <= 6; i++) {
   if (!hit) throw new Error(`align_to rendered: atom ${i} not on template`);
 }
 
-const marks = alignedToMol.scene.viewports[0]?.layers.find((l) => l.name === "marks");
-const circle = marks?.primitives.find((p) => p.kind === "circle") as
-  | { kind: "circle"; cx: number; cy: number }
-  | undefined;
-if (!circle) throw new Error("expected mark circle");
-const methyl = alignedToMol.svg_coords.find((a) => a.index === 0);
-if (!methyl) throw new Error("missing methyl");
-if (Math.hypot(methyl.x - circle.cx, methyl.y - circle.cy) > 1e-6) {
-  throw new Error("svg_coords must match mark position in scene");
+// svg_coords stay in scene space after align (no public atom-mark layer).
+{
+  const methyl = alignedToMol.svg_coords.find((a) => a.index === 0);
+  if (!methyl) throw new Error("missing methyl svg_coords");
+  const c = alignedToMol.coords.find((a) => a.index === 0)!;
+  const ox = alignedToMol.svg_coords[1]!.x - alignedToMol.coords[1]!.x;
+  const oy = alignedToMol.svg_coords[1]!.y - alignedToMol.coords[1]!.y;
+  if (Math.hypot(methyl.x - (c.x + ox), methyl.y - (c.y + oy)) > 1e-6) {
+    throw new Error("aligned svg_coords/coords mismatch");
+  }
 }
 
 const starred = await xpict.render(xpict.mol("*C"), { star_labels: ["R1"] });
@@ -165,17 +166,28 @@ if (batch.length !== 2) throw new Error(`depict length ${batch.length}`);
 if (batch[0]!.molecule.atoms.length !== 3) throw new Error("depict[0] atoms");
 if (batch[1]!.molecule.atoms.length !== 4) throw new Error("depict[1] atoms");
 
+// Document Markush: CX braced markup (no public rgroups key yet).
 const markush = await xpict.depict({
   type: "mol",
-  smiles: "*c1ccccc1Cl",
-  rgroups: ["$R_1$"],
+  cxsmiles: "*c1ccccc1Cl |$R_{1};;;;;$|",
 });
 {
   const texts = [...xpict.toSvg(markush[0]!.scene).matchAll(/data-text="([^"]*)"/g)].map(
     (m) => m[1]
   );
   if (!texts.includes("R₁")) {
-    throw new Error(`rgroups $R_1$ should paint R₁, got ${JSON.stringify(texts)}`);
+    throw new Error(`CX R_{1} should paint R₁, got ${JSON.stringify(texts)}`);
+  }
+}
+
+// Simple client: star_labels with chem markup.
+const richStar = await xpict.render(xpict.mol("*C"), { star_labels: ["$R_1$"] });
+{
+  const texts = [...xpict.toSvg(richStar.scene).matchAll(/data-text="([^"]*)"/g)].map(
+    (m) => m[1]
+  );
+  if (!texts.includes("R₁")) {
+    throw new Error(`star_labels $R_1$ should paint R₁, got ${JSON.stringify(texts)}`);
   }
 }
 

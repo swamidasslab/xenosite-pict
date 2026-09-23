@@ -101,22 +101,21 @@ fn depict_nested_group() {
 }
 
 #[test]
-fn depict_rgroups_markup() {
+fn depict_cx_markush_markup() {
     use xpict::{depict, DepictSpec};
     let out = depict(&DepictSpec::Mol {
-        smiles: Some("*C".into()),
-        cxsmiles: None,
+        smiles: None,
+        cxsmiles: Some("*C |$R_{1};$|".into()),
         molfile: None,
         id: None,
         color: None,
         shade: None,
-        rgroups: Some(vec![Some("$R_1$".into())]),
     })
     .unwrap();
     let svg = out[0].to_svg();
     assert!(
         svg.contains("R₁") || svg.contains("data-text=\"R₁\""),
-        "expected R₁ in svg, got snippet {}",
+        "expected R₁ from CX braced markup, got snippet {}",
         &svg[..svg.len().min(200)]
     );
 }

@@ -50,11 +50,6 @@ CASES: dict[str, dict] = {
         # Braced markup inside CX — see docs/label-markup.md
         "cxsmiles": "*c1ccccc1Cl |$R_{1};;;;;$|",
     },
-    "markush_json": {
-        "type": "mol",
-        "smiles": "*c1ccc(O)cc1",
-        "rgroups": ["$R_1$"],
-    },
     # Sparse shade: most zeros, a few hot atoms (SoM-style highlight).
     "aspirin_shade": {
         "type": "mol",

@@ -2,6 +2,9 @@
 //!
 //! Root is ``type: "mol"`` or ``type: "group"`` with ``children``. Calls the
 //! simple [`crate::render`] / [`crate::mol`] client internally.
+//!
+//! Markush / star text: CXSMILES aliases or simple [`MolRenderOptions::star_labels`].
+//! Document ``rgroups`` is not on the live public surface yet.
 
 use serde::{Deserialize, Serialize};
 
@@ -39,9 +42,6 @@ pub struct MolNode {
     pub color: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shade: Option<ShadeSpec>,
-    /// Star labels (encounter order). Use chem markup: ``$R_1$`` / ``R_{1}``.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub rgroups: Option<Vec<Option<String>>>,
 }
 
 fn mol_type() -> String {
@@ -65,8 +65,6 @@ pub enum DepictSpec {
         color: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         shade: Option<ShadeSpec>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        rgroups: Option<Vec<Option<String>>>,
     },
     Group {
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -86,7 +84,6 @@ impl DepictSpec {
                 id,
                 color,
                 shade,
-                rgroups,
             } => vec![MolNode {
                 type_: "mol".into(),
                 smiles: smiles.clone(),
@@ -95,7 +92,6 @@ impl DepictSpec {
                 id: id.clone(),
                 color: color.clone(),
                 shade: shade.clone(),
-                rgroups: rgroups.clone(),
             }],
             DepictSpec::Group { children, .. } => children.clone(),
         }
@@ -141,7 +137,7 @@ pub fn depict(spec: &DepictSpec) -> Result<Vec<Rendered>, Error> {
             bond_shade: entry.shade.as_ref().and_then(|s| s.bonds.clone()),
             mark_atoms: None,
             mark_bonds: None,
-            star_labels: entry.rgroups.clone(),
+            star_labels: None,
             bold_labels: None,
             align_to: None,
         };

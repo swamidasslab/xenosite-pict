@@ -13,8 +13,7 @@ Two layers (same paint):
    Imperative options (`color`, `atom_shade`, `star_labels`, `align_to`, …).
 
 Nested JSON uses `type: "mol"` or `type: "group"` + `children`. Chem scripts:
-[Label markup](../label-markup.md) (CX limits vs JSON `rgroups` /
-`star_labels`).
+[Label markup](../label-markup.md) (CX limits vs simple `star_labels`).
 
 | Language | Autodoc |
 | --- | --- |

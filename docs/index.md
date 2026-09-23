@@ -45,7 +45,6 @@ one Rust paint core (`xpict-core`), with RDKit layout at each language edge
         id: None,
         color: None,
         shade: None,
-        rgroups: None,
     })?;
     let svg = out[0].to_svg();
     ```

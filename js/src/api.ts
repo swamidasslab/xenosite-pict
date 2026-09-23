@@ -6,13 +6,12 @@
  * ```ts
  * const [r] = await xpict.depict({
  *   type: "mol",
- *   smiles: "*c1ccccc1Cl",
- *   rgroups: ["$R_1$"],
+ *   cxsmiles: "*c1ccccc1Cl |$R_{1};;;;;$|",
  * });
  * const svg = xpict.toSvg(r.scene);
  * ```
  *
- * Simple — single molecule:
+ * Simple — single molecule (``star_labels`` for bare SMILES stars):
  * ```ts
  * const mol = xpict.mol("CCCC");
  * const rendered = await xpict.render(mol, { color: "#0b6e4f" });
@@ -99,7 +98,8 @@ export type MolRenderOptions = {
 
 /**
  * Live mol node — strict subset of future PictSpec ``type: "mol"``.
- * Rich labels: ``rgroups`` (markup) or CX braced aliases; see docs/label-markup.md.
+ * Star / Markush text: CX braced aliases on ``cxsmiles``, or simple
+ * ``star_labels`` on ``render`` — document ``rgroups`` is not public yet.
  */
 export type MolNode = {
   type: "mol";
@@ -116,8 +116,6 @@ export type MolNode = {
     vmin?: number;
     vmax?: number;
   };
-  /** Labels for ``*`` atoms (encounter order). Prefer ``$R_1$`` / ``R_{1}``. */
-  rgroups?: Array<string | null> | Record<string, string | null>;
 };
 
 /** Live group — ``children`` of mol nodes only (today). */
@@ -351,15 +349,6 @@ function molNodesFromSpec(spec: DepictSpec): MolNode[] {
   throw new Error('DepictSpec root must have type "mol" or "group"');
 }
 
-function rgroupsToStarLabels(
-  rgroups: MolNode["rgroups"]
-): Array<string | null> | undefined {
-  if (rgroups == null) return undefined;
-  if (Array.isArray(rgroups)) return rgroups;
-  const keys = Object.keys(rgroups).sort((a, b) => Number(a) - Number(b));
-  return keys.map((k) => rgroups[k] ?? null);
-}
-
 /**
  * Preferred document API: nested PictSpec subset → ``Rendered[]``.
  * Implemented via the simple ``mol`` / ``render`` client.
@@ -373,7 +362,6 @@ async function depict(spec: DepictSpec): Promise<Rendered[]> {
       color: entry.color,
       atom_shade: entry.shade?.atoms,
       bond_shade: entry.shade?.bonds,
-      star_labels: rgroupsToStarLabels(entry.rgroups),
     };
     out.push(await render(m, opts));
   }

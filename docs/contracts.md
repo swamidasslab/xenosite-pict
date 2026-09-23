@@ -37,9 +37,10 @@ Full nested ``PictSpec`` lives in ``xpict.future`` and
 ## Runtime vs document
 
 - **Live mol node:** ``smiles`` / ``cxsmiles`` / ``molfile``, ``id``, ``color``,
-  ``shade``, ``rgroups`` (chem markup for scripts).
+  ``shade``. Markush / star text on the document path: CX braced aliases.
 - **Simple ``render`` only:** ``align_to`` as Mol / Rendered (or pose molblock),
-  plus flat ``atom_shade`` / ``star_labels`` mirrors of document fields.
+  plus flat ``atom_shade`` / ``star_labels`` (chem markup for scripts).
+  Document ``rgroups`` is not public yet (future PictSpec).
 - **Runtime only:** layout backend, output format.
 
 Label scripts: [Label markup](label-markup.md).

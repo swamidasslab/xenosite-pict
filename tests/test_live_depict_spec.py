@@ -53,7 +53,6 @@ def test_live_doc_is_valid_future_pictspec():
                 "type": "mol",
                 "smiles": "c1ccccc1O",
                 "shade": {"atoms": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.85]},
-                "rgroups": None,
             }
         ],
     }

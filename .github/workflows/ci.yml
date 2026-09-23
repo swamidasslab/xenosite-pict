@@ -63,7 +63,7 @@ jobs:
           path: lcov.info
 
   js:
-    name: JS strict tsc
+    name: JS strict tsc + smoke
     needs: [rust]
     runs-on: ubuntu-latest
     defaults:
@@ -71,6 +71,23 @@ jobs:
         working-directory: js
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install Rust (wasm32)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+
+      - name: Install wasm-pack
+        run: |
+          if ! command -v wasm-pack >/dev/null 2>&1; then
+            curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+            echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          fi
 
       - uses: actions/setup-node@v4
         with:
@@ -86,6 +103,12 @@ jobs:
 
       - name: Strict TypeScript check (pocs)
         run: npm run check:pocs
+
+      - name: Build wasm + TypeScript
+        run: npm run build
+
+      - name: API smoke
+        run: npm run test:api
 
   python-test:
     name: Python pytest ${{ matrix.python-version }}${{ matrix.with_rdkit && ' + rdkit + pyright' || '' }}
