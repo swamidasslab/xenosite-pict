@@ -1,6 +1,6 @@
 {
   "name": "@xenosite/xpict",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Declarative molecule depiction for publication-quality vector graphics — Rust, Python, or the web (JS/WASM)",
   "type": "module",
   "license": "MIT",

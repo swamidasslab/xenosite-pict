@@ -1,12 +1,17 @@
-# Publish @xenosite/xpict to the public npm registry (npmjs.org).
+# Publish @swamidasslab/xpict to GitHub Packages (temporary; npmjs OIDC later).
+#
+# GitHub Packages requires the npm scope to match the GitHub owner, so the
+# published name is `@swamidasslab/xpict` (source package.json stays
+# `@xenosite/xpict` for the eventual npmjs return).
 #
 # Triggers:
-#   - tag js/v*  (e.g. js/v0.1.1) → sets version from tag and publishes
-#   - workflow_dispatch → publishes package.json version as-is
+#   - tag js/v*  (e.g. js/v0.3.1) → sets version from tag and publishes
+#   - workflow_dispatch → package.json version; optional dry_run (pack only)
 #
-# One-time: npmjs.org org/user owns scope @xenosite; environment secret
-# NPM_TOKEN on the `npm` GitHub Environment (Automation token). Consumers:
-# npm install @xenosite/xpict (no .npmrc).
+# Auth: GITHUB_TOKEN (packages: write). No NPM_TOKEN.
+# Consumers:
+#   npm install @swamidasslab/xpict --registry=https://npm.pkg.github.com
+#   (needs a PAT / GITHUB_TOKEN with read:packages; see .github/PUBLISH.md)
 #
 # Gated on CI (Rust test+coverage, strict tsc, pyright, pytest).
 
@@ -25,6 +30,7 @@ on:
 
 permissions:
   contents: read
+  packages: write
 
 concurrency:
   group: publish-js-${{ github.ref }}
@@ -37,7 +43,6 @@ jobs:
   publish:
     needs: checks
     runs-on: ubuntu-latest
-    environment: npm
     defaults:
       run:
         working-directory: js
@@ -62,12 +67,12 @@ jobs:
             echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
           fi
 
-      - name: Setup Node
+      - name: Setup Node (GitHub Packages)
         uses: actions/setup-node@v4
         with:
           node-version: "22"
-          registry-url: "https://registry.npmjs.org"
-          scope: "@xenosite"
+          registry-url: "https://npm.pkg.github.com"
+          scope: "@swamidasslab"
           cache: npm
           cache-dependency-path: js/package-lock.json
 
@@ -95,17 +100,20 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         run: bash ../scripts/check_version_policy.sh "$(node -p "require('./package.json').version")"
 
+      - name: Retarget package name for GitHub Packages
+        run: |
+          # GH Packages requires @OWNER/name; source stays @xenosite for npmjs later.
+          npm pkg set name=@swamidasslab/xpict
+          npm pkg set publishConfig.registry=https://npm.pkg.github.com
+          npm pkg set publishConfig.access=public
+          node -p "require('./package.json').name + '@' + require('./package.json').version"
+
       - name: Pack (dry run)
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
         run: npm pack
 
-      - name: Publish to npmjs.org
+      - name: Publish to GitHub Packages
         if: ${{ github.event_name != 'workflow_dispatch' || !inputs.dry_run }}
-        run: |
-          if [[ -z "${NODE_AUTH_TOKEN:-}" ]]; then
-            echo "NPM_TOKEN secret required (npm Automation token with publish rights for @xenosite)" >&2
-            exit 1
-          fi
-          npm publish --access public
+        run: npm publish
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

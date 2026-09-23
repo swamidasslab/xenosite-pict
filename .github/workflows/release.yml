@@ -26,6 +26,7 @@ on:
 permissions:
   contents: read
   id-token: write
+  packages: write
 
 concurrency:
   group: release-${{ github.ref }}
@@ -153,7 +154,10 @@ jobs:
   publish-js:
     needs: [meta, bump]
     runs-on: ubuntu-latest
-    environment: npm
+    # Temporary: GitHub Packages (@swamidasslab/xpict). npmjs OIDC later.
+    permissions:
+      contents: read
+      packages: write
     defaults:
       run:
         working-directory: js
@@ -178,27 +182,28 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-          registry-url: "https://registry.npmjs.org"
-          scope: "@xenosite"
+          registry-url: "https://npm.pkg.github.com"
+          scope: "@swamidasslab"
           cache: npm
           cache-dependency-path: js/package-lock.json
       - run: npm ci
       - run: npm run check
       - run: npm run build
       - run: npm test
+      - name: Retarget package name for GitHub Packages
+        run: |
+          npm pkg set name=@swamidasslab/xpict
+          npm pkg set publishConfig.registry=https://npm.pkg.github.com
+          npm pkg set publishConfig.access=public
       - name: Publish JS
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DRY: ${{ needs.meta.outputs.dry_run }}
         run: |
           if [[ "$DRY" == "true" ]]; then
             npm pack
           else
-            if [[ -z "${NODE_AUTH_TOKEN:-}" ]]; then
-              echo "NPM_TOKEN secret required" >&2
-              exit 1
-            fi
-            npm publish --access public
+            npm publish
           fi
 
   # Same platform matrix as pypi.yml (Linux/macOS/Windows × x86_64+ARM).

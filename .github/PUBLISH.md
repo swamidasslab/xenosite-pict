@@ -15,7 +15,7 @@ Language tags **cannot** ship `X.Y.0` (rejected by
 | Intent | Tag | Workflow |
 | --- | --- | --- |
 | Product cut (all surfaces) | `release/v0.2.0` | [`release.yml`](https://github.com/swamidasslab/xenosite-pict/blob/main/.github/workflows/release.yml) |
-| JS patch only | `js/v0.1.5` (`Z≥1`) | [`publish-js.yml`](https://github.com/swamidasslab/xenosite-pict/blob/main/.github/workflows/publish-js.yml) |
+| JS patch only | `js/v0.3.1` (`Z≥1`) → GitHub Packages `@swamidasslab/xpict` | [`publish-js.yml`](https://github.com/swamidasslab/xenosite-pict/blob/main/.github/workflows/publish-js.yml) |
 | Python patch only | `py/v0.1.5` | [`pypi.yml`](https://github.com/swamidasslab/xenosite-pict/blob/main/.github/workflows/pypi.yml) |
 | `xpict-core` patch | `rust-core/v0.1.5` | [`crates.yml`](https://github.com/swamidasslab/xenosite-pict/blob/main/.github/workflows/crates.yml) |
 | Rust `xpict` patch | `rust/v0.1.5` | [`crates.yml`](https://github.com/swamidasslab/xenosite-pict/blob/main/.github/workflows/crates.yml) |
@@ -58,40 +58,42 @@ Do **not** tag `js/v0.2.0` alone — it will fail the patch-only gate.
 
 ---
 
-## 1. JavaScript (patch) — npmjs.org
+## 1. JavaScript (patch) — GitHub Packages (temporary)
 
-Package: **`@xenosite/xpict`** on the public npm registry.
+**For now** JS ships to **GitHub Packages**, not npmjs.org (OIDC / npmjs TBD).
+
+Published name: **`@swamidasslab/xpict`** (GitHub requires the scope to match
+the repo owner). Source `js/package.json` keeps `"name": "@xenosite/xpict"`;
+the publish workflow rewrites the name at publish time.
 
 ```bash
 # Z must be >= 1. In-tree major.minor must already match others.
-git tag js/v0.1.5
-git push origin js/v0.1.5
+git tag js/v0.3.1
+git push origin js/v0.3.1
 ```
 
-### One-time setup
+Auth is `GITHUB_TOKEN` (`packages: write`). No `NPM_TOKEN`.
 
-1. Create an [npmjs.org](https://www.npmjs.com) user (or org **`xenosite`**).
-2. Claim / create the **`@xenosite`** scope and grant this account publish rights
-   (org: add the publishing user as a member with publish permission).
-   Prefer this scope so it stays aligned if the GitHub repo moves under a
-   `xenosite` org later.
-3. npm → Access Tokens → **Automation** token (or Granular with publish for
-   `@xenosite/xpict`).
-4. GitHub repo **Settings → Environments → `npm`** → Environment secrets →
-   **`NPM_TOKEN`** = that token.
-5. On the same environment, set **Deployment branches and tags** so tag
-   publishes can run (e.g. allow tags `js/v*` and `release/v*`, or “No
-   restriction”). “Protected branches only” blocks tag-triggered workflows.
-6. First publish creates https://www.npmjs.com/package/@xenosite/xpict
-
-Consumers:
+Consumers (private package — need `read:packages`):
 
 ```bash
-npm install @xenosite/xpict
+# .npmrc
+@swamidasslab:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}
+
+npm install @swamidasslab/xpict
 ```
 
-No GitHub Packages `.npmrc` is required. xenosite.org should depend on the
-npmjs package the same way.
+Package URL:
+https://github.com/swamidasslab/xenosite-pict/pkgs/npm/xpict
+
+### Later: npmjs.org + OIDC
+
+1. One-time stub `@xenosite/xpict@0.0.0` on npmjs (token), then Trusted
+   Publisher → this repo, workflow `publish-js.yml` / `release.yml`,
+   environment optional.
+2. Point workflows back at `registry.npmjs.org`, drop the name rewrite,
+   set `permissions.id-token: write`, publish without `NODE_AUTH_TOKEN`.
 
 ---
 
