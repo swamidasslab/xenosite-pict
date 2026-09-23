@@ -5,7 +5,8 @@
  * `referenceSmarts`. MCS atom identity is element + hybridization (isotope-
  * encoded as ``Z×10+hyb`` on copies; ``AtomCompare: Isotopes``); bonds are
  * ``BondCompare: Any`` so aromatic ↔ kekulé / quinone match while aliphatic
- * rings (SP3) do not match quinones (SP2). Protocol mirrors Rust
+ * rings (SP3) do not match quinones (SP2). ``RingMatchesRingOnly`` keeps
+ * ring atoms/bonds from matching chain atoms/bonds. Protocol mirrors Rust
  * ``xpict::align_opts`` — do not reimplement Kabsch here.
  */
 
@@ -18,11 +19,13 @@ export const SCALE = 20;
 /**
  * Keep in sync with ``xpict::align_opts::MCS_DETAILS_JSON``.
  * Run on mols tagged with {@link tagHybridizationIsotopes}.
+ * Top-level ``RingMatchesRingOnly`` sets atom + bond flags in MinimalLib.
  */
 export const MCS_DETAILS_JSON = JSON.stringify({
   AtomCompare: "Isotopes",
   BondCompare: "Any",
   Timeout: 2,
+  RingMatchesRingOnly: true,
 });
 
 const MIN_MCS_ATOMS = 3;

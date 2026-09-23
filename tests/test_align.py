@@ -339,6 +339,27 @@ def test_rdkit_mcs_aniline_quinone_imine():
 
 
 @pytest.mark.skipif(not rdkit_available(), reason="rdkit not installed")
+def test_rdkit_mcs_rejects_ring_vs_open_chain():
+    """RingMatchesRingOnly: open chain must not wrap onto a ring path.
+
+    Without it, MCS maps O=CCCCCO onto C1CCCOC1 and Depictor curls the
+    chain so the terminal =O and OH face each other.
+    """
+    from xpict.align_rdkit import _fmcs_mapping
+
+    ring = _layout("C1CCCOC1")
+    chain = _layout("O=CCCCCO")
+    assert _fmcs_mapping(ring, chain) is None
+    assert _fmcs_mapping(chain, ring) is None
+
+    aligner = RdkitAligner()
+    free = _layout("O=CCCCCO")
+    aligned = align_to_reference(ring, chain, aligner, smiles="O=CCCCCO")
+    assert _coords_key(aligned) == _coords_key(free)
+    assert _overlay_hits(ring, aligned) < 4
+
+
+@pytest.mark.skipif(not rdkit_available(), reason="rdkit not installed")
 def test_rdkit_mcs_rejects_aliphatic_vs_quinone():
     """Cyclohexane ether must not MCS-align onto benzoquinone (SP3 ≠ SP2)."""
     from xpict.align_rdkit import _fmcs_mapping

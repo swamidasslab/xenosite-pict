@@ -6,9 +6,12 @@
 //! MCS atom identity is **element + hybridization**; bonds are
 //! ``BondCompare: Any`` so aromatic ↔ kekulé / quinone still match, while
 //! aliphatic rings (SP3) do not match quinones (SP2).
+//! ``RingMatchesRingOnly`` keeps ring atoms/bonds from matching chain
+//! atoms/bonds (so an open chain does not wrap onto a ring path).
 //!
 //! - Python / Rust (native FMCS): ``MCSAtomCompare`` / C++ AtomTyper
-//!   (atomic number + hybridization) + ``BondCompareAny``
+//!   (atomic number + hybridization) + ``BondCompareAny`` +
+//!   ``RingMatchesRingOnly`` on atom and bond compare parameters
 //! - JS MinimalLib (no custom AtomTyper): isotope-encode ``Z×10+hyb`` then
 //!   [`MCS_DETAILS_JSON`] (`AtomCompare: Isotopes`); strip isotopes from the
 //!   SMARTS before `generate_aligned_coords`
@@ -16,14 +19,18 @@
 //! Language bindings should not reinvent Kabsch — call RDKit with these
 //! option shapes:
 //!
-//! 1. MCS: element+hybridization (see above)
+//! 1. MCS: element+hybridization + ring↔ring only (see above)
 //! 2. Align: [`minimallib_align_details`] → `generate_aligned_coords`
 //! 3. Treat empty / `"{}"` as failure ([`align_succeeded`])
 
 /// MinimalLib / `findMCS_P` JSON after isotope-encoding ``Z×10+hyb`` on copies.
 /// Native Rust/Python do **not** use this — they set a custom AtomTyper.
-pub const MCS_DETAILS_JSON: &str =
-    r#"{"AtomCompare":"Isotopes","BondCompare":"Any","Timeout":2}"#;
+/// Top-level ``RingMatchesRingOnly`` sets both atom and bond flags in
+/// ``parseMCSParametersJSON``.
+pub const MCS_DETAILS_JSON: &str = concat!(
+    r#"{"AtomCompare":"Isotopes","BondCompare":"Any","Timeout":2,"#,
+    r#""RingMatchesRingOnly":true}"#
+);
 
 /// Minimum MCS atom count before we trust the pattern.
 pub const MIN_MCS_ATOMS: u32 = 3;
@@ -85,5 +92,6 @@ mod tests {
     fn mcs_details_isotopes_any_for_minimallib() {
         assert!(MCS_DETAILS_JSON.contains("Isotopes"));
         assert!(MCS_DETAILS_JSON.contains("Any"));
+        assert!(MCS_DETAILS_JSON.contains(r#""RingMatchesRingOnly":true"#));
     }
 }

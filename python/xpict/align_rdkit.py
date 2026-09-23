@@ -18,9 +18,11 @@ _ORDER_CAP = 24
 
 
 def _mcs_params():
-    """FMCS: element + hybridization atoms; any-bond (aromatic ↔ kekulé / quinone).
+    """FMCS: element + hybridization atoms; any-bond; ring↔ring / chain↔chain only.
 
     Hybridization separates aliphatic rings from quinones without a post-filter.
+    ``RingMatchesRingOnly`` stops an open chain from wrapping onto a ring path
+    (RDKit's documented default oddity — not a per-pair filter).
     Parity with JS MinimalLib (isotope-encoded Z×10+hyb + ``AtomCompare: Isotopes``).
     """
     from rdkit.Chem import rdFMCS
@@ -37,6 +39,9 @@ def _mcs_params():
     params.Timeout = 2
     params.AtomTyper = _ElemHyb()
     params.BondTyper = rdFMCS.BondCompare.CompareAny
+    # Both atom + bond flags: custom AtomTyper alone does not enforce ring↔ring.
+    params.AtomCompareParameters.RingMatchesRingOnly = True
+    params.BondCompareParameters.RingMatchesRingOnly = True
     return params
 
 
@@ -236,9 +241,10 @@ def _bonds_after_depict(mol, bonds: list[BondLayout], to_rd: dict[int, int], smi
 class RdkitAligner(RigidAligner):
     """Template depiction via RDKit ``GenerateDepictionMatching2DStructure``.
 
-    MCS: element + hybridization atoms, ``BondCompare.CompareAny`` (parity with
-    Rust/JS ``align_opts``). No element-only MCS fallback.
-    The reference layout / pose mol is never modified.
+    MCS: element + hybridization atoms, ``BondCompare.CompareAny``,
+    ``RingMatchesRingOnly`` (parity with Rust/JS ``align_opts``). No
+    element-only MCS fallback. The reference layout / pose mol is never
+    modified.
     """
 
     name = "rdkit"

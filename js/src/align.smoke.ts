@@ -1,5 +1,6 @@
 /**
- * Align smoke: RDKit MCS (element + hybridization; BondCompare Any).
+ * Align smoke: RDKit MCS (element + hybridization; BondCompare Any;
+ * RingMatchesRingOnly).
  * Symmetric cores may embed many ways — assert overlay hits, not fixed indices.
  * Run: `npx tsx src/align.smoke.ts`
  */
@@ -95,6 +96,21 @@ function coordsKey(r: Rendered): string {
   // Free layout coords preserved (no template snap).
   if (coordsKey(aligned) !== coordsKey(free)) {
     throw new Error("aliphatic→quinone changed coords despite MCS reject");
+  }
+}
+
+// RingMatchesRingOnly: open chain must not wrap onto a ring path.
+{
+  const ring = xpict.mol("C1CCCOC1");
+  const rR = await xpict.render(ring);
+  const free = await xpict.render(xpict.mol("O=CCCCCO"));
+  const aligned = await xpict.render(xpict.mol("O=CCCCCO"), { align_to: ring });
+  const hits = overlayHits(aligned, rR);
+  if (hits >= 4) {
+    throw new Error(`chain→THP should not MCS-align (hits=${hits})`);
+  }
+  if (coordsKey(aligned) !== coordsKey(free)) {
+    throw new Error("chain→THP changed coords despite MCS reject");
   }
 }
 
