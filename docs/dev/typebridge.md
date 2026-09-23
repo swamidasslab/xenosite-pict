@@ -9,7 +9,7 @@
 | Surface | Source of truth | Client bindings |
 | --- | --- | --- |
 | **Live** (shipped) | Rust (`xpict-core` serde types) | Generated **TypeScript** (ts-rs); committed JSON Schema (schemars); hand Pydantic until a faithful emitter exists |
-| **Future** (design) | Python `xpict.future` | Hand / design TS under `js/src/future/` |
+| **Future** (design) | Python `xpict.future` | `schema/future/`; no parallel JS tree |
 
 Invariant: every live document must still validate as future `PictSpec`.
 
@@ -74,7 +74,7 @@ Commands:
 
 - Host logic (`process_edge_plan`, SVG serializers, single-mol `Mol` / `Rendered`)  
 - Live **Python** contracts until codegen quality catches up  
-- Future PictSpec  
+- Future PictSpec (Python + `schema/future/` only — no JS mirror)  
 - Wasm still stringly JSON FFI; generated TS types the payloads  
 - JS `GroupNode.align?` remapped optional (ts-rs cannot optional-ize non-`Option` serde defaults)
 

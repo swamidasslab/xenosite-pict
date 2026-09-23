@@ -5,9 +5,12 @@
  * Halos never obscure drawn ink.
  */
 
-import type { MoleculeLayout } from "../future/pict-types.js";
+type StubLayout = {
+  atoms: unknown[];
+  backend: string;
+};
 
-export function layoutToSvgStub(layout: MoleculeLayout): string {
+export function layoutToSvgStub(layout: StubLayout): string {
   const n = layout.atoms.length;
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" data-xpict="stub" ` +
