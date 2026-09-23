@@ -17,13 +17,14 @@ _PLACE_CAP = 8
 _ORDER_CAP = 24
 
 
-def _mcs_params():
+def mcs_params():
     """FMCS: element + hybridization atoms; any-bond; ring↔ring / chain↔chain only.
 
     Hybridization separates aliphatic rings from quinones without a post-filter.
     ``RingMatchesRingOnly`` stops an open chain from wrapping onto a ring path
     (RDKit's documented default oddity — not a per-pair filter).
     Parity with JS MinimalLib (isotope-encoded Z×10+hyb + ``AtomCompare: Isotopes``).
+    Shared by document align and single-mol ``client`` layout.
     """
     from rdkit.Chem import rdFMCS
 
@@ -81,7 +82,7 @@ def _fmcs_mapping(ref: MoleculeLayout, other: MoleculeLayout) -> dict[int, int] 
     rd_to_ref = {rd: lay for lay, rd in ref_to_rd.items()}
     rd_to_other = {rd: lay for lay, rd in other_to_rd.items()}
     try:
-        mcs = rdFMCS.FindMCS([ref_mol, other_mol], _mcs_params())
+        mcs = rdFMCS.FindMCS([ref_mol, other_mol], mcs_params())
     except Exception:
         return None
     if getattr(mcs, "canceled", False) or mcs.numAtoms < _MIN_MAP:
@@ -281,7 +282,7 @@ class RdkitAligner(RigidAligner):
         ]
 
         try:
-            mcs = rdFMCS.FindMCS([ref_pose, other_mol], _mcs_params())
+            mcs = rdFMCS.FindMCS([ref_pose, other_mol], mcs_params())
         except Exception:
             return None
         if getattr(mcs, "canceled", False) or mcs.numAtoms < _MIN_MAP:

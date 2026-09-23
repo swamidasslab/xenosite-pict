@@ -376,9 +376,9 @@ def _layout_with_rdkit(
 
         smarts = None
         try:
-            from xpict.align_rdkit import _mcs_params
+            from xpict.align_rdkit import mcs_params
 
-            mcs = rdFMCS.FindMCS([ref_pose, rmol], _mcs_params())
+            mcs = rdFMCS.FindMCS([ref_pose, rmol], mcs_params())
             if (
                 not getattr(mcs, "canceled", False)
                 and mcs.numAtoms >= _MIN_MCS_ATOMS

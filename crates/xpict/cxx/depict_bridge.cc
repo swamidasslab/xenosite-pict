@@ -48,7 +48,7 @@ void ensure_2d(RDKit::ROMol &mol) {
 }
 
 /** FMCS: element + hybridization atoms, any-bond, ring↔ring only
- *  (parity with Python ``_mcs_params``). */
+ *  (parity with Python ``mcs_params``). */
 bool mcs_atom_compare_elements_hybridization(
     const RDKit::MCSAtomCompareParameters &, const RDKit::ROMol &mol1,
     unsigned int idx1, const RDKit::ROMol &mol2, unsigned int idx2,
