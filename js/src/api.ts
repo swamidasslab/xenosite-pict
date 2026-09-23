@@ -433,7 +433,7 @@ async function depict(spec: DepictSpec): Promise<Rendered[]> {
       source,
       frame_molblock: frames.get(row.id) ?? "",
       coords: toCoordList(row.molecule.atoms),
-      svg_coords: framed,
+      svg_coords: framed.atoms,
       bonds: (row.molecule.bonds ?? []).map((b) => ({
         index: b.index,
         begin: b.begin,
