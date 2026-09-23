@@ -71,9 +71,12 @@ git push origin js/v0.1.5
    `xenosite` org later.
 3. npm → Access Tokens → **Automation** token (or Granular with publish for
    `@xenosite/xpict`).
-4. GitHub repo **Settings → Secrets and variables → Actions** →
+4. GitHub repo **Settings → Environments → `npm`** → Environment secrets →
    **`NPM_TOKEN`** = that token.
-5. First publish creates https://www.npmjs.com/package/@xenosite/xpict
+5. On the same environment, set **Deployment branches and tags** so tag
+   publishes can run (e.g. allow tags `js/v*` and `release/v*`, or “No
+   restriction”). “Protected branches only” blocks tag-triggered workflows.
+6. First publish creates https://www.npmjs.com/package/@xenosite/xpict
 
 Consumers:
 
@@ -103,8 +106,12 @@ git tag rust/v0.1.5 && git push origin rust/v0.1.5
 
 1. Create a [crates.io](https://crates.io) account (GitHub login).
 2. Confirm crate names are free (`xpict`, `xpict-core`).
-3. Add repo secret `CARGO_REGISTRY_TOKEN` (used by `crates.yml` and `release.yml`).
-4. Local dry-run:
+3. GitHub repo **Settings → Environments → `crates`** → Environment secrets →
+   **`CARGO_REGISTRY_TOKEN`** (used by `crates.yml` and `release.yml`).
+4. On the same environment, allow deployment from tags `rust-core/v*`,
+   `rust/v*`, and `release/v*` (or “No restriction”). “Protected branches
+   only” blocks tag-triggered workflows.
+5. Local dry-run:
 
    ```bash
    cargo publish -p xpict-core --dry-run
@@ -139,8 +146,12 @@ git push origin py/v0.1.5
 ### One-time setup
 
 1. Create a PyPI project `xpict`.
-2. Trusted Publishing → this repo, workflow **`pypi.yml`** (and allow `release.yml` if using OIDC there too).
-3. Or `PYPI_API_TOKEN` repo secret.
+2. Trusted Publishing → this repo, workflow **`pypi.yml`** (and allow
+   `release.yml` if using OIDC there too). Point the publisher at the **`pypi`**
+   GitHub Environment if you use one.
+3. Or add **`PYPI_API_TOKEN`** as an environment secret on **`pypi`**
+   (used by `pypi.yml` and `release.yml`).
+4. Allow deployment from tags `py/v*` and `release/v*` (or “No restriction”).
 
 ```bash
 uv sync --extra rdkit
