@@ -20,14 +20,10 @@ use crate::metrics::{SCRIPT_SCALE, STAR_FRAC};
 
 const BEZIER_STEPS: usize = 8;
 
-const FONT_REGULAR: &[u8] =
-    include_bytes!("../../../python/xpict/data/fonts/LiberationSans-Regular.ttf");
-const FONT_BOLD: &[u8] =
-    include_bytes!("../../../python/xpict/data/fonts/LiberationSans-Bold.ttf");
-const FONT_ITALIC: &[u8] =
-    include_bytes!("../../../python/xpict/data/fonts/LiberationSans-Italic.ttf");
-const FONT_BOLD_ITALIC: &[u8] =
-    include_bytes!("../../../python/xpict/data/fonts/LiberationSans-BoldItalic.ttf");
+const FONT_REGULAR: &[u8] = include_bytes!("../fonts/LiberationSans-Regular.ttf");
+const FONT_BOLD: &[u8] = include_bytes!("../fonts/LiberationSans-Bold.ttf");
+const FONT_ITALIC: &[u8] = include_bytes!("../fonts/LiberationSans-Italic.ttf");
+const FONT_BOLD_ITALIC: &[u8] = include_bytes!("../fonts/LiberationSans-BoldItalic.ttf");
 
 /// Liberation Sans face variant.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]

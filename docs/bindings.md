@@ -69,8 +69,9 @@ of fontTools/Shapely.
 | 5 | JS paint uses Rust glyph/halo via `depictMolecule` | Browser labels match Python gallery |
 
 Crates to prefer when filling stubs: **`ttf-parser`/`skrifa`** (fonts),
-**`geo` + `i_overlay`** (boolean + buffer). Keep Liberation files under
-`python/xpict/data/fonts/` (or `crates/xpict-core/fonts/`) so both bindings share bytes.
+**`geo` + `i_overlay`** (boolean + buffer). Liberation files live under
+`crates/xpict-core/fonts/` (packaged with crates.io) and
+`python/xpict/data/fonts/` (Python wheel data) — keep the copies in sync.
 
 ## Coords + alignment (RDKit at the edges, Rust for shared math)
 
