@@ -3,10 +3,10 @@
 Full nested declarative document — groups, reactions, annotations, shorthand,
 legacy `{ molecules, diagram }` lift.
 
-The **live preferred** contract is `xpict.contracts.depict` — a **strict
+The **shipped** document contract is `xpict.contracts.depict` — a **strict
 subset** of this tree (`type: "mol"` | `type: "group"` + `children`, plus
 `shade` / …). Document `rgroups` and richer nodes stay here until they
-graduate. Every live document must validate here too.
+graduate. Every shipped document must validate against this full tree too.
 
 JSON Schema: `schema/future/xpict.schema.json`.
 
