@@ -1,5 +1,5 @@
 /**
- * GitHub Pages demo — two SMILES, query aligned to template, sparse shade.
+ * GitHub Pages demo — two SMILES, query aligned to template, optional shade.
  * Redraws on any input change (no Draw button). Atom/bond marks are not shown.
  */
 import { xpict } from "./pkg/index.js";
