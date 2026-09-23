@@ -162,20 +162,11 @@ jobs:
           enable-cache: true
 
       - name: Sync Python deps (dev + rdkit)
-        run: |
-          if command -v make >/dev/null 2>&1; then
-            make sync
-          else
-            uv sync --group dev --extra rdkit
-          fi
+        # Direct uv (this matrix includes windows-latest; pwsh ≠ bash `make`).
+        run: uv sync --group dev --extra rdkit
 
       - name: Confirm RDKit import
         run: uv run python -c "import rdkit; print('rdkit', rdkit.__version__)"
 
       - name: Pytest
-        run: |
-          if command -v make >/dev/null 2>&1; then
-            make test-python
-          else
-            uv run pytest -q
-          fi
+        run: uv run pytest -q
