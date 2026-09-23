@@ -323,6 +323,24 @@ def test_rdkit_mcs_phenol_quinone_both_ways():
 
 
 @pytest.mark.skipif(not rdkit_available(), reason="rdkit not installed")
+def test_rdkit_mcs_rejects_aliphatic_vs_quinone():
+    """Cyclohexane ether must not MCS-align onto benzoquinone (sat ↔ unsat)."""
+    from xpict.align_rdkit import _fmcs_mapping
+
+    quinone = _layout("O=C1C=CC(=O)C=C1")
+    chain = _layout("C1CCCCC1CCOCCCCCC")
+    assert _fmcs_mapping(quinone, chain) is None
+    assert _fmcs_mapping(chain, quinone) is None
+
+    aligner = RdkitAligner()
+    free = _layout("C1CCCCC1CCOCCCCCC")
+    aligned = align_to_reference(quinone, chain, aligner, smiles="C1CCCCC1CCOCCCCCC")
+    # No MCS → align_to_reference returns other unchanged.
+    assert _coords_key(aligned) == _coords_key(free)
+    assert _overlay_hits(quinone, aligned) < 4
+
+
+@pytest.mark.skipif(not rdkit_available(), reason="rdkit not installed")
 def test_rdkit_mcs_ethyl_pentyl_both_ways():
     """Alkyl chain anchors; ring may flip — assert overlay hits, not index maps."""
     ethyl = _layout("c1ccccc1CC")

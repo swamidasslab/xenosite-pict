@@ -2,7 +2,8 @@
  * RDKit layout + template align → {@link MoleculeIn} (SVG / SCALE space).
  *
  * Alignment uses MinimalLib `generate_aligned_coords` with an FMCS
- * `referenceSmarts` (`BondCompare: Any` so aromatic ↔ kekulé / quinone).
+ * `referenceSmarts` (`BondCompare: Any` so aromatic ↔ kekulé / quinone),
+ * then a saturation filter so aliphatic rings do not match quinones.
  * Protocol mirrors Rust ``xpict::align_opts`` — do not reimplement Kabsch here.
  */
 
@@ -14,7 +15,8 @@ export const SCALE = 20;
 
 /**
  * Keep in sync with ``xpict::align_opts::MCS_DETAILS_JSON``.
- * Element atoms; any-bond so aromatic rings match aliphatic / quinone.
+ * Element atoms; any-bond so aromatic ↔ kekulé / quinone. Callers must still
+ * run {@link mcsSaturationCompatible} so aliphatic rings do not match quinones.
  */
 export const MCS_DETAILS_JSON = JSON.stringify({
   AtomCompare: "Elements",
@@ -23,6 +25,106 @@ export const MCS_DETAILS_JSON = JSON.stringify({
 });
 
 const MIN_MCS_ATOMS = 3;
+
+type BondJson = { atoms: [number, number]; bo?: number };
+
+function bondKey(a: number, b: number): string {
+  return a < b ? `${a}-${b}` : `${b}-${a}`;
+}
+
+/** MinimalLib may return `number[][]` or `{atoms:number[]}[]`. */
+function normalizeSubstructMatches(raw: string): number[][] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  const out: number[][] = [];
+  for (const m of parsed) {
+    if (Array.isArray(m) && m.every((x) => typeof x === "number")) {
+      out.push(m as number[]);
+    } else if (
+      m &&
+      typeof m === "object" &&
+      Array.isArray((m as { atoms?: unknown }).atoms)
+    ) {
+      out.push((m as { atoms: number[] }).atoms);
+    }
+  }
+  return out;
+}
+
+function molBondOrders(mol: RdkitMol): Map<string, number> {
+  const json = JSON.parse(mol.get_json()) as RdkitMolJson;
+  const bonds = (json.molecules[0]?.bonds ?? []) as BondJson[];
+  const out = new Map<string, number>();
+  for (const b of bonds) {
+    out.set(bondKey(b.atoms[0], b.atoms[1]), b.bo ?? 1);
+  }
+  return out;
+}
+
+function matchHasUnsaturated(
+  bondOrders: Map<string, number>,
+  match: number[],
+  patternBonds: BondJson[]
+): boolean {
+  for (const pb of patternBonds) {
+    const a = match[pb.atoms[0]];
+    const b = match[pb.atoms[1]];
+    if (a === undefined || b === undefined) continue;
+    const bo = bondOrders.get(bondKey(a, b)) ?? 1;
+    if (bo >= 1.5) return true;
+  }
+  return false;
+}
+
+/**
+ * Reject saturated-aliphatic ↔ unsaturated MCS (cyclohexane ↔ quinone).
+ * Keep in sync with Python ``_mcs_saturation_compatible``.
+ */
+export function mcsSaturationCompatible(
+  rdkit: RdkitModule,
+  a: RdkitMol,
+  b: RdkitMol,
+  smarts: string
+): boolean {
+  const pattern = rdkit.get_qmol(smarts);
+  if (!pattern || !pattern.is_valid()) {
+    pattern?.delete();
+    return false;
+  }
+  try {
+    const patJson = JSON.parse(pattern.get_json()) as RdkitMolJson;
+    const patternBonds = (patJson.molecules[0]?.bonds ?? []) as BondJson[];
+    if (!patternBonds.length) return true;
+
+    let matchesA: number[][] = [];
+    let matchesB: number[][] = [];
+    try {
+      matchesA = normalizeSubstructMatches(a.get_substruct_matches(pattern));
+      matchesB = normalizeSubstructMatches(b.get_substruct_matches(pattern));
+    } catch {
+      return false;
+    }
+    if (!matchesA.length || !matchesB.length) return false;
+
+    const ordersA = molBondOrders(a);
+    const ordersB = molBondOrders(b);
+    for (const ma of matchesA) {
+      const ua = matchHasUnsaturated(ordersA, ma, patternBonds);
+      for (const mb of matchesB) {
+        const ub = matchHasUnsaturated(ordersB, mb, patternBonds);
+        if (ua === ub) return true;
+      }
+    }
+    return false;
+  } finally {
+    pattern.delete();
+  }
+}
 
 /** Keep in sync with ``xpict::align_opts::minimallib_align_details``. */
 export function minimallibAlignDetails(referenceSmarts: string): string {
@@ -229,6 +331,9 @@ function mcsReferenceSmarts(
     !parsed.smarts ||
     (parsed.numAtoms ?? 0) < MIN_MCS_ATOMS
   ) {
+    return null;
+  }
+  if (!mcsSaturationCompatible(rdkit, a, b, parsed.smarts)) {
     return null;
   }
   return parsed.smarts;

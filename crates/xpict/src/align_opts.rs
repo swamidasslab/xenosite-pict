@@ -4,14 +4,19 @@
 //! MinimalLib `generate_aligned_coords`, constrained by an FMCS SMARTS with
 //! ``BondCompare: Any`` so aromatic rings match kekulé / quinone forms.
 //!
+//! After MCS, language edges must reject **saturated ↔ unsaturated** matches
+//! (e.g. cyclohexane vs benzoquinone) — see Python
+//! ``_mcs_saturation_compatible`` / JS ``mcsSaturationCompatible``.
+//!
 //! Language bindings should not reinvent Kabsch — call RDKit with these
 //! option shapes:
 //!
-//! 1. MCS: [`MCS_DETAILS_JSON`]
+//! 1. MCS: [`MCS_DETAILS_JSON`] + saturation filter
 //! 2. Align: [`minimallib_align_details`] → `generate_aligned_coords`
 //! 3. Treat empty / `"{}"` as failure ([`align_succeeded`])
 
 /// MinimalLib / `findMCS_P` JSON: element atoms, any-bond (aromatic ↔ order).
+/// Pair with the sat↔unsat filter in Python/JS — not sufficient alone.
 pub const MCS_DETAILS_JSON: &str =
     r#"{"AtomCompare":"Elements","BondCompare":"Any","Timeout":2}"#;
 

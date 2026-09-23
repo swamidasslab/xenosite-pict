@@ -1,5 +1,5 @@
 /**
- * Align smoke: RDKit MCS + generate_aligned_coords (BondCompare Any).
+ * Align smoke: RDKit MCS + generate_aligned_coords (BondCompare Any + sat filter).
  * Symmetric cores may embed many ways — assert overlay hits, not fixed indices.
  * Run: `npx tsx src/align.smoke.ts`
  */
@@ -61,7 +61,7 @@ function coordsKey(r: Rendered): string {
   assertHits(await xpict.render(ethyl, { align_to: pentyl }), pR, 8, "ethyl→pentyl");
 }
 
-// Phenol ↔ benzoquinone (BondCompare Any; O breaks full ring symmetry).
+// Phenol ↔ benzoquinone (BondCompare Any + sat filter; O anchors).
 {
   const phenol = xpict.mol("c1ccc(O)cc1");
   const quinone = xpict.mol("O=C1C=CC(=O)C=C1");
@@ -69,6 +69,25 @@ function coordsKey(r: Rendered): string {
   assertHits(await xpict.render(quinone, { align_to: phenol }), phR, 6, "quinone→phenol");
   const qR = await xpict.render(quinone);
   assertHits(await xpict.render(phenol, { align_to: quinone }), qR, 6, "phenol→quinone");
+}
+
+// Aliphatic cyclohexane ether must NOT snap onto benzoquinone.
+{
+  const quinone = xpict.mol("O=C1C=CC(=O)C=C1");
+  const qR = await xpict.render(quinone);
+  const chain = xpict.mol("C1CCCCC1CCOCCCCCC");
+  const free = await xpict.render(chain);
+  const aligned = await xpict.render(xpict.mol("C1CCCCC1CCOCCCCCC"), {
+    align_to: quinone,
+  });
+  const hits = overlayHits(aligned, qR);
+  if (hits >= 4) {
+    throw new Error(`aliphatic→quinone should not MCS-align (hits=${hits})`);
+  }
+  // Free layout coords preserved (no template snap).
+  if (coordsKey(aligned) !== coordsKey(free)) {
+    throw new Error("aliphatic→quinone changed coords despite MCS reject");
+  }
 }
 
 // Several queries on one template — template pose must not move.
