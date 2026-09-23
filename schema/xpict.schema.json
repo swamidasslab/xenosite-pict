@@ -121,42 +121,6 @@
           ],
           "default": null,
           "description": "Per-atom / per-bond colormap scores"
-        },
-        "rgroups": {
-          "anyOf": [
-            {
-              "items": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "type": "array"
-            },
-            {
-              "additionalProperties": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "type": "object"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Labels for ``*`` atoms (encounter order list, or ordinal dict). Use chem markup for scripts: ``R_{1}`` or ``$R_1$``.",
-          "title": "Rgroups"
         }
       },
       "title": "MolNode",

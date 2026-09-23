@@ -9,7 +9,8 @@ Regenerate:
 uv run python scripts/generate_doc_examples.py
 ```
 
-Label scripts: [Label markup](label-markup.md) (CX vs `rgroups` JSON).
+Label scripts: [Label markup](label-markup.md) (CX braced aliases; simple
+`star_labels` on the single-mol client).
 
 ## Structures
 
@@ -50,16 +51,12 @@ Label scripts: [Label markup](label-markup.md) (CX vs `rgroups` JSON).
 
 ## Markush labels
 
-CX braced markup vs JSON `rgroups` (same paint path):
+CX braced markup on the live document (`R_{1}` inside the trailer):
 
 <div class="gallery-grid" markdown="0">
   <figure>
     <img src="assets/examples/markush.svg" alt="Markush via CX R_{1}" />
     <figcaption>CX — <code>|$R_{1};;;;;$|</code> → R₁</figcaption>
-  </figure>
-  <figure>
-    <img src="assets/examples/markush_json.svg" alt="Markush via rgroups" />
-    <figcaption>JSON — <code>rgroups: ["$R_1$"]</code></figcaption>
   </figure>
 </div>
 

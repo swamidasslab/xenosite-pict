@@ -5,12 +5,13 @@ what paint supports today:
 
 - Root is a ``type: "mol"`` leaf, or a ``type: "group"`` with ``children``
 - Molecule discriminator is ``type: "mol"``
-- Shade via ``shade: {atoms, bonds, …}``; R-group labels via ``rgroups`` /
-  CXSMILES aliases with chem markup (``R_{1}``, ``$R_1$``)
+- Shade via ``shade: {atoms, bonds, …}``
+- Markush / star text via CXSMILES aliases (chem markup ``R_{1}``) or the
+  simple client's ``star_labels`` — not a document ``rgroups`` key yet
 
 Everything here must validate as :class:`~xpict.future.nodes.PictSpec`.
-Richer nodes (reaction, annotations, …) stay in ``xpict.future`` until they
-graduate.
+Richer nodes (reaction, annotations, ``rgroups``, …) stay in
+``xpict.future`` until they graduate.
 """
 
 from __future__ import annotations
@@ -25,7 +26,7 @@ from pydantic import (
     model_validator,
 )
 
-from xpict.future.spec import ShadeSpec, _RGroupsInput
+from xpict.future.spec import ShadeSpec
 
 
 class StrictModel(BaseModel):
@@ -50,13 +51,6 @@ class MolNode(StrictModel):
     shade: ShadeSpec | None = Field(
         default=None,
         description="Per-atom / per-bond colormap scores",
-    )
-    rgroups: _RGroupsInput = Field(
-        default=None,
-        description=(
-            "Labels for ``*`` atoms (encounter order list, or ordinal dict). "
-            "Use chem markup for scripts: ``R_{1}`` or ``$R_1$``."
-        ),
     )
 
     @model_validator(mode="after")

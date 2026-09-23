@@ -25,7 +25,7 @@ const svg = xpict.toSvg(r.scene);
 const batch = await xpict.depict({
   type: "group",
   children: [
-    { type: "mol", smiles: "*c1ccccc1Cl", rgroups: ["$R_1$"] },
+    { type: "mol", cxsmiles: "*c1ccccc1Cl |$R_{1};;;;;$|" },
   ],
 });
 ```

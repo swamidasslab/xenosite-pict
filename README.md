@@ -40,7 +40,7 @@ const svg = xpict.toSvg(r.scene);
 const batch = await xpict.depict({
   type: "group",
   children: [
-    { type: "mol", smiles: "*c1ccccc1Cl", rgroups: ["$R_1$"] },
+    { type: "mol", cxsmiles: "*c1ccccc1Cl |$R_{1};;;;;$|" },
     { type: "mol", cxsmiles: "*c1ccc(O)cc1 |$R_{1};;;;;$|" },
   ],
 });
@@ -58,7 +58,7 @@ svg = render({
 svg = render({
     "type": "group",
     "children": [
-        {"type": "mol", "smiles": "*c1ccccc1Cl", "rgroups": ["$R_1$"]},
+        {"type": "mol", "cxsmiles": "*c1ccccc1Cl |$R_{1};;;;;$|"},
     ],
 })
 ```
@@ -82,7 +82,8 @@ every live doc must validate as future `PictSpec`. Nested diagrams / ELK /
 reaction chrome stay under `xpict.future` until they graduate.
 
 **Document fields today:** `smiles` / `cxsmiles` / `molfile`, `id`, `color`,
-`shade`, `rgroups`.
+`shade`. Markush text on the document path uses CX braced aliases; richer
+labels use simple `star_labels` (document `rgroups` is not public yet).
 
 ### Simple: single-molecule client
 

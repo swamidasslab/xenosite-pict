@@ -6,6 +6,7 @@ import re
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from xpict import DepictSpec, render
 
@@ -31,14 +32,14 @@ def test_gallery_markush_braced_cx_subscript():
     assert "R₁" in texts, f"expected R₁ from R_{{1}} markup, got {texts}"
 
 
-def test_gallery_rgroups_json_markup():
+def test_gallery_phenol_star_cx_subscript():
     _require_rdkit()
     svg = render(
-        {"type": "mol", "smiles": "*c1ccc(O)cc1", "rgroups": ["$R_1$"]},
+        {"type": "mol", "cxsmiles": "*c1ccc(O)cc1 |$R_{1};;;;;$|"},
         backend="rdkit",
     )
     texts = _texts(svg)
-    assert "R₁" in texts, f"rgroups $R_1$ must paint R₁, got {texts}"
+    assert "R₁" in texts, f"CX R_{{1}} must paint R₁, got {texts}"
 
 
 def test_sparse_shade_paints_few_disks():
@@ -65,3 +66,10 @@ def test_committed_markush_svg_has_subscript():
         pytest.skip("gallery assets not generated yet")
     texts = _texts(path.read_text(encoding="utf-8"))
     assert "R₁" in texts, f"{path.name} missing R₁ — regenerate gallery SVGs"
+
+
+def test_live_doc_rejects_rgroups_key():
+    with pytest.raises(ValidationError):
+        DepictSpec.model_validate(
+            {"type": "mol", "smiles": "*C", "rgroups": ["$R_1$"]}
+        )
