@@ -52,15 +52,17 @@ WEIGHT_AT_ONE = 1.5
 WEIGHT_MIN = 1.0 / WEIGHT_AT_ONE
 
 
-def diagram_weight(weight: float = 1.0) -> float:
+def diagram_weight(weight: float | None = None) -> float:
     """Map user-facing mol ``weight`` → absolute ink multiplier (≥ 1).
 
-    Default ``weight=1`` → [`WEIGHT_AT_ONE`]. Absolute floor is Regular stem
-    (1), so ``weight`` may go down to [`WEIGHT_MIN`].
+    ``None`` / omitted → ``1`` (house → [`WEIGHT_AT_ONE`]). Absolute floor is
+    Regular stem (1), so ``weight`` may go down to [`WEIGHT_MIN`].
 
     Raises:
         ValueError: if ``weight`` is non-finite or ``< WEIGHT_MIN``.
     """
+    if weight is None:
+        weight = 1.0
     if not math.isfinite(weight) or weight < WEIGHT_MIN - 1e-12:
         raise ValueError(
             f"mol weight must be finite and >= {WEIGHT_MIN}, got {weight!r}"
@@ -68,13 +70,13 @@ def diagram_weight(weight: float = 1.0) -> float:
     return float(weight) * WEIGHT_AT_ONE
 
 
-def label_weight_grow_px(weight: float = 1.0) -> float:
+def label_weight_grow_px(weight: float | None = None) -> float:
     """Outward glyph buffer (px) so absolute ink stems grow past Regular."""
     ink = diagram_weight(weight)
     return 0.5 * FONT_STEM_EM * FONT_PX * (ink - 1.0)
 
 
-def label_weight_standoff_px(weight: float = 1.0) -> float:
+def label_weight_standoff_px(weight: float | None = None) -> float:
     """Extra bond↔label standoff (px) when absolute ink exceeds Regular.
 
     Label buffer grow + half the extra bond stroke vs [`STROKE_PX`].
@@ -84,7 +86,7 @@ def label_weight_standoff_px(weight: float = 1.0) -> float:
     )
 
 
-def stroke_px_for_weight(weight: float = 1.0) -> float:
+def stroke_px_for_weight(weight: float | None = None) -> float:
     """Bond stroke in drawing px for user-facing mol ``weight``."""
     return stroke_px_from_stem(FONT_STEM_EM) * diagram_weight(weight)
 
@@ -101,12 +103,12 @@ def halo_stroke_from_stroke(stroke_px: float) -> float:
     return 2.0 * stroke_px
 
 
-def halo_stroke_for_weight(weight: float = 1.0) -> float:
+def halo_stroke_for_weight(weight: float | None = None) -> float:
     """Halo stroke for mol ``weight``: base halo × √ink (sublinear vs ink)."""
     return HALO_STROKE * math.sqrt(diagram_weight(weight))
 
 
-def halo_gap_for_weight(weight: float = 1.0) -> float:
+def halo_gap_for_weight(weight: float | None = None) -> float:
     """Outer halo buffer for mol ``weight``: [`HALO_GAP_PX`] × √ink."""
     return HALO_GAP_PX * math.sqrt(diagram_weight(weight))
 

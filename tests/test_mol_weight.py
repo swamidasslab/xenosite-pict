@@ -42,6 +42,8 @@ def test_weight_rejects_below_min():
 def test_diagram_weight_maps_user_to_ink():
     from xpict.draw.metrics import diagram_weight
 
+    assert diagram_weight() == pytest.approx(WEIGHT_AT_ONE)
+    assert diagram_weight(None) == pytest.approx(WEIGHT_AT_ONE)
     assert diagram_weight(1.0) == pytest.approx(WEIGHT_AT_ONE)
     assert diagram_weight(WEIGHT_MIN) == pytest.approx(1.0)
     with pytest.raises(ValueError, match=">="):
