@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, RootModel
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class StrictModel(BaseModel):
@@ -19,7 +19,6 @@ class StrictModel(BaseModel):
         kwargs.setdefault("exclude_none", True)
         return super().model_dump_json(*args, **kwargs)
 
-
 TextAnchor = Literal['start', 'middle', 'end']
 
 
@@ -30,7 +29,7 @@ class PathPrim(StrictModel):
     kind: Literal['path'] = 'path'
     d: str
     cls: str | None = None
-    data_text: str | None = Field(None, description='Plain label string for ``data-text`` (glyph paths only).')
+    data_text: Annotated[str | None, Field(description='Plain label string for ``data-text`` (glyph paths only).')] = None
     fill: str | None = None
     opacity: float = 1.0
     stroke: str | None = None

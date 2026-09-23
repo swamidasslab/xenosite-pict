@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from typing import Any, overload
 
-from xpict.api import Pict
+from xpict.api import OutputFormat, Pict
 from xpict.client import (
     Mol,
     MolRenderOptions,
@@ -91,11 +91,13 @@ def render(
     opts: None = None,
     *,
     backend: str | None = None,
-    format: str = "svg",
+    format: OutputFormat = "svg",
 ) -> str: ...
 
 
-def render(input: Any, opts: Any = None, *, backend: str | None = None, format: str = "svg") -> Any:
+def render(
+    input: Any, opts: Any = None, *, backend: str | None = None, format: OutputFormat = "svg"
+) -> Any:
     """Single-mol ``render(mol, opts)`` or document ``render(doc)``.
 
     Live nested ``DepictSpec`` (``type: mol|group``) uses the Rust two-pass

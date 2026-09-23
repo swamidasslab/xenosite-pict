@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, RootModel
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class StrictModel(BaseModel):
@@ -19,11 +19,10 @@ class StrictModel(BaseModel):
         kwargs.setdefault("exclude_none", True)
         return super().model_dump_json(*args, **kwargs)
 
-
 class AlignOpts(StrictModel):
     """Align this mol onto its parent template."""
-    atom_map: list[tuple[int, int]] | None = Field(None, description='Pairs `(query_atom, template_atom)`. `None` → edge runs MCS.')
-    min_atoms: int | None = Field(None, description='Override [`MIN_MCS_ATOMS`] when set.')
+    atom_map: Annotated[list[tuple[int, int]] | None, Field(description='Pairs `(query_atom, template_atom)`. `None` → edge runs MCS.')] = None
+    min_atoms: Annotated[int | None, Field(description='Override [`MIN_MCS_ATOMS`] when set.')] = None
 
 
 class AtomIn(StrictModel):
@@ -34,7 +33,7 @@ class AtomIn(StrictModel):
     charge: int = 0
     element: str | None = None
     label: str | None = None
-    z: int | None = Field(None, description='Atomic number (`0` = ``*``). Used when ``element`` is omitted.')
+    z: Annotated[int | None, Field(description='Atomic number (`0` = ``*``). Used when ``element`` is omitted.')] = None
 
 
 class BondIn(StrictModel):
@@ -43,7 +42,7 @@ class BondIn(StrictModel):
     end: int
     index: int
     order: float
-    interior: tuple[float, float] | None = Field(None, description='Unit normal toward ring interior (ring doubles); omit for centered.')
+    interior: Annotated[tuple[float, float] | None, Field(description='Unit normal toward ring interior (ring doubles); omit for centered.')] = None
     stereo: str | None = None
 
 
@@ -51,22 +50,22 @@ class MoleculeIn(StrictModel):
     """One molecule ready to paint (coords already in SVG / ``SCALE`` space)."""
     atoms: list[AtomIn]
     bonds: list[BondIn]
-    atom_shade: list[float] | None = Field(None, description='Per-atom shade scores (same order as [`Self::atoms`]); omit if unshaded.')
-    bond_shade: list[float] | None = Field(None, description='Per-bond shade scores (same order as [`Self::bonds`]).')
-    color: str | None = Field(None, description='Ink color for backbone bonds and atom labels (CSS). Default ``#111``.')
+    atom_shade: Annotated[list[float] | None, Field(description='Per-atom shade scores (same order as [`Self::atoms`]); omit if unshaded.')] = None
+    bond_shade: Annotated[list[float] | None, Field(description='Per-bond shade scores (same order as [`Self::bonds`]).')] = None
+    color: Annotated[str | None, Field(description='Ink color for backbone bonds and atom labels (CSS). Default ``#111``.')] = None
     id: str | None = None
     mark_atoms: list[int] = Field(default_factory=list, description='Atom indices to circle (publication marks).')
     mark_bonds: list[tuple[int, int]] = Field(default_factory=list, description='Bond endpoint index pairs to circle/stroke-mark.')
-    scale: float | None = Field(None, description='Uniform diagram scale (font, stroke, pad, geometry). ``1.0`` = house size.')
-    shade_vmax: float | None = Field(None, description='Shade colormap window high (default ``1``). Not inferred from data.')
-    shade_vmin: float | None = Field(None, description='Shade colormap window low (default ``0``). Not inferred from data.')
-    weight: float | None = Field(None, description='Ink weight for backbone stroke and label glyph thicken. ``1.0`` = house; may go down to ~``2/3`` (Regular stem); typical thicken up to ~2.')
+    scale: Annotated[float | None, Field(description='Uniform diagram scale (font, stroke, pad, geometry). ``1.0`` = house size.')] = None
+    shade_vmax: Annotated[float | None, Field(description='Shade colormap window high (default ``1``). Not inferred from data.')] = None
+    shade_vmin: Annotated[float | None, Field(description='Shade colormap window low (default ``0``). Not inferred from data.')] = None
+    weight: Annotated[float | None, Field(description='Ink weight for backbone stroke and label glyph thicken. ``1.0`` = house; may go down to ~``2/3`` (Regular stem); typical thicken up to ~2.')] = None
 
 
 class MolTemplate(StrictModel):
     """One node in a coord_gen forest (root = free layout; children align to parent)."""
-    id: str = Field(description='Rust-assigned unique id; round-trips to the document node.')
-    align: AlignOpts | None = Field(None, description='Opts for aligning onto the parent; `None` on roots.')
+    id: Annotated[str, Field(description='Rust-assigned unique id; round-trips to the document node.')]
+    align: Annotated[AlignOpts | None, Field(description='Opts for aligning onto the parent; `None` on roots.')] = None
     cxsmiles: str | None = None
     molfile: str | None = None
     smiles: str | None = None
@@ -94,9 +93,9 @@ class CoordGenMoleculeResult(StrictModel):
     """One flat molecule entry in a coord_gen result."""
     id: str
     method: CoordMethod
-    ok: bool = Field(description='True when usable coords were produced (aligned or free-layout fallback).')
+    ok: Annotated[bool, Field(description='True when usable coords were produced (aligned or free-layout fallback).')]
     error: str | None = None
-    molecule: MoleculeIn | None = Field(None, description='Present whenever ``ok`` is true.')
+    molecule: Annotated[MoleculeIn | None, Field(description='Present whenever ``ok`` is true.')] = None
     used_map: list[tuple[int, int]] | None = None
 
 

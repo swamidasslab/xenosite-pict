@@ -19,12 +19,11 @@ class StrictModel(BaseModel):
         kwargs.setdefault("exclude_none", True)
         return super().model_dump_json(*args, **kwargs)
 
-
 class AlignToSpec(StrictModel):
     """Object form of document ``align_to`` (template ref + EdgePlan-style opts)."""
-    ref: str = Field(description='Id of the template mol in this group.')
-    atom_map: list[tuple[int, int]] | None = Field(None, description='Pairs `(query, template)` vs the template; skips MCS when set.')
-    min_atoms: int | None = Field(None, description='Override [`crate::edge::MIN_MCS_ATOMS`] when set.')
+    ref: Annotated[str, Field(description='Id of the template mol in this group.')]
+    atom_map: Annotated[list[tuple[int, int]] | None, Field(description='Pairs `(query, template)` vs the template; skips MCS when set.')] = None
+    min_atoms: Annotated[int | None, Field(description='Override [`crate::edge::MIN_MCS_ATOMS`] when set.')] = None
 
 
 AlignTo = str | AlignToSpec
@@ -45,7 +44,7 @@ MolNodeKind = Literal['mol']
 class MolNode(StrictModel):
     """Mol node — subset of future ``MolNode``."""
     type: Literal['mol'] = 'mol'
-    align_to: AlignTo | None = Field(None, description='Template id string, or `{ "ref", "atom_map"?, "min_atoms"? }`.')
+    align_to: Annotated[AlignTo | None, Field(description='Template id string, or `{ "ref", "atom_map"?, "min_atoms"? }`.')] = None
     color: str | None = None
     cxsmiles: str | None = None
     id: str | None = None
@@ -59,7 +58,7 @@ class MolNode(StrictModel):
 
 class GroupNode(StrictModel):
     type: Literal['group'] = 'group'
-    align: bool = Field(False, description='When true, later children align onto the first (or each `align_to`).')
+    align: bool = Field(default=False, description='When true, later children align onto the first (or each `align_to`).')
     children: list[MolNode] = Field(default_factory=list)
     id: str | None = None
 
@@ -77,16 +76,13 @@ class DepictSpec(RootModel[DepictSpecRoot]):
         kwargs.setdefault('exclude_none', True)
         return super().model_dump_json(*args, **kwargs)
 
+    def mols(self) -> list[MolNode]:
+        """Flatten mol root or group children (host helper, not on the wire)."""
+        root = self.root
+        if isinstance(root, MolNode):
+            return [root]
+        return list(root.children)
+
 
 
 MolSpec = MolNode
-
-def mols(self) -> list[MolNode]:
-    """Flatten mol root or group children (host helper, not on the wire)."""
-    root = self.root
-    if isinstance(root, MolNode):
-        return [root]
-    return list(root.children)
-
-
-DepictSpec.mols = mols  # type: ignore[method-assign]

@@ -31,17 +31,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SCHEMA = ROOT / "schema"
 OUT = ROOT / "python" / "xpict" / "contracts"
 
-HEADER = '''\
-# Auto-generated from Rust schemars (make types) — do not edit.
-"""{doc}"""
-
-from __future__ import annotations
-
-from typing import Annotated, Literal{extra}
-
-from pydantic import BaseModel, ConfigDict, Field, RootModel
-
-
+STRICT_MODEL = '''\
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -313,17 +303,26 @@ class Emitter:
         fields: list[str] = []
         for pname in keys:
             ann, default, fargs = self._field(props[pname], required=pname in required)
-            line = f"    {pname}: {ann}"
-            if default is not None and fargs:
-                line += f" = Field({default}, {', '.join(fargs)})"
+            # Prefer ``= None`` / plain defaults so pyright sees optional ctor params
+            # (``Field(None, …)`` is often treated as required by the type checker).
+            if default == "None":
+                if fargs:
+                    ann = f"Annotated[{ann}, Field({', '.join(fargs)})]"
+                line = f"    {pname}: {ann} = None"
+            elif default is not None and default.startswith("default_factory"):
+                if fargs:
+                    line = f"    {pname}: {ann} = Field({default}, {', '.join(fargs)})"
+                else:
+                    line = f"    {pname}: {ann} = Field({default})"
             elif default is not None:
-                line += (
-                    f" = Field({default})"
-                    if default.startswith("default")
-                    else f" = {default}"
-                )
+                if fargs:
+                    line = f"    {pname}: {ann} = Field(default={default}, {', '.join(fargs)})"
+                else:
+                    line = f"    {pname}: {ann} = {default}"
             elif fargs:
-                line += f" = Field({', '.join(fargs)})"
+                line = f"    {pname}: Annotated[{ann}, Field({', '.join(fargs)})]"
+            else:
+                line = f"    {pname}: {ann}"
             fields.append(line)
         desc = (node.get("description") or "").splitlines()
         doc = f'\n    """{desc[0]}"""\n' if desc else "\n"
@@ -410,8 +409,23 @@ class Emitter:
 
     def render(self) -> str:
         body = "\n\n\n".join(self.blocks)
-        extra = ", Any" if self.needs_any or "Any" in body else ""
-        return HEADER.format(doc=self.module_doc, extra=extra) + "\n\n" + body + "\n"
+        typing_imports = ["Literal"]
+        if "Annotated[" in body:
+            typing_imports.insert(0, "Annotated")
+        if self.needs_any or re.search(r"\bAny\b", body):
+            typing_imports.append("Any")
+        pydantic_imports = ["BaseModel", "ConfigDict", "Field"]
+        if "RootModel" in body:
+            pydantic_imports.append("RootModel")
+        return (
+            "# Auto-generated from Rust schemars (make types) — do not edit.\n"
+            f'"""{self.module_doc}"""\n\n'
+            "from __future__ import annotations\n\n"
+            f"from typing import {', '.join(typing_imports)}\n\n"
+            f"from pydantic import {', '.join(pydantic_imports)}\n\n\n"
+            f"{STRICT_MODEL}\n"
+            f"{body}\n"
+        )
 
 
 def emit_scene() -> str:
@@ -462,6 +476,17 @@ def emit_edge() -> str:
     return em.render()
 
 
+# Host helper injected into DepictSpec class body (not schema-derived).
+DEPICT_MOLS_METHOD = '''
+    def mols(self) -> list[MolNode]:
+        """Flatten mol root or group children (host helper, not on the wire)."""
+        root = self.root
+        if isinstance(root, MolNode):
+            return [root]
+        return list(root.children)
+'''
+
+
 def emit_depict() -> str:
     schema = _load("xpict.schema.json")
     em = Emitter(schema, "DepictSpec — live document ABI from xpict-core (schemars).")
@@ -471,24 +496,13 @@ def emit_depict() -> str:
     # MolNode.type comes from an enum def / string default — normalize disc Literal.
     em._force_literal("MolNode", "type", "mol")
     em.emit_root("DepictSpec")
-    # Compatibility alias (public API name).
+    # Inject host helper into DepictSpec class; keep public alias.
+    for i, block in enumerate(em.blocks):
+        if "class DepictSpec(" in block:
+            em.blocks[i] = block.rstrip() + "\n" + DEPICT_MOLS_METHOD
+            break
     em.blocks.append("MolSpec = MolNode")
     return em.render()
-
-
-# Hand helpers attached after codegen (not schema-derived).
-DEPICT_EXT = '''
-
-def mols(self) -> list[MolNode]:
-    """Flatten mol root or group children (host helper, not on the wire)."""
-    root = self.root
-    if isinstance(root, MolNode):
-        return [root]
-    return list(root.children)
-
-
-DepictSpec.mols = mols  # type: ignore[method-assign]
-'''
 
 
 def main() -> None:
@@ -499,8 +513,6 @@ def main() -> None:
         ("depict.py", emit_depict),
     ):
         text = fn()
-        if filename == "depict.py":
-            text = text.rstrip() + DEPICT_EXT
         path = OUT / filename
         path.write_text(text, encoding="utf-8")
         print(f"wrote {path.relative_to(ROOT)} ({len(text.splitlines())} lines)")
