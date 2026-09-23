@@ -53,19 +53,23 @@ one Rust paint core (`xpict-core`), with RDKit layout at each language edge
 
 ## Live examples
 
-<div class="gallery-grid" markdown="0">
-  <figure>
-    <img src="assets/examples/aspirin.svg" alt="Aspirin depiction" />
-    <figcaption>Aspirin</figcaption>
-  </figure>
-  <figure>
-    <img src="assets/examples/caffeine.svg" alt="Caffeine depiction" />
-    <figcaption>Caffeine</figcaption>
-  </figure>
-  <figure>
-    <img src="assets/examples/markush.svg" alt="Markush R1 on chlorobenzene" />
-    <figcaption>Markush ($R_1$)</figcaption>
-  </figure>
+<div class="gallery-grid" markdown>
+
+<figure markdown="span">
+![Aspirin depiction](assets/examples/aspirin.svg)
+<figcaption>Aspirin</figcaption>
+</figure>
+
+<figure markdown="span">
+![Caffeine depiction](assets/examples/caffeine.svg)
+<figcaption>Caffeine</figcaption>
+</figure>
+
+<figure markdown="span">
+![Markush R₁ on chlorobenzene](assets/examples/markush.svg)
+<figcaption>Markush ($R_1$)</figcaption>
+</figure>
+
 </div>
 
 <a class="md-button md-button--primary" href="gallery.md">More depictions</a>
