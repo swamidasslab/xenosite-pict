@@ -169,8 +169,8 @@ pub fn layout_with_rdkit(
     let coords: Vec<(f64, f64)> = laid.atoms.iter().map(|a| (a.x, a.y)).collect();
     let bond_pairs: Vec<(i32, i32)> = laid.bonds.iter().map(|b| (b.begin, b.end)).collect();
 
-    let (scale, flip_max_y) = if !tmpl.is_empty() {
-        // Match template frame scale / flip (JS layoutWithRdkit).
+    let (scale, flip_max_y) = if !tmpl.is_empty() && laid.matched_template {
+        // Match template frame scale / flip (JS layoutWithRdkit) only when MCS hit.
         let tmpl_laid =
             ffi::prepare_layout(&tmpl, "").map_err(|e| Error::Layout(e.to_string()))?;
         let t_coords: Vec<(f64, f64)> = tmpl_laid.atoms.iter().map(|a| (a.x, a.y)).collect();

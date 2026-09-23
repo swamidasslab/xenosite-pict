@@ -28,6 +28,8 @@ pub mod ffi {
         molblock: String,
         atoms: Vec<LaidAtom>,
         bonds: Vec<LaidBond>,
+        /// True when a template was provided and MCS+Depictor matched.
+        matched_template: bool,
     }
 
     unsafe extern "C++" {
