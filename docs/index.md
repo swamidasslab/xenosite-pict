@@ -21,8 +21,8 @@ Build a mol, render with options, turn the scene into SVG.
     ```js
     import { xpict } from "@xenosite/xpict";
 
-    const home = xpict.mol("c1ccccc1");
-    const rendered = await xpict.render(home, {
+    const benzene = xpict.mol("c1ccccc1");
+    const rendered = await xpict.render(benzene, {
       color: "#0b6e4f",
       atom_shade: [0, 0, 0.2, 0, 0, 0.9],
     });
@@ -30,7 +30,7 @@ Build a mol, render with options, turn the scene into SVG.
 
     // Align a second mol onto the first pose
     const aligned = await xpict.render(xpict.mol("Cc1ccccc1"), {
-      align_to: home, // or align_to: rendered
+      align_to: benzene, // or align_to: rendered
     });
     ```
 
@@ -39,8 +39,8 @@ Build a mol, render with options, turn the scene into SVG.
     ```rust
     use xpict::{mol, MolRenderOptions};
 
-    let mut home = mol("c1ccccc1")?;
-    let rendered = home.render(MolRenderOptions {
+    let mut benzene = mol("c1ccccc1")?;
+    let rendered = benzene.render(MolRenderOptions {
         color: Some("#0b6e4f".into()),
         atom_shade: Some(vec![0.0, 0.0, 0.2, 0.0, 0.0, 0.9]),
         ..Default::default()
@@ -78,18 +78,19 @@ CXSMILES trailer when `star_labels` is omitted:
 === "JavaScript"
 
     ```js
+    // Chem markup on star_labels (subscript R₁)
     const starred = await xpict.render(xpict.mol("*C"), {
       star_labels: ["$R_1$"], // or "R_{1}"
     });
-    // CX path:
-    const fromCx = await xpict.render(xpict.mol("*C |$R_{1};$|"));
+    // Real CXSMILES alias (literal R1 — no subscript)
+    const fromCx = await xpict.render(xpict.mol("*C |$R1;$|"));
     ```
 
 <div class="example-out" markdown>
 
 <figure markdown="span">
 ![Star labeled R₁](assets/examples/star_r1.svg)
-<figcaption>`$R_1$` / `R_{1}` → R₁</figcaption>
+<figcaption>`star_labels: ["$R_1$"]` → R₁</figcaption>
 </figure>
 
 </div>
@@ -117,7 +118,7 @@ future `PictSpec`.
     const batch = await xpict.depict({
       type: "group",
       children: [
-        { type: "mol", cxsmiles: "*c1ccccc1Cl |$R_{1};;;;;$|" },
+        { type: "mol", cxsmiles: "*c1ccccc1Cl |$R1;;;;;$|" },
         { type: "mol", smiles: "c1ccccc1O" },
       ],
     });
@@ -157,8 +158,8 @@ future `PictSpec`.
 </figure>
 
 <figure markdown="span">
-![Markush R₁](assets/examples/markush.svg)
-<figcaption>CX `|$R_{1};;;;;$|` on the document</figcaption>
+![Markush R1](assets/examples/markush.svg)
+<figcaption>`*c1ccccc1Cl |$R1;;;;;$|`</figcaption>
 </figure>
 
 </div>

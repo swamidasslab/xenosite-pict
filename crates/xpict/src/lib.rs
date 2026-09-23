@@ -63,7 +63,7 @@ pub enum Error {
 #[derive(Debug, Clone)]
 pub struct Mol {
     pub source: String,
-    /// Coord-bearing molblock for the home frame (filled on first render).
+    /// Coord-bearing molblock for the alignment frame (filled on first render).
     pub frame_molblock: Option<String>,
 }
 

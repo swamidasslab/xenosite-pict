@@ -29,8 +29,8 @@ Flow: **`mol(source)` → `render(opts?)` → `Rendered` → `toSvg(scene)`**.
     ```js
     import { xpict } from "@xenosite/xpict";
 
-    const home = xpict.mol("c1ccccc1");
-    const rendered = await xpict.render(home, {
+    const benzene = xpict.mol("c1ccccc1");
+    const rendered = await xpict.render(benzene, {
       color: "#0b6e4f",
       atom_shade: [0, 0, 0.2, 0, 0, 0.9],
       bold_labels: false,
@@ -38,7 +38,7 @@ Flow: **`mol(source)` → `render(opts?)` → `Rendered` → `toSvg(scene)`**.
     const svg = xpict.toSvg(rendered.scene);
 
     const aligned = await xpict.render(xpict.mol("Cc1ccccc1"), {
-      align_to: home,
+      align_to: benzene,
     });
 
     const starred = await xpict.render(xpict.mol("*C"), {
@@ -51,8 +51,8 @@ Flow: **`mol(source)` → `render(opts?)` → `Rendered` → `toSvg(scene)`**.
     ```rust
     use xpict::{mol, MolRenderOptions};
 
-    let mut home = mol("c1ccccc1")?;
-    let rendered = home.render(MolRenderOptions {
+    let mut benzene = mol("c1ccccc1")?;
+    let rendered = benzene.render(MolRenderOptions {
         color: Some("#0b6e4f".into()),
         atom_shade: Some(vec![0.0, 0.0, 0.2, 0.0, 0.0, 0.9]),
         ..Default::default()
@@ -107,8 +107,8 @@ When `star_labels` is omitted, CXSMILES `|$…$|` aliases apply by atom index.
 ## Declarative document
 
 Nested JSON: `type: "mol"` or `type: "group"` + `children`. Fields today:
-structure strings, `id`, `color`, `shade`. Markush text on this path uses CX
-braced aliases. A document `rgroups` key is **not** public yet.
+structure strings, `id`, `color`, `shade`. Markush text on this path uses
+CXSMILES aliases (`|$R1;;;;;$|`). A document `rgroups` key is **not** public yet.
 
 This document model is a **strict subset** of future `PictSpec` and is being
 expanded as features graduate from `xpict.future`.
@@ -127,7 +127,7 @@ expanded as features graduate from `xpict.future`.
     const batch = await xpict.depict({
       type: "group",
       children: [
-        { type: "mol", cxsmiles: "*c1ccccc1Cl |$R_{1};;;;;$|" },
+        { type: "mol", cxsmiles: "*c1ccccc1Cl |$R1;;;;;$|" },
         { type: "mol", smiles: "c1ccccc1O" },
       ],
     });
@@ -148,7 +148,7 @@ expanded as features graduate from `xpict.future`.
     svg = render({
         "type": "group",
         "children": [
-            {"type": "mol", "cxsmiles": "*c1ccccc1Cl |$R_{1};;;;;$|"},
+            {"type": "mol", "cxsmiles": "*c1ccccc1Cl |$R1;;;;;$|"},
         ],
     })
     ```
