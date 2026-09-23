@@ -49,6 +49,7 @@ def place_backbone(
     bonds: Sequence[BondLayout] | Sequence[tuple[int, int]],
     *,
     font_size: float = FONT_PX,
+    weight: float = 1.0,
     atom_indices: Sequence[int] | None = None,
 ) -> tuple[list[tuple[float, float, float, float]], list[PlacedLabel | None]]:
     """Place labels and shorten bonds into center-glyph clearances.
@@ -56,6 +57,8 @@ def place_backbone(
     ``coords[i]`` / ``texts[i]`` are parallel. Bond endpoints are atom
     **indices** (layout atom index) when ``atom_indices`` maps slot→index;
     otherwise bond endpoints are treated as positions into ``coords``.
+
+    ``weight`` (≥ 1) increases bond↔label standoff for thicker ink.
     """
     atoms = [(float(x), float(y), texts[i]) for i, (x, y) in enumerate(coords)]
     index_of: dict[int, int] | None = None
@@ -78,7 +81,7 @@ def place_backbone(
         else:
             bond_pairs.append((a, c))
 
-    ends, raw_labels = _native.place_backbone(atoms, bond_pairs, font_size)
+    ends, raw_labels = _native.place_backbone(atoms, bond_pairs, font_size, weight)
     # Restore unmapped bonds to full atom–atom segments.
     fixed_ends: list[tuple[float, float, float, float]] = []
     for (a, c), end in zip(raw_bonds, ends, strict=True):

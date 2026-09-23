@@ -218,11 +218,204 @@ pub struct MoleculeIn {
     /// Bond endpoint index pairs to circle/stroke-mark.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mark_bonds: Vec<(i32, i32)>,
-    /// When true, atom labels use Bold Liberation and bond stroke width
-    /// keys off the bold stem (thicker ink). Default off — demo / stress
-    /// toggle for parametric layout.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub bold_labels: bool,
+    /// Uniform diagram scale (font, stroke, pad, geometry). ``1.0`` = house size.
+    #[serde(default = "default_mol_scale", skip_serializing_if = "is_default_mol_scale")]
+    pub scale: f64,
+    /// Ink weight for backbone stroke and label glyph thicken. ``1.0`` = house;
+    /// may go down to ~``2/3`` (Regular stem); typical thicken up to ~2.
+    #[serde(default = "default_mol_weight", skip_serializing_if = "is_default_mol_weight")]
+    pub weight: f64,
+}
+
+fn default_mol_scale() -> f64 {
+    1.0
+}
+
+fn is_default_mol_scale(s: &f64) -> bool {
+    (*s - 1.0).abs() < 1e-12
+}
+
+fn default_mol_weight() -> f64 {
+    1.0
+}
+
+fn is_default_mol_weight(s: &f64) -> bool {
+    (*s - 1.0).abs() < 1e-12
+}
+
+impl MoleculeIn {
+    /// Effective diagram scale; non-positive values fall back to ``1.0``.
+    pub fn diagram_scale(&self) -> f64 {
+        if self.scale > 0.0 && self.scale.is_finite() {
+            self.scale
+        } else {
+            1.0
+        }
+    }
+
+    /// Absolute ink multiplier for this mol (user ``weight`` × house base).
+    ///
+    /// # Panics
+    /// Panics if [`Self::weight`] is invalid (see [`crate::metrics::diagram_weight`]).
+    pub fn diagram_weight(&self) -> f64 {
+        crate::metrics::diagram_weight(self.weight)
+    }
+}
+
+/// Multiply every numeric token in an SVG path ``d`` (M/L/Z polygons).
+pub fn scale_path_d(d: &str, s: f64) -> String {
+    if (s - 1.0).abs() < 1e-12 || d.is_empty() {
+        return d.to_string();
+    }
+    let bytes = d.as_bytes();
+    let mut out = String::with_capacity(d.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        let c = bytes[i] as char;
+        if c == '-' || c == '+' || c == '.' || c.is_ascii_digit() {
+            let start = i;
+            if c == '-' || c == '+' {
+                i += 1;
+            }
+            while i < bytes.len() && (bytes[i] as char).is_ascii_digit() {
+                i += 1;
+            }
+            if i < bytes.len() && bytes[i] == b'.' {
+                i += 1;
+                while i < bytes.len() && (bytes[i] as char).is_ascii_digit() {
+                    i += 1;
+                }
+            }
+            if i < bytes.len() && (bytes[i] == b'e' || bytes[i] == b'E') {
+                i += 1;
+                if i < bytes.len() && (bytes[i] == b'-' || bytes[i] == b'+') {
+                    i += 1;
+                }
+                while i < bytes.len() && (bytes[i] as char).is_ascii_digit() {
+                    i += 1;
+                }
+            }
+            let raw = std::str::from_utf8(&bytes[start..i]).unwrap_or("0");
+            let num: f64 = raw.parse().unwrap_or(0.0);
+            out.push_str(&format!("{:.2}", num * s));
+        } else {
+            out.push(c);
+            i += 1;
+        }
+    }
+    out
+}
+
+fn scale_dasharray(dash: &str, s: f64) -> String {
+    if (s - 1.0).abs() < 1e-12 {
+        return dash.to_string();
+    }
+    dash.split(|c: char| c == ',' || c.is_whitespace())
+        .filter(|t| !t.is_empty())
+        .map(|t| {
+            t.parse::<f64>()
+                .map(|n| format!("{:.2}", n * s))
+                .unwrap_or_else(|_| t.to_string())
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+impl Primitive {
+    /// Uniform scale about the origin (stroke widths and path coords).
+    pub fn scale_uniform(&self, s: f64) -> Self {
+        if (s - 1.0).abs() < 1e-12 {
+            return self.clone();
+        }
+        match self {
+            Primitive::Path {
+                d,
+                stroke,
+                fill,
+                stroke_width,
+                opacity,
+                stroke_dasharray,
+                stroke_linecap,
+                class,
+                data_text,
+            } => Primitive::Path {
+                d: scale_path_d(d, s),
+                stroke: stroke.clone(),
+                fill: fill.clone(),
+                stroke_width: *stroke_width * s,
+                opacity: *opacity,
+                stroke_dasharray: stroke_dasharray
+                    .as_ref()
+                    .map(|d| scale_dasharray(d, s)),
+                stroke_linecap: stroke_linecap.clone(),
+                class: class.clone(),
+                data_text: data_text.clone(),
+            },
+            Primitive::Circle {
+                cx,
+                cy,
+                r,
+                fill,
+                stroke,
+                stroke_width,
+                opacity,
+                class,
+            } => Primitive::Circle {
+                cx: *cx * s,
+                cy: *cy * s,
+                r: *r * s,
+                fill: fill.clone(),
+                stroke: stroke.clone(),
+                stroke_width: *stroke_width * s,
+                opacity: *opacity,
+                class: class.clone(),
+            },
+            Primitive::Text {
+                x,
+                y,
+                text,
+                fill,
+                font_size,
+                anchor,
+                class,
+            } => Primitive::Text {
+                x: *x * s,
+                y: *y * s,
+                text: text.clone(),
+                fill: fill.clone(),
+                font_size: *font_size * s,
+                anchor: *anchor,
+                class: class.clone(),
+            },
+        }
+    }
+}
+
+impl Viewport {
+    pub fn scale_uniform(&self, s: f64) -> Self {
+        if (s - 1.0).abs() < 1e-12 {
+            return self.clone();
+        }
+        Self {
+            id: self.id.clone(),
+            x: self.x * s,
+            y: self.y * s,
+            width: self.width * s,
+            height: self.height * s,
+            layers: self
+                .layers
+                .iter()
+                .map(|layer| Layer {
+                    name: layer.name,
+                    primitives: layer
+                        .primitives
+                        .iter()
+                        .map(|p| p.scale_uniform(s))
+                        .collect(),
+                })
+                .collect(),
+        }
+    }
 }
 
 impl Scene {
@@ -233,6 +426,28 @@ impl Scene {
             viewports: Vec::new(),
             overlays: Vec::new(),
             halo: Vec::new(),
+        }
+    }
+
+    /// Scale the whole diagram about the origin (equiv. to scaled font_px / metrics).
+    pub fn scale_uniform(&self, s: f64) -> Self {
+        if (s - 1.0).abs() < 1e-12 {
+            return self.clone();
+        }
+        Self {
+            width: self.width * s,
+            height: self.height * s,
+            viewports: self
+                .viewports
+                .iter()
+                .map(|vp| vp.scale_uniform(s))
+                .collect(),
+            overlays: self
+                .overlays
+                .iter()
+                .map(|p| p.scale_uniform(s))
+                .collect(),
+            halo: self.halo.iter().map(|p| p.scale_uniform(s)).collect(),
         }
     }
 }

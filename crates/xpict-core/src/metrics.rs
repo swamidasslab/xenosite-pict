@@ -18,6 +18,8 @@ pub const FONT_FRAC: f64 = 0.45;
 pub const FONT_STEM_EM: f64 = 0.0933;
 
 /// Liberation Sans Bold vertical stem width in em (measured on H).
+///
+/// Reference measurement only — mol ink weight uses Regular + ``Shape::buffer``.
 pub const FONT_STEM_EM_BOLD: f64 = 0.144;
 
 /// Bond stroke as a fraction of bond length — tracks the label stem so ink
@@ -77,13 +79,59 @@ pub const HALO_OPACITY: f64 = 0.5;
 pub const MARK_STROKE_PX: f64 = MARK_STROKE_FRAC * BOND_PX;
 pub const MARK_HALO_STROKE_PX: f64 = MARK_HALO_STROKE_FRAC * BOND_PX;
 
-/// Stem em for the active label weight (`bold_labels` toggle).
-pub fn label_stem_em(bold_labels: bool) -> f64 {
-    if bold_labels {
-        FONT_STEM_EM_BOLD
-    } else {
-        FONT_STEM_EM
-    }
+/// Absolute ink multiplier at user-facing ``weight = 1`` (house look).
+///
+/// Public ``weight`` is relative to this: default ``1`` → this multiplier;
+/// absolute floor stays ``1`` (Regular stem), so the user minimum is
+/// [`WEIGHT_MIN`] (= ``1 / WEIGHT_AT_ONE``).
+pub const WEIGHT_AT_ONE: f64 = 1.5;
+
+/// Lowest user-facing ``weight`` (maps to absolute ink ``1`` = Regular stem).
+pub const WEIGHT_MIN: f64 = 1.0 / WEIGHT_AT_ONE;
+
+/// Map user-facing mol ``weight`` → absolute ink multiplier (≥ 1).
+///
+/// Call this (or helpers that call it) with the public ``weight`` field — never
+/// with an already-converted absolute value.
+///
+/// # Panics
+/// Panics if ``weight`` is non-finite or ``< WEIGHT_MIN``.
+pub fn diagram_weight(weight: f64) -> f64 {
+    assert!(
+        weight.is_finite() && weight >= WEIGHT_MIN - 1e-12,
+        "mol weight must be finite and >= {WEIGHT_MIN}, got {weight}"
+    );
+    weight * WEIGHT_AT_ONE
+}
+
+/// Outward glyph buffer (px) so absolute ink stems grow past Regular.
+///
+/// ``grow = 0.5 × FONT_STEM_EM × FONT_PX × (ink - 1)`` where ``ink`` is
+/// [`diagram_weight`]; zero at [`WEIGHT_MIN`].
+///
+/// # Panics
+/// Panics if ``weight`` is invalid (see [`diagram_weight`]).
+pub fn label_weight_grow_px(weight: f64) -> f64 {
+    let ink = diagram_weight(weight);
+    0.5 * FONT_STEM_EM * FONT_PX * (ink - 1.0)
+}
+
+/// Extra bond↔label standoff (px) when absolute ink exceeds Regular.
+///
+/// Label buffer grow + half the extra bond stroke vs [`STROKE_PX`].
+///
+/// # Panics
+/// Panics if ``weight`` is invalid (see [`diagram_weight`]).
+pub fn label_weight_standoff_px(weight: f64) -> f64 {
+    label_weight_grow_px(weight) + 0.5 * (stroke_px_for_weight(weight) - STROKE_PX)
+}
+
+/// Bond stroke in drawing px for user-facing mol ``weight``.
+///
+/// # Panics
+/// Panics if ``weight`` is invalid (see [`diagram_weight`]).
+pub fn stroke_px_for_weight(weight: f64) -> f64 {
+    stroke_px_from_stem(FONT_STEM_EM) * diagram_weight(weight)
 }
 
 /// Bond stroke fraction from a stem width in em (rounded like [`STROKE_FRAC`]).
@@ -99,6 +147,22 @@ pub fn stroke_px_from_stem(stem_em: f64) -> f64 {
 /// Halo stroke width tracks active bond ink (2×, same ratio as [`HALO_FRAC`]).
 pub fn halo_stroke_from_stroke(stroke_px: f64) -> f64 {
     2.0 * stroke_px
+}
+
+/// Halo stroke for mol ``weight``: [`HALO_STROKE`] × √ink (sublinear vs ink).
+///
+/// # Panics
+/// Panics if ``weight`` is invalid (see [`diagram_weight`]).
+pub fn halo_stroke_for_weight(weight: f64) -> f64 {
+    HALO_STROKE * diagram_weight(weight).sqrt()
+}
+
+/// Outer halo buffer for mol ``weight``: [`HALO_GAP_PX`] × √ink.
+///
+/// # Panics
+/// Panics if ``weight`` is invalid (see [`diagram_weight`]).
+pub fn halo_gap_for_weight(weight: f64) -> f64 {
+    HALO_GAP_PX * diagram_weight(weight).sqrt()
 }
 
 /// Dash count scaling with drawn bond length (hashed wedges).
@@ -127,10 +191,39 @@ mod tests {
     }
 
     #[test]
-    fn bold_stem_thickens_stroke() {
-        let bold = stroke_px_from_stem(FONT_STEM_EM_BOLD);
-        assert!(bold > STROKE_PX + 0.3);
-        assert!((bold - 1.3).abs() < 0.02); // 0.065 × 20
-        assert!((halo_stroke_from_stroke(bold) - 2.0 * bold).abs() < 1e-9);
+    fn weight_scales_stroke_and_grow() {
+        // User weight 1 → house ink (WEIGHT_AT_ONE); WEIGHT_MIN → Regular stem.
+        assert!((diagram_weight(1.0) - WEIGHT_AT_ONE).abs() < 1e-9);
+        assert!((diagram_weight(WEIGHT_MIN) - 1.0).abs() < 1e-9);
+        assert!((stroke_px_for_weight(WEIGHT_MIN) - STROKE_PX).abs() < 1e-9);
+        assert!((stroke_px_for_weight(1.0) - WEIGHT_AT_ONE * STROKE_PX).abs() < 1e-9);
+        assert!((stroke_px_for_weight(2.0) - 2.0 * WEIGHT_AT_ONE * STROKE_PX).abs() < 1e-9);
+        assert!(label_weight_grow_px(WEIGHT_MIN).abs() < 1e-12);
+        let grow1 = label_weight_grow_px(1.0);
+        assert!((grow1 - 0.5 * FONT_STEM_EM * FONT_PX * (WEIGHT_AT_ONE - 1.0)).abs() < 1e-9);
+        assert!((halo_stroke_from_stroke(STROKE_PX) - 2.0 * STROKE_PX).abs() < 1e-9);
+        assert!((halo_stroke_for_weight(WEIGHT_MIN) - HALO_STROKE).abs() < 1e-9);
+        assert!((halo_stroke_for_weight(1.0) - HALO_STROKE * WEIGHT_AT_ONE.sqrt()).abs() < 1e-9);
+        // User weight whose absolute ink is 4 → halo ×2.
+        let w_abs4 = 4.0 / WEIGHT_AT_ONE;
+        assert!((halo_stroke_for_weight(w_abs4) - 2.0 * HALO_STROKE).abs() < 1e-9);
+        assert!((halo_gap_for_weight(w_abs4) - 2.0 * HALO_GAP_PX).abs() < 1e-9);
+        assert!(halo_stroke_for_weight(2.0) < halo_stroke_from_stroke(stroke_px_for_weight(2.0)));
+        assert!(label_weight_standoff_px(WEIGHT_MIN).abs() < 1e-12);
+        let stand1 = label_weight_standoff_px(1.0);
+        assert!(stand1 > label_weight_grow_px(1.0));
+        assert!(
+            (stand1
+                - (label_weight_grow_px(1.0)
+                    + 0.5 * (stroke_px_for_weight(1.0) - STROKE_PX)))
+                .abs()
+                < 1e-9
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "mol weight must be finite and >=")]
+    fn diagram_weight_rejects_below_min() {
+        let _ = diagram_weight(0.5);
     }
 }

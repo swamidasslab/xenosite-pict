@@ -95,6 +95,46 @@ def shift_path_d(d: str, dx: float, dy: float) -> str:
     return " ".join(out)
 
 
+def scale_path_d(d: str, s: float) -> str:
+    """Uniformly scale numeric tokens in a path ``d`` about the origin."""
+    if abs(s - 1.0) < 1e-12 or not d:
+        return d
+    tokens = re.findall(r"[MLZA]|[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?", d)
+    out: list[str] = []
+    i = 0
+    cmd = "M"
+    while i < len(tokens):
+        t = tokens[i]
+        if t in "MLZA":
+            cmd = t
+            out.append(t)
+            i += 1
+            continue
+        if cmd in ("M", "L"):
+            x = float(t) * s
+            y = float(tokens[i + 1]) * s
+            out.append(f"{x:.2f}")
+            out.append(f"{y:.2f}")
+            i += 2
+            continue
+        if cmd == "A":
+            # rx, ry, x-rot, large-arc, sweep, x, y — scale radii + endpoint.
+            nums = [float(tokens[j]) for j in range(i, i + 7)]
+            nums[0] *= s
+            nums[1] *= s
+            nums[5] *= s
+            nums[6] *= s
+            out.extend(f"{n:.2f}" if j in (0, 1, 5, 6) else f"{n:g}" for j, n in enumerate(nums))
+            i += 7
+            continue
+        if cmd == "Z":
+            i += 1
+            continue
+        out.append(f"{float(t) * s:.2f}")
+        i += 1
+    return " ".join(out)
+
+
 def ink_from_path_prim(p: PathPrim) -> Shape | CapsuleInk | None:
     """Approximate a stroked/filled PathPrim as ink for haloing.
 
@@ -179,6 +219,7 @@ __all__ = [
     "filled_arrow_head_d",
     "path_coords",
     "shift_path_d",
+    "scale_path_d",
     "ink_from_path_prim",
     "convex_hull",
     "hull_path_d",

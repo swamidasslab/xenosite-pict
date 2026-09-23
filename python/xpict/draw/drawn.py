@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
@@ -13,10 +14,11 @@ from xpict.contracts.scene import (
     PathPrim,
     Primitive,
     TextPrim,
+    Viewport,
 )
 from xpict.draw.halo import halo_from_shapes
 from xpict.draw.metrics import HALO_GAP_PX, HALO_OPACITY
-from xpict.draw.paths import shift_path_d
+from xpict.draw.paths import scale_path_d, shift_path_d
 from xpict.native_bridge import CapsuleInk, DiskInk, Shape
 
 Box = tuple[float, float, float, float]
@@ -198,6 +200,83 @@ def shift_layers(layers: dict[str, Layer], dx: float, dy: float) -> None:
         layer.primitives = shifted
 
 
+def scale_primitive(p: Primitive, s: float) -> Primitive:
+    """Uniform scale about the origin (stroke widths and path coords)."""
+    if abs(s - 1.0) < 1e-12:
+        return p
+    match p:
+        case PathPrim():
+            dash = p.stroke_dasharray
+            if dash:
+                parts = [str(round(float(x) * s, 2)) for x in re.split(r"[\s,]+", dash) if x]
+                dash = " ".join(parts)
+            return p.model_copy(
+                update={
+                    "d": scale_path_d(p.d, s),
+                    "stroke_width": p.stroke_width * s,
+                    "stroke_dasharray": dash,
+                }
+            )
+        case CirclePrim():
+            return p.model_copy(
+                update={
+                    "cx": p.cx * s,
+                    "cy": p.cy * s,
+                    "r": p.r * s,
+                    "stroke_width": p.stroke_width * s,
+                }
+            )
+        case TextPrim():
+            return p.model_copy(
+                update={"x": p.x * s, "y": p.y * s, "font_size": p.font_size * s}
+            )
+        case _:
+            return p
+
+
+def scale_ink(ink: Any, s: float) -> Any:
+    """Uniform scale tagged ink or Shape about the origin."""
+    if abs(s - 1.0) < 1e-12:
+        return ink
+    match ink:
+        case CapsuleInk():
+            return CapsuleInk(ink.x1 * s, ink.y1 * s, ink.x2 * s, ink.y2 * s, ink.radius * s)
+        case DiskInk():
+            return DiskInk(ink.cx * s, ink.cy * s, ink.radius * s)
+        case _:
+            return ink.scale(s, s, 0.0, 0.0)
+
+
+def scale_viewport(vp: Viewport, s: float) -> Viewport:
+    """Scale viewport size and all primitives about the origin."""
+    if abs(s - 1.0) < 1e-12:
+        return vp
+    layers = [
+        layer.model_copy(
+            update={"primitives": [scale_primitive(p, s) for p in layer.primitives]}
+        )
+        for layer in vp.layers
+    ]
+    return vp.model_copy(
+        update={
+            "x": vp.x * s,
+            "y": vp.y * s,
+            "width": vp.width * s,
+            "height": vp.height * s,
+            "layers": layers,
+        }
+    )
+
+
+def scale_halo(halo: Halo, s: float) -> Halo:
+    """Scale halo ink geometries and buffer distances."""
+    if abs(s - 1.0) < 1e-12:
+        return halo
+    out = Halo()
+    out.jobs = [(scale_ink(ink, s), dist * s) for ink, dist in halo.jobs]
+    return out
+
+
 __all__ = [
     "Box",
     "Drawn",
@@ -206,6 +285,10 @@ __all__ = [
     "drawn_halo_jobs",
     "emit_drawn",
     "halo_prims",
+    "scale_halo",
+    "scale_ink",
+    "scale_primitive",
+    "scale_viewport",
     "shift_ink",
     "shift_layers",
     "union_halo_prim",

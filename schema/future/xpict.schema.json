@@ -976,6 +976,20 @@
               ],
               "default": null,
               "title": "Color"
+            },
+            "scale": {
+              "default": 1.0,
+              "description": "Uniform diagram scale (font, stroke, geometry). 1.0 = house size.",
+              "exclusiveMinimum": 0,
+              "title": "Scale",
+              "type": "number"
+            },
+            "weight": {
+              "default": 1.0,
+              "description": "Ink weight relative to house size (1.0). May go down to 2/3 (Regular stem); typical thicken up to ~2.",
+              "minimum": 0.6666666666666666,
+              "title": "Weight",
+              "type": "number"
             }
           }
         }

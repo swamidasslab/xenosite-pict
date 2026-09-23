@@ -100,7 +100,8 @@ fn ethanol_oh_and_single_bonds() {
         bond_shade: None,
         mark_atoms: vec![],
         mark_bonds: vec![],
-        bold_labels: false,
+        weight: 1.0,
+        scale: 1.0,
     };
     let scene = depict_molecule(&mol);
     assert!(scene.width > 0.0 && scene.height > 0.0);
@@ -127,7 +128,8 @@ fn braced_rgroup_markup_subscripts_on_star() {
         bond_shade: None,
         mark_atoms: vec![],
         mark_bonds: vec![],
-        bold_labels: false,
+        weight: 1.0,
+        scale: 1.0,
     };
     let texts = label_texts(&depict_molecule(&mol));
     assert!(
@@ -150,7 +152,8 @@ fn amine_nh2_subscript_in_scene() {
         bond_shade: None,
         mark_atoms: vec![],
         mark_bonds: vec![],
-        bold_labels: false,
+        weight: 1.0,
+        scale: 1.0,
     };
     let texts = label_texts(&depict_molecule(&mol));
     assert!(
@@ -173,7 +176,8 @@ fn ammonium_charge_superscript() {
         bond_shade: None,
         mark_atoms: vec![],
         mark_bonds: vec![],
-        bold_labels: false,
+        weight: 1.0,
+        scale: 1.0,
     };
     let texts = label_texts(&depict_molecule(&mol));
     assert!(
@@ -204,7 +208,8 @@ fn markush_and_star_markup_labels() {
         bond_shade: None,
         mark_atoms: vec![],
         mark_bonds: vec![],
-        bold_labels: false,
+        weight: 1.0,
+        scale: 1.0,
     };
     let texts = label_texts(&depict_molecule(&mol));
     let joined = texts.join("|");
@@ -228,7 +233,8 @@ fn bare_underscore_alias_not_subscripted() {
         bond_shade: None,
         mark_atoms: vec![],
         mark_bonds: vec![],
-        bold_labels: false,
+        weight: 1.0,
+        scale: 1.0,
     };
     let texts = label_texts(&depict_molecule(&mol));
     assert!(
@@ -257,7 +263,8 @@ fn acetone_double_bond_and_carbonyl_label() {
         bond_shade: None,
         mark_atoms: vec![],
         mark_bonds: vec![],
-        bold_labels: false,
+        weight: 1.0,
+        scale: 1.0,
     };
     let scene = depict_molecule(&mol);
     // Double bond → more than one stroke path (centered pair).
@@ -285,11 +292,12 @@ fn json_abi_roundtrip_then_depict() {
         bond_shade: None,
         mark_atoms: vec![1],
         mark_bonds: vec![],
-        bold_labels: true,
+        weight: 2.0,
+        scale: 1.0,
     };
     let json = serde_json::to_string(&mol).expect("serialize");
     let back: MoleculeIn = serde_json::from_str(&json).expect("deserialize");
-    assert!(back.bold_labels);
+    assert!((back.weight - 2.0).abs() < 1e-12);
     assert_eq!(back.atoms[2].label.as_deref(), Some("$R_1$"));
     let scene = depict_molecule(&back);
     let texts = label_texts(&scene);
@@ -316,7 +324,8 @@ fn empty_molecule_does_not_panic() {
         bond_shade: None,
         mark_atoms: vec![],
         mark_bonds: vec![],
-        bold_labels: false,
+        weight: 1.0,
+        scale: 1.0,
     };
     let scene = depict_molecule(&mol);
     assert_eq!(scene.viewports.len(), 1);
@@ -363,7 +372,8 @@ fn west_oh_flips_to_ho_in_scene() {
         bond_shade: None,
         mark_atoms: vec![],
         mark_bonds: vec![],
-        bold_labels: false,
+        weight: 1.0,
+        scale: 1.0,
     };
     let texts = label_texts(&depict_molecule(&mol));
     assert!(
@@ -373,7 +383,7 @@ fn west_oh_flips_to_ho_in_scene() {
 }
 
 #[test]
-fn bold_labels_change_oh_path_ink() {
+fn mol_weight_changes_oh_path_ink() {
     let mut mol = MoleculeIn {
         id: None,
         atoms: vec![
@@ -386,17 +396,18 @@ fn bold_labels_change_oh_path_ink() {
         bond_shade: None,
         mark_atoms: vec![],
         mark_bonds: vec![],
-        bold_labels: false,
+        weight: 1.0,
+        scale: 1.0,
     };
     let thin = depict_molecule(&mol);
-    mol.bold_labels = true;
+    mol.weight = 2.0;
     let thick = depict_molecule(&mol);
     let d_thin = label_path_d(&thin, "OH").or_else(|| label_path_d(&thin, "HO"));
     let d_thick = label_path_d(&thick, "OH").or_else(|| label_path_d(&thick, "HO"));
     assert!(d_thin.is_some() && d_thick.is_some());
     assert_ne!(
         d_thin, d_thick,
-        "bold_labels must thicken label glyph outlines, not only bonds"
+        "weight must thicken label glyph outlines, not only bonds"
     );
 }
 
@@ -415,7 +426,8 @@ fn formal_charge_on_nh2_and_silent_carbon() {
         bond_shade: None,
         mark_atoms: vec![],
         mark_bonds: vec![],
-        bold_labels: false,
+        weight: 1.0,
+        scale: 1.0,
     };
     let texts = label_texts(&depict_molecule(&mol));
     assert!(

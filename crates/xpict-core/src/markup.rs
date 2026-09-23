@@ -14,8 +14,8 @@ use crate::font::{ChemGlyph, FaceStyle, ScriptRole};
 
 /// Expand chem-label markup into outlined glyphs.
 ///
-/// `base` is the molecule / call default face (`bold_labels` → Bold); markup
-/// bold/italic OR on top of it.
+/// `base` is the call default face (Regular unless the caller passes Bold);
+/// markup bold/italic OR on top of it.
 pub fn parse_label_markup(raw: &str, base: FaceStyle) -> Vec<ChemGlyph> {
     let (bold0, italic0) = face_flags(base);
     let mut out = Vec::new();

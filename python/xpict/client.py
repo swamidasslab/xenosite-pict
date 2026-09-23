@@ -97,7 +97,8 @@ class MolRenderOptions:
     mark_atoms: list[int] | None = None
     mark_bonds: list[tuple[int, int]] | None = None
     star_labels: list[str | None] | None = None
-    bold_labels: bool | None = None
+    weight: float | None = None
+    scale: float | None = None
     align_to: Mol | Rendered | None = None
 
 
@@ -519,8 +520,10 @@ def _apply_opts(
         out["mark_atoms"] = list(opts.mark_atoms)
     if opts.mark_bonds is not None:
         out["mark_bonds"] = [list(p) for p in opts.mark_bonds]
-    if opts.bold_labels is not None:
-        out["bold_labels"] = bool(opts.bold_labels)
+    if opts.weight is not None:
+        out["weight"] = float(opts.weight)
+    if opts.scale is not None:
+        out["scale"] = float(opts.scale)
     if opts.star_labels is not None:
         out = _apply_star_labels(out, opts.star_labels)
     else:

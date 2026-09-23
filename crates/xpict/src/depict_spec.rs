@@ -46,6 +46,12 @@ pub struct MolNode {
     /// Wins over CXSMILES aliases when both are present.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub star_labels: Option<Vec<Option<String>>>,
+    /// Uniform diagram scale (``1.0`` = house size). Omitted → ``1.0``.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scale: Option<f64>,
+    /// Ink weight relative to house (``1.0``). Min ~``2/3`` (Regular stem).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub weight: Option<f64>,
 }
 
 fn mol_type() -> String {
@@ -71,6 +77,10 @@ pub enum DepictSpec {
         shade: Option<ShadeSpec>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         star_labels: Option<Vec<Option<String>>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        scale: Option<f64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        weight: Option<f64>,
     },
     Group {
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -91,6 +101,8 @@ impl DepictSpec {
                 color,
                 shade,
                 star_labels,
+                scale,
+                weight,
             } => vec![MolNode {
                 type_: "mol".into(),
                 smiles: smiles.clone(),
@@ -100,6 +112,8 @@ impl DepictSpec {
                 color: color.clone(),
                 shade: shade.clone(),
                 star_labels: star_labels.clone(),
+                scale: *scale,
+                weight: *weight,
             }],
             DepictSpec::Group { children, .. } => children.clone(),
         }
@@ -146,7 +160,8 @@ pub fn depict(spec: &DepictSpec) -> Result<Vec<Rendered>, Error> {
             mark_atoms: None,
             mark_bonds: None,
             star_labels: entry.star_labels.clone(),
-            bold_labels: None,
+            scale: entry.scale,
+            weight: entry.weight,
             align_to: None,
         };
         out.push(render(&mut mol, opts)?);

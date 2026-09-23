@@ -60,7 +60,8 @@ let svg = rendered.to_svg();
 | `color` | Backbone / label ink |
 | `atom_shade` / `bond_shade` | Plot-dot shading scores (layout order) |
 | `star_labels` | Labels for `*` atoms (encounter order); chem markup supported |
-| `bold_labels` | Bold Liberation + thicker stem-keyed strokes |
+| `weight` | Ink weight relative to house (`1`); min `2/3` |
+| `scale` | Uniform diagram scale (`1` = house size) |
 | `align_to` | Template pose (`Mol` / `Rendered` in JS; molblock string in Rust) |
 | `id` | Optional molecule id on the paint ABI |
 

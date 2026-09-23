@@ -41,13 +41,52 @@ FONT_FRAC = 0.45
 # Outline measurement of the vertical stem (H, I, and the straight stems
 # of P/F/B) is 0.0933 em. Stroke tracks the stem so ink matches letters.
 FONT_STEM_EM = 0.0933
-# Liberation Sans Bold H stem (measured); used when ``bold_labels`` is on.
+# Liberation Sans Bold H stem (measured); reference only — mol ``weight``
+# thickens Regular outlines via Shape.buffer, not the Bold face.
 FONT_STEM_EM_BOLD = 0.144
 STROKE_FRAC = round(FONT_STEM_EM * FONT_FRAC, 3)  # 0.042 → 0.84 px
 
+# Absolute ink at user-facing ``weight = 1`` (house look). Public weight is
+# relative to this; absolute floor stays 1 (Regular stem) → user min 2/3.
+WEIGHT_AT_ONE = 1.5
+WEIGHT_MIN = 1.0 / WEIGHT_AT_ONE
 
-def label_stem_em(bold_labels: bool = False) -> float:
-    return FONT_STEM_EM_BOLD if bold_labels else FONT_STEM_EM
+
+def diagram_weight(weight: float = 1.0) -> float:
+    """Map user-facing mol ``weight`` → absolute ink multiplier (≥ 1).
+
+    Default ``weight=1`` → [`WEIGHT_AT_ONE`]. Absolute floor is Regular stem
+    (1), so ``weight`` may go down to [`WEIGHT_MIN`].
+
+    Raises:
+        ValueError: if ``weight`` is non-finite or ``< WEIGHT_MIN``.
+    """
+    if weight is None or not math.isfinite(weight) or weight < WEIGHT_MIN - 1e-12:
+        raise ValueError(
+            f"mol weight must be finite and >= {WEIGHT_MIN}, got {weight!r}"
+        )
+    return float(weight) * WEIGHT_AT_ONE
+
+
+def label_weight_grow_px(weight: float = 1.0) -> float:
+    """Outward glyph buffer (px) so absolute ink stems grow past Regular."""
+    ink = diagram_weight(weight)
+    return 0.5 * FONT_STEM_EM * FONT_PX * (ink - 1.0)
+
+
+def label_weight_standoff_px(weight: float = 1.0) -> float:
+    """Extra bond↔label standoff (px) when absolute ink exceeds Regular.
+
+    Label buffer grow + half the extra bond stroke vs [`STROKE_PX`].
+    """
+    return label_weight_grow_px(weight) + 0.5 * (
+        stroke_px_for_weight(weight) - STROKE_PX
+    )
+
+
+def stroke_px_for_weight(weight: float = 1.0) -> float:
+    """Bond stroke in drawing px for user-facing mol ``weight``."""
+    return stroke_px_from_stem(FONT_STEM_EM) * diagram_weight(weight)
 
 
 def stroke_frac_from_stem(stem_em: float) -> float:
@@ -60,6 +99,16 @@ def stroke_px_from_stem(stem_em: float) -> float:
 
 def halo_stroke_from_stroke(stroke_px: float) -> float:
     return 2.0 * stroke_px
+
+
+def halo_stroke_for_weight(weight: float = 1.0) -> float:
+    """Halo stroke for mol ``weight``: base halo × √ink (sublinear vs ink)."""
+    return HALO_STROKE * math.sqrt(diagram_weight(weight))
+
+
+def halo_gap_for_weight(weight: float = 1.0) -> float:
+    """Outer halo buffer for mol ``weight``: [`HALO_GAP_PX`] × √ink."""
+    return HALO_GAP_PX * math.sqrt(diagram_weight(weight))
 
 
 OFFSET_FRAC = 0.15  # RDKit multipleBondOffset (xenopict keeps this)

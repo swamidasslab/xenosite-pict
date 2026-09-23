@@ -286,7 +286,8 @@ mod tests {
             bond_shade: None,
             mark_atoms: vec![],
             mark_bonds: vec![],
-            bold_labels: false,
+            weight: 1.0,
+            scale: 1.0,
         }
     }
 
@@ -363,7 +364,8 @@ mod tests {
             bond_shade: None,
             mark_atoms: vec![],
             mark_bonds: vec![],
-            bold_labels: false,
+            weight: 1.0,
+            scale: 1.0,
         }
     }
 
@@ -383,7 +385,8 @@ mod tests {
             bond_shade: None,
             mark_atoms: vec![],
             mark_bonds: vec![],
-            bold_labels: false,
+            weight: 1.0,
+            scale: 1.0,
         };
         assert!(find_sssr(&empty, 8).is_empty());
     }
@@ -456,7 +459,8 @@ mod tests {
             bond_shade: None,
             mark_atoms: vec![],
             mark_bonds: vec![],
-            bold_labels: false,
+            weight: 1.0,
+            scale: 1.0,
         };
         let rings = find_sssr(&mol, 8);
         assert_eq!(rings.len(), 2, "expected two hexagons, got {:?}", rings);
