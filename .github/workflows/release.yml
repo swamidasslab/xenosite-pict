@@ -207,6 +207,33 @@ jobs:
             npm publish
           fi
 
-  # Python wheels + PyPI upload live in pypi.yml (Trusted Publishing is
-  # registered for workflow `pypi.yml` + environment `pypi` only — not here).
-  # After a product `release/v*`, dispatch pypi.yml (or tag py/v* for patches).
+  # PyPI Trusted Publisher is pypi.yml + env pypi only (OIDC cannot run from
+  # this workflow). Dispatch pypi.yml so major/minor still publishes Python.
+  trigger-pypi:
+    needs: [meta, bump, publish-core, publish-rust, publish-js]
+    if: needs.meta.outputs.dry_run != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Dispatch pypi.yml (Trusted Publishing)
+        uses: actions/github-script@v7
+        with:
+          script: |
+            let ref;
+            if (context.ref.startsWith('refs/tags/')) {
+              ref = context.ref.slice('refs/tags/'.length);
+            } else if (context.ref.startsWith('refs/heads/')) {
+              ref = context.ref.slice('refs/heads/'.length);
+            } else {
+              ref = context.ref;
+            }
+            core.info(`Dispatching pypi.yml on ref=${ref}`);
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'pypi.yml',
+              ref,
+              inputs: { dry_run: 'false' },
+            });

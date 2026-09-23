@@ -2,8 +2,8 @@
 #
 # Triggers:
 #   - tag py/v*  (e.g. py/v0.1.5) → builds wheels + sdist, publishes
-#   - workflow_dispatch → same, optional dry_run (also used after product
-#     release/v* — PyPI is not published from release.yml)
+#   - workflow_dispatch → same, optional dry_run
+#   - release.yml dispatches this workflow on product release/v* (major/minor)
 #
 # Wheels: Linux (x86_64, aarch64), macOS (x86_64, aarch64), Windows (x64, aarch64).
 # abi3-py311 → one wheel per platform for CPython ≥3.11.

@@ -51,9 +51,10 @@ The **public API** to document and version is the single-molecule client:
    ```
 
 4. [`release.yml`](https://github.com/swamidasslab/xenosite-pict/blob/main/.github/workflows/release.yml) publishes **xpict-core →
-   xpict → JS**. Then dispatch **[`pypi.yml`](https://github.com/swamidasslab/xenosite-pict/blob/main/.github/workflows/pypi.yml)**
-   (Trusted Publisher is **`pypi.yml` + environment `pypi` only** — not
-   `release.yml`). Environments `crates` / `npm` must allow `release/v*` tags.
+   xpict → JS**, then **dispatches [`pypi.yml`](https://github.com/swamidasslab/xenosite-pict/blob/main/.github/workflows/pypi.yml)**
+   so Python still ships on major/minor via Trusted Publishing (`pypi.yml` +
+   environment `pypi`). Environments `crates` / `npm` must allow `release/v*`
+   tags; environment `pypi` must allow `workflow_dispatch` / `py/v*`.
 
 Do **not** tag `js/v0.2.0` alone — it will fail the patch-only gate.
 
@@ -167,8 +168,9 @@ Trusted Publishing. **`release.yml` does not upload to PyPI.**
 3. GitHub Environment **`pypi`**: allow tags `py/v*` and workflow_dispatch (or
    “No restriction”). No `PYPI_API_TOKEN` secret.
 
-After a product `release/vX.Y.0`, run **Actions → pypi → Run workflow**
-(versions already bumped in-tree). For patches: `git tag py/vX.Y.Z && git push`.
+After a product `release/vX.Y.0`, **`release.yml` dispatches this workflow
+automatically**. Patches: `git tag py/vX.Y.Z && git push`. Manual:
+Actions → pypi → Run workflow.
 
 ```bash
 uv sync --extra rdkit
