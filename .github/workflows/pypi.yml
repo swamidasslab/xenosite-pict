@@ -2,8 +2,8 @@
 #
 # Triggers:
 #   - tag py/v*  (e.g. py/v0.1.5) → builds wheels + sdist, publishes
-#   - workflow_dispatch → same, optional dry_run (also used after product
-#     release/v* — PyPI is not published from release.yml)
+#   - workflow_dispatch → same, optional dry_run
+#   - release.yml dispatches this workflow on product release/v* (major/minor)
 #
 # Wheels: Linux (x86_64, aarch64), macOS (x86_64, aarch64), Windows (x64, aarch64).
 # abi3-py311 → one wheel per platform for CPython ≥3.11.
@@ -49,7 +49,14 @@ jobs:
         run: |
           VER="${GITHUB_REF_NAME#py/v}"
           echo "Publishing version $VER"
-          bash scripts/check_version_policy.sh --patch-only "$VER"
+          # X.Y.0 allowed so product Python can ship via py/v* (and catch-up
+          # after release). Patches (Z≥1) stay patch-only. Lockstep X.Y always.
+          Z="${VER##*.}"
+          if [[ "$Z" == "0" ]]; then
+            bash scripts/check_version_policy.sh "$VER"
+          else
+            bash scripts/check_version_policy.sh --patch-only "$VER"
+          fi
           python3 - <<PY
           from pathlib import Path
           import re
