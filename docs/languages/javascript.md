@@ -7,25 +7,37 @@ at the layout edge.
 npm install @xenosite/xpict
 ```
 
-**Preferred** — declarative document:
+## Preferred: nested document
 
 ```js
 import { xpict } from "@xenosite/xpict";
 
 const [r] = await xpict.depict({
-  molecules: [{ smiles: "c1ccccc1", mark_atoms: [0], color: "#0b6e4f" }],
+  type: "mol",
+  smiles: "c1ccccc1",
+  color: "#0b6e4f",
+  shade: { atoms: [0, 0, 0.2, 0, 0, 0.9], vmin: 0, vmax: 1 },
 });
 document.body.innerHTML = xpict.toSvg(r.scene);
 ```
 
-**Simple** — single molecule (`mol` / `render` / `toSvg`):
+## Simple: single molecule
 
 ```js
-const mol = xpict.mol("c1ccccc1");
-const { scene } = await xpict.render(mol, { mark_atoms: [0] });
+const home = xpict.mol("c1ccccc1");
+const { scene } = await xpict.render(home, {
+  color: "#0b6e4f",
+  star_labels: ["$R_1$"], // when source has *
+});
 document.body.innerHTML = xpict.toSvg(scene);
+
+const aligned = await xpict.render(xpict.mol("Cc1ccccc1"), { align_to: home });
 ```
 
-- [TypeDoc API](../api/javascript.md)
-- [Interactive align demo](../js/demo/)
-- [Install](../install.md)
+### Simple `render` options
+
+`color`, `atom_shade`, `bond_shade`, `star_labels`, `bold_labels`, `align_to`
+(`Mol` | `Rendered`), `id`.
+
+[Label markup](../label-markup.md) · [TypeDoc](../api/javascript.md) ·
+[Align demo](../js/demo/)

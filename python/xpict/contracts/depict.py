@@ -1,84 +1,95 @@
-"""Live declarative subset — preferred document: mol list → rendered molecules.
+"""Live declarative document — strict subset of ``xpict.future`` PictSpec.
 
-Matches JS ``xpict.depict`` / Rust ``xpict::depict``. The simple
-``mol`` / ``render`` / ``to_svg`` client is for single-mol callers; the
-document path uses that layer internally. Nested diagrams, annotations, ELK,
-etc. stay in ``xpict.future`` until they graduate here.
+Preferred public document shape matches the nested future tree, trimmed to
+what paint supports today:
+
+- Root is a ``type: "mol"`` leaf, or a ``type: "group"`` with ``children``
+- Molecule discriminator is ``type: "mol"``
+- Shade via ``shade: {atoms, bonds, …}``; R-group labels via ``rgroups`` /
+  CXSMILES aliases with chem markup (``R_{1}``, ``$R_1$``)
+
+Everything here must validate as :class:`~xpict.future.nodes.PictSpec`.
+Richer nodes (reaction, annotations, …) stay in ``xpict.future`` until they
+graduate.
 """
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from typing import Annotated, Literal
+
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    RootModel,
+    model_validator,
+)
+
+from xpict.future.spec import ShadeSpec, _RGroupsInput
 
 
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class MolSpec(StrictModel):
-    """One molecule entry in the preferred declarative document.
+class MolNode(StrictModel):
+    """Live molecule node — subset of future ``MolNode`` / ``MoleculeSpec``."""
 
-    Structure: pass exactly one of ``smiles``, ``cxsmiles``, ``molfile``, or
-    ``source`` (alias for any structure string).
-
-    Do **not** put list-index ``align_to`` here. Imperative alignment belongs
-    on the simple client (``render(..., align_to=Mol|Rendered)``); document-
-    level align references will grow with ``PictSpec``.
-    """
-
+    type: Literal["mol"] = "mol"
+    id: str | None = Field(default=None, description="Optional stable id")
     smiles: str | None = Field(default=None, description="SMILES string")
     cxsmiles: str | None = Field(
         default=None,
         description="ChemAxon extended SMILES (CXSMILES)",
     )
     molfile: str | None = Field(default=None, description="MDL molblock")
-    source: str | None = Field(
-        default=None,
-        description="Structure alias (SMILES / CXSMILES / molfile text)",
-    )
-    id: str | None = Field(default=None, description="Optional molecule id")
     color: str | None = Field(
         default=None,
         description="Ink color for backbone bonds and atom labels (CSS)",
     )
-    atom_shade: list[float] | None = Field(
+    shade: ShadeSpec | None = Field(
         default=None,
-        description="Per-atom shade scores (layout encounter order)",
+        description="Per-atom / per-bond colormap scores",
     )
-    bond_shade: list[float] | None = Field(
-        default=None,
-        description="Per-bond shade scores (layout encounter order)",
-    )
-    mark_atoms: list[int] | None = Field(
-        default=None,
-        description="Atom indices to circle (publication marks)",
-    )
-    mark_bonds: list[tuple[int, int]] | None = Field(
-        default=None,
-        description="Bond endpoint index pairs to mark",
-    )
-    star_labels: list[str | None] | None = Field(
+    rgroups: _RGroupsInput = Field(
         default=None,
         description=(
-            "Labels for ``*`` atoms in encounter order; "
-            "null/empty → bare star. When omitted, CXSMILES ``|$…$|`` "
-            "aliases apply by atom index."
+            "Labels for ``*`` atoms (encounter order list, or ordinal dict). "
+            "Use chem markup for scripts: ``R_{1}`` or ``$R_1$``."
         ),
-    )
-    bold_labels: bool | None = Field(
-        default=None,
-        description="Bold Liberation labels + stem-keyed bond stroke",
     )
 
     @model_validator(mode="after")
-    def _need_structure(self) -> MolSpec:
-        for field in (self.smiles, self.cxsmiles, self.molfile, self.source):
+    def _need_structure(self) -> MolNode:
+        for field in (self.smiles, self.cxsmiles, self.molfile):
             if field is not None and str(field).strip():
                 return self
-        raise ValueError("MolSpec needs smiles, cxsmiles, molfile, or source")
+        raise ValueError("mol node needs smiles, cxsmiles, or molfile")
 
 
-class DepictSpec(StrictModel):
-    """Preferred declarative document: ordered mols → ordered rendered results."""
+class GroupNode(StrictModel):
+    """Live group — subset of future ``GroupNode`` (mol children only today)."""
 
-    molecules: list[MolSpec] = Field(default_factory=list)
+    type: Literal["group"] = "group"
+    id: str | None = Field(default=None, description="Optional stable id")
+    children: list[MolNode] = Field(
+        default_factory=list,
+        description="Owned mol nodes (discriminated by ``type``)",
+    )
+
+
+DepictRoot = Annotated[MolNode | GroupNode, Field(discriminator="type")]
+
+
+class DepictSpec(RootModel[DepictRoot]):
+    """Preferred declarative document (strict subset of future PictSpec)."""
+
+    def mols(self) -> list[MolNode]:
+        root = self.root
+        if isinstance(root, MolNode):
+            return [root]
+        return list(root.children)
+
+
+# Alias for MolNode.
+MolSpec = MolNode

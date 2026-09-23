@@ -7,29 +7,37 @@ the Rust extension `xpict._native`; RDKit is an optional layout extra.
 pip install 'xpict[rdkit]'
 ```
 
-**Preferred:** declarative document — `render(doc)` / `Pict` (DepictSpec-shaped
-JSON, growing toward full `PictSpec`). This is the long-term surface.
+## Preferred: nested document
+
+Strict subset of future `PictSpec` — `type: "mol"` or `type: "group"` +
+`children`:
 
 ```python
 from xpict import render
 
-svg = render(
-    {
-        "molecules": [
-            {"smiles": "CCO", "mark_atoms": [2]},
-            {"smiles": "CCCO"},
-        ]
-    }
-)
+svg = render({
+    "type": "mol",
+    "smiles": "CCO",
+    "shade": {"atoms": [0.0, 0.2, 0.9], "vmin": 0.0, "vmax": 1.0},
+})
+
+svg = render({
+    "type": "group",
+    "children": [
+        {"type": "mol", "smiles": "*c1ccccc1Cl", "rgroups": ["$R_1$"]},
+        {"type": "mol", "cxsmiles": "*c1ccc(O)cc1 |$R_{1};;;;;$|"},
+    ],
+})
 ```
 
-**Simple:** single-molecule client (`Mol` → `render` → `to_svg`) mirrors JS/Rust
-for one-off depictions; that layer is what the document path calls internally.
-`align_to` on that client is a Mol/Rendered pose — **not** a list index like
-`align_to: 0`.
+Contracts: `DepictSpec` / `MolNode` in `xpict.contracts.depict`. Chem scripts:
+[Label markup](../label-markup.md).
 
-Live contracts: `MolSpec` / `DepictSpec` in `xpict.contracts.depict`. Nested
-`PictSpec` under `xpict.future` is design-only until features graduate.
+## Simple path today
+
+Python’s shipped `render` / `Pict` is the document path. A Mol-object client
+(`Mol.from_source(...).render().to_svg()`) matching JS/Rust is landing
+separately; until then use nested JSON above.
 
 - [Python autodoc](../api/python.md)
 - [Install](../install.md)

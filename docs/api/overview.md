@@ -3,17 +3,18 @@
 Two layers (same paint):
 
 1. **Preferred — declarative document**  
-   `depict({ molecules })` / `DepictSpec` (→ growing `PictSpec`).  
-   Uses `mol` / `render` internally. This is the surface that keeps gaining
-   functionality.
+   Nested subset of future `PictSpec`: `type: "mol"` or
+   `type: "group"` + `children`.  
+   Uses the simple client internally. Grows as features graduate from
+   `xpict.future`.
 
 2. **Simple — single molecule**  
    `mol` → `render(opts?)` → `Rendered` → `toSvg(scene)`  
-   For callers that only need one depiction. `align_to` here is a **Mol /
-   Rendered** (or Rust pose molblock) — not a list index.
+   Imperative options (`color`, `atom_shade`, `star_labels`, `align_to`, …).
 
-Nested diagrams / ELK / full `PictSpec` live under `xpict.future` until they
-graduate into live contracts.
+Nested JSON uses `type: "mol"` or `type: "group"` + `children`. Chem scripts:
+[Label markup](../label-markup.md) (CX limits vs JSON `rgroups` /
+`star_labels`).
 
 | Language | Autodoc |
 | --- | --- |
@@ -21,43 +22,69 @@ graduate into live contracts.
 | [JavaScript](javascript.md) | TypeDoc from `js/src` |
 | [Rust](rust.md) | rustdoc for `xpict-core` (and `xpict` when built) |
 
-Quick examples:
+### Preferred document
 
 === "JavaScript"
 
     ```js
     import { xpict } from "@xenosite/xpict";
-
-    // Preferred: declarative document
     const [r] = await xpict.depict({
-      molecules: [{ smiles: "CCO", mark_atoms: [2] }],
+      type: "mol",
+      smiles: "CCO",
+      shade: { atoms: [0, 0.2, 0.9], vmin: 0, vmax: 1 },
     });
     const svg = xpict.toSvg(r.scene);
-
-    // Simple: single mol
-    // const svg = xpict.toSvg((await xpict.render(xpict.mol("CCO"))).scene);
     ```
 
 === "Python"
 
     ```python
-    # Preferred: declarative document (Pict / DepictSpec-shaped)
     from xpict import render
-    svg = render({"molecules": [{"smiles": "CCO", "mark_atoms": [2]}]})
+    svg = render({
+        "type": "mol",
+        "smiles": "CCO",
+        "shade": {"atoms": [0.0, 0.2, 0.9], "vmin": 0.0, "vmax": 1.0},
+    })
     ```
 
 === "Rust"
 
     ```rust
-    // Preferred: declarative document
-    use xpict::{depict, DepictSpec, MolSpec};
-    let out = depict(&DepictSpec {
-        molecules: vec![MolSpec {
-            smiles: Some("CCO".into()),
-            ..Default::default()
-        }],
+    use xpict::{depict, DepictSpec};
+    let out = depict(&DepictSpec::Mol {
+        smiles: Some("CCO".into()),
+        ..Default::default()  // use struct update via helper in real code
     })?;
     let svg = out[0].to_svg();
-
-    // Simple: mol.render().to_svg()
     ```
+
+### Simple client
+
+=== "JavaScript"
+
+    ```js
+    const home = xpict.mol("c1ccccc1");
+    const { scene } = await xpict.render(home, { color: "#0b6e4f" });
+    const svg = xpict.toSvg(scene);
+    const aligned = await xpict.render(xpict.mol("Cc1ccccc1"), {
+      align_to: home,
+    });
+    ```
+
+=== "Rust"
+
+    ```rust
+    let mut m = xpict::mol("CCO")?;
+    let svg = m.render(Default::default())?.to_svg();
+    ```
+
+#### Simple `render` options
+
+| Option | Effect |
+| --- | --- |
+| `color` | Backbone / label ink |
+| `atom_shade` / `bond_shade` | Plot-dot shading scores |
+| `star_labels` | `*` labels (markup OK); else CX aliases |
+| `bold_labels` | Bold Liberation + stem-keyed stroke |
+| `align_to` | `Mol` / `Rendered` (JS) or pose molblock (Rust) |
+| `id` | Optional paint id |

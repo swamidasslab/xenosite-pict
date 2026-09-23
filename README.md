@@ -12,75 +12,95 @@ Import / package names:
 | Python | `xpict` (PyPI — [`docs/publish.md`](docs/publish.md); source in `python/`) |
 | Rust | `xpict` on crates.io (depends on `xpict-core`; see publish doc) |
 
-Label markup (scripts, `\alpha`, `**bold**`): [`docs/label-markup.md`](docs/label-markup.md).
-
-## Public API (shipped)
+## Public API
 
 Two layers — same paint underneath:
 
-1. **Preferred — declarative document** (`depict` / `DepictSpec`, growing toward
-   full `PictSpec`). JSON in → rendered molecules out. Uses the simple API
-   internally; this is the surface that keeps gaining diagram / chrome features.
-2. **Simple — single molecule** (`mol` → `render` → `toSvg`). Handy when you
-   only need one depiction (or imperative align). Not the long-term document
-   model.
+1. **Preferred — declarative document** (strict subset of future `PictSpec`):
+   nested JSON with `type: "mol"` or `type: "group"` + `children`. This is the
+   surface that keeps gaining diagram / chrome features.
+2. **Simple — single molecule** (`mol` → `render` → `toSvg`): imperative client
+   for one depiction (and `align_to`). The document path uses this internally.
 
-### Preferred: declarative document
+Chem label markup (scripts, CX vs JSON): [`docs/label-markup.md`](docs/label-markup.md).
+
+### Preferred: nested document
 
 ```ts
 import { xpict } from "@xenosite/xpict";
 
-const results = await xpict.depict({
-  molecules: [
-    { smiles: "CCO", mark_atoms: [2], color: "#0b6e4f" },
-    { smiles: "CCCO" },
+const [r] = await xpict.depict({
+  type: "mol",
+  smiles: "CCO",
+  color: "#0b6e4f",
+  shade: { atoms: [0.0, 0.2, 0.9], vmin: 0, vmax: 1 },
+});
+const svg = xpict.toSvg(r.scene);
+
+const batch = await xpict.depict({
+  type: "group",
+  children: [
+    { type: "mol", smiles: "*c1ccccc1Cl", rgroups: ["$R_1$"] },
+    { type: "mol", cxsmiles: "*c1ccc(O)cc1 |$R_{1};;;;;$|" },
   ],
 });
-// results: Rendered[] — each has .scene; xpict.toSvg(results[0].scene)
 ```
 
 ```python
-from xpict import render  # document path (Pict / DepictSpec-shaped JSON)
+from xpict import render
 
-svg = render(
-    {
-        "molecules": [
-            {"smiles": "CCO", "mark_atoms": [2]},
-            {"smiles": "CCCO"},
-        ]
-    }
-)
+svg = render({
+    "type": "mol",
+    "smiles": "CCO",
+    "shade": {"atoms": [0.0, 0.2, 0.9], "vmin": 0.0, "vmax": 1.0},
+})
+
+svg = render({
+    "type": "group",
+    "children": [
+        {"type": "mol", "smiles": "*c1ccccc1Cl", "rgroups": ["$R_1$"]},
+    ],
+})
 ```
 
 ```rust
-use xpict::{depict, DepictSpec, MolSpec};
+use xpict::{depict, DepictSpec, MolNode};
 
-let results = depict(&DepictSpec {
-    molecules: vec![
-        MolSpec { smiles: Some("CCO".into()), mark_atoms: Some(vec![2]), ..Default::default() },
-        MolSpec { smiles: Some("CCCO".into()), ..Default::default() },
+let results = depict(&DepictSpec::Group {
+    id: None,
+    children: vec![
+        MolNode {
+            smiles: Some("CCO".into()),
+            ..Default::default()
+        },
     ],
 })?;
 ```
 
-Live contract: `MolSpec` / `DepictSpec` (`xpict.contracts.depict`,
-`schema/xpict.schema.json`). Nested diagrams / ELK / reaction chrome stay under
-`xpict.future` until they graduate into contracts.
+Live contract: `DepictSpec` / `MolNode` in `xpict.contracts.depict` —
+every live doc must validate as future `PictSpec`. Nested diagrams / ELK /
+reaction chrome stay under `xpict.future` until they graduate.
 
-**Document `align_to`:** not a list index (`0`). Alignment in the simple API is
-a `Mol` / `Rendered` (or Rust pose molblock). Document-level align references
-will land as the declarative model grows — do not invent index-based align.
+**Document fields today:** `smiles` / `cxsmiles` / `molfile`, `id`, `color`,
+`shade`, `rgroups`.
 
 ### Simple: single-molecule client
 
 ```ts
 import { xpict } from "@xenosite/xpict";
 
-const mol = xpict.mol("c1ccccc1");
-const rendered = await xpict.render(mol, { mark_atoms: [0], color: "#0b6e4f" });
+const home = xpict.mol("c1ccccc1");
+const rendered = await xpict.render(home, {
+  color: "#0b6e4f",
+  atom_shade: [0, 0, 0.2, 0, 0, 0.9],
+  star_labels: ["$R_1$"], // when the mol has *
+  bold_labels: false,
+});
 const svg = xpict.toSvg(rendered.scene);
 
-const aligned = await xpict.render(xpict.mol("Cc1ccccc1"), { align_to: mol });
+const aligned = await xpict.render(xpict.mol("Cc1ccccc1"), {
+  align_to: home, // or align_to: rendered
+});
 ```
 
 ```rust
@@ -88,27 +108,26 @@ use xpict::{mol, MolRenderOptions};
 
 let mut m = mol("CCO")?;
 let rendered = m.render(MolRenderOptions {
-    mark_atoms: Some(vec![2]),
+    color: Some("#0b6e4f".into()),
+    atom_shade: Some(vec![0.0, 0.2, 0.9]),
     ..Default::default()
 })?;
 let svg = rendered.to_svg();
 ```
 
-### Options available today (simple `render` / each `MolSpec` entry)
+#### Simple `render` options
 
 | Option | Effect |
 | --- | --- |
 | `color` | Backbone / label ink |
-| `mark_atoms` / `mark_bonds` | Publication circles |
-| `atom_shade` / `bond_shade` | Plot-dot shading scores |
-| `star_labels` | Labels for `*` atoms (encounter order); else CXSMILES `|$…$|` by index |
+| `atom_shade` / `bond_shade` | Plot-dot shading scores (layout order) |
+| `star_labels` | Labels for `*` atoms (encounter order); chem markup supported |
 | `bold_labels` | Bold Liberation + thicker stem-keyed strokes |
-| `align_to` | **Simple API only:** template pose (`Mol` / `Rendered` in JS·Py; molblock in Rust) |
+| `align_to` | Template pose (`Mol` / `Rendered` in JS; molblock string in Rust) |
 | `id` | Optional molecule id on the paint ABI |
 
-**Not in the public MVP yet:** nested diagrams, ELK placement, reaction/network
-chrome, captions/annotations as first-class document nodes. Those remain
-under ``xpict.future`` / ``schema/future/`` for design review (`PictSpec`).
+When `star_labels` is omitted, CXSMILES `|$…$|` aliases apply by atom index.
+Prefer braced / `$…$` markup for scripts — see [label markup](docs/label-markup.md).
 
 ## Docs & demo
 
@@ -126,45 +145,31 @@ per-language (`js/v*`, `py/v*`, …). See [`docs/publish.md`](docs/publish.md).
 
 ## Install / build (dev)
 
-```bash
-./scripts/build_bindings.sh all
-uv sync --extra rdkit
-cd js && npm test
-cargo test -p xpict-core
-# native Rust package (needs system RDKit):
-cargo test -p xpict
-```
-
-## Architecture (short)
+See [`docs/install.md`](docs/install.md) and [`docs/bindings.md`](docs/bindings.md).
 
 ```
-  RDKit (language edge)          xpict-core (no RDKit)
-  2D coords + template align  →  depict_molecule → Scene
-                                      ↓
+                    ┌─────────────────┐
+  SMILES / CX /     │  language edge  │  RDKit layout + align
+  molfile + opts ──►│  JS / Py / Rust │
+                    └────────┬────────┘
+                             │ MoleculeIn JSON
+                             ▼
+                    ┌─────────────────┐
+                    │   xpict-core    │  paint (bonds, labels, shade, …)
+                    └────────┬────────┘
+                             │ Scene JSON
+                             ▼
                               toSvg / scene_to_svg
 ```
 
-- **`xpict-core`** — shared paint (bonds, marks, shade, labels, halo)  
-- **`xpict-py` / `xpict-wasm`** — bindings to core only (no RDKit)  
-- **`crates/xpict`** — native Rust public crate (crates.io `rdkit` + Depictor FFI)  
-- **JS / Python clients** — RDKit layout + call into core  
-
-Details: [`docs/bindings.md`](docs/bindings.md) · shipping to xenosite:
-[`docs/migration-xenosite.md`](docs/migration-xenosite.md) · **publish setup**:
-[`docs/publish.md`](docs/publish.md).
-
 ## Contributing
 
-Bug reports and pull requests are welcome on
-[GitHub](https://github.com/swamidasslab/xenosite-pict).
+Issues and PRs: https://github.com/swamidasslab/xenosite-pict  
 
 For nested diagrams, reactions, and the full declarative document, please
 comment on the **future** design rather than the shipped MVP API:
 
-- [`python/xpict/future/`](python/xpict/future/README.md)
-- [`schema/future/xpict.schema.json`](schema/future/xpict.schema.json)
-
-See [`CONTRIBUTING.md`](CONTRIBUTING.md).
+https://github.com/swamidasslab/xenosite-pict/tree/main/python/xpict/future
 
 ## License
 

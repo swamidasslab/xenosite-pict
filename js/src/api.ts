@@ -2,16 +2,20 @@
  * Public surface for xenosite: declarative documents + a simple single-mol client.
  * RDKit stays hidden (auto script in browser / npm on Node).
  *
- * Preferred — declarative document (grows toward full PictSpec):
+ * Preferred — nested document (strict subset of PictSpec):
  * ```ts
- * const [r] = await xpict.depict({ molecules: [{ smiles: "CCCC", mark_atoms: [0] }] });
+ * const [r] = await xpict.depict({
+ *   type: "mol",
+ *   smiles: "*c1ccccc1Cl",
+ *   rgroups: ["$R_1$"],
+ * });
  * const svg = xpict.toSvg(r.scene);
  * ```
  *
- * Simple — single molecule (used internally by depict):
+ * Simple — single molecule:
  * ```ts
  * const mol = xpict.mol("CCCC");
- * const rendered = await xpict.render(mol);
+ * const rendered = await xpict.render(mol, { color: "#0b6e4f" });
  * const svg = xpict.toSvg(rendered.scene);
  * const aligned = await xpict.render(xpict.mol("CCCO"), { align_to: mol });
  * ```
@@ -94,29 +98,40 @@ export type MolRenderOptions = {
 };
 
 /**
- * One molecule entry in the preferred declarative document.
- * Do not put list-index ``align_to`` here — imperative align is on
- * ``render(mol, { align_to: Mol | Rendered })``; document-level refs grow later.
+ * Live mol node — strict subset of future PictSpec ``type: "mol"``.
+ * Rich labels: ``rgroups`` (markup) or CX braced aliases; see docs/label-markup.md.
  */
-export type MolSpec = {
+export type MolNode = {
+  type: "mol";
   smiles?: string;
-  source?: string;
-  molfile?: string;
   cxsmiles?: string;
+  molfile?: string;
   id?: string;
   color?: string;
-  atom_shade?: number[];
-  bond_shade?: number[];
-  mark_atoms?: number[];
-  mark_bonds?: Array<[number, number]>;
-  star_labels?: Array<string | null>;
-  bold_labels?: boolean;
+  /** Per-atom / per-bond colormap scores (document shade). */
+  shade?: {
+    atoms?: number[];
+    bonds?: number[];
+    colormap?: string;
+    vmin?: number;
+    vmax?: number;
+  };
+  /** Labels for ``*`` atoms (encounter order). Prefer ``$R_1$`` / ``R_{1}``. */
+  rgroups?: Array<string | null> | Record<string, string | null>;
 };
 
-/** Preferred declarative document: mol list in → ``Rendered[]`` out. */
-export type DepictSpec = {
-  molecules: MolSpec[];
+/** Live group — ``children`` of mol nodes only (today). */
+export type GroupNode = {
+  type: "group";
+  id?: string;
+  children: MolNode[];
 };
+
+/** Preferred declarative document (nested subset of PictSpec). */
+export type DepictSpec = MolNode | GroupNode;
+
+/** Alias of {@link MolNode}. */
+export type MolSpec = MolNode;
 
 let readyPromise: Promise<void> | null = null;
 
@@ -318,37 +333,47 @@ async function render(
   };
 }
 
-function structureFromSpec(entry: MolSpec): string {
+function structureFromMolNode(entry: MolNode): string {
   const raw =
     entry.molfile?.trim() ||
     entry.cxsmiles?.trim() ||
     entry.smiles?.trim() ||
-    entry.source?.trim() ||
     "";
   if (!raw) {
-    throw new Error("MolSpec needs smiles, cxsmiles, molfile, or source");
+    throw new Error('mol node needs smiles, cxsmiles, or molfile');
   }
   return raw;
 }
 
+function molNodesFromSpec(spec: DepictSpec): MolNode[] {
+  if (spec.type === "mol") return [spec];
+  if (spec.type === "group") return spec.children ?? [];
+  throw new Error('DepictSpec root must have type "mol" or "group"');
+}
+
+function rgroupsToStarLabels(
+  rgroups: MolNode["rgroups"]
+): Array<string | null> | undefined {
+  if (rgroups == null) return undefined;
+  if (Array.isArray(rgroups)) return rgroups;
+  const keys = Object.keys(rgroups).sort((a, b) => Number(a) - Number(b));
+  return keys.map((k) => rgroups[k] ?? null);
+}
+
 /**
- * Preferred document API: ``{ molecules: [...] }`` → ``Rendered[]``.
- * Implemented via the simple ``mol`` / ``render`` client (no list-index align).
+ * Preferred document API: nested PictSpec subset → ``Rendered[]``.
+ * Implemented via the simple ``mol`` / ``render`` client.
  */
 async function depict(spec: DepictSpec): Promise<Rendered[]> {
   const out: Rendered[] = [];
-  for (let i = 0; i < spec.molecules.length; i++) {
-    const entry = spec.molecules[i]!;
-    const m = mol(structureFromSpec(entry));
+  for (const entry of molNodesFromSpec(spec)) {
+    const m = mol(structureFromMolNode(entry));
     const opts: MolRenderOptions = {
       id: entry.id,
       color: entry.color,
-      atom_shade: entry.atom_shade,
-      bond_shade: entry.bond_shade,
-      mark_atoms: entry.mark_atoms,
-      mark_bonds: entry.mark_bonds,
-      star_labels: entry.star_labels,
-      bold_labels: entry.bold_labels,
+      atom_shade: entry.shade?.atoms,
+      bond_shade: entry.shade?.bonds,
+      star_labels: rgroupsToStarLabels(entry.rgroups),
     };
     out.push(await render(m, opts));
   }

@@ -162,12 +162,10 @@ uv run maturin build --release -m crates/xpict-py/Cargo.toml
 
 ## 4. Public API vs future declarative tree
 
-**Preferred (document):** `depict({ molecules })` / `DepictSpec` — grows toward
-full `PictSpec`. Live Pydantic is `xpict.contracts.depict`; JSON Schema is
-`schema/xpict.schema.json`. No list-index `align_to`.
+**Ship / document now:** nested live ``DepictSpec`` (``type: "mol"`` |
+``type: "group"`` + ``children``) — strict subset of future PictSpec. Simple
+``mol`` / ``render`` / ``toSvg`` for single-mol callers. Live Pydantic is
+``xpict.contracts.depict``; JSON Schema is ``schema/xpict.schema.json``.
 
-**Simple (single mol):** `mol` / `render` / `toSvg` with `align_to` as
-Mol/Rendered (or Rust pose molblock). The document path uses this internally.
-
-**Not the publish surface yet:** nested `PictSpec` under `xpict.future` /
-`schema/future/`.
+**Not the publish surface yet:** full nested ``PictSpec`` under ``xpict.future`` /
+``schema/future/``.

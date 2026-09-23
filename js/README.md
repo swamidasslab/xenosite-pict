@@ -1,63 +1,53 @@
 # @xenosite/xpict
 
-**Declarative molecule depiction for publication-quality vector graphics** —
-JavaScript/TypeScript on the web (and Node), with the same API shape in Python
-and Rust.
-
-Shared Rust paint (`xpict-core`) via WASM; RDKit.js at the layout edge.
+**Declarative molecule depiction** — JavaScript/TypeScript (browser + Node).
 
 **npm:** [`@xenosite/xpict`](https://www.npmjs.com/package/@xenosite/xpict)  
-**Docs / demo:** [GitHub Pages](https://swamidasslab.github.io/xenosite-pict/) ·
-[JS demo](https://swamidasslab.github.io/xenosite-pict/js/demo/)  
-**Source:** [swamidasslab/xenosite-pict](https://github.com/swamidasslab/xenosite-pict)
+**Docs:** [GitHub Pages](https://swamidasslab.github.io/xenosite-pict/) ·
+[label markup](https://github.com/swamidasslab/xenosite-pict/blob/main/docs/label-markup.md)
 
 ```bash
 npm install @xenosite/xpict
 ```
 
-**Preferred** — declarative document (grows toward full PictSpec):
+## Preferred — nested document
 
 ```ts
 import { xpict } from "@xenosite/xpict";
 
-const results = await xpict.depict({
-  molecules: [
-    { smiles: "CCO", mark_atoms: [2], color: "#0b6e4f" },
-    { smiles: "CCCO" },
+const [r] = await xpict.depict({
+  type: "mol",
+  smiles: "CCO",
+  shade: { atoms: [0, 0.2, 0.9], vmin: 0, vmax: 1 },
+});
+const svg = xpict.toSvg(r.scene);
+
+const batch = await xpict.depict({
+  type: "group",
+  children: [
+    { type: "mol", smiles: "*c1ccccc1Cl", rgroups: ["$R_1$"] },
   ],
 });
-const svg = xpict.toSvg(results[0]!.scene);
 ```
 
-**Simple** — single molecule (`mol` / `render` / `toSvg`; used internally):
+## Simple — single molecule
 
 ```ts
-const mol = xpict.mol("c1ccccc1");
-const rendered = await xpict.render(mol, { mark_atoms: [0] });
+const home = xpict.mol("c1ccccc1");
+const rendered = await xpict.render(home, {
+  color: "#0b6e4f",
+  atom_shade: [0, 0, 0.2, 0, 0, 0.9],
+});
 const svg = xpict.toSvg(rendered.scene);
-const aligned = await xpict.render(xpict.mol("Cc1ccccc1"), { align_to: mol });
+const aligned = await xpict.render(xpict.mol("Cc1ccccc1"), { align_to: home });
 ```
 
+### Simple `render` options
+
+`color`, `atom_shade`, `bond_shade`, `star_labels`, `bold_labels`,
+`align_to` (`Mol` | `Rendered`), `id`.
+
 RDKit + WASM initialize on first `render` / `depict`.
-
-**Render / MolSpec options today:** `color`, `mark_atoms`, `mark_bonds`,
-`atom_shade`, `bond_shade`, `star_labels`, `bold_labels`, `id`.  
-**Simple `align_to` only:** `Mol` | `Rendered` (not a list index).
-
-Chem label markup (`$R_1$`, `R^2`, `\alpha`, `**bold**`):  
-https://github.com/swamidasslab/xenosite-pict/blob/main/docs/label-markup.md
-
-Same API shape in Python (`xpict` on PyPI) and Rust (`xpict` on crates.io).
-
-## Contributing
-
-Bug reports and PRs:
-https://github.com/swamidasslab/xenosite-pict  
-
-Future nested `PictSpec` design (comments welcome):
-https://github.com/swamidasslab/xenosite-pict/tree/main/python/xpict/future  
-
-See [CONTRIBUTING.md](https://github.com/swamidasslab/xenosite-pict/blob/main/CONTRIBUTING.md).
 
 ## License
 

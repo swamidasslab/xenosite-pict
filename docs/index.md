@@ -14,7 +14,9 @@ one Rust paint core (`xpict-core`), with RDKit layout at each language edge
     import { xpict } from "@xenosite/xpict";
 
     const [r] = await xpict.depict({
-      molecules: [{ smiles: "c1ccccc1O", mark_atoms: [6] }],
+      type: "mol",
+      smiles: "c1ccccc1O",
+      shade: { atoms: [0, 0, 0, 0, 0, 0, 0.9], vmin: 0, vmax: 1 },
     });
     const svg = xpict.toSvg(r.scene);
     ```
@@ -24,26 +26,31 @@ one Rust paint core (`xpict-core`), with RDKit layout at each language edge
     ```python
     from xpict import render
 
-    svg = render({"molecules": [{"smiles": "c1ccccc1O", "mark_atoms": [6]}]})
+    svg = render({
+        "type": "mol",
+        "smiles": "c1ccccc1O",
+        "shade": {"atoms": [0, 0, 0, 0, 0, 0, 0.9], "vmin": 0, "vmax": 1},
+    })
     ```
 
 === "Rust"
 
     ```rust
-    use xpict::{depict, DepictSpec, MolSpec};
+    use xpict::{depict, DepictSpec};
 
-    let out = depict(&DepictSpec {
-        molecules: vec![MolSpec {
-            smiles: Some("c1ccccc1O".into()),
-            mark_atoms: Some(vec![6]),
-            ..Default::default()
-        }],
+    let out = depict(&DepictSpec::Mol {
+        smiles: Some("c1ccccc1O".into()),
+        cxsmiles: None,
+        molfile: None,
+        id: None,
+        color: None,
+        shade: None,
+        rgroups: None,
     })?;
     let svg = out[0].to_svg();
     ```
 
-Simple single-mol client (`mol` → `render` → `toSvg`) is also available — see
-[API overview](api/overview.md).
+[Label markup](label-markup.md) · [API overview](api/overview.md) (simple client too).
 
 ## Live examples
 

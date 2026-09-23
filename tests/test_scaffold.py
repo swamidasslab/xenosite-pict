@@ -50,12 +50,15 @@ def test_export_schemas(tmp_path: Path):
     written = export_schemas(tmp_path)
     assert "xpict.schema.json" in written
     data = json.loads(written["xpict.schema.json"].read_text())
-    # Live schema is DepictSpec (mol list subset).
-    assert data.get("title") == "DepictSpec" or "MolSpec" in json.dumps(data)
+    # Live schema is nested DepictSpec (MolNode | GroupNode).
+    assert data.get("title") == "DepictSpec"
     blob = json.dumps(data)
     assert "cxsmiles" in blob
-    assert "MolSpec" in blob
-    assert "mark_atoms" in blob
+    assert "MolNode" in blob
+    assert "GroupNode" in blob
+    assert "children" in blob
+    # Atom marks are off the public live surface for now.
+    assert "mark_atoms" not in blob
     # Full nested PictSpec is under schema/future/.
     assert "future/xpict.schema.json" in written
     future = json.loads(written["future/xpict.schema.json"].read_text())

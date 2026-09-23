@@ -1,75 +1,41 @@
 # xpict (native Rust)
 
-**Declarative molecule depiction for publication-quality vector graphics** —
-Rust API matching Python and JavaScript.
+**Declarative molecule depiction** — Rust API matching Python and JavaScript.
 
-**Preferred:** [`depict`](https://docs.rs/xpict) / `DepictSpec` (document).  
-**Simple:** `mol` / `render` / `to_svg` (single mol; used by `depict`).
+**Preferred:** nested [`DepictSpec`](https://docs.rs/xpict) (`mol` / `group`).  
+**Simple:** `mol` / `render` / `to_svg`.
 
 **Layout:** crates.io [`rdkit`](https://crates.io/crates/rdkit) + Depictor FFI.  
-**Paint:** [`xpict-core`](https://crates.io/crates/xpict-core) (no RDKit).  
+**Paint:** [`xpict-core`](https://crates.io/crates/xpict-core).  
 **Docs:** [GitHub Pages](https://swamidasslab.github.io/xenosite-pict/) ·
-[publish guide](https://github.com/swamidasslab/xenosite-pict/blob/main/docs/publish.md)
-
-This crate is **not** linked into the Python or WASM packages (those use
-`xpict-core` only).
+[label markup](https://github.com/swamidasslab/xenosite-pict/blob/main/docs/label-markup.md)
 
 ```rust
-use xpict::{depict, mol, DepictSpec, MolRenderOptions, MolSpec};
+use xpict::{depict, mol, DepictSpec, MolNode, MolRenderOptions};
 
 fn main() -> Result<(), xpict::Error> {
-    // Preferred: declarative document
-    let batch = depict(&DepictSpec {
-        molecules: vec![
-            MolSpec {
-                smiles: Some("CCO".into()),
-                mark_atoms: Some(vec![2]),
-                ..Default::default()
-            },
-            MolSpec {
-                smiles: Some("CCCO".into()),
-                ..Default::default()
-            },
-        ],
+    let batch = depict(&DepictSpec::Group {
+        id: None,
+        children: vec![MolNode {
+            smiles: Some("CCO".into()),
+            ..Default::default()
+        }],
     })?;
-    assert_eq!(batch.len(), 2);
 
-    // Simple: single mol (+ imperative align via pose molblock)
     let mut m = mol("CCO")?;
     let rendered = m.render(MolRenderOptions {
-        mark_atoms: Some(vec![2]),
+        atom_shade: Some(vec![0.0, 0.2, 0.9]),
         ..Default::default()
     })?;
-    let mut other = mol("CCCO")?;
-    let aligned = other.render(MolRenderOptions {
-        align_to: Some(rendered.frame().to_string()),
-        ..Default::default()
-    })?;
-    println!("{}", aligned.to_svg());
+    println!("{}", rendered.to_svg());
+    let _ = batch;
     Ok(())
 }
 ```
 
-## System requirements
-
-- RDKit C++ libraries + headers, Boost, C++17 (`g++`)
-- On some Ubuntu images, set `CPLUS_INCLUDE_PATH` to the repo
-  `crates/xpict/compat/rdkit` shim (see `.cargo/config.toml` in the monorepo)
-
 ```bash
 cargo test -p xpict
 ```
-
-Publish **`xpict-core` first**, then this crate (`rust-core/v*` then `rust/v*`,
-or `release/v*` for an all-language cut).
-
-## Contributing
-
-Issues and PRs welcome:
-https://github.com/swamidasslab/xenosite-pict  
-
-Future nested `PictSpec` design (comments welcome):
-https://github.com/swamidasslab/xenosite-pict/tree/main/python/xpict/future  
 
 ## License
 

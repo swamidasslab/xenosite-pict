@@ -1,11 +1,10 @@
 """xpict — molecule depiction.
 
-**Preferred:** declarative document (``DepictSpec`` / ``render(doc)`` /
-``depict``) — grows toward full ``PictSpec``.
+**Preferred:** nested document (``DepictSpec`` — ``type: "mol"`` /
+``type: "group"`` + ``children``), a strict subset of future ``PictSpec``.
 
-**Simple:** ``mol`` / ``render`` / ``to_svg`` for single-molecule depiction;
-the document path uses that layer internally (JS + Rust today; Python Mol
-client landing).
+**Simple (JS/Rust today):** ``mol`` / ``render`` / ``to_svg`` for single-mol
+callers; the document path uses that layer internally.
 """
 
 from __future__ import annotations
@@ -15,7 +14,7 @@ from xpict.contracts.depict import DepictSpec, MolSpec
 from xpict.contracts.scene import Scene
 from xpict.warnings import PictBackendWarning
 
-# Lab / future nested document (not the ship surface).
+# Lab / future nested document.
 from xpict.future import PictSpec
 
 __version__ = "0.1.4"

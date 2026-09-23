@@ -77,16 +77,17 @@ fn align_to_rendered_pose() {
 }
 
 #[test]
-fn depict_batch_independent() {
-    use xpict::{depict, DepictSpec, MolSpec};
-    let out = depict(&DepictSpec {
-        molecules: vec![
-            MolSpec {
+fn depict_nested_group() {
+    use xpict::{depict, DepictSpec, MolNode};
+    let out = depict(&DepictSpec::Group {
+        id: None,
+        children: vec![
+            MolNode {
                 smiles: Some("CCO".into()),
-                mark_atoms: Some(vec![2]),
+                color: Some("#111".into()),
                 ..Default::default()
             },
-            MolSpec {
+            MolNode {
                 smiles: Some("CCCO".into()),
                 ..Default::default()
             },
@@ -97,6 +98,27 @@ fn depict_batch_independent() {
     assert_eq!(out[0].molecule.atoms.len(), 3);
     assert_eq!(out[1].molecule.atoms.len(), 4);
     assert!(!out[0].to_svg().is_empty());
+}
+
+#[test]
+fn depict_rgroups_markup() {
+    use xpict::{depict, DepictSpec};
+    let out = depict(&DepictSpec::Mol {
+        smiles: Some("*C".into()),
+        cxsmiles: None,
+        molfile: None,
+        id: None,
+        color: None,
+        shade: None,
+        rgroups: Some(vec![Some("$R_1$".into())]),
+    })
+    .unwrap();
+    let svg = out[0].to_svg();
+    assert!(
+        svg.contains("R₁") || svg.contains("data-text=\"R₁\""),
+        "expected R₁ in svg, got snippet {}",
+        &svg[..svg.len().min(200)]
+    );
 }
 
 #[test]

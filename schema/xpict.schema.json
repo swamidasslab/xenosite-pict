@@ -1,9 +1,63 @@
 {
   "$defs": {
-    "MolSpec": {
+    "GroupNode": {
       "additionalProperties": false,
-      "description": "One molecule entry in the preferred declarative document.\n\nStructure: pass exactly one of ``smiles``, ``cxsmiles``, ``molfile``, or\n``source`` (alias for any structure string).\n\nDo **not** put list-index ``align_to`` here. Imperative alignment belongs\non the simple client (``render(..., align_to=Mol|Rendered)``); document-\nlevel align references will grow with ``PictSpec``.",
+      "description": "Live group \u2014 subset of future ``GroupNode`` (mol children only today).",
       "properties": {
+        "type": {
+          "const": "group",
+          "default": "group",
+          "title": "Type",
+          "type": "string"
+        },
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional stable id",
+          "title": "Id"
+        },
+        "children": {
+          "description": "Owned mol nodes (discriminated by ``type``)",
+          "items": {
+            "$ref": "#/$defs/MolNode"
+          },
+          "title": "Children",
+          "type": "array"
+        }
+      },
+      "title": "GroupNode",
+      "type": "object"
+    },
+    "MolNode": {
+      "additionalProperties": false,
+      "description": "Live molecule node \u2014 subset of future ``MolNode`` / ``MoleculeSpec``.",
+      "properties": {
+        "type": {
+          "const": "mol",
+          "default": "mol",
+          "title": "Type",
+          "type": "string"
+        },
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional stable id",
+          "title": "Id"
+        },
         "smiles": {
           "anyOf": [
             {
@@ -43,32 +97,6 @@
           "description": "MDL molblock",
           "title": "Molfile"
         },
-        "source": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Structure alias (SMILES / CXSMILES / molfile text)",
-          "title": "Source"
-        },
-        "id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Optional molecule id",
-          "title": "Id"
-        },
         "color": {
           "anyOf": [
             {
@@ -82,81 +110,19 @@
           "description": "Ink color for backbone bonds and atom labels (CSS)",
           "title": "Color"
         },
-        "atom_shade": {
+        "shade": {
           "anyOf": [
             {
-              "items": {
-                "type": "number"
-              },
-              "type": "array"
+              "$ref": "#/$defs/ShadeSpec"
             },
             {
               "type": "null"
             }
           ],
           "default": null,
-          "description": "Per-atom shade scores (layout encounter order)",
-          "title": "Atom Shade"
+          "description": "Per-atom / per-bond colormap scores"
         },
-        "bond_shade": {
-          "anyOf": [
-            {
-              "items": {
-                "type": "number"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Per-bond shade scores (layout encounter order)",
-          "title": "Bond Shade"
-        },
-        "mark_atoms": {
-          "anyOf": [
-            {
-              "items": {
-                "type": "integer"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Atom indices to circle (publication marks)",
-          "title": "Mark Atoms"
-        },
-        "mark_bonds": {
-          "anyOf": [
-            {
-              "items": {
-                "maxItems": 2,
-                "minItems": 2,
-                "prefixItems": [
-                  {
-                    "type": "integer"
-                  },
-                  {
-                    "type": "integer"
-                  }
-                ],
-                "type": "array"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Bond endpoint index pairs to mark",
-          "title": "Mark Bonds"
-        },
-        "star_labels": {
+        "rgroups": {
           "anyOf": [
             {
               "items": {
@@ -172,42 +138,116 @@
               "type": "array"
             },
             {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Labels for ``*`` atoms in encounter order; null/empty \u2192 bare star. When omitted, CXSMILES ``|$\u2026$|`` aliases apply by atom index.",
-          "title": "Star Labels"
-        },
-        "bold_labels": {
-          "anyOf": [
-            {
-              "type": "boolean"
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "object"
             },
             {
               "type": "null"
             }
           ],
           "default": null,
-          "description": "Bold Liberation labels + stem-keyed bond stroke",
-          "title": "Bold Labels"
+          "description": "Labels for ``*`` atoms (encounter order list, or ordinal dict). Use chem markup for scripts: ``R_{1}`` or ``$R_1$``.",
+          "title": "Rgroups"
         }
       },
-      "title": "MolSpec",
+      "title": "MolNode",
+      "type": "object"
+    },
+    "ShadeSpec": {
+      "additionalProperties": false,
+      "description": "Continuous per-atom / per-bond scores for colormap shading.",
+      "properties": {
+        "atoms": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Per-atom scores (same length as atom count)",
+          "title": "Atoms"
+        },
+        "bonds": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Per-bond scores",
+          "title": "Bonds"
+        },
+        "colormap": {
+          "default": "xenosite",
+          "description": "Named colormap",
+          "title": "Colormap",
+          "type": "string"
+        },
+        "vmin": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Vmin"
+        },
+        "vmax": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Vmax"
+        }
+      },
+      "title": "ShadeSpec",
       "type": "object"
     }
   },
-  "additionalProperties": false,
-  "description": "Preferred declarative document: ordered mols \u2192 ordered rendered results.",
-  "properties": {
-    "molecules": {
-      "items": {
-        "$ref": "#/$defs/MolSpec"
-      },
-      "title": "Molecules",
-      "type": "array"
-    }
+  "description": "Preferred declarative document (strict subset of future PictSpec).",
+  "discriminator": {
+    "mapping": {
+      "group": "#/$defs/GroupNode",
+      "mol": "#/$defs/MolNode"
+    },
+    "propertyName": "type"
   },
-  "title": "DepictSpec",
-  "type": "object"
+  "oneOf": [
+    {
+      "$ref": "#/$defs/MolNode"
+    },
+    {
+      "$ref": "#/$defs/GroupNode"
+    }
+  ],
+  "title": "DepictSpec"
 }
