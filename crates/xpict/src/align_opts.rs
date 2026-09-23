@@ -1,24 +1,29 @@
 //! Shared RDKit alignment protocol (MinimalLib + native Depictor).
 //!
 //! Alignment is **RDKit’s** `generateDepictionMatching2DStructure` /
-//! MinimalLib `generate_aligned_coords`, constrained by an FMCS SMARTS with
-//! ``BondCompare: Any`` so aromatic rings match kekulé / quinone forms.
+//! MinimalLib `generate_aligned_coords`, constrained by an FMCS SMARTS.
 //!
-//! After MCS, language edges must reject **saturated ↔ unsaturated** matches
-//! (e.g. cyclohexane vs benzoquinone) — see Python
-//! ``_mcs_saturation_compatible`` / JS ``mcsSaturationCompatible``.
+//! MCS atom identity is **element + hybridization**; bonds are
+//! ``BondCompare: Any`` so aromatic ↔ kekulé / quinone still match, while
+//! aliphatic rings (SP3) do not match quinones (SP2).
+//!
+//! - Python / Rust (native FMCS): ``MCSAtomCompare`` / C++ AtomTyper
+//!   (atomic number + hybridization) + ``BondCompareAny``
+//! - JS MinimalLib (no custom AtomTyper): isotope-encode ``Z×10+hyb`` then
+//!   [`MCS_DETAILS_JSON`] (`AtomCompare: Isotopes`); strip isotopes from the
+//!   SMARTS before `generate_aligned_coords`
 //!
 //! Language bindings should not reinvent Kabsch — call RDKit with these
 //! option shapes:
 //!
-//! 1. MCS: [`MCS_DETAILS_JSON`] + saturation filter
+//! 1. MCS: element+hybridization (see above)
 //! 2. Align: [`minimallib_align_details`] → `generate_aligned_coords`
 //! 3. Treat empty / `"{}"` as failure ([`align_succeeded`])
 
-/// MinimalLib / `findMCS_P` JSON: element atoms, any-bond (aromatic ↔ order).
-/// Pair with the sat↔unsat filter in Python/JS — not sufficient alone.
+/// MinimalLib / `findMCS_P` JSON after isotope-encoding ``Z×10+hyb`` on copies.
+/// Native Rust/Python do **not** use this — they set a custom AtomTyper.
 pub const MCS_DETAILS_JSON: &str =
-    r#"{"AtomCompare":"Elements","BondCompare":"Any","Timeout":2}"#;
+    r#"{"AtomCompare":"Isotopes","BondCompare":"Any","Timeout":2}"#;
 
 /// Minimum MCS atom count before we trust the pattern.
 pub const MIN_MCS_ATOMS: u32 = 3;
@@ -74,5 +79,11 @@ mod tests {
         assert!(!align_succeeded("{}"));
         assert!(!align_succeeded("  {}  "));
         assert!(align_succeeded(r#"{"atoms":[0,1]}"#));
+    }
+
+    #[test]
+    fn mcs_details_isotopes_any_for_minimallib() {
+        assert!(MCS_DETAILS_JSON.contains("Isotopes"));
+        assert!(MCS_DETAILS_JSON.contains("Any"));
     }
 }

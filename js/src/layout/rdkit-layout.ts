@@ -2,9 +2,11 @@
  * RDKit layout + template align → {@link MoleculeIn} (SVG / SCALE space).
  *
  * Alignment uses MinimalLib `generate_aligned_coords` with an FMCS
- * `referenceSmarts` (`BondCompare: Any` so aromatic ↔ kekulé / quinone),
- * then a saturation filter so aliphatic rings do not match quinones.
- * Protocol mirrors Rust ``xpict::align_opts`` — do not reimplement Kabsch here.
+ * `referenceSmarts`. MCS atom identity is element + hybridization (isotope-
+ * encoded as ``Z×10+hyb`` on copies; ``AtomCompare: Isotopes``); bonds are
+ * ``BondCompare: Any`` so aromatic ↔ kekulé / quinone match while aliphatic
+ * rings (SP3) do not match quinones (SP2). Protocol mirrors Rust
+ * ``xpict::align_opts`` — do not reimplement Kabsch here.
  */
 
 import { ensureRdkit, type RdkitMol, type RdkitModule } from "../rdkit-loader.js";
@@ -15,115 +17,128 @@ export const SCALE = 20;
 
 /**
  * Keep in sync with ``xpict::align_opts::MCS_DETAILS_JSON``.
- * Element atoms; any-bond so aromatic ↔ kekulé / quinone. Callers must still
- * run {@link mcsSaturationCompatible} so aliphatic rings do not match quinones.
+ * Run on mols tagged with {@link tagHybridizationIsotopes}.
  */
 export const MCS_DETAILS_JSON = JSON.stringify({
-  AtomCompare: "Elements",
+  AtomCompare: "Isotopes",
   BondCompare: "Any",
   Timeout: 2,
 });
 
 const MIN_MCS_ATOMS = 3;
 
-type BondJson = { atoms: [number, number]; bo?: number };
+type RdkitAtomJson = {
+  z?: number;
+  chg?: number;
+  impHs?: number;
+  isotope?: number;
+};
+type RdkitBondJson = {
+  atoms: [number, number];
+  bo?: number;
+};
+type RdkitMolJson = {
+  molecules: Array<{
+    atoms: RdkitAtomJson[];
+    bonds: RdkitBondJson[];
+  }>;
+};
 
-function bondKey(a: number, b: number): string {
-  return a < b ? `${a}-${b}` : `${b}-${a}`;
-}
-
-/** MinimalLib may return `number[][]` or `{atoms:number[]}[]`. */
-function normalizeSubstructMatches(raw: string): number[][] {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return [];
-  }
-  if (!Array.isArray(parsed)) return [];
-  const out: number[][] = [];
-  for (const m of parsed) {
-    if (Array.isArray(m) && m.every((x) => typeof x === "number")) {
-      out.push(m as number[]);
-    } else if (
-      m &&
-      typeof m === "object" &&
-      Array.isArray((m as { atoms?: unknown }).atoms)
-    ) {
-      out.push((m as { atoms: number[] }).atoms);
+/**
+ * Infer SP2 (2) vs SP3 (3) from MinimalLib bond orders (often kekulized).
+ * Heteroatoms on an unsaturated neighbor count as SP2 (phenol / aniline).
+ */
+export function inferHybridizationCodes(molJson: RdkitMolJson): number[] {
+  const mol0 = molJson.molecules[0];
+  const atoms = mol0?.atoms ?? [];
+  const bonds = mol0?.bonds ?? [];
+  const n = atoms.length;
+  const maxBo = Array<number>(n).fill(1);
+  for (const b of bonds) {
+    const bo = b.bo ?? 1;
+    for (const ai of b.atoms) {
+      if (ai >= 0 && ai < n) maxBo[ai] = Math.max(maxBo[ai]!, bo);
     }
   }
-  return out;
-}
-
-function molBondOrders(mol: RdkitMol): Map<string, number> {
-  const json = JSON.parse(mol.get_json()) as RdkitMolJson;
-  const bonds = (json.molecules[0]?.bonds ?? []) as BondJson[];
-  const out = new Map<string, number>();
+  const adjUnsat = Array<boolean>(n).fill(false);
   for (const b of bonds) {
-    out.set(bondKey(b.atoms[0], b.atoms[1]), b.bo ?? 1);
+    const [a, c] = b.atoms;
+    if (a === undefined || c === undefined) continue;
+    if (maxBo[a]! >= 1.5) adjUnsat[c] = true;
+    if (maxBo[c]! >= 1.5) adjUnsat[a] = true;
   }
-  return out;
+  return atoms.map((atom, i) => {
+    const z = atom.z ?? 6;
+    if (maxBo[i]! >= 1.5) return 2;
+    if (z !== 6 && adjUnsat[i]) return 2;
+    return 3;
+  });
 }
 
-function matchHasUnsaturated(
-  bondOrders: Map<string, number>,
-  match: number[],
-  patternBonds: BondJson[]
-): boolean {
-  for (const pb of patternBonds) {
-    const a = match[pb.atoms[0]];
-    const b = match[pb.atoms[1]];
-    if (a === undefined || b === undefined) continue;
-    const bo = bondOrders.get(bondKey(a, b)) ?? 1;
-    if (bo >= 1.5) return true;
-  }
-  return false;
+/** Rewrite isotope SMARTS ``[62*]`` → element ``[#6]`` (Z = isotope ÷ 10). */
+export function smartsIsotopesToElements(smarts: string): string {
+  return smarts.replace(/\[(\d+)\*\]/g, (_m, iso: string) => {
+    const z = Math.floor(Number(iso) / 10);
+    return `[#${z}]`;
+  });
 }
 
 /**
- * Reject saturated-aliphatic ↔ unsaturated MCS (cyclohexane ↔ quinone).
- * Keep in sync with Python ``_mcs_saturation_compatible``.
+ * MCS used BondCompare Any — expand aromatic/typed bonds so the SMARTS
+ * still matches kekulized MinimalLib mols used at align time.
  */
-export function mcsSaturationCompatible(
+export function smartsBondsAny(smarts: string): string {
+  // Leave atom brackets intact; collapse bond operator runs to ``~``.
+  return smarts.replace(/\[[^\]]*\]|[:,=\-#]+/g, (m) =>
+    m.startsWith("[") ? m : "~"
+  );
+}
+
+/** Isotope SMARTS → element SMARTS with any-bond (align-ready). */
+export function smartsForAlign(smarts: string): string {
+  return smartsBondsAny(smartsIsotopesToElements(smarts));
+}
+
+function tagMolblockIsotopes(
+  molblock: string,
+  atomicNums: number[],
+  hybCodes: number[]
+): string {
+  const lines = molblock.replace(/\r\n/g, "\n").split("\n");
+  const end = lines.findIndex((l) => l.startsWith("M  END"));
+  if (end < 0) return molblock;
+  const pairs: string[] = [];
+  for (let i = 0; i < atomicNums.length; i++) {
+    const iso = atomicNums[i]! * 10 + hybCodes[i]!;
+    pairs.push(String(i + 1).padStart(4) + String(iso).padStart(4));
+  }
+  const chunks: string[] = [];
+  for (let i = 0; i < pairs.length; i += 8) {
+    const slice = pairs.slice(i, i + 8);
+    chunks.push("M  ISO" + String(slice.length).padStart(3) + slice.join(""));
+  }
+  lines.splice(end, 0, ...chunks);
+  return lines.join("\n");
+}
+
+/**
+ * Copy with isotopes ``Z×10+hyb`` so MinimalLib ``AtomCompare: Isotopes``
+ * matches Python element+hybridization MCS.
+ */
+export function tagHybridizationIsotopes(
   rdkit: RdkitModule,
-  a: RdkitMol,
-  b: RdkitMol,
-  smarts: string
-): boolean {
-  const pattern = rdkit.get_qmol(smarts);
-  if (!pattern || !pattern.is_valid()) {
-    pattern?.delete();
-    return false;
+  mol: RdkitMol
+): RdkitMol | null {
+  const json = JSON.parse(mol.get_json()) as RdkitMolJson;
+  const atoms = json.molecules[0]?.atoms ?? [];
+  const z = atoms.map((a) => a.z ?? 6);
+  const hyb = inferHybridizationCodes(json);
+  const tagged = rdkit.get_mol(tagMolblockIsotopes(mol.get_molblock(), z, hyb));
+  if (!tagged || !tagged.is_valid()) {
+    tagged?.delete();
+    return null;
   }
-  try {
-    const patJson = JSON.parse(pattern.get_json()) as RdkitMolJson;
-    const patternBonds = (patJson.molecules[0]?.bonds ?? []) as BondJson[];
-    if (!patternBonds.length) return true;
-
-    let matchesA: number[][] = [];
-    let matchesB: number[][] = [];
-    try {
-      matchesA = normalizeSubstructMatches(a.get_substruct_matches(pattern));
-      matchesB = normalizeSubstructMatches(b.get_substruct_matches(pattern));
-    } catch {
-      return false;
-    }
-    if (!matchesA.length || !matchesB.length) return false;
-
-    const ordersA = molBondOrders(a);
-    const ordersB = molBondOrders(b);
-    for (const ma of matchesA) {
-      const ua = matchHasUnsaturated(ordersA, ma, patternBonds);
-      for (const mb of matchesB) {
-        const ub = matchHasUnsaturated(ordersB, mb, patternBonds);
-        if (ua === ub) return true;
-      }
-    }
-    return false;
-  } finally {
-    pattern.delete();
-  }
+  return tagged;
 }
 
 /** Keep in sync with ``xpict::align_opts::minimallib_align_details``. */
@@ -175,23 +190,6 @@ export type MoleculeIn = {
   weight?: number;
   /** Uniform diagram scale (`1` = house). Omitted → `1`. */
   scale?: number;
-};
-
-type RdkitAtomJson = {
-  z?: number;
-  chg?: number;
-  impHs?: number;
-  isotope?: number;
-};
-type RdkitBondJson = {
-  atoms: [number, number];
-  bo?: number;
-};
-type RdkitMolJson = {
-  molecules: Array<{
-    atoms: RdkitAtomJson[];
-    bonds: RdkitBondJson[];
-  }>;
 };
 
 function elementFromZ(z: number | undefined): string {
@@ -319,27 +317,38 @@ function mcsReferenceSmarts(
   a: RdkitMol,
   b: RdkitMol
 ): string | null {
-  const list = new rdkit.MolList();
-  list.append(a);
-  list.append(b);
-  const raw = rdkit.get_mcs_as_json(list, MCS_DETAILS_JSON);
-  let parsed: { numAtoms?: number; canceled?: boolean; smarts?: string };
+  const taggedA = tagHybridizationIsotopes(rdkit, a);
+  const taggedB = tagHybridizationIsotopes(rdkit, b);
+  if (!taggedA || !taggedB) {
+    taggedA?.delete();
+    taggedB?.delete();
+    return null;
+  }
   try {
-    parsed = JSON.parse(raw) as typeof parsed;
-  } catch {
-    return null;
+    const list = new rdkit.MolList();
+    list.append(taggedA);
+    list.append(taggedB);
+    const raw = rdkit.get_mcs_as_json(list, MCS_DETAILS_JSON);
+    let parsed: { numAtoms?: number; canceled?: boolean; smarts?: string };
+    try {
+      parsed = JSON.parse(raw) as typeof parsed;
+    } catch {
+      return null;
+    }
+    if (
+      parsed.canceled ||
+      !parsed.smarts ||
+      (parsed.numAtoms ?? 0) < MIN_MCS_ATOMS
+    ) {
+      return null;
+    }
+    // Isotope SMARTS only match tagged mols — rewrite to element + any-bond
+    // SMARTS so kekulized align mols still match (BondCompare was Any).
+    return smartsForAlign(parsed.smarts);
+  } finally {
+    taggedA.delete();
+    taggedB.delete();
   }
-  if (
-    parsed.canceled ||
-    !parsed.smarts ||
-    (parsed.numAtoms ?? 0) < MIN_MCS_ATOMS
-  ) {
-    return null;
-  }
-  if (!mcsSaturationCompatible(rdkit, a, b, parsed.smarts)) {
-    return null;
-  }
-  return parsed.smarts;
 }
 
 export type LayoutResult = {

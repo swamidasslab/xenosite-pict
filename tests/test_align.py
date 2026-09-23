@@ -312,7 +312,7 @@ def test_rdkit_asymmetric_para_halo():
 
 @pytest.mark.skipif(not rdkit_available(), reason="rdkit not installed")
 def test_rdkit_mcs_phenol_quinone_both_ways():
-    """BondCompare Any: aromatic phenol ↔ benzoquinone (overlay hits; O anchors)."""
+    """Element+hybridization MCS: aromatic phenol ↔ benzoquinone (O anchors)."""
     phenol = _layout("c1ccc(O)cc1")
     quinone = _layout("O=C1C=CC(=O)C=C1")
     aligner = RdkitAligner()
@@ -323,8 +323,24 @@ def test_rdkit_mcs_phenol_quinone_both_ways():
 
 
 @pytest.mark.skipif(not rdkit_available(), reason="rdkit not installed")
+def test_rdkit_mcs_aniline_quinone_imine():
+    """Amino N matches quinone-imine N (both N/SP2); not benzoquinone O."""
+    aniline = _layout("Nc1ccccc1")
+    imine = _layout("O=C1C=CC(=N)C=C1")
+    quinone = _layout("O=C1C=CC(=O)C=C1")
+    aligner = RdkitAligner()
+    im_on_an = align_to_reference(aniline, imine, aligner, smiles="O=C1C=CC(=N)C=C1")
+    assert _overlay_hits(aniline, im_on_an) >= 6
+    from xpict.align_rdkit import _fmcs_mapping
+
+    # Ring-only MCS vs benzoquinone is OK (≥3); N does not map to O.
+    m = _fmcs_mapping(aniline, quinone)
+    assert m is not None and len(m) == 6
+
+
+@pytest.mark.skipif(not rdkit_available(), reason="rdkit not installed")
 def test_rdkit_mcs_rejects_aliphatic_vs_quinone():
-    """Cyclohexane ether must not MCS-align onto benzoquinone (sat ↔ unsat)."""
+    """Cyclohexane ether must not MCS-align onto benzoquinone (SP3 ≠ SP2)."""
     from xpict.align_rdkit import _fmcs_mapping
 
     quinone = _layout("O=C1C=CC(=O)C=C1")
