@@ -60,6 +60,13 @@ m = re.search(r'(?m)^version = \"([^\"]+)\"', Path('pyproject.toml').read_text()
 assert m, 'pyproject version missing'
 print(m.group(1))
 ")"
+py_dunder="$(python3 -c "
+import re
+from pathlib import Path
+m = re.search(r'(?m)^__version__ = \"([^\"]+)\"', Path('python/xpict/__init__.py').read_text())
+assert m, 'python __version__ missing'
+print(m.group(1))
+")"
 core_ver="$(python3 -c "
 import re
 from pathlib import Path
@@ -78,11 +85,12 @@ print(m.group(1))
 echo "Package versions (patch may differ):"
 echo "  js:         $js_ver"
 echo "  python:     $py_ver"
+echo "  __version__: $py_dunder"
 echo "  xpict-core: $core_ver"
 echo "  xpict:      $rust_ver"
 
 line="$(major_minor "$js_ver")"
-for pair in "python:$py_ver" "xpict-core:$core_ver" "xpict:$rust_ver"; do
+for pair in "python:$py_ver" "__version__:$py_dunder" "xpict-core:$core_ver" "xpict:$rust_ver"; do
   name="${pair%%:*}"
   v="${pair#*:}"
   mm="$(major_minor "$v")"
@@ -92,6 +100,12 @@ for pair in "python:$py_ver" "xpict-core:$core_ver" "xpict:$rust_ver"; do
     exit 1
   fi
 done
+
+if [[ "$py_dunder" != "$py_ver" ]]; then
+  echo "error: python/xpict/__init__.__version__ ($py_dunder) != pyproject.toml ($py_ver)" >&2
+  echo "Run: python3 scripts/bump_version.py $py_ver" >&2
+  exit 1
+fi
 
 echo "Lockstep major.minor: $line"
 

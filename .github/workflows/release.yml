@@ -63,51 +63,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Set all package versions to ${{ needs.meta.outputs.version }}
-        run: |
-          VER="${{ needs.meta.outputs.version }}"
-          python3 - <<'PY'
-          import json, re
-          from pathlib import Path
-          import os
-          ver = os.environ["VER"]
-
-          def set_toml_version(path: Path) -> None:
-              text = path.read_text()
-              text, n = re.subn(r'(?m)^version = "[^"]+"', f'version = "{ver}"', text, count=1)
-              assert n == 1, path
-              path.write_text(text)
-
-          pkg = Path("js/package.json")
-          data = json.loads(pkg.read_text())
-          data["version"] = ver
-          pkg.write_text(json.dumps(data, indent=2) + "\n")
-
-          set_toml_version(Path("pyproject.toml"))
-          for name in ("xpict-core", "xpict", "xpict-py", "xpict-wasm"):
-              set_toml_version(Path(f"crates/{name}/Cargo.toml"))
-
-          # Keep xpict → xpict-core version dep aligned.
-          dep = Path("crates/xpict/Cargo.toml")
-          t = dep.read_text()
-          t, n = re.subn(
-              r'(xpict-core = \{ path = "[^"]+", version = ")[^"]+(")',
-              rf"\g<1>{ver}\2",
-              t,
-              count=1,
-          )
-          assert n == 1
-          dep.write_text(t)
-          print(f"all packages → {ver}")
-          PY
-        env:
-          VER: ${{ needs.meta.outputs.version }}
+        run: python3 scripts/bump_version.py "${{ needs.meta.outputs.version }}"
       - name: Upload versioned tree
         uses: actions/upload-artifact@v4
         with:
           name: release-tree
           path: |
             js/package.json
+            js/package-lock.json
             pyproject.toml
+            python/xpict/__init__.py
             crates/xpict-core/Cargo.toml
             crates/xpict/Cargo.toml
             crates/xpict-py/Cargo.toml
@@ -122,6 +87,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: release-tree
+          path: .
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
@@ -138,6 +104,21 @@ jobs:
             cargo publish -p xpict-core --allow-dirty
           fi
 
+      - name: Wait for crates.io to index xpict-core
+        if: needs.meta.outputs.dry_run != 'true'
+        run: |
+          VER="${{ needs.meta.outputs.version }}"
+          for i in $(seq 1 30); do
+            if curl -fsSL -A "xpict-release" \
+              "https://crates.io/api/v1/crates/xpict-core/$VER" >/dev/null 2>&1; then
+              echo "xpict-core@$VER visible on crates.io"
+              exit 0
+            fi
+            echo "waiting for xpict-core@$VER ($i/30)…"
+            sleep 10
+          done
+          echo "warning: xpict-core@$VER not visible yet; publish-rust may retry/fail" >&2
+
   publish-rust:
     needs: [meta, bump, publish-core]
     runs-on: ubuntu-latest
@@ -147,6 +128,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: release-tree
+          path: .
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
@@ -180,6 +162,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: release-tree
+          path: .
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown

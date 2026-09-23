@@ -34,6 +34,21 @@ Build a mol, render with options, turn the scene into SVG.
     });
     ```
 
+=== "Python"
+
+    ```python
+    from xpict import mol, render, to_svg
+
+    benzene = mol("c1ccccc1")
+    rendered = render(benzene, {
+        "color": "#0b6e4f",
+        "atom_shade": [0, 0, 0.2, 0, 0, 0.9],
+    })
+    svg = to_svg(rendered.scene)
+
+    aligned = render(mol("Cc1ccccc1"), {"align_to": benzene})
+    ```
+
 === "Rust"
 
     ```rust
@@ -47,11 +62,6 @@ Build a mol, render with options, turn the scene into SVG.
     })?;
     let svg = rendered.to_svg();
     ```
-
-=== "Python"
-
-    Python’s shipped surface is the **document** API below (`render({…})`).
-    A Mol-object client matching JS/Rust is not on PyPI yet.
 
 <div class="example-out" markdown>
 

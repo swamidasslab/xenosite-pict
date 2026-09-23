@@ -1,16 +1,37 @@
 """xpict — molecule depiction.
 
-**Declarative document:** nested ``DepictSpec`` (``type: "mol"`` /
-``type: "group"`` + ``children``), a strict subset of future ``PictSpec`` that
-is still expanding.
+Two first-class APIs (same paint as JS / Rust):
 
-**Single molecule (JS/Rust):** ``mol`` / ``render`` / ``to_svg`` for one-mol
-callers. That Mol-object client is not on PyPI yet — use ``render(doc)`` here.
+**Single molecule** — ``mol`` / ``render`` / ``to_svg``::
+
+    from xpict import mol, render, to_svg
+
+    benzene = mol("c1ccccc1")
+    rendered = render(benzene, {"color": "#0b6e4f"})
+    svg = to_svg(rendered.scene)
+
+**Declarative document** — nested ``DepictSpec`` via ``depict`` / ``render(doc)``::
+
+    from xpict import depict
+
+    svg = depict({"type": "mol", "smiles": "CCO"})
 """
 
 from __future__ import annotations
 
-from xpict.api import Pict, render
+from typing import Any, overload
+
+from xpict.api import Pict, render as depict
+from xpict.client import (
+    Mol,
+    MolRenderOptions,
+    Rendered,
+    SvgAtom,
+    SvgBond,
+    mol,
+    render as render_mol,
+    to_svg,
+)
 from xpict.contracts.depict import DepictSpec, MolSpec
 from xpict.contracts.scene import Scene
 from xpict.warnings import PictBackendWarning
@@ -22,11 +43,49 @@ __version__ = "0.1.4"
 
 __all__ = [
     "DepictSpec",
+    "Mol",
+    "MolRenderOptions",
     "MolSpec",
     "Pict",
     "PictBackendWarning",
     "PictSpec",  # future nested document — use DepictSpec for the shipped subset
+    "Rendered",
     "Scene",
+    "SvgAtom",
+    "SvgBond",
+    "depict",
+    "mol",
     "render",
+    "to_svg",
     "__version__",
 ]
+
+
+@overload
+def render(input: Mol | str, opts: MolRenderOptions | dict[str, Any] | None = None) -> Rendered: ...
+
+
+@overload
+def render(
+    input: DepictSpec | PictSpec | dict[str, Any],
+    opts: None = None,
+    *,
+    backend: str | None = None,
+    format: str = "svg",
+) -> str: ...
+
+
+def render(input: Any, opts: Any = None, *, backend: str | None = None, format: str = "svg") -> Any:
+    """Single-mol ``render(mol, opts)`` or document ``render(doc)`` / ``depict(doc)``.
+
+    Dispatches on the first argument: ``Mol`` / SMILES string → single-molecule
+    client (parity with JS/Rust); nested ``DepictSpec`` dict → document SVG.
+    """
+    if isinstance(input, (Mol, str)):
+        return render_mol(input, opts)
+    if opts is not None:
+        raise TypeError(
+            "document render() does not take a second positional opts; "
+            "use backend=/format= keywords, or mol()/render(mol, opts) for single-mol"
+        )
+    return depict(input, backend=backend, format=format)  # type: ignore[call-arg]

@@ -33,20 +33,26 @@ The **public API** to document and version is the single-molecule client:
 ## 0. Major / minor (all-or-none)
 
 1. Bump **every** package to the new `X.Y.0` in one PR:
-   `js/package.json`, `pyproject.toml`, `crates/xpict-core`, `crates/xpict`
-   (and `xpict-py` / `xpict-wasm` for workspace consistency).
-2. `bash scripts/check_version_policy.sh`
-3. Merge; CI green.
-4. Tag and push:
+
+   ```bash
+   python3 scripts/bump_version.py 0.2.0
+   bash scripts/check_version_policy.sh --product 0.2.0
+   ```
+
+   That updates JS, Python (`pyproject` + `__version__`), and all Rust crates
+   (including the `xpict` → `xpict-core` dep). `release.yml` runs the same
+   script on tag so a `release/v*` push publishes every surface at that version.
+2. Merge; CI green.
+3. Tag and push:
 
    ```bash
    git tag release/v0.2.0
    git push origin release/v0.2.0
    ```
 
-5. [`release.yml`](https://github.com/swamidasslab/xenosite-pict/blob/main/.github/workflows/release.yml) publishes **xpict-core →
-   xpict → JS → Python** at that version (or Actions → **release** workflow
-   dispatch).
+4. [`release.yml`](https://github.com/swamidasslab/xenosite-pict/blob/main/.github/workflows/release.yml) publishes **xpict-core →
+   xpict → JS → Python** (waits for crates.io to index core before `xpict`).
+   Environments `crates` / `npm` / `pypi` must allow `release/v*` tags.
 
 Do **not** tag `js/v0.2.0` alone — it will fail the patch-only gate.
 

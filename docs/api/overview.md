@@ -4,7 +4,7 @@ Two first-class surfaces — same paint underneath.
 
 | API | Entry points | Role |
 | --- | --- | --- |
-| **Single molecule** | `mol` / `render` / `toSvg` (JS, Rust) | Imperative one-mol client |
+| **Single molecule** | `mol` / `render` / `toSvg` (JS, Python, Rust) | Imperative one-mol client |
 | **Declarative document** | `depict` / `render(doc)` | Nested JSON; expanding toward full `PictSpec` |
 
 Chem scripts: [Label markup](../label-markup.md).
@@ -22,7 +22,7 @@ Chem scripts: [Label markup](../label-markup.md).
 Flow: **`mol(source)` → `render(opts?)` → `Rendered` → `toSvg(scene)`**.
 
 `Rendered.scene` is editable JSON; call `toSvg` when you want a string.
-`align_to` accepts a prior `Mol` or `Rendered` (JS) or a pose molblock (Rust).
+`align_to` accepts a prior `Mol` or `Rendered` (JS / Python) or a pose molblock (Rust).
 
 === "JavaScript"
 
@@ -46,6 +46,24 @@ Flow: **`mol(source)` → `render(opts?)` → `Rendered` → `toSvg(scene)`**.
     });
     ```
 
+=== "Python"
+
+    ```python
+    from xpict import mol, render, to_svg
+
+    benzene = mol("c1ccccc1")
+    rendered = render(benzene, {
+        "color": "#0b6e4f",
+        "atom_shade": [0, 0, 0.2, 0, 0, 0.9],
+        "bold_labels": False,
+    })
+    svg = to_svg(rendered.scene)
+
+    aligned = render(mol("Cc1ccccc1"), {"align_to": benzene})
+
+    starred = render(mol("*C"), {"star_labels": ["$R_1$"]})
+    ```
+
 === "Rust"
 
     ```rust
@@ -59,11 +77,6 @@ Flow: **`mol(source)` → `render(opts?)` → `Rendered` → `toSvg(scene)`**.
     })?;
     let svg = rendered.to_svg();
     ```
-
-=== "Python"
-
-    The Mol-object client is not on PyPI yet. Use the document API below, or
-    call JS/Rust for `mol` / `render` / `toSvg`.
 
 <div class="example-out" markdown>
 
@@ -79,7 +92,7 @@ Flow: **`mol(source)` → `render(opts?)` → `Rendered` → `toSvg(scene)`**.
 
 <figure markdown="span">
 ![Toluene](../assets/examples/toluene.svg)
-<figcaption>`align_to` query</figcaption>
+<figcaption>Molecule 2 (`align_to`)</figcaption>
 </figure>
 
 <figure markdown="span">
@@ -97,7 +110,7 @@ Flow: **`mol(source)` → `render(opts?)` → `Rendered` → `toSvg(scene)`**.
 | `atom_shade` / `bond_shade` | Plot-dot shading scores (layout order) |
 | `star_labels` | Labels for `*` atoms (encounter order); chem markup supported |
 | `bold_labels` | Bold Liberation + thicker stem-keyed strokes |
-| `align_to` | Template pose (`Mol` / `Rendered` in JS; molblock in Rust) |
+| `align_to` | Pose of another mol (`Mol` / `Rendered` in JS & Python; molblock in Rust) |
 | `id` | Optional molecule id on the paint ABI |
 
 When `star_labels` is omitted, CXSMILES `|$…$|` aliases apply by atom index.

@@ -1,28 +1,68 @@
 # Python
 
 Package **`xpict`** on PyPI — source under `python/xpict/`. Paint goes through
-the Rust extension `xpict._native`; RDKit is an optional layout extra.
+the Rust extension `xpict._native`; RDKit is required for the single-mol client
+layout edge (`pip install 'xpict[rdkit]'`).
 
 ```bash
 pip install 'xpict[rdkit]'
 ```
 
+## Single molecule
+
+Same shape as JS / Rust: `mol` → `render` → `to_svg`.
+
+```python
+from xpict import mol, render, to_svg
+
+benzene = mol("c1ccccc1")
+rendered = render(benzene, {
+    "color": "#0b6e4f",
+    "atom_shade": [0, 0, 0.2, 0, 0, 0.9],
+})
+svg = to_svg(rendered.scene)
+
+aligned = render(mol("Cc1ccccc1"), {"align_to": benzene})  # or align_to=rendered
+```
+
+`align_to` accepts a prior `Mol` or `Rendered`. Options: `color`, `atom_shade`,
+`bond_shade`, `star_labels`, `bold_labels`, `align_to`, `id`.
+
+<div class="example-out" markdown>
+
+<figure markdown="span">
+![Benzene colored](../assets/examples/benzene_color.svg)
+<figcaption>`color`</figcaption>
+</figure>
+
+<figure markdown="span">
+![Toluene](../assets/examples/toluene.svg)
+<figcaption>Molecule 2 (`align_to`)</figcaption>
+</figure>
+
+<figure markdown="span">
+![Star R₁](../assets/examples/star_r1.svg)
+<figcaption>`star_labels`</figcaption>
+</figure>
+
+</div>
+
 ## Declarative document
 
-`render(doc)` / `Pict(…).render(doc)` take nested JSON — `type: "mol"` or
+`depict(doc)` / `render(doc)` take nested JSON — `type: "mol"` or
 `type: "group"` + `children`:
 
 ```python
-from xpict import render
+from xpict import depict
 
-svg = render({
+svg = depict({
     "type": "mol",
     "smiles": "CCO",
     "color": "#0b6e4f",
     "shade": {"atoms": [0.0, 0.2, 0.9], "vmin": 0.0, "vmax": 1.0},
 })
 
-svg = render({
+svg = depict({
     "type": "group",
     "children": [
         {"type": "mol", "cxsmiles": "*c1ccccc1Cl |$R1;;;;;$|"},
@@ -52,12 +92,6 @@ svg = render({
 
 Contracts: `DepictSpec` / `MolNode` in `xpict.contracts.depict`. Chem scripts:
 [Label markup](../label-markup.md).
-
-## Single-molecule client
-
-JS and Rust ship `mol` → `render` → `toSvg` for imperative one-mol callers.
-That Mol-object client is **not** on PyPI yet; use the document API above (or
-call those languages) until it lands.
 
 - [Python autodoc](../api/python.md)
 - [Install](../install.md)

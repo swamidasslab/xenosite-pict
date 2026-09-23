@@ -35,6 +35,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: ${{ inputs.version_tree_artifact }}
+          path: .
 
       - uses: actions/setup-python@v5
         with:
@@ -72,6 +73,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: ${{ inputs.version_tree_artifact }}
+          path: .
 
       - uses: actions/setup-python@v5
         with:
@@ -110,6 +112,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: ${{ inputs.version_tree_artifact }}
+          path: .
 
       - uses: actions/setup-python@v5
         with:
@@ -139,6 +142,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: ${{ inputs.version_tree_artifact }}
+          path: .
 
       - uses: actions/setup-python@v5
         with:
