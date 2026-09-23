@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import Any
 
 from xpict.contracts.depict import DepictSpec
-from xpict.contracts.layout import LayoutResult
 from xpict.contracts.scene import Scene
 from xpict.future.nodes import PictSpec
 
@@ -299,10 +298,9 @@ def export_schemas(out_dir: Path | None = None, *, minify: bool = True) -> dict[
     future_dir.mkdir(parents=True, exist_ok=True)
 
     # Live edge schemas are owned by Rust (schemars via ``make types``).
-    # Do not overwrite them from Pydantic.
+    # layout.schema.json removed — LayoutResult was never a live cross-lang ABI.
     live = {
         "xpict.schema.json": DepictSpec.model_json_schema(),
-        "layout.schema.json": LayoutResult.model_json_schema(),
         "scene.schema.json": Scene.model_json_schema(),
     }
     future = {

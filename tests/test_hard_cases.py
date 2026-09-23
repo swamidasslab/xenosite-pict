@@ -146,7 +146,7 @@ def test_plotdot_skips_near_zero_scores():
 
 def test_aromatic_layout_is_kekulized():
     backend = _chem_backend()
-    layout = Pict(backend=backend).layout({"molecules": [{"smiles": "c1ccccc1"}]}).molecules[0]
+    layout = Pict(backend=backend).layout({"molecules": [{"smiles": "c1ccccc1"}]})[0]
     orders = [b.order for b in layout.bonds]
     assert all(o < 3.5 for o in orders), f"aromatic order leaked: {orders}"
     doubles = sum(1 for o in orders if o >= 1.5)
@@ -173,7 +173,7 @@ def test_acetone_carbonyl_is_double_not_triple():
 def test_double_bond_offset_prefers_ring_interior():
     backend = _chem_backend()
     pict = Pict(backend=backend)
-    layout = pict.layout({"molecules": [{"smiles": "c1ccccc1"}]}).molecules[0]
+    layout = pict.layout({"molecules": [{"smiles": "c1ccccc1"}]})[0]
     coords, _, _ = normalize_coords(layout)
     rings = find_sssr(layout)
     coords_by_index = {a.index: coords[i] for i, a in enumerate(layout.atoms)}
@@ -256,7 +256,7 @@ def test_multi_molecule_still_one_halo():
 def test_shade_zeros_do_not_paint_full_disks():
     backend = _chem_backend()
     pict = Pict(backend=backend)
-    layout = pict.layout({"molecules": [{"smiles": "CC(=O)Oc1ccccc1C(=O)O"}]}).molecules[0]
+    layout = pict.layout({"molecules": [{"smiles": "CC(=O)Oc1ccccc1C(=O)O"}]})[0]
     n = len(layout.atoms)
     shade = [0.0] * n
     for i, a in enumerate(layout.atoms):
@@ -292,7 +292,7 @@ def test_fused_systems_admit_regular_polygons():
     """Naphthalene/indole/spiro: CDK FUSED/SPIRO — sequential regular n-gons OK."""
     backend = _chem_backend()
     for smiles in ("c1ccc2ccccc2c1", "c1ccc2[nH]ccc2c1", "C1CCC2(CC1)CCCC2"):
-        layout = Pict(backend=backend).layout({"molecules": [{"smiles": smiles}]}).molecules[0]
+        layout = Pict(backend=backend).layout({"molecules": [{"smiles": smiles}]})[0]
         rings = find_sssr(layout)
         assert rings
         assert all_rings_can_be_regular_polygons(rings), smiles
@@ -304,7 +304,7 @@ def test_bridged_and_cage_systems_are_overconstrained():
     backend = _chem_backend()
     for case in HARD_RING_CASES:
         layout = (
-            Pict(backend=backend).layout({"molecules": [{"smiles": case["smiles"]}]}).molecules[0]
+            Pict(backend=backend).layout({"molecules": [{"smiles": case["smiles"]}]})[0]
         )
         rings = find_sssr(layout)
         assert rings, case["id"]
@@ -324,7 +324,7 @@ def test_hard_ring_case_still_renders(case: dict):
 
 def test_norbornane_pair_is_cdk_bridged():
     backend = _chem_backend()
-    layout = Pict(backend=backend).layout({"molecules": [{"smiles": "C1CC2CCC1C2"}]}).molecules[0]
+    layout = Pict(backend=backend).layout({"molecules": [{"smiles": "C1CC2CCC1C2"}]})[0]
     rings = find_sssr(layout)
     assert len(rings) >= 2
     rels = ring_pair_relations(rings)

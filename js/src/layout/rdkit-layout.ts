@@ -362,7 +362,8 @@ export type LayoutMeta = {
   used_map?: Array<[number, number]>;
 };
 
-export type LayoutResult = {
+/** Single-mol host layout output (not the removed Python LayoutResult contract). */
+export type HostLayoutResult = {
   molecule: MoleculeIn;
   /** Coord-bearing molblock of the laid-out mol — pack into Rendered for align_to. */
   molblock: string;
@@ -420,7 +421,7 @@ export async function layoutWithRdkit(
     atomMap?: Array<[number, number]> | null;
     minAtoms?: number;
   } = {}
-): Promise<LayoutResult> {
+): Promise<HostLayoutResult> {
   const rdkit = await ensureRdkit();
   const floor = opts.minAtoms ?? MIN_MCS_ATOMS;
   const mol = getMol(rdkit, source);

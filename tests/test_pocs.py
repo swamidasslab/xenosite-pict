@@ -27,7 +27,7 @@ def test_own_svg_has_bonds_and_labels():
 def test_shade_and_marks_layers():
     backend = _chem_backend()
     pict = Pict(backend=backend)
-    n = len(pict.layout({"molecules": [{"smiles": "CCO"}]}).molecules[0].atoms)
+    n = len(pict.layout({"molecules": [{"smiles": "CCO"}]})[0].atoms)
     svg = pict.render(
         {
             "molecules": [
@@ -60,7 +60,7 @@ def test_elk_graph_uses_molecule_ids():
         }
     )
     pict = Pict(backend=layout_backend())
-    layouts = pict.layout(doc).molecules
+    layouts = pict.layout(doc)
     graph = elk_graph(layouts, doc)
     ids = {c["id"] for c in graph["children"]}
     assert ids == {"A", "B"}
@@ -85,7 +85,7 @@ def test_network_layout_positions_length():
             },
         }
     )
-    layouts = Pict(backend=layout_backend()).layout(doc).molecules
+    layouts = Pict(backend=layout_backend()).layout(doc)
     with warnings.catch_warnings(record=True):
         warnings.simplefilter("always")
         positions = layout_diagram(layouts, doc)
@@ -109,7 +109,7 @@ def test_elk_places_network():
             },
         }
     )
-    layouts = Pict(backend=layout_backend()).layout(doc).molecules
+    layouts = Pict(backend=layout_backend()).layout(doc)
     positions = layout_diagram(layouts, doc)
     assert len(positions) == 3
     # elkrs should separate nodes (not all stacked at origin).

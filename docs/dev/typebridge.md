@@ -13,15 +13,17 @@
 
 Invariant: every live document must still validate as future `PictSpec`.
 
-## LayoutResult — not a live shared ABI
+## LayoutResult — removed (defunct)
 
-| Type | Role |
+The ``LayoutResult`` wrapper and ``schema/layout.schema.json`` are **gone**.
+They were never a live cross-language ABI.
+
+| Still exists | Role |
 | --- | --- |
-| `MoleculeLayout` / `AtomLayout` / `BondLayout` | **Python-internal** layout→draw stack (`backends`, `align`, `draw/*`, legacy `api.layout`) |
-| `LayoutResult` | Thin `{ molecules: […] }` wrapper around that — almost only `api.layout()` + schema export |
-| JS `LayoutResult` in `rdkit-layout.ts` | **Different shape** (single-mol host result); same name only |
+| ``MoleculeLayout`` / ``AtomLayout`` / ``BondLayout`` | **Python-internal** only — legacy ``Pict`` → backends → ``draw/*`` until that stack is retired |
+| JS type formerly named ``LayoutResult`` in ``rdkit-layout.ts`` | Renamed ``HostLayoutResult`` (unrelated single-mol host result) |
 
-**Not in `xpict-core`.** Live cross-language wire types are `MoleculeIn` / `EdgePlan` / `EdgeResult`. Do **not** feed layout into Rust-first codegen. Treat as Python-only (or delete `schema/layout.schema.json` from the “shipped contracts” story when flipping schema SoT).
+Live wire types remain ``MoleculeIn`` / ``EdgePlan`` / ``EdgeResult``.
 
 ## Phase 0 spike — typebridge rejected
 

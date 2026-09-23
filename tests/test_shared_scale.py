@@ -85,7 +85,7 @@ def test_codisplayed_unlabeled_bonds_match_length():
         }
     )
     pict = Pict(backend=layout_backend())
-    layouts = pict.layout(doc).molecules
+    layouts = pict.layout(doc)
     scale = shared_coord_scale(layouts)
     place = layout_diagram_ex(layouts, doc)
     scene = build_scene(layouts, doc.molecules, doc, positions=place.positions, scale=scale)

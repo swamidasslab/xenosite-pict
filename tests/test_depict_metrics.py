@@ -141,11 +141,11 @@ def test_svg_uses_reference_font_and_butt_bonds():
 
 def test_hetero_labels_include_implicit_h():
     backend = _backend()
-    lay = Pict(backend=backend).layout({"molecules": [{"smiles": "CCO"}]}).molecules[0]
+    lay = Pict(backend=backend).layout({"molecules": [{"smiles": "CCO"}]})[0]
     oxy = next(a for a in lay.atoms if a.element == "O")
     assert oxy.label == "OH"
     nitro = (
-        Pict(backend=backend).layout({"molecules": [{"smiles": "C[C@H](N)C(=O)O"}]}).molecules[0]
+        Pict(backend=backend).layout({"molecules": [{"smiles": "C[C@H](N)C(=O)O"}]})[0]
     )
     nitrogen = next(a for a in nitro.atoms if a.element == "N")
     assert nitrogen.label == "NH2"
@@ -156,7 +156,7 @@ def test_hetero_labels_include_implicit_h():
 def test_anion_is_not_a_radical_dot():
     backend = _backend()
     # Hydroxide — use [OH-]; bare [O-] is a radical anion in RDKit.
-    lay = Pict(backend=backend).layout({"molecules": [{"smiles": "[OH-]"}]}).molecules[0]
+    lay = Pict(backend=backend).layout({"molecules": [{"smiles": "[OH-]"}]})[0]
     assert lay.atoms[0].charge == -1
     assert lay.atoms[0].radical == 0
     svg = render({"molecules": [{"smiles": "[OH-]"}]}, backend=backend)
@@ -192,7 +192,7 @@ def test_radical_dot_still_drawn():
 
 def test_mean_bond_scale():
     backend = _backend()
-    lay = Pict(backend=backend).layout({"molecules": [{"smiles": "c1ccccc1"}]}).molecules[0]
+    lay = Pict(backend=backend).layout({"molecules": [{"smiles": "c1ccccc1"}]})[0]
     coords, _, _ = normalize_coords(lay)
     # Benzene C–C should be ~BOND_PX after scaling.
     dists = []

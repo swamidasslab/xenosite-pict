@@ -4,8 +4,8 @@
 
 - Spike rejected **typebridge** (wrong serde tag rename / broken untagged
   AlignTo in Python). Pivoted to **schemars + ts-rs** for live EdgePlan
-  schema + JS types (``make types``). LayoutResult stays Python-internal.
-  See ``docs/dev/typebridge.md``.
+  schema + JS types (``make types``). Removed defunct ``LayoutResult`` /
+  ``schema/layout.schema.json``. See ``docs/dev/typebridge.md``.
 
 ## 2026-09-23 (later)
 

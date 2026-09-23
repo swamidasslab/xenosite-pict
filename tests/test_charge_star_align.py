@@ -43,7 +43,7 @@ def test_radical_dot_in_svg():
 
 
 def test_star_label():
-    lay = Pict(backend=layout_backend()).layout({"molecules": [{"smiles": "*C"}]}).molecules[0]
+    lay = Pict(backend=layout_backend()).layout({"molecules": [{"smiles": "*C"}]})[0]
     star = next(a for a in lay.atoms if a.element == "*")
     assert star.label == "*"
     svg = render({"molecules": [{"smiles": "*C"}]}, backend=layout_backend())
@@ -51,7 +51,7 @@ def test_star_label():
 
 
 def test_star_name_from_cxsmiles():
-    lay = Pict(backend=layout_backend()).layout({"molecules": [{"cxsmiles": "*C |$R1;$|"}]}).molecules[0]
+    lay = Pict(backend=layout_backend()).layout({"molecules": [{"cxsmiles": "*C |$R1;$|"}]})[0]
     star = next(a for a in lay.atoms if a.element == "*")
     assert star.label == "R1"
     svg = render({"molecules": [{"cxsmiles": "*C |$R1;$|"}]}, backend=layout_backend())
@@ -60,9 +60,9 @@ def test_star_name_from_cxsmiles():
 
 @pytest.mark.skip(reason="indigo not in MVP")
 def test_indigo_star_and_charge():
-    lay = Pict(backend="indigo").layout({"molecules": [{"smiles": "*C"}]}).molecules[0]
+    lay = Pict(backend="indigo").layout({"molecules": [{"smiles": "*C"}]})[0]
     assert any(a.element == "*" and a.label for a in lay.atoms)
-    lay2 = Pict(backend="indigo").layout({"molecules": [{"smiles": "[NH4+]"}]}).molecules[0]
+    lay2 = Pict(backend="indigo").layout({"molecules": [{"smiles": "[NH4+]"}]})[0]
     assert lay2.atoms[0].charge == 1
     svg = render({"molecules": [{"smiles": "C[O]"}]}, backend="indigo")
     assert "radical" in svg
@@ -82,8 +82,8 @@ def test_indigo_cx_star_name():
 def test_align_mcs_maps_phenol_scaffold():
     backend = _backend()
     pict = Pict(backend=backend)
-    ph = pict.layout({"molecules": [{"smiles": "c1ccc(cc1)O"}]}).molecules[0]
-    an = pict.layout({"molecules": [{"smiles": "COc1ccccc1"}]}).molecules[0]
+    ph = pict.layout({"molecules": [{"smiles": "c1ccc(cc1)O"}]})[0]
+    an = pict.layout({"molecules": [{"smiles": "COc1ccccc1"}]})[0]
     mapping = _mcs_mapping(ph, an)
     assert mapping is not None
     assert len(mapping) >= 6  # phenyl carbons at least
@@ -92,8 +92,8 @@ def test_align_mcs_maps_phenol_scaffold():
 def test_align_layouts_transforms_coords():
     backend = _backend()
     pict = Pict(backend=backend)
-    a = pict.layout({"molecules": [{"smiles": "c1ccc(cc1)O"}]}).molecules[0]
-    b = pict.layout({"molecules": [{"smiles": "COc1ccccc1"}]}).molecules[0]
+    a = pict.layout({"molecules": [{"smiles": "c1ccc(cc1)O"}]})[0]
+    b = pict.layout({"molecules": [{"smiles": "COc1ccccc1"}]})[0]
     # Flip B so alignment must rotate/translate.
     flipped = b.model_copy(
         update={"atoms": [at.model_copy(update={"x": -at.x, "y": -at.y + 5.0}) for at in b.atoms]}

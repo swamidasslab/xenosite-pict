@@ -6,7 +6,7 @@ from typing import Any, Literal
 
 from xpict.align import align_layouts
 from xpict.backends import get_backend
-from xpict.contracts.layout import LayoutResult, MoleculeLayout
+from xpict.contracts.layout import MoleculeLayout
 from xpict.future.nodes import PictSpec, expand_pict
 from xpict.future.spec import LegacyPictSpec
 from xpict.diagram.elk import layout_diagram_ex
@@ -86,7 +86,10 @@ class Pict:
             return scene_to_html(scene)
         return scene_to_svg(scene)
 
-    def layout(self, spec: PictSpec | LegacyPictSpec | dict[str, Any]) -> LayoutResult:
+    def layout(
+        self, spec: PictSpec | LegacyPictSpec | dict[str, Any]
+    ) -> list[MoleculeLayout]:
+        """Lay out molecules for the legacy Pict/draw path (internal helper)."""
         doc = _to_legacy(spec)
         backend = get_backend(self.backend)
         layouts = align_layouts(
@@ -94,7 +97,7 @@ class Pict:
             enabled=doc.diagram.align,
             specs=doc.molecules,
         )
-        return LayoutResult(molecules=layouts)
+        return layouts
 
 
 def render(

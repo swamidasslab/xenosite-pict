@@ -87,7 +87,7 @@ def test_stereo_up_replaces_skeleton():
 
 def test_layout_sets_wedge_stereo():
     backend = _backend()
-    layout = Pict(backend=backend).layout({"molecules": [{"smiles": "C[C@H](O)Cl"}]}).molecules[0]
+    layout = Pict(backend=backend).layout({"molecules": [{"smiles": "C[C@H](O)Cl"}]})[0]
     stereos = {b.stereo for b in layout.bonds if b.stereo and b.stereo != "none"}
     assert stereos & {"up", "down"}, (
         f"expected wedge stereo, got {[b.stereo for b in layout.bonds]}"

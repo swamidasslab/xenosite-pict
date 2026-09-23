@@ -17,7 +17,6 @@ from xpict.contracts.edge import (
 from xpict.contracts.layout import (
     AtomLayout,
     BondLayout,
-    LayoutResult,
     MoleculeLayout,
 )
 from xpict.contracts.scene import (
@@ -43,7 +42,6 @@ __all__ = [
     "EdgePlan",
     "EdgeResult",
     "Layer",
-    "LayoutResult",
     "MolSpec",
     "MolTemplate",
     "MoleculeLayout",

@@ -1,4 +1,8 @@
-"""Backend-agnostic layout result contract."""
+"""Backend-agnostic layout types for the legacy Python Pict/draw path.
+
+Not a live cross-language ABI (that is ``MoleculeIn`` / EdgePlan). These remain
+as internal plumbing until the flat ``Pict`` render stack is retired.
+"""
 
 from __future__ import annotations
 
@@ -43,9 +47,3 @@ class MoleculeLayout(StrictModel):
     bonds: list[BondLayout]
     backend: str
     warnings: list[str] = Field(default_factory=list)
-
-
-class LayoutResult(StrictModel):
-    """One or more laid-out molecules ready for scene construction."""
-
-    molecules: list[MoleculeLayout]
