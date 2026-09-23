@@ -18,13 +18,11 @@ _ORDER_CAP = 24
 
 
 def mcs_params():
-    """FMCS: element + hybridization atoms; any-bond; ring bonds ↔ ring bonds only.
+    """FMCS: element + hybridization atoms; any-bond (aromatic ↔ kekulé / quinone).
 
     Hybridization separates aliphatic rings from quinones without a post-filter.
-    ``BondCompareParameters.RingMatchesRingOnly`` stops an open-chain path from
-    matching through ring bonds (so Depictor does not pin a chain onto a ring
-    arc). Ring *atoms* may still match chain atoms; only bond ring-membership
-    is constrained. Parity with JS MinimalLib ``BondRingMatchesRingOnly``.
+    Parity with JS MinimalLib (isotope-encoded Z×10+hyb + ``AtomCompare: Isotopes``).
+    Align passes **atom matches only** into Depictor (not the MCS bond pattern).
     Shared by document align and single-mol ``client`` layout.
     """
     from rdkit.Chem import rdFMCS
@@ -41,8 +39,6 @@ def mcs_params():
     params.Timeout = 2
     params.AtomTyper = _ElemHyb()
     params.BondTyper = rdFMCS.BondCompare.CompareAny
-    # Bond-only: ring atoms matching chain atoms is fine; ring↔chain bonds are not.
-    params.BondCompareParameters.RingMatchesRingOnly = True
     return params
 
 
@@ -242,10 +238,10 @@ def _bonds_after_depict(mol, bonds: list[BondLayout], to_rd: dict[int, int], smi
 class RdkitAligner(RigidAligner):
     """Template depiction via RDKit ``GenerateDepictionMatching2DStructure``.
 
-    MCS: element + hybridization atoms, ``BondCompare.CompareAny``,
-    bond ``RingMatchesRingOnly`` (parity with Rust/JS ``align_opts``). No
-    element-only MCS fallback. The reference layout / pose mol is never
-    modified.
+    MCS (element + hybridization, ``BondCompare.CompareAny``) finds the atom
+    correspondence; Depictor is called with that **atom map only** — MCS bond
+    topology is not passed as a reference pattern. No element-only MCS
+    fallback. The reference layout / pose mol is never modified.
     """
 
     name = "rdkit"
@@ -263,16 +259,24 @@ class RdkitAligner(RigidAligner):
         smiles: str | None = None,
     ) -> MoleculeLayout | None:
         from rdkit import Chem
-        from rdkit.Chem import rdDepictor, rdFMCS
-
-        del mapping  # MCS pattern drives Depictor; mapping is for rigid fallback only
+        from rdkit.Chem import rdDepictor
 
         built_ref = layout_to_rdkit(ref)
         built_other = layout_to_rdkit(other)
         if built_ref is None or built_other is None:
             return None
-        ref_mol, _ref_to_rd = built_ref
+        ref_mol, ref_to_rd = built_ref
         other_mol, to_rd = built_other
+        if len(mapping) < _MIN_MAP:
+            return None
+        # (reference_idx, query_idx) — atom matches only; no MCS bond pattern.
+        atom_map = [
+            (ref_to_rd[ref_i], to_rd[other_i])
+            for other_i, ref_i in mapping.items()
+            if other_i in to_rd and ref_i in ref_to_rd
+        ]
+        if len(atom_map) < _MIN_MAP:
+            return None
         # Copy so Depictor cannot touch the caller's reference pose.
         ref_pose = Chem.Mol(ref_mol)
         ref_before = [
@@ -281,29 +285,14 @@ class RdkitAligner(RigidAligner):
             for i in range(ref_pose.GetNumAtoms())
         ]
 
-        try:
-            mcs = rdFMCS.FindMCS([ref_pose, other_mol], mcs_params())
-        except Exception:
-            return None
-        if getattr(mcs, "canceled", False) or mcs.numAtoms < _MIN_MAP:
-            return None
-        try:
-            pattern = Chem.MolFromSmarts(mcs.smartsString)
-        except Exception:
-            pattern = None
-        if pattern is None:
-            return None
-
         params = rdDepictor.ConstrainedDepictionParams()
         params.allowRGroups = True
         params.acceptFailure = False
         try:
-            match = rdDepictor.GenerateDepictionMatching2DStructure(
-                other_mol, ref_pose, -1, pattern, params
+            rdDepictor.GenerateDepictionMatching2DStructure(
+                other_mol, ref_pose, atom_map, -1, params
             )
         except Exception:
-            return None
-        if not match:
             return None
 
         ref_after = [

@@ -1,42 +1,31 @@
 //! Shared RDKit alignment protocol (MinimalLib + native Depictor).
 //!
 //! Alignment is **RDKit’s** `generateDepictionMatching2DStructure` /
-//! MinimalLib `generate_aligned_coords`, constrained by an FMCS SMARTS.
+//! MinimalLib `generate_aligned_coords`, constrained by MCS **atom** matches.
 //!
-//! MCS atom identity is **element + hybridization**; bonds are
-//! ``BondCompare: Any`` so aromatic ↔ kekulé / quinone still match, while
-//! aliphatic rings (SP3) do not match quinones (SP2).
-//! Bond ``RingMatchesRingOnly`` keeps ring *bonds* from matching chain
-//! bonds (an open chain must not pin onto a ring arc). Ring *atoms* may
-//! still match chain atoms.
-//!
-//! - Python / Rust (native FMCS): ``MCSAtomCompare`` / C++ AtomTyper
-//!   (atomic number + hybridization) + ``BondCompareAny`` +
-//!   ``BondCompareParameters.RingMatchesRingOnly``
-//! - JS MinimalLib (no custom AtomTyper): isotope-encode ``Z×10+hyb`` then
-//!   [`MCS_DETAILS_JSON`] (`AtomCompare: Isotopes`); strip isotopes from the
-//!   SMARTS before `generate_aligned_coords`
-//!
-//! Language bindings should not reinvent Kabsch — call RDKit with these
-//! option shapes:
-//!
-//! 1. MCS: element+hybridization + ring-bond↔ring-bond only (see above)
-//! 2. Align: [`minimallib_align_details`] → `generate_aligned_coords`
+//! Protocol:
+//! 1. MCS: element + hybridization atoms; ``BondCompare: Any`` (aromatic ↔
+//!    kekulé / quinone). Ring↔chain atom matches are allowed.
+//! 2. Align: pass **atom matches only** into Depictor / MinimalLib — do not
+//!    feed the MCS bond pattern as `referencePattern` / bonded SMARTS.
 //! 3. Treat empty / `"{}"` as failure ([`align_succeeded`])
+//!
+//! - Python / Rust (native): custom AtomTyper + `BondCompareAny`; Depictor
+//!   `atomMap` / `MatchVectType` overload
+//! - JS MinimalLib (no atomMap details key): isotope-tag matched atoms, then
+//!   disconnected isotope SMARTS (`[9100*].[9101*]…`) as `referenceSmarts`
 
 /// MinimalLib / `findMCS_P` JSON after isotope-encoding ``Z×10+hyb`` on copies.
 /// Native Rust/Python do **not** use this — they set a custom AtomTyper.
-/// ``BondRingMatchesRingOnly`` sets only the bond flag in
-/// ``parseMCSParametersJSON`` (not the atom flag).
-pub const MCS_DETAILS_JSON: &str = concat!(
-    r#"{"AtomCompare":"Isotopes","BondCompare":"Any","Timeout":2,"#,
-    r#""BondRingMatchesRingOnly":true}"#
-);
+pub const MCS_DETAILS_JSON: &str =
+    r#"{"AtomCompare":"Isotopes","BondCompare":"Any","Timeout":2}"#;
 
 /// Minimum MCS atom count before we trust the pattern.
 pub const MIN_MCS_ATOMS: u32 = 3;
 
 /// MinimalLib `generate_aligned_coords` details with an MCS `referenceSmarts`.
+/// Prefer atom-only (disconnected) SMARTS from matched isotopes — see JS
+/// `layoutWithRdkit`.
 pub fn minimallib_align_details(reference_smarts: &str) -> String {
     // Hand-built JSON keeps this crate free of a serde_json dependency for
     // a two-field object. Escape is unnecessary: SMARTS use `# [ ] : = -` etc.
@@ -93,8 +82,6 @@ mod tests {
     fn mcs_details_isotopes_any_for_minimallib() {
         assert!(MCS_DETAILS_JSON.contains("Isotopes"));
         assert!(MCS_DETAILS_JSON.contains("Any"));
-        assert!(MCS_DETAILS_JSON.contains(r#""BondRingMatchesRingOnly":true"#));
-        assert!(!MCS_DETAILS_JSON.contains(r#""RingMatchesRingOnly""#));
-        assert!(!MCS_DETAILS_JSON.contains("AtomRingMatchesRingOnly"));
+        assert!(!MCS_DETAILS_JSON.contains("RingMatchesRingOnly"));
     }
 }

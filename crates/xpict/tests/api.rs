@@ -199,50 +199,6 @@ fn align_mcs_rejects_aliphatic_vs_quinone() {
     );
 }
 
-/// Bond RingMatchesRingOnly: open-chain path must not match through ring bonds.
-#[test]
-fn align_mcs_rejects_ring_vs_open_chain() {
-    let mut ring = mol("C1CCCOC1").unwrap();
-    let r = ring.render(MolRenderOptions::default()).unwrap();
-    let mut chain = mol("O=CCCCCO").unwrap();
-    let free = chain.render(MolRenderOptions::default()).unwrap();
-    let mut chain2 = mol("O=CCCCCO").unwrap();
-    let aligned = chain2
-        .render(MolRenderOptions {
-            align_to: Some(r.frame().to_string()),
-            ..Default::default()
-        })
-        .unwrap();
-    let free_key: Vec<_> = free
-        .molecule
-        .atoms
-        .iter()
-        .map(|a| (a.index, (a.x * 1e4).round() as i64, (a.y * 1e4).round() as i64))
-        .collect();
-    let aligned_key: Vec<_> = aligned
-        .molecule
-        .atoms
-        .iter()
-        .map(|a| (a.index, (a.x * 1e4).round() as i64, (a.y * 1e4).round() as i64))
-        .collect();
-    assert_eq!(
-        free_key, aligned_key,
-        "chain→THP should not template-align"
-    );
-    let hits = aligned
-        .molecule
-        .atoms
-        .iter()
-        .filter(|a| {
-            r.molecule
-                .atoms
-                .iter()
-                .any(|b| near(a.x, a.y, b.x, b.y, 0.2))
-        })
-        .count();
-    assert!(hits < 4, "chain→THP should not MCS-overlay (hits={hits})");
-}
-
 /// Asymmetric para-halo pair — F coincides under any valid embedding.
 #[test]
 fn align_asymmetric_para_halo() {

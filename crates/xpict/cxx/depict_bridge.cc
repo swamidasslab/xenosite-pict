@@ -10,7 +10,9 @@
 #include <GraphMol/GraphMol.h>
 #include <GraphMol/MolOps.h>
 #include <GraphMol/SmilesParse/SmilesParse.h>
+#include <GraphMol/Substruct/SubstructMatch.h>
 
+#include <algorithm>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -47,8 +49,7 @@ void ensure_2d(RDKit::ROMol &mol) {
   }
 }
 
-/** FMCS: element + hybridization atoms, any-bond, ring-bond↔ring-bond only
- *  (parity with Python ``mcs_params``). */
+/** FMCS: element + hybridization atoms, any-bond (parity with Python ``mcs_params``). */
 bool mcs_atom_compare_elements_hybridization(
     const RDKit::MCSAtomCompareParameters &, const RDKit::ROMol &mol1,
     unsigned int idx1, const RDKit::ROMol &mol2, unsigned int idx2,
@@ -71,8 +72,6 @@ std::unique_ptr<RDKit::ROMol> mcs_pattern(const RDKit::ROMol &mol,
   params.Timeout = 2;
   params.AtomTyper = mcs_atom_compare_elements_hybridization;
   params.setMCSBondTyperFromEnum(RDKit::BondCompareAny);
-  // Bond-only: ring atoms may match chain atoms; ring↔chain bonds may not.
-  params.BondCompareParameters.RingMatchesRingOnly = true;
   RDKit::MCSResult mcs = RDKit::findMCS(mols, &params);
   if (mcs.NumAtoms < kMinMcsAtoms || mcs.SmartsString.empty()) {
     return nullptr;
@@ -84,7 +83,7 @@ std::unique_ptr<RDKit::ROMol> mcs_pattern(const RDKit::ROMol &mol,
   }
 }
 
-/// Returns true when Depictor constrained the pose onto the template.
+/// MCS finds correspondence; Depictor gets **atom map only** (no bond pattern).
 bool align_to_template(RDKit::ROMol &mol, const RDKit::ROMol &tmpl) {
   auto pattern = mcs_pattern(mol, tmpl);
   if (!pattern) {
@@ -92,16 +91,27 @@ bool align_to_template(RDKit::ROMol &mol, const RDKit::ROMol &tmpl) {
     ensure_2d(mol);
     return false;
   }
+  RDKit::MatchVectType matchMol;
+  RDKit::MatchVectType matchTmpl;
+  if (!RDKit::SubstructMatch(mol, *pattern, matchMol) ||
+      !RDKit::SubstructMatch(tmpl, *pattern, matchTmpl) ||
+      matchMol.size() < kMinMcsAtoms || matchMol.size() != matchTmpl.size()) {
+    ensure_2d(mol);
+    return false;
+  }
+  std::sort(matchMol.begin(), matchMol.end());
+  std::sort(matchTmpl.begin(), matchTmpl.end());
+  RDKit::MatchVectType atomMap;
+  atomMap.reserve(matchMol.size());
+  for (size_t i = 0; i < matchMol.size(); ++i) {
+    // (referenceIdx, queryIdx)
+    atomMap.emplace_back(matchTmpl[i].second, matchMol[i].second);
+  }
   RDDepict::ConstrainedDepictionParams p;
   p.allowRGroups = true;
   p.acceptFailure = false;
   try {
-    auto match = RDDepict::generateDepictionMatching2DStructure(
-        mol, tmpl, -1, pattern.get(), p);
-    if (match.empty()) {
-      ensure_2d(mol);
-      return false;
-    }
+    RDDepict::generateDepictionMatching2DStructure(mol, tmpl, atomMap, -1, p);
     return true;
   } catch (...) {
     ensure_2d(mol);
