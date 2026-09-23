@@ -1,137 +1,346 @@
 {
-  "$defs": {
-    "CoordGenMoleculeResult": {
-      "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "EdgeResult",
+  "type": "object",
+  "required": [
+    "version"
+  ],
+  "properties": {
+    "results": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/EdgeTaskResult"
+      }
+    },
+    "version": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0.0
+    }
+  },
+  "definitions": {
+    "AtomIn": {
+      "description": "Atom input for a molecule depict call (SVG-space coords from the caller).\n\nIdentity: pass ``element`` and/or atomic number ``z``. If only ``z`` is set, the symbol comes from [`crate::element_symbol`].",
+      "type": "object",
+      "required": [
+        "index",
+        "x",
+        "y"
+      ],
       "properties": {
+        "charge": {
+          "default": 0,
+          "type": "integer",
+          "format": "int32"
+        },
+        "element": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "index": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "x": {
+          "type": "number",
+          "format": "double"
+        },
+        "y": {
+          "type": "number",
+          "format": "double"
+        },
+        "z": {
+          "description": "Atomic number (`0` = ``*``). Used when ``element`` is omitted.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "BondIn": {
+      "description": "Bond input (indices into [`AtomIn::index`]).",
+      "type": "object",
+      "required": [
+        "begin",
+        "end",
+        "index",
+        "order"
+      ],
+      "properties": {
+        "begin": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "end": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "index": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "interior": {
+          "description": "Unit normal toward ring interior (ring doubles); omit for centered.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": [
+            {
+              "type": "number",
+              "format": "double"
+            },
+            {
+              "type": "number",
+              "format": "double"
+            }
+          ],
+          "maxItems": 2,
+          "minItems": 2
+        },
+        "order": {
+          "type": "number",
+          "format": "double"
+        },
+        "stereo": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "CoordGenMoleculeResult": {
+      "description": "One flat molecule entry in a coord_gen result.",
+      "type": "object",
+      "required": [
+        "id",
+        "method",
+        "ok"
+      ],
+      "properties": {
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "id": {
-          "title": "Id",
           "type": "string"
         },
+        "method": {
+          "$ref": "#/definitions/CoordMethod"
+        },
+        "molecule": {
+          "description": "Present whenever ``ok`` is true.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/MoleculeIn"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "ok": {
-          "description": "True when usable coords were produced (aligned or free-layout fallback). False only when even unaligned coord gen failed.",
-          "title": "Ok",
+          "description": "True when usable coords were produced (aligned or free-layout fallback).",
           "type": "boolean"
         },
-        "method": {
-          "description": "free = unconstrained; atom_map / mcs = aligned; none = align requested but failed \u2014 automatic free-layout fallback",
+        "used_map": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "array",
+            "items": [
+              {
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0.0
+              },
+              {
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0.0
+              }
+            ],
+            "maxItems": 2,
+            "minItems": 2
+          }
+        }
+      }
+    },
+    "CoordMethod": {
+      "description": "How coords were produced for one molecule.",
+      "oneOf": [
+        {
+          "type": "string",
           "enum": [
             "free",
             "atom_map",
-            "mcs",
+            "mcs"
+          ]
+        },
+        {
+          "description": "Align was requested but failed — host fell back to unaligned coord gen.",
+          "type": "string",
+          "enum": [
             "none"
+          ]
+        }
+      ]
+    },
+    "EdgeTaskResult": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "molecules",
+            "ok",
+            "type"
           ],
-          "title": "Method",
-          "type": "string"
-        },
-        "used_map": {
-          "anyOf": [
-            {
+          "properties": {
+            "molecules": {
+              "type": "array",
               "items": {
-                "maxItems": 2,
-                "minItems": 2,
-                "prefixItems": [
-                  {
-                    "type": "integer"
-                  },
-                  {
-                    "type": "integer"
-                  }
-                ],
-                "type": "array"
-              },
-              "type": "array"
+                "$ref": "#/definitions/CoordGenMoleculeResult"
+              }
             },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "(query, template) pairs when a map was applied",
-          "title": "Used Map"
-        },
-        "molecule": {
-          "anyOf": [
-            {
-              "additionalProperties": true,
-              "type": "object"
+            "ok": {
+              "type": "boolean"
             },
-            {
-              "type": "null"
+            "type": {
+              "type": "string",
+              "enum": [
+                "coord_gen"
+              ]
             }
-          ],
-          "default": null,
-          "description": "MoleculeIn JSON (atoms/bonds/coords); present whenever ok is true",
-          "title": "Molecule"
-        },
-        "error": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Note when method is none (fallback) or ok is false",
-          "title": "Error"
+          }
         }
-      },
-      "required": [
-        "id",
-        "ok",
-        "method"
-      ],
-      "title": "CoordGenMoleculeResult",
-      "type": "object"
+      ]
     },
-    "CoordGenTaskResult": {
-      "additionalProperties": false,
+    "MoleculeIn": {
+      "description": "One molecule ready to paint (coords already in SVG / ``SCALE`` space).\n\nMVP extras: optional per-atom / per-bond shade scores and mark indices.",
+      "type": "object",
+      "required": [
+        "atoms",
+        "bonds"
+      ],
       "properties": {
-        "type": {
-          "const": "coord_gen",
-          "default": "coord_gen",
-          "title": "Type",
-          "type": "string"
-        },
-        "ok": {
-          "description": "True when every molecule entry has ok=true (coords for all ids)",
-          "title": "Ok",
-          "type": "boolean"
-        },
-        "molecules": {
-          "description": "Flat list \u2014 align failures still appear with free-layout coords",
+        "atom_shade": {
+          "description": "Per-atom shade scores (same order as [`Self::atoms`]); omit if unshaded.",
+          "type": [
+            "array",
+            "null"
+          ],
           "items": {
-            "$ref": "#/$defs/CoordGenMoleculeResult"
-          },
-          "title": "Molecules",
-          "type": "array"
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "atoms": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/AtomIn"
+          }
+        },
+        "bond_shade": {
+          "description": "Per-bond shade scores (same order as [`Self::bonds`]).",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "bonds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/BondIn"
+          }
+        },
+        "color": {
+          "description": "Ink color for backbone bonds and atom labels (CSS). Default ``#111``.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "mark_atoms": {
+          "description": "Atom indices to circle (publication marks).",
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "mark_bonds": {
+          "description": "Bond endpoint index pairs to circle/stroke-mark.",
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": [
+              {
+                "type": "integer",
+                "format": "int32"
+              },
+              {
+                "type": "integer",
+                "format": "int32"
+              }
+            ],
+            "maxItems": 2,
+            "minItems": 2
+          }
+        },
+        "scale": {
+          "description": "Uniform diagram scale (font, stroke, pad, geometry). ``1.0`` = house size.",
+          "type": "number",
+          "format": "double"
+        },
+        "shade_vmax": {
+          "description": "Shade colormap window high (default ``1``). Not inferred from data.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "shade_vmin": {
+          "description": "Shade colormap window low (default ``0``). Not inferred from data.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "weight": {
+          "description": "Ink weight for backbone stroke and label glyph thicken. ``1.0`` = house; may go down to ~``2/3`` (Regular stem); typical thicken up to ~2.",
+          "type": "number",
+          "format": "double"
         }
-      },
-      "required": [
-        "ok",
-        "molecules"
-      ],
-      "title": "CoordGenTaskResult",
-      "type": "object"
+      }
     }
-  },
-  "additionalProperties": false,
-  "properties": {
-    "version": {
-      "const": 1,
-      "default": 1,
-      "title": "Version",
-      "type": "integer"
-    },
-    "results": {
-      "items": {
-        "$ref": "#/$defs/CoordGenTaskResult"
-      },
-      "title": "Results",
-      "type": "array"
-    }
-  },
-  "title": "EdgeResult",
-  "type": "object"
+  }
 }

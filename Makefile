@@ -132,8 +132,19 @@ cov-lcov: ## llvm-cov → lcov.info (CI artifact shape)
 
 ##@ Schema / version / publish helpers
 
+.PHONY: types
+types: ## Regenerate live TS + edge JSON Schema from xpict-core (schemars/ts-rs)
+	cd "$(ROOT)" && bash scripts/generate_live_types.sh
+
+.PHONY: types-check
+types-check: ## Fail if live generated TS/schemas drift from Rust
+	@$(MAKE) types
+	@cd "$(ROOT)" && git diff --exit-code -- js/src/generated schema/edge-plan.schema.json schema/edge-result.schema.json \
+		|| { echo "error: live types drift — run make types and commit" >&2; exit 1; }
+
 .PHONY: schema
-schema: ## Regenerate JSON schemas (xpict-export-schema)
+schema: ## Future PictSpec schema (Pydantic) + live edge schemas (Rust)
+	@$(MAKE) types
 	cd "$(ROOT)" && uv run xpict-export-schema
 
 .PHONY: bump

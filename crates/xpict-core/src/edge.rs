@@ -7,33 +7,48 @@ use serde::{Deserialize, Serialize};
 
 use crate::scene::MoleculeIn;
 
+#[cfg(feature = "codegen")]
+use schemars::JsonSchema;
+#[cfg(feature = "codegen")]
+use ts_rs::TS;
+
 /// Minimum mapped atoms before align is trusted (MCS or explicit map).
 pub const MIN_MCS_ATOMS: u32 = 3;
 
 /// Align this mol onto its parent template.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
 pub struct AlignOpts {
     /// Pairs `(query_atom, template_atom)`. `None` → edge runs MCS.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
     pub atom_map: Option<Vec<(u32, u32)>>,
     /// Override [`MIN_MCS_ATOMS`] when set.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
     pub min_atoms: Option<u32>,
 }
 
 /// One node in a coord_gen forest (root = free layout; children align to parent).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
 pub struct MolTemplate {
     /// Rust-assigned unique id; round-trips to the document node.
     pub id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
     pub smiles: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
     pub cxsmiles: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
     pub molfile: Option<String>,
     /// Opts for aligning onto the parent; `None` on roots.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
     pub align: Option<AlignOpts>,
     /// Children that use this node as their align template.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -75,6 +90,8 @@ impl MolTemplate {
 /// ``type: "coord_gen"`` edge task.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
 pub enum EdgeTask {
     CoordGen {
         #[serde(default)]
@@ -84,6 +101,8 @@ pub enum EdgeTask {
 
 /// Host callback request.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
 pub struct EdgePlan {
     pub version: u32,
     #[serde(default)]
@@ -143,6 +162,8 @@ fn validate_tree(
 /// How coords were produced for one molecule.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
 pub enum CoordMethod {
     Free,
     AtomMap,
@@ -153,22 +174,29 @@ pub enum CoordMethod {
 
 /// One flat molecule entry in a coord_gen result.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
 pub struct CoordGenMoleculeResult {
     pub id: String,
     /// True when usable coords were produced (aligned or free-layout fallback).
     pub ok: bool,
     pub method: CoordMethod,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
     pub used_map: Option<Vec<(u32, u32)>>,
     /// Present whenever ``ok`` is true.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
     pub molecule: Option<MoleculeIn>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
     pub error: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
 pub enum EdgeTaskResult {
     CoordGen {
         ok: bool,
@@ -177,6 +205,8 @@ pub enum EdgeTaskResult {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
 pub struct EdgeResult {
     pub version: u32,
     #[serde(default)]

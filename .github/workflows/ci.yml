@@ -46,6 +46,9 @@ jobs:
       - name: Version policy (major.minor lockstep)
         run: make check-versions
 
+      - name: Live types drift (schemars + ts-rs)
+        run: make types-check
+
       - name: llvm-cov (line floor)
         # Remaining misses are mostly Liberation TTF dead arms / defensive joins.
         run: make cov-lcov

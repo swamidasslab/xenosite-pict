@@ -9,17 +9,21 @@ Pydantic under ``xpict.contracts`` — **strict subset** of future nested
 | --- | --- |
 | ``DepictSpec`` / ``MolNode`` | Declarative document: ``type: "mol"`` or ``type: "group"`` + ``children`` |
 | ``Scene`` (+ primitives) | Paint ABI (Rust / JS / Python serializers) |
-| ``MoleculeLayout`` / ``LayoutResult`` | Backend layout result |
+| ``MoleculeLayout`` / ``LayoutResult`` | **Python-internal** layout→draw (not the live EdgePlan wire ABI) |
+
+Live **EdgePlan / EdgeResult** (and related) are defined in Rust
+(``xpict-core``). TypeScript is generated (``make types`` → ``js/src/generated``);
+JSON Schema for edge is schemars. See [`docs/dev/typebridge.md`](dev/typebridge.md).
 
 Every document must also validate as ``xpict.future.PictSpec``.
 
 Committed JSON Schema:
 
-- ``schema/xpict.schema.json`` — ``DepictSpec``
-- ``schema/scene.schema.json`` — scene graph
-- ``schema/layout.schema.json`` — layout result
-- ``schema/edge-plan.schema.json`` / ``edge-result.schema.json`` — host
-  ``EdgePlan`` / ``EdgeResult`` (``coord_gen`` forest + flat molecule rows)
+- ``schema/xpict.schema.json`` — ``DepictSpec`` (Pydantic today)
+- ``schema/scene.schema.json`` — scene graph (Pydantic today)
+- ``schema/layout.schema.json`` — Python layout helper (not cross-lang live ABI)
+- ``schema/edge-plan.schema.json`` / ``edge-result.schema.json`` — from **Rust**
+  (schemars)
 
 ## Single-molecule client
 

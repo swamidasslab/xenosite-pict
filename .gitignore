@@ -22,7 +22,7 @@ __pycache__/
 python/xpict/_native*.pyd
 python/xpict/_native*.so
 *.svg.bak
-/target/
+crates/xpict-core/bindings/
 vendor/elk/elk.jar
 .venv/
 venv/

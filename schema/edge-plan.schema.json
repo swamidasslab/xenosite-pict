@@ -1,167 +1,139 @@
 {
-  "$defs": {
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "EdgePlan",
+  "description": "Host callback request.",
+  "type": "object",
+  "required": [
+    "version"
+  ],
+  "properties": {
+    "tasks": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/EdgeTask"
+      }
+    },
+    "version": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0.0
+    }
+  },
+  "definitions": {
     "AlignOpts": {
-      "additionalProperties": false,
-      "description": "Align this mol onto its parent template (``MolTemplate.align``).",
+      "description": "Align this mol onto its parent template.",
+      "type": "object",
       "properties": {
         "atom_map": {
-          "anyOf": [
-            {
-              "items": {
-                "maxItems": 2,
-                "minItems": 2,
-                "prefixItems": [
-                  {
-                    "type": "integer"
-                  },
-                  {
-                    "type": "integer"
-                  }
-                ],
-                "type": "array"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
+          "description": "Pairs `(query_atom, template_atom)`. `None` → edge runs MCS.",
+          "type": [
+            "array",
+            "null"
           ],
-          "default": null,
-          "description": "Pairs (query_atom, template_atom). Omit \u2192 edge runs MCS. Present \u2192 skip MCS and use this map.",
-          "title": "Atom Map"
+          "items": {
+            "type": "array",
+            "items": [
+              {
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0.0
+              },
+              {
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0.0
+              }
+            ],
+            "maxItems": 2,
+            "minItems": 2
+          }
         },
         "min_atoms": {
-          "anyOf": [
-            {
-              "minimum": 1,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
+          "description": "Override [`MIN_MCS_ATOMS`] when set.",
+          "type": [
+            "integer",
+            "null"
           ],
-          "default": null,
-          "description": "Minimum mapped atoms (default 3 = MIN_MCS_ATOMS).",
-          "title": "Min Atoms"
+          "format": "uint32",
+          "minimum": 0.0
         }
-      },
-      "title": "AlignOpts",
-      "type": "object"
+      }
     },
-    "CoordGenTask": {
-      "additionalProperties": false,
-      "properties": {
-        "type": {
-          "const": "coord_gen",
-          "default": "coord_gen",
-          "title": "Type",
-          "type": "string"
-        },
-        "roots": {
-          "description": "Independent align trees (each root laid out freely)",
-          "items": {
-            "$ref": "#/$defs/MolTemplate"
-          },
-          "title": "Roots",
-          "type": "array"
+    "EdgeTask": {
+      "description": "``type: \"coord_gen\"`` edge task.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "roots": {
+              "default": [],
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/MolTemplate"
+              }
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "coord_gen"
+              ]
+            }
+          }
         }
-      },
-      "required": [
-        "roots"
-      ],
-      "title": "CoordGenTask",
-      "type": "object"
+      ]
     },
     "MolTemplate": {
-      "additionalProperties": false,
       "description": "One node in a coord_gen forest (root = free layout; children align to parent).",
-      "properties": {
-        "id": {
-          "description": "Rust-assigned unique id; round-trips to the doc node",
-          "title": "Id",
-          "type": "string"
-        },
-        "smiles": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Smiles"
-        },
-        "cxsmiles": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Cxsmiles"
-        },
-        "molfile": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Molfile"
-        },
-        "align": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/AlignOpts"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Opts for aligning onto the parent; null on roots"
-        },
-        "template_for": {
-          "description": "Children that use this node as their align template",
-          "items": {
-            "$ref": "#/$defs/MolTemplate"
-          },
-          "title": "Template For",
-          "type": "array"
-        }
-      },
+      "type": "object",
       "required": [
         "id"
       ],
-      "title": "MolTemplate",
-      "type": "object"
+      "properties": {
+        "align": {
+          "description": "Opts for aligning onto the parent; `None` on roots.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AlignOpts"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cxsmiles": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "description": "Rust-assigned unique id; round-trips to the document node.",
+          "type": "string"
+        },
+        "molfile": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "smiles": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "template_for": {
+          "description": "Children that use this node as their align template.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/MolTemplate"
+          }
+        }
+      }
     }
-  },
-  "additionalProperties": false,
-  "description": "Host callback request \u2014 today only ``coord_gen``; more task types later.",
-  "properties": {
-    "version": {
-      "const": 1,
-      "default": 1,
-      "title": "Version",
-      "type": "integer"
-    },
-    "tasks": {
-      "items": {
-        "$ref": "#/$defs/CoordGenTask"
-      },
-      "title": "Tasks",
-      "type": "array"
-    }
-  },
-  "title": "EdgePlan",
-  "type": "object"
+  }
 }

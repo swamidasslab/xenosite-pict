@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import Any
 
 from xpict.contracts.depict import DepictSpec
-from xpict.contracts.edge import EdgePlan, EdgeResult
 from xpict.contracts.layout import LayoutResult
 from xpict.contracts.scene import Scene
 from xpict.future.nodes import PictSpec
@@ -299,12 +298,12 @@ def export_schemas(out_dir: Path | None = None, *, minify: bool = True) -> dict[
     future_dir = (out_dir / "future") if out_dir is not None else _FUTURE_SCHEMA
     future_dir.mkdir(parents=True, exist_ok=True)
 
+    # Live edge schemas are owned by Rust (schemars via ``make types``).
+    # Do not overwrite them from Pydantic.
     live = {
         "xpict.schema.json": DepictSpec.model_json_schema(),
         "layout.schema.json": LayoutResult.model_json_schema(),
         "scene.schema.json": Scene.model_json_schema(),
-        "edge-plan.schema.json": EdgePlan.model_json_schema(),
-        "edge-result.schema.json": EdgeResult.model_json_schema(),
     }
     future = {
         "xpict.schema.json": factor_node_common_allof(PictSpec.model_json_schema()),
@@ -317,6 +316,11 @@ def export_schemas(out_dir: Path | None = None, *, minify: bool = True) -> dict[
         path = target / name
         path.write_text(json.dumps(schema, indent=2) + "\n", encoding="utf-8")
         written[name] = path
+    # Preserve Rust-owned edge schemas when present (export does not rewrite them).
+    for edge_name in ("edge-plan.schema.json", "edge-result.schema.json"):
+        edge_path = target / edge_name
+        if edge_path.is_file():
+            written[edge_name] = edge_path
     for name, schema in future.items():
         if minify:
             schema = minify_json_schema(schema)
