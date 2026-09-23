@@ -61,8 +61,8 @@ Build a mol, render with options, turn the scene into SVG.
 </figure>
 
 <figure markdown="span">
-![Phenol with oxygen shade](assets/examples/phenol_shade.svg)
-<figcaption>`atom_shade` / document `shade`</figcaption>
+![Phenol with atom shading](assets/examples/phenol_shade.svg)
+<figcaption>Atom shading</figcaption>
 </figure>
 
 <figure markdown="span">
@@ -152,8 +152,8 @@ future `PictSpec`.
 <div class="example-out" markdown>
 
 <figure markdown="span">
-![Ethanol with shade](assets/examples/ethanol_shade.svg)
-<figcaption>Document `shade` on ethanol</figcaption>
+![Ethanol with shading](assets/examples/ethanol_shade.svg)
+<figcaption>Ethanol with shading</figcaption>
 </figure>
 
 <figure markdown="span">

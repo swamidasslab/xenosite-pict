@@ -63,30 +63,30 @@ CX braced markup (`R_{1}` inside the trailer):
 
 <figure markdown="span">
 ![Star R₁](assets/examples/star_r1.svg)
-<figcaption>Simple client — <code>star_labels: ["$R_1$"]</code></figcaption>
+<figcaption><code>star_labels: ["$R_1$"]</code> → R₁</figcaption>
 </figure>
 
 </div>
 
-## Sparse shade
+## Shading atoms and bonds
 
-Most atom scores are zero; a few sites are hot:
+Atom (and bond) scores drive plot-dot shading — most sites quiet, a few hot:
 
 <div class="gallery-grid" markdown>
 
 <figure markdown="span">
-![Aspirin sparse shade](assets/examples/aspirin_shade.svg)
-<figcaption>Aspirin — sparse atom shade</figcaption>
+![Aspirin with atom shading](assets/examples/aspirin_shade.svg)
+<figcaption>Aspirin</figcaption>
 </figure>
 
 <figure markdown="span">
-![Phenol oxygen shade](assets/examples/phenol_shade.svg)
-<figcaption>Phenol — oxygen hot</figcaption>
+![Phenol with oxygen shading](assets/examples/phenol_shade.svg)
+<figcaption>Phenol</figcaption>
 </figure>
 
 <figure markdown="span">
-![Pyridine nitrogen shade](assets/examples/pyridine_shade.svg)
-<figcaption>Pyridine — nitrogen hot</figcaption>
+![Pyridine with nitrogen shading](assets/examples/pyridine_shade.svg)
+<figcaption>Pyridine</figcaption>
 </figure>
 
 </div>

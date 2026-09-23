@@ -1,9 +1,15 @@
 /* MkDocs Material extras for xpict docs */
 
+/*
+ * Gallery / example figures keep the SVG's intrinsic width/height so every
+ * molecule shares one chemical scale (bond length ≈ constant). Do not stretch
+ * images to a common card size.
+ */
 .gallery-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 1.25rem;
+  align-items: flex-end;
   margin: 1.5rem 0 2rem;
 }
 
@@ -14,14 +20,16 @@
   border-radius: 0.4rem;
   background: var(--md-default-bg-color);
   text-align: center;
+  flex: 0 0 auto;
+  width: max-content;
+  max-width: 100%;
 }
 
 .gallery-grid img {
   display: block;
-  width: 100%;
+  width: auto;
   height: auto;
-  max-height: 220px;
-  object-fit: contain;
+  max-width: 100%;
   margin: 0 auto 0.5rem;
 }
 
@@ -30,12 +38,12 @@
   color: var(--md-default-fg-color--light);
 }
 
-/* Code walkthrough: resulting SVG under each sample */
+/* Code walkthrough: resulting SVG under each sample (same scale rule) */
 .example-out {
   display: flex;
   flex-wrap: wrap;
   gap: 1rem;
-  align-items: flex-start;
+  align-items: flex-end;
   margin: 0.75rem 0 1.5rem;
 }
 
@@ -46,15 +54,16 @@
   border-radius: 0.4rem;
   background: var(--md-default-bg-color);
   text-align: center;
-  max-width: 280px;
+  flex: 0 0 auto;
+  width: max-content;
+  max-width: 100%;
 }
 
 .example-out img {
   display: block;
-  width: 100%;
+  width: auto;
   height: auto;
-  max-height: 180px;
-  object-fit: contain;
+  max-width: 100%;
   margin: 0 auto 0.35rem;
 }
 

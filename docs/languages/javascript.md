@@ -69,8 +69,8 @@ document.body.innerHTML = xpict.toSvg(r.scene);
 <div class="example-out" markdown>
 
 <figure markdown="span">
-![Ethanol shade](../assets/examples/ethanol_shade.svg)
-<figcaption>Document `shade`</figcaption>
+![Ethanol with shading](../assets/examples/ethanol_shade.svg)
+<figcaption>Ethanol</figcaption>
 </figure>
 
 <figure markdown="span">

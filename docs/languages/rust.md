@@ -65,8 +65,8 @@ let svg = out[0].to_svg();
 <div class="example-out" markdown>
 
 <figure markdown="span">
-![Ethanol shade](../assets/examples/ethanol_shade.svg)
-<figcaption>Document color / shade</figcaption>
+![Ethanol with shading](../assets/examples/ethanol_shade.svg)
+<figcaption>Ethanol</figcaption>
 </figure>
 
 <figure markdown="span">

@@ -73,8 +73,8 @@ Flow: **`mol(source)` → `render(opts?)` → `Rendered` → `toSvg(scene)`**.
 </figure>
 
 <figure markdown="span">
-![Phenol shade](../assets/examples/phenol_shade.svg)
-<figcaption>`atom_shade`</figcaption>
+![Phenol with atom shading](../assets/examples/phenol_shade.svg)
+<figcaption>Atom shading</figcaption>
 </figure>
 
 <figure markdown="span">
@@ -174,8 +174,8 @@ expanded as features graduate from `xpict.future`.
 <div class="example-out" markdown>
 
 <figure markdown="span">
-![Ethanol shade](../assets/examples/ethanol_shade.svg)
-<figcaption>Document shade</figcaption>
+![Ethanol with shading](../assets/examples/ethanol_shade.svg)
+<figcaption>Ethanol</figcaption>
 </figure>
 
 <figure markdown="span">
