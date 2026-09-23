@@ -58,8 +58,7 @@ jobs:
           cache-dependency-path: js/package-lock.json
 
       - name: Install JS deps
-        working-directory: js
-        run: npm ci
+        run: make js-deps
 
       - name: Install uv + docs deps
         uses: astral-sh/setup-uv@v5
@@ -68,10 +67,10 @@ jobs:
           enable-cache: true
 
       - name: Sync Python (docs + rdkit for gallery)
-        run: uv sync --group docs --group dev --extra rdkit
+        run: make sync-docs
 
       - name: Build Pages site (MkDocs + autodoc + demo)
-        run: bash scripts/build_pages.sh "$GITHUB_WORKSPACE/_site"
+        run: make pages OUT="$GITHUB_WORKSPACE/_site"
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

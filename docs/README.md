@@ -6,6 +6,7 @@ Cross-language docs are built with **[MkDocs Material](https://squidfunk.github.
 | --- | --- |
 | `mkdocs.yml` | Site config + nav |
 | `docs/` | Markdown pages, gallery assets, styles |
+| `Makefile` (`make pages`) | Front door → `scripts/build_pages.sh` |
 | `scripts/build_pages.sh` | Gallery SVGs + TypeDoc + rustdoc + `mkdocs build` + JS demo |
 | `scripts/generate_doc_examples.py` | Regenerates `docs/assets/examples/*.svg` |
 
@@ -20,8 +21,8 @@ The old hand-rolled `site/*.html` tree is retired; do not add pages there.
 ## Local
 
 ```bash
-uv sync --group docs --extra rdkit
-bash scripts/build_pages.sh
+make sync-docs
+make pages
 uv run --group docs mkdocs serve
 # http://127.0.0.1:8000/
 ```

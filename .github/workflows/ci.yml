@@ -41,17 +41,15 @@ jobs:
         uses: taiki-e/install-action@cargo-llvm-cov
 
       - name: cargo test -p xpict-core
-        run: cargo test -p xpict-core
+        run: make test-rust
 
       - name: Version policy (major.minor lockstep)
-        run: bash scripts/check_version_policy.sh
+        run: make check-versions
 
       - name: llvm-cov (line floor)
-        run: |
-          cargo llvm-cov -p xpict-core --lcov --output-path lcov.info \
-            --fail-under-lines "${RUST_COV_MIN}"
+        # Remaining misses are mostly Liberation TTF dead arms / defensive joins.
+        run: make cov-lcov
         env:
-          # Remaining misses are mostly Liberation TTF dead arms / defensive joins.
           RUST_COV_MIN: "97"
 
       - name: Upload lcov
@@ -65,9 +63,6 @@ jobs:
     name: JS strict tsc + smoke
     needs: [rust]
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: js
     steps:
       - uses: actions/checkout@v4
 
@@ -95,19 +90,10 @@ jobs:
           cache-dependency-path: js/package-lock.json
 
       - name: Install JS deps
-        run: npm ci
+        run: make js-deps
 
-      - name: Strict TypeScript check
-        run: npm run check
-
-      - name: Strict TypeScript check (pocs)
-        run: npm run check:pocs
-
-      - name: Build wasm + TypeScript
-        run: npm run build
-
-      - name: API smoke
-        run: npm run test:api
+      - name: Strict check + build + API smoke
+        run: make js-ci
 
   python-test:
     name: Python pytest ${{ matrix.python-version }} + rdkit + pyright
@@ -136,18 +122,19 @@ jobs:
           enable-cache: true
 
       - name: Sync Python deps (dev + rdkit)
-        run: uv sync --group dev --extra rdkit
+        run: make sync
 
       - name: Confirm RDKit import
         run: uv run python -c "import rdkit; print('rdkit', rdkit.__version__)"
 
       - name: Strict pyright
-        run: uv run pyright
+        run: make check-pyright
 
       - name: Pytest
-        run: uv run pytest -q
+        run: make test-python
 
   # abi3 extension + full pytest (incl. RDKit layout) on Apple Silicon + Windows.
+  # Windows runners often lack GNU make — keep direct commands there.
   python-native-smoke:
     name: Python native smoke (${{ matrix.os }})
     needs: [rust]
@@ -175,6 +162,7 @@ jobs:
           enable-cache: true
 
       - name: Sync Python deps (dev + rdkit)
+        # Direct uv (this matrix includes windows-latest; pwsh ≠ bash `make`).
         run: uv sync --group dev --extra rdkit
 
       - name: Confirm RDKit import
