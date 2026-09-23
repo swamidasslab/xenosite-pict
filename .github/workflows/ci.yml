@@ -2,9 +2,10 @@
 #
 # Rust:   cargo test + llvm-cov on xpict-core (≥97% lines; push to 100%)
 # JS:     tsc --strict
-# Python: pytest on 3.11–3.13 (Linux) + native smoke on macos/windows;
-#         pyright runs on the single 3.12 + rdkit job (optional import resolve)
-# RDKit:  prebuilt PyPI wheel only on Linux 3.12 (pytest + pyright); elsewhere
+# Python: pytest on 3.11–3.13 (Linux, with RDKit) + Rust-extension smoke on
+#         macos/windows (layout tests skip without RDKit);
+#         pyright runs on the single 3.12 + rdkit job
+# RDKit:  required for layout (experimental native layout removed)
 #         RDKit tests skip via importorskip/skipif
 # PyPI wheels (all arches): see build-python-wheels.yml / pypi.yml / release.yml
 
@@ -119,13 +120,13 @@ jobs:
       matrix:
         include:
           - python-version: "3.11"
-            with_rdkit: false
+            with_rdkit: true
           # Single CI env with the prebuilt PyPI rdkit wheel: pytest (incl.
-          # RDKit tests) + pyright. Other jobs skip RDKit tests.
+          # RDKit tests) + pyright. Layout requires RDKit (native layout removed).
           - python-version: "3.12"
             with_rdkit: true
           - python-version: "3.13"
-            with_rdkit: false
+            with_rdkit: true
     steps:
       - uses: actions/checkout@v4
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.helpers import layout_backend
+
 import re
 
 from xpict import render
@@ -31,7 +33,7 @@ def test_halo_preserves_o_counter():
 def test_halo_global_off_emits_no_halo():
     svg = render(
         {"molecules": [{"smiles": "CCO"}], "halo": False},
-        backend="native",
+        backend=layout_backend(),
     )
     # Empty halo layer group may exist; no knockout paths.
     assert not re.search(r'<path[^>]*class="[^"]*\bhalo\b', svg)
@@ -42,7 +44,7 @@ def test_halo_layer_is_first_in_viewport():
     from xpict.future.nodes import PictSpec
     from xpict.draw.scene_builder import build_scene
 
-    pict = Pict(backend="native")
+    pict = Pict(backend=layout_backend())
     layouts = pict.layout({"molecules": [{"smiles": "CCO"}]}).molecules
     spec = PictSpec.model_validate({"molecules": [{"smiles": "CCO"}], "halo": True})
     scene = build_scene(layouts, spec.molecules, spec.to_legacy())
@@ -79,7 +81,7 @@ def test_shading_does_not_opt_into_document_halo():
             "halo": True,
         }
     )
-    pict = Pict(backend="native")
+    pict = Pict(backend=layout_backend())
     bare_layout = pict.layout(bare).molecules[0]
     shaded_layout = pict.layout(shaded).molecules[0]
     _, bare_halo = paint_molecule(bare_layout, bare.molecules[0], halo=True)

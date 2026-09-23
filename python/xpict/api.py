@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Literal
 
 from xpict.align import align_layouts
-from xpict.backends import BACKEND_PREFERENCE, get_backend
+from xpict.backends import get_backend
 from xpict.contracts.layout import LayoutResult, MoleculeLayout
 from xpict.future.nodes import PictSpec, expand_pict
 from xpict.future.spec import LegacyPictSpec
@@ -17,23 +17,25 @@ OutputFormat = Literal["svg", "html"]
 
 
 def _resolve_backend_name(requested: str | None) -> str:
-    """Default: RDKit when installed, else native. Indigo only if requested."""
+    """Default: RDKit when installed. Indigo only if explicitly requested."""
     if requested:
-        return requested.lower()
-    for name in BACKEND_PREFERENCE:
-        if name == "indigo":
-            continue  # alternate — never auto-pick
-        if name == "native":
-            return "native"
-        if name == "rdkit":
-            try:
-                import importlib.util
+        key = requested.lower()
+        if key == "native":
+            raise ValueError(
+                "layout backend 'native' was removed; use 'rdkit' (default) or 'indigo'"
+            )
+        return key
+    try:
+        import importlib.util
 
-                if importlib.util.find_spec("rdkit") is not None:
-                    return "rdkit"
-            except (ImportError, ValueError, ModuleNotFoundError):
-                continue
-    return "native"
+        if importlib.util.find_spec("rdkit") is not None:
+            return "rdkit"
+    except (ImportError, ValueError, ModuleNotFoundError):
+        pass
+    raise ImportError(
+        "No layout backend available. Install RDKit: pip install 'xpict[rdkit]' "
+        "(or pass backend='indigo' with xpict[indigo])."
+    )
 
 
 def _to_legacy(spec: PictSpec | LegacyPictSpec | dict[str, Any]) -> LegacyPictSpec:

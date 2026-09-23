@@ -2,7 +2,7 @@
 """Run derisk POCs and write SVG artifacts.
 
 Usage:
-  uv run python scripts/run_pocs.py [all|svg|shade|elk|pipeline|native]
+  uv run python scripts/run_pocs.py [all|svg|shade|elk|pipeline|compare]
 """
 
 from __future__ import annotations
@@ -42,10 +42,19 @@ def _out_dir() -> Path:
 
 def _pick_backend() -> str:
     try:
+        import rdkit  # noqa: F401
+
+        return "rdkit"
+    except Exception:
+        pass
+    try:
         Pict(backend="indigo").layout({"molecules": [{"smiles": "C"}]})
         return "indigo"
-    except Exception:
-        return "native"
+    except Exception as e:
+        raise SystemExit(
+            "No layout backend available. Install xpict[rdkit] (preferred) "
+            f"or xpict[indigo]. ({e})"
+        ) from e
 
 
 def poc_svg(out: Path, backend: str) -> Path:
@@ -325,8 +334,8 @@ def poc_pipeline(out: Path, backend: str) -> Path:
     return hard_path
 
 
-def poc_native(out: Path, backend: str) -> Path:
-    """POC E: native vs Indigo side-by-side on shared SMILES (depictor progress)."""
+def poc_compare(out: Path, backend: str) -> Path:
+    """POC E: RDKit layout grid on shared SMILES (optional Indigo twin)."""
     cases = [
         ("benzene", "c1ccccc1"),
         ("naphthalene", "c1ccc2ccccc2c1"),
@@ -340,45 +349,48 @@ def poc_native(out: Path, backend: str) -> Path:
         ("trans", r"F/C=C/F"),
         ("cis", r"F/C=C\F"),
         ("pyrrole", "c1ccc[nH]1"),
+        ("hexylcyclohexane", "C1CCCCC1CCOCCCCCC"),
     ]
-    # Native grid
-    native_spec = {
+    primary = backend if backend in {"rdkit", "indigo"} else "rdkit"
+    spec = {
         "molecules": [
-            {"id": f"n-{cid}", "smiles": smi, "title": f"{cid} (native)"}
+            {"id": f"p-{cid}", "smiles": smi, "title": f"{cid} ({primary})"}
             for cid, smi in cases
         ],
         "diagram": {"kind": "grid", "columns": 3},
     }
-    native_svg = render(native_spec, backend="native")
-    native_path = out / "poc-e-native-grid.svg"
-    native_path.write_text(native_svg, encoding="utf-8")
+    primary_path = out / f"poc-e-grid-{primary}.svg"
+    primary_path.write_text(render(spec, backend=primary), encoding="utf-8")
 
-    # Reference grid with transitional backend (indigo when available)
-    ref_backend = backend if backend != "native" else "native"
-    ref_spec = {
-        "molecules": [
-            {"id": f"r-{cid}", "smiles": smi, "title": f"{cid} ({ref_backend})"}
-            for cid, smi in cases
-        ],
-        "diagram": {"kind": "grid", "columns": 3},
-    }
-    ref_svg = render(ref_spec, backend=ref_backend)
-    ref_path = out / f"poc-e-ref-grid-{ref_backend}.svg"
-    ref_path.write_text(ref_svg, encoding="utf-8")
+    twin = "indigo" if primary == "rdkit" else "rdkit"
+    twin_path = None
+    try:
+        twin_spec = {
+            "molecules": [
+                {"id": f"t-{cid}", "smiles": smi, "title": f"{cid} ({twin})"}
+                for cid, smi in cases
+            ],
+            "diagram": {"kind": "grid", "columns": 3},
+        }
+        twin_path = out / f"poc-e-grid-{twin}.svg"
+        twin_path.write_text(render(twin_spec, backend=twin), encoding="utf-8")
+    except Exception as e:
+        print(f"skip twin backend {twin}: {e}")
 
     (out / "poc-e-compare.json").write_text(
         json.dumps(
             {
                 "cases": [{"id": c, "smiles": s} for c, s in cases],
-                "native": native_path.name,
-                "reference": ref_path.name,
-                "reference_backend": ref_backend,
+                "primary": primary_path.name,
+                "primary_backend": primary,
+                "twin": twin_path.name if twin_path else None,
+                "twin_backend": twin if twin_path else None,
             },
             indent=2,
         ),
         encoding="utf-8",
     )
-    return native_path
+    return primary_path
 
 
 def main(argv: list[str]) -> int:
@@ -391,7 +403,8 @@ def main(argv: list[str]) -> int:
         "shade": poc_shade,
         "elk": poc_elk,
         "pipeline": poc_pipeline,
-        "native": poc_native,
+        "native": poc_compare,
+        "compare": poc_compare,
     }
     keys = list(runners) if which == "all" else [which]
     written: list[Path] = []
@@ -402,12 +415,12 @@ def main(argv: list[str]) -> int:
         path = runners[key](out, backend)
         written.append(path)
         print(f"wrote {path}")
-        # pipeline/native write multiple files — list extras
+        # pipeline/compare write multiple files — list extras
         if key == "pipeline":
             for name in sorted(out.glob(f"poc-d*-{backend}.svg")):
                 if name not in written:
                     print(f"wrote {name}")
-        if key == "native":
+        if key in {"native", "compare"}:
             for name in sorted(out.glob("poc-e-*.svg")):
                 print(f"wrote {name}")
     gallery = write_gallery(out, backend, written if which != "all" else None)
@@ -463,14 +476,14 @@ def write_gallery(out: Path, backend: str, only: list[Path] | None = None) -> Pa
             out / f"poc-d5-branched-{backend}.svg",
         ),
         (
-            "E — Native depictor grid",
-            "Experimental native layout (regular rings + 120° chains) on shared SMILES.",
-            out / "poc-e-native-grid.svg",
+            "E — RDKit layout grid",
+            "Shared SMILES laid out with RDKit (default) at the language edge.",
+            out / f"poc-e-grid-{backend}.svg",
         ),
         (
-            "E — Indigo reference grid",
-            "Same SMILES with Indigo transitional layout for side-by-side comparison.",
-            out / f"poc-e-ref-grid-{backend}.svg",
+            "E — Twin backend grid",
+            "Same SMILES with the alternate layout backend when available.",
+            out / f"poc-e-grid-{'indigo' if backend == 'rdkit' else 'rdkit'}.svg",
         ),
     ]
     if only is not None:

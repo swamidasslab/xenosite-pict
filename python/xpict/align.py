@@ -7,7 +7,7 @@ Two implementations share one interface (``Aligner``):
   them. This is the correct 2D alignment.
 * **Rigid** (always available): each molecule is depicted on its own, then
   rotated and translated so the matched atoms overlap as well as a rigid
-  move allows. Indigo and native cannot do the template step.
+  move allows. Indigo cannot do the template step.
 
 The correspondence we lock is the largest set of atoms that already sit on
 the reference (near-zero rigid error). One extra atom that does not fit is

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.helpers import layout_backend
+
 import math
 import re
 
@@ -19,8 +21,7 @@ from xpict.draw.metrics import OFFSET_PX
 
 
 def _backend() -> str:
-    """MVP layout backend (indigo is out of scope for now)."""
-    return "native"
+    return layout_backend()
 
 
 def test_skeleton_then_offset_for_double():
@@ -172,7 +173,7 @@ def test_two_singles_double_ends_lie_on_singles_acetone():
     from xpict.draw.metrics import shared_coord_scale
 
     doc = expand_pict({"molecules": [{"smiles": "CC(=O)C"}]}).to_legacy()
-    layout = get_backend("native").layout(doc.molecules[0])
+    layout = get_backend(layout_backend()).layout(doc.molecules[0])
     coords, _, _ = normalize_coords(layout, scale=shared_coord_scale([layout]))
     bonds = []
     for b in layout.bonds:

@@ -1,4 +1,4 @@
-"""Indigo layout backend (optional alternate to native)."""
+"""Indigo layout backend (optional alternate to RDKit)."""
 
 from __future__ import annotations
 

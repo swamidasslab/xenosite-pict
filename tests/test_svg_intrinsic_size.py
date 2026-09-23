@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.helpers import layout_backend
+
 import re
 from urllib.parse import unquote
 
@@ -25,7 +27,7 @@ def test_scale_default_is_twenty():
 
 def test_render_svg_sets_width_height_matching_viewbox():
     """Like xenosite acetone: width/height == viewBox size (drawing units)."""
-    svg = Pict(backend="native").render({"molecules": [{"smiles": "CCO"}]})
+    svg = Pict(backend=layout_backend()).render({"molecules": [{"smiles": "CCO"}]})
     attrs = _root_attrs(svg)
     w = float(attrs["width"].removesuffix("px"))
     h = float(attrs["height"].removesuffix("px"))
@@ -40,7 +42,7 @@ def test_render_svg_sets_width_height_matching_viewbox():
 
 def test_separate_mol_svgs_keep_distinct_intrinsic_sizes():
     """Ethanol is narrower than phenol; both keep their own size."""
-    pict = Pict(backend="native")
+    pict = Pict(backend=layout_backend())
     etoh = pict.render({"molecules": [{"smiles": "CCO"}]})
     phenol = pict.render({"molecules": [{"smiles": "c1ccccc1O"}]})
     ew = float(_root_attrs(etoh)["width"].removesuffix("px"))
@@ -50,7 +52,7 @@ def test_separate_mol_svgs_keep_distinct_intrinsic_sizes():
 
 
 def test_scene_to_html_embeds_data_uri_img_xenosite_style():
-    html = Pict(backend="native", format="html").render({"molecules": [{"smiles": "CCO"}]})
+    html = Pict(backend=layout_backend(), format="html").render({"molecules": [{"smiles": "CCO"}]})
     assert 'src="data:image/svg+xml;utf8,' in html
     assert '<img class="xpict"' in html
     assert 'class="xpict-mol"' in html
@@ -61,7 +63,7 @@ def test_scene_to_html_embeds_data_uri_img_xenosite_style():
 
 
 def test_svg_to_data_uri_roundtrips_markup():
-    svg = Pict(backend="native").render({"molecules": [{"smiles": "CCO"}]})
+    svg = Pict(backend=layout_backend()).render({"molecules": [{"smiles": "CCO"}]})
     uri = svg_to_data_uri(svg)
     assert uri.startswith("data:image/svg+xml;utf8,")
     payload = unquote(uri.split(",", 1)[1])

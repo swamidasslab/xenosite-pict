@@ -104,13 +104,7 @@ CASES: dict[str, dict] = {
 
 
 def _render(doc: dict) -> str:
-    try:
-        return render(doc, backend="rdkit")
-    except Exception:
-        return render(doc, backend="native")
-
-
-def main() -> None:
+    return render(doc, backend="rdkit")def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     for name, doc in CASES.items():
         svg = _render(doc)

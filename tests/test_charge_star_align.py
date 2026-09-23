@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.helpers import layout_backend
+
 import math
 import warnings
 
@@ -9,13 +11,11 @@ import pytest
 
 from xpict import Pict, PictBackendWarning, render
 from xpict.align import _mcs_mapping, align_layouts
-from xpict.backends.native_smiles import parse_organic_smiles
 from xpict.structure import cx_atom_labels
 
 
 def _backend() -> str:
-    """MVP layout backend (indigo is out of scope for now)."""
-    return "native"
+    return layout_backend()
 
 
 def test_cx_atom_labels_parse():
@@ -24,41 +24,44 @@ def test_cx_atom_labels_parse():
     assert labs[1] is None
 
 
-def test_native_parses_star_and_charge():
-    mol = parse_organic_smiles("*C")
-    assert mol.atoms[0].element == "*"
-    mol2 = parse_organic_smiles("[NH4+]")
-    assert mol2.atoms[0].charge == 1
-    mol3 = parse_organic_smiles("[O-]")
-    assert mol3.atoms[0].charge == -1
-    mol4 = parse_organic_smiles("[CH3]")
-    assert mol4.atoms[0].radical == 1
+def test_rdkit_parses_star_and_charge():
+    pytest.importorskip("rdkit")
+    from rdkit import Chem
+
+    mol = Chem.MolFromSmiles("*C")
+    assert mol.GetAtomWithIdx(0).GetAtomicNum() == 0
+    mol2 = Chem.MolFromSmiles("[NH4+]")
+    assert mol2.GetAtomWithIdx(0).GetFormalCharge() == 1
+    mol3 = Chem.MolFromSmiles("[O-]")
+    assert mol3.GetAtomWithIdx(0).GetFormalCharge() == -1
+    mol4 = Chem.MolFromSmiles("[CH3]")
+    assert mol4.GetAtomWithIdx(0).GetNumRadicalElectrons() == 1
 
 
 def test_charge_label_in_svg():
-    svg = render({"molecules": [{"smiles": "[NH4+]"}]}, backend="native")
+    svg = render({"molecules": [{"smiles": "[NH4+]"}]}, backend=layout_backend())
     assert "N" in svg
     assert "+" in svg or "⁺" in svg or "＋" in svg
 
 
-def test_radical_dot_in_svg_native():
-    svg = render({"molecules": [{"smiles": "[CH3]"}]}, backend="native")
+def test_radical_dot_in_svg():
+    svg = render({"molecules": [{"smiles": "[CH3]"}]}, backend=layout_backend())
     assert "radical" in svg
 
 
-def test_star_label_native():
-    lay = Pict(backend="native").layout({"molecules": [{"smiles": "*C"}]}).molecules[0]
+def test_star_label():
+    lay = Pict(backend=layout_backend()).layout({"molecules": [{"smiles": "*C"}]}).molecules[0]
     star = next(a for a in lay.atoms if a.element == "*")
     assert star.label == "*"
-    svg = render({"molecules": [{"smiles": "*C"}]}, backend="native")
+    svg = render({"molecules": [{"smiles": "*C"}]}, backend=layout_backend())
     assert ">" in svg and "*" in svg
 
 
-def test_star_name_from_cxsmiles_native():
-    lay = Pict(backend="native").layout({"molecules": [{"cxsmiles": "*C |$R1;$|"}]}).molecules[0]
+def test_star_name_from_cxsmiles():
+    lay = Pict(backend=layout_backend()).layout({"molecules": [{"cxsmiles": "*C |$R1;$|"}]}).molecules[0]
     star = next(a for a in lay.atoms if a.element == "*")
     assert star.label == "R1"
-    svg = render({"molecules": [{"cxsmiles": "*C |$R1;$|"}]}, backend="native")
+    svg = render({"molecules": [{"cxsmiles": "*C |$R1;$|"}]}, backend=layout_backend())
     assert "R1" in svg
 
 

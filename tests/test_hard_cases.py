@@ -17,6 +17,8 @@ do not delete cases once they pass.
 
 from __future__ import annotations
 
+from tests.helpers import layout_backend
+
 import math
 import re
 from collections import Counter
@@ -60,8 +62,7 @@ HARD_CASES: list[dict] = [
 
 
 def _chem_backend() -> str:
-    """MVP layout backend (indigo is out of scope for now)."""
-    return "native"
+    return layout_backend()
 
 
 def _bond_stroke_counts(svg: str) -> Counter[str]:
@@ -282,3 +283,29 @@ def test_norbornane_pair_is_cdk_bridged():
     assert len(rings) >= 2
     rels = ring_pair_relations(rings)
     assert any(r.kind == RingAttachment.BRIDGED for r in rels)
+
+
+def test_long_ring_substituent_does_not_curl_into_false_ring():
+    """C1CCCCC1CCOCCCCCC — chain must stay extended (regression vs removed native)."""
+    backend = _chem_backend()
+    layout = (
+        Pict(backend=backend)
+        .layout({"molecules": [{"smiles": "C1CCCCC1CCOCCCCCC"}]})
+        .molecules[0]
+    )
+    by = {a.index: a for a in layout.atoms}
+    # Sidechain after the ring attachment (indices 6..14 in RDKit encounter order).
+    chain = [by[i] for i in range(6, 15)]
+    path = 0.0
+    for a, b in zip(chain, chain[1:]):
+        path += math.hypot(b.x - a.x, b.y - a.y)
+    e2e = math.hypot(chain[-1].x - chain[0].x, chain[-1].y - chain[0].y)
+    assert path > 0
+    assert e2e / path > 0.7, f"chain curled (stretch={e2e / path:.3f})"
+    bonded = {(min(b.begin, b.end), max(b.begin, b.end)) for b in layout.bonds}
+    for i, a in enumerate(layout.atoms):
+        for c in layout.atoms[i + 1 :]:
+            if (min(a.index, c.index), max(a.index, c.index)) in bonded:
+                continue
+            d = math.hypot(a.x - c.x, a.y - c.y)
+            assert d > 0.4, f"non-bonded overlap {a.index}-{c.index} d={d}"

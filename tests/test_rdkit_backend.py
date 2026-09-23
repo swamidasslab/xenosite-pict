@@ -30,6 +30,15 @@ def test_rdkit_default_when_installed():
     assert _resolve_backend_name(None) == "rdkit"
 
 
+def test_native_backend_removed():
+    from xpict.api import _resolve_backend_name
+
+    with pytest.raises(ValueError, match="native"):
+        _resolve_backend_name("native")
+    with pytest.raises(KeyError, match="native"):
+        get_backend("native")
+
+
 def test_rdkit_benzene_svg():
     svg = render({"molecules": [{"smiles": "c1ccccc1"}]}, backend="rdkit")
     assert "bond-skeleton" in svg or "bond-" in svg
