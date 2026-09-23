@@ -24,3 +24,12 @@ unsafe_code = "forbid"
 
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }
+
+# Compact release binaries for PyO3 wheels + wasm (debug symbols + unused
+# std dominate without this — manylinux .so was ~8.4 MB uncompressed).
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
