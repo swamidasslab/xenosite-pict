@@ -116,4 +116,4 @@ jobs:
 
       - name: Dry-run note
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
-        run: echo "dry_run: skipped PyPI publish"
+        run: echo dry_run skipped PyPI publish

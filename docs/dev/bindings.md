@@ -42,7 +42,7 @@ cargo test -p xpict
 | Paint ABI | `_native.depict_molecule` | wasm `depictMolecule` (internal) | `xpict_core::depict_molecule` |
 | Init | (import extension) | auto on first `render` | link-time RDKit |
 
-**Publish / registries:** [`publish.md`](publish.md).
+**Publish / registries:** [`.github/PUBLISH.md`](../../.github/PUBLISH.md).
 
 Python keeps the full `_native` surface (offsets, plotdots, halos, ELK, …).
 JS MVP wasm only binds `depictMolecule`; RDKit layout/align stay in TS.
@@ -87,7 +87,7 @@ Crates to prefer when filling stubs: **`ttf-parser`/`skrifa`** (fonts),
 **Indigo alternate:** `backend="indigo"` + **fake/rigid align** in Rust only
 (no RDKit template). Rigid-only also when RDKit is absent.
 
-See `docs/layout-notes.md`.
+See [`layout-notes.md`](layout-notes.md).
 
 ## Diagram layout (ELK → elkrs)
 
@@ -120,4 +120,4 @@ Python synthesizes the ELK graph in `diagram/elk.py` and calls native only
 `MoleculeIn` → (future) `depict_molecule` → `Scene` JSON is the ABI.
 Port order: bond strokes/joins → marks → shade → full single-mol paint.
 
-**ASAP track (xenosite.org client):** [`docs/migration-xenosite.md`](migration-xenosite.md).
+**ASAP track (xenosite.org client):** [`migration-xenosite.md`](migration-xenosite.md).

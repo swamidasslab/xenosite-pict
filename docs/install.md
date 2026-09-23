@@ -28,7 +28,3 @@ xpict-core = "0.1"
 
 System deps for the native `xpict` crate:
 [`crates/xpict/README.md`](https://github.com/swamidasslab/xenosite-pict/blob/main/crates/xpict/README.md).
-
-## Publishing (maintainers)
-
-Registry setup, tags, and tokens: [Publish](publish.md).

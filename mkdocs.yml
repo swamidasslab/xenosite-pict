@@ -16,6 +16,7 @@ site_dir: _site
 exclude_docs: |
   README.md
   pocs/**
+  dev/**
 
 theme:
   name: material
@@ -104,11 +105,6 @@ nav:
       - Label markup: label-markup.md
       - Contracts: contracts.md
       - npm / xenosite: npm-xenosite.md
-  - Maintainers:
-      - Publish: publish.md
-      - Bindings: bindings.md
-      - Layout notes: layout-notes.md
-      - Migration: migration-xenosite.md
 
 extra:
   social:

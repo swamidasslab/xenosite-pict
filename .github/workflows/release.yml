@@ -4,7 +4,7 @@
 #   - tag release/v*  (e.g. release/v0.2.0) → publish core, rust, js, python
 #   - workflow_dispatch → version + optional dry_run
 #
-# Language-only tags (js/v*, py/v*, …) cannot ship X.Y.0 — see docs/publish.md.
+# Language-only tags (js/v*, py/v*, …) cannot ship X.Y.0 — see .github/PUBLISH.md.
 
 name: release
 
@@ -231,4 +231,4 @@ jobs:
           MATURIN_PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
       - name: Dry-run note
         if: needs.meta.outputs.dry_run == 'true'
-        run: echo "dry_run: skipped PyPI publish"
+        run: echo dry_run skipped PyPI publish

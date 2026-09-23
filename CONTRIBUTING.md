@@ -35,7 +35,6 @@ cd js && npm test
 cargo test -p xpict-core
 ```
 
-Versioning and publish tags: [`docs/publish.md`](docs/publish.md).  
 Label markup: [`docs/label-markup.md`](docs/label-markup.md).
 
 ## License

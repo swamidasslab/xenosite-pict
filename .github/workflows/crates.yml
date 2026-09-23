@@ -6,7 +6,7 @@
 #   - workflow_dispatch → choose crate + version (dry_run optional)
 #
 # Version policy: major.minor lockstep with JS/Python; patch may differ.
-# See docs/publish.md.
+# See .github/PUBLISH.md.
 
 name: crates
 

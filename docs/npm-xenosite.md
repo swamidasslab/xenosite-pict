@@ -56,13 +56,3 @@ RDKit + wasm init on first `render` / `depict`. Works in Node and the browser.
 
 Full walkthrough + images: [API overview](api/overview.md) ·
 [JavaScript](languages/javascript.md).
-
-## Publish (this repo)
-
-```bash
-git tag js/v0.1.5
-git push origin js/v0.1.5
-```
-
-Requires environment secret **`NPM_TOKEN`** on the **`npm`** GitHub Environment.
-See [Publish](publish.md).

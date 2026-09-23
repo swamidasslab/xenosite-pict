@@ -1,7 +1,7 @@
 """ELK diagram placement via native elkrs (Rust), with grid/row fallback.
 
 Requires ``xpict._native`` (maturin). Grid/row stay pure-Python when ELK is
-unavailable or fails. See ``docs/layout-notes.md``.
+unavailable or fails. See ``docs/dev/layout-notes.md``.
 """
 
 from __future__ import annotations
