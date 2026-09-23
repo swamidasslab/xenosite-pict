@@ -543,6 +543,12 @@ mod tests {
                 error: None,
             }],
         }]);
+        let painted = render_doc(&spec, &edge).unwrap();
+        assert_eq!(painted.len(), 1);
+        assert!(painted[0].scene.width > 0.0);
+        assert_eq!(painted[0].molecule.color.as_deref(), Some("#0b6e4f"));
+    }
+
     #[test]
     fn render_doc_applies_cx_when_no_star_labels() {
         let spec = DepictSpec::Mol {
