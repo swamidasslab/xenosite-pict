@@ -85,8 +85,17 @@ def apply_rgroup_texts(
     mol_spec: MoleculeSpec,
     texts: list[str | None],
 ) -> list[str | None]:
-    """Return a copy of ``texts`` with ``rgroups`` applied to star slots."""
-    overrides = resolve_rgroups(layout, mol_spec.rgroups)
+    """Return a copy of ``texts`` with star labels applied.
+
+    ``star_labels`` (public document / single-mol parity) wins over future
+    ``rgroups`` when both are set.
+    """
+    labels: list[str | None] | dict[str, str | None] | None
+    if mol_spec.star_labels is not None:
+        labels = mol_spec.star_labels
+    else:
+        labels = mol_spec.rgroups
+    overrides = resolve_rgroups(layout, labels)
     if not overrides:
         return list(texts)
     by_index = {a.index: i for i, a in enumerate(layout.atoms)}

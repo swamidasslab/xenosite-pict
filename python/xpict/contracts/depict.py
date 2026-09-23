@@ -6,8 +6,8 @@ supports today:
 - Root is a ``type: "mol"`` leaf, or a ``type: "group"`` with ``children``
 - Molecule discriminator is ``type: "mol"``
 - Shade via ``shade: {atoms, bonds, …}``
-- Markush / star text via CXSMILES aliases (e.g. ``|$R1;;;;;$|``) or the
-  single-mol client's ``star_labels`` — not a document ``rgroups`` key yet
+- Markush / star text via ``star_labels`` (encounter order) or CXSMILES
+  aliases (e.g. ``|$R1;;;;;$|``). Document ``rgroups`` stays in future.
 
 Everything here must validate as :class:`~xpict.future.nodes.PictSpec`.
 Richer nodes (reaction, annotations, ``rgroups``, …) stay in
@@ -51,6 +51,14 @@ class MolNode(StrictModel):
     shade: ShadeSpec | None = Field(
         default=None,
         description="Per-atom / per-bond colormap scores",
+    )
+    star_labels: list[str | None] | None = Field(
+        default=None,
+        description=(
+            "Labels for ``*`` atoms in layout encounter order "
+            "(``null`` / empty → bare *; chem markup OK). "
+            "Wins over CXSMILES aliases when both are present."
+        ),
     )
 
     @model_validator(mode="after")

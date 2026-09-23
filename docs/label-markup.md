@@ -97,12 +97,18 @@ mol.render(MolRenderOptions {
 
 ### Declarative document
 
-Document Markush text today is CX aliases on `cxsmiles`:
+`star_labels` on mol nodes (same encounter-order semantics as the simple API),
+or CX aliases on `cxsmiles` when `star_labels` is omitted:
 
 ```json
 {
   "type": "group",
   "children": [
+    {
+      "type": "mol",
+      "smiles": "*c1ccccc1Cl",
+      "star_labels": ["$R_1$"]
+    },
     {
       "type": "mol",
       "cxsmiles": "*c1ccccc1Cl |$R1;;;;;$|"

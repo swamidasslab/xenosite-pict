@@ -2,7 +2,7 @@
   "$defs": {
     "GroupNode": {
       "additionalProperties": false,
-      "description": "Live group \u2014 subset of future ``GroupNode`` (mol children only today).",
+      "description": "Group \u2014 subset of future ``GroupNode`` (mol children only today).",
       "properties": {
         "type": {
           "const": "group",
@@ -37,7 +37,7 @@
     },
     "MolNode": {
       "additionalProperties": false,
-      "description": "Live molecule node \u2014 subset of future ``MolNode`` / ``MoleculeSpec``.",
+      "description": "Molecule node \u2014 subset of future ``MolNode`` / ``MoleculeSpec``.",
       "properties": {
         "type": {
           "const": "mol",
@@ -121,6 +121,29 @@
           ],
           "default": null,
           "description": "Per-atom / per-bond colormap scores"
+        },
+        "star_labels": {
+          "anyOf": [
+            {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Labels for ``*`` atoms in layout encounter order (``null`` / empty \u2192 bare *; chem markup OK). Wins over CXSMILES aliases when both are present.",
+          "title": "Star Labels"
         }
       },
       "title": "MolNode",
@@ -197,7 +220,7 @@
       "type": "object"
     }
   },
-  "description": "Preferred declarative document (strict subset of future PictSpec).",
+  "description": "Declarative document (strict subset of future PictSpec).",
   "discriminator": {
     "mapping": {
       "group": "#/$defs/GroupNode",

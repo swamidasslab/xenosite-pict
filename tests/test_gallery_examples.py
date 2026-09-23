@@ -81,3 +81,35 @@ def test_live_doc_rejects_rgroups_key():
         DepictSpec.model_validate(
             {"type": "mol", "smiles": "*C", "rgroups": ["$R_1$"]}
         )
+
+
+def test_live_doc_accepts_star_labels():
+    doc = DepictSpec.model_validate(
+        {"type": "mol", "smiles": "*C", "star_labels": ["$R_1$"]}
+    )
+    assert doc.mols()[0].star_labels == ["$R_1$"]
+
+
+def test_gallery_star_labels_subscript():
+    _require_rdkit()
+    svg = render(
+        {"type": "mol", "smiles": "*C", "star_labels": ["$R_1$"]},
+        backend="rdkit",
+    )
+    texts = _texts(svg)
+    assert "R₁" in texts, f"expected R₁ from document star_labels, got {texts}"
+
+
+def test_star_labels_wins_over_cx_on_document():
+    _require_rdkit()
+    svg = render(
+        {
+            "type": "mol",
+            "cxsmiles": "*C |$R1;$|",
+            "star_labels": ["X"],
+        },
+        backend="rdkit",
+    )
+    texts = _texts(svg)
+    assert "X" in texts, f"star_labels should override CX alias, got {texts}"
+    assert "R1" not in texts

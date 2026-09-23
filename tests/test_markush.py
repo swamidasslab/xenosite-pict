@@ -137,3 +137,13 @@ def test_apply_rgroup_texts_overrides_display():
     texts = apply_rgroup_texts(lay, mol, [display_text(a) for a in lay.atoms])
     star_i = next(i for i, a in enumerate(lay.atoms) if a.element == "*")
     assert texts[star_i] == "X"
+
+
+def test_star_labels_wins_over_rgroups():
+    lay = Pict(backend=layout_backend()).layout({"molecules": [{"smiles": "*C"}]}).molecules[0]
+    mol = MoleculeSpec.model_validate(
+        {"smiles": "*C", "rgroups": ["X"], "star_labels": ["Y"]}
+    )
+    texts = apply_rgroup_texts(lay, mol, [display_text(a) for a in lay.atoms])
+    star_i = next(i for i, a in enumerate(lay.atoms) if a.element == "*")
+    assert texts[star_i] == "Y"

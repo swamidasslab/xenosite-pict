@@ -900,6 +900,28 @@
               "default": null,
               "title": "Rgroups"
             },
+            "star_labels": {
+              "anyOf": [
+                {
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Star Labels"
+            },
             "ring_attachments": {
               "items": {
                 "$ref": "#/$defs/RingAttachmentSpec"

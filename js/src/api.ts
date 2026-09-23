@@ -98,8 +98,8 @@ export type MolRenderOptions = {
 
 /**
  * Mol node — strict subset of future PictSpec ``type: "mol"``.
- * Star / Markush text: CX aliases on ``cxsmiles``, or
- * ``star_labels`` on ``render`` — document ``rgroups`` is not public yet.
+ * Star / Markush text: ``star_labels`` (encounter order) or CX aliases on
+ * ``cxsmiles``. Document ``rgroups`` is not public yet.
  */
 export type MolNode = {
   type: "mol";
@@ -116,6 +116,11 @@ export type MolNode = {
     vmin?: number;
     vmax?: number;
   };
+  /**
+   * Labels for ``*`` atoms in layout encounter order (chem markup OK).
+   * Wins over CXSMILES aliases when both are present.
+   */
+  star_labels?: Array<string | null>;
 };
 
 /** Group — ``children`` of mol nodes only (today). */
@@ -362,6 +367,7 @@ async function depict(spec: DepictSpec): Promise<Rendered[]> {
       color: entry.color,
       atom_shade: entry.shade?.atoms,
       bond_shade: entry.shade?.bonds,
+      star_labels: entry.star_labels,
     };
     out.push(await render(m, opts));
   }

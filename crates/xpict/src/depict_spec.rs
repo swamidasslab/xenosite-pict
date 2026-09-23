@@ -3,8 +3,8 @@
 //! Root is ``type: "mol"`` or ``type: "group"`` with ``children``. Calls the
 //! simple [`crate::render`] / [`crate::mol`] client internally.
 //!
-//! Markush / star text: CXSMILES aliases or simple [`MolRenderOptions::star_labels`].
-//! Document ``rgroups`` is not on the public document API yet.
+//! Markush / star text: [`MolNode::star_labels`] (encounter order) or CXSMILES
+//! aliases. Document ``rgroups`` is not on the public document API yet.
 
 use serde::{Deserialize, Serialize};
 
@@ -42,6 +42,10 @@ pub struct MolNode {
     pub color: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shade: Option<ShadeSpec>,
+    /// Labels for ``*`` atoms in layout encounter order (chem markup OK).
+    /// Wins over CXSMILES aliases when both are present.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub star_labels: Option<Vec<Option<String>>>,
 }
 
 fn mol_type() -> String {
@@ -65,6 +69,8 @@ pub enum DepictSpec {
         color: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         shade: Option<ShadeSpec>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        star_labels: Option<Vec<Option<String>>>,
     },
     Group {
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -84,6 +90,7 @@ impl DepictSpec {
                 id,
                 color,
                 shade,
+                star_labels,
             } => vec![MolNode {
                 type_: "mol".into(),
                 smiles: smiles.clone(),
@@ -92,6 +99,7 @@ impl DepictSpec {
                 id: id.clone(),
                 color: color.clone(),
                 shade: shade.clone(),
+                star_labels: star_labels.clone(),
             }],
             DepictSpec::Group { children, .. } => children.clone(),
         }
@@ -137,7 +145,7 @@ pub fn depict(spec: &DepictSpec) -> Result<Vec<Rendered>, Error> {
             bond_shade: entry.shade.as_ref().and_then(|s| s.bonds.clone()),
             mark_atoms: None,
             mark_bonds: None,
-            star_labels: None,
+            star_labels: entry.star_labels.clone(),
             bold_labels: None,
             align_to: None,
         };

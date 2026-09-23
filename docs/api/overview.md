@@ -107,8 +107,9 @@ When `star_labels` is omitted, CXSMILES `|$…$|` aliases apply by atom index.
 ## Declarative document
 
 Nested JSON: `type: "mol"` or `type: "group"` + `children`. Fields today:
-structure strings, `id`, `color`, `shade`. Markush text on this path uses
-CXSMILES aliases (`|$R1;;;;;$|`). A document `rgroups` key is **not** public yet.
+structure strings, `id`, `color`, `shade`, `star_labels`. Markush text uses
+`star_labels` (encounter order; chem markup OK) or CXSMILES aliases
+(`|$R1;;;;;$|`). A document `rgroups` key is **not** public yet.
 
 This document model is a **strict subset** of future `PictSpec` and is being
 expanded as features graduate from `xpict.future`.
@@ -127,7 +128,7 @@ expanded as features graduate from `xpict.future`.
     const batch = await xpict.depict({
       type: "group",
       children: [
-        { type: "mol", cxsmiles: "*c1ccccc1Cl |$R1;;;;;$|" },
+        { type: "mol", smiles: "*c1ccccc1Cl", star_labels: ["$R_1$"] },
         { type: "mol", smiles: "c1ccccc1O" },
       ],
     });
@@ -148,7 +149,7 @@ expanded as features graduate from `xpict.future`.
     svg = render({
         "type": "group",
         "children": [
-            {"type": "mol", "cxsmiles": "*c1ccccc1Cl |$R1;;;;;$|"},
+            {"type": "mol", "smiles": "*c1ccccc1Cl", "star_labels": ["$R_1$"]},
         ],
     })
     ```

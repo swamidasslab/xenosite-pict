@@ -303,7 +303,16 @@ class MoleculeSpec(StrictModel):
         description=(
             "Labels for ``*`` atoms (definite attachment sites). "
             "A list assigns labels in star appearance order (``null`` = bare *). "
-            'A dict maps star ordinal ("0", "1", …) → label.'
+            'A dict maps star ordinal ("0", "1", …) → label. '
+            "Prefer ``star_labels`` on the public document API."
+        ),
+    )
+    star_labels: list[str | None] | None = Field(
+        default=None,
+        description=(
+            "Labels for ``*`` atoms in layout encounter order "
+            "(``null`` / empty → bare *; chem markup OK). "
+            "Wins over ``rgroups`` and CX aliases when set."
         ),
     )
     ring_attachments: list[RingAttachmentSpec] = Field(
