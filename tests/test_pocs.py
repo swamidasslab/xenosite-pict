@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from helpers import layout_backend
+
 import json
 import warnings
 
@@ -11,8 +13,7 @@ from xpict.diagram.elk import elk_graph, elk_graph_json, layout_diagram
 
 
 def _chem_backend() -> str:
-    """MVP layout backend (indigo is out of scope for now)."""
-    return "native"
+    return layout_backend()
 
 
 def test_own_svg_has_bonds_and_labels():
@@ -58,7 +59,7 @@ def test_elk_graph_uses_molecule_ids():
             },
         }
     )
-    pict = Pict(backend="native")
+    pict = Pict(backend=layout_backend())
     layouts = pict.layout(doc).molecules
     graph = elk_graph(layouts, doc)
     ids = {c["id"] for c in graph["children"]}
@@ -84,7 +85,7 @@ def test_network_layout_positions_length():
             },
         }
     )
-    layouts = Pict(backend="native").layout(doc).molecules
+    layouts = Pict(backend=layout_backend()).layout(doc).molecules
     with warnings.catch_warnings(record=True):
         warnings.simplefilter("always")
         positions = layout_diagram(layouts, doc)
@@ -108,7 +109,7 @@ def test_elk_places_network():
             },
         }
     )
-    layouts = Pict(backend="native").layout(doc).molecules
+    layouts = Pict(backend=layout_backend()).layout(doc).molecules
     positions = layout_diagram(layouts, doc)
     assert len(positions) == 3
     # elkrs should separate nodes (not all stacked at origin).

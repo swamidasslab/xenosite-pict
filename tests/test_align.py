@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from helpers import layout_backend
+
 import math
 
 import pytest
@@ -12,8 +14,7 @@ from xpict.align_rdkit import RdkitAligner, rdkit_available
 
 
 def _backend() -> str:
-    """MVP layout backend (indigo is out of scope for now)."""
-    return "native"
+    return layout_backend()
 
 
 def _layout(smiles: str):
@@ -80,7 +81,7 @@ def test_reflection_keeps_smiles_chirality():
     from rdkit.Geometry import Point3D
 
     smiles = "C[C@H](O)Cl"
-    original = Pict(backend="native").layout({"molecules": [{"smiles": smiles}]}).molecules[0]
+    original = Pict(backend=layout_backend()).layout({"molecules": [{"smiles": smiles}]}).molecules[0]
     mirror = original.model_copy(
         update={"atoms": [a.model_copy(update={"y": -a.y}) for a in original.atoms]}
     )

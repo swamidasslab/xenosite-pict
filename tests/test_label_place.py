@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from helpers import layout_backend
+
 import pytest
 
 from xpict import render
@@ -83,11 +85,11 @@ def test_glca_centers_first_or_last_glyph():
 
 
 def test_phenol_svg_uses_oriented_label():
-    svg = render({"molecules": [{"smiles": "c1ccccc1O"}]}, backend="native")
-    # Native layout puts the hydroxyl on the left → West → HO.
-    assert 'data-text="HO"' in svg
+    svg = render({"molecules": [{"smiles": "c1ccccc1O"}]}, backend=layout_backend())
+    # Orient toward free space — HO (west) or OH (east) depending on layout.
+    assert 'data-text="HO"' in svg or 'data-text="OH"' in svg
 
 
 def test_ethanol_oh_is_east_oriented():
-    svg = render({"molecules": [{"smiles": "CCO"}]}, backend="native")
+    svg = render({"molecules": [{"smiles": "CCO"}]}, backend=layout_backend())
     assert 'data-text="OH"' in svg

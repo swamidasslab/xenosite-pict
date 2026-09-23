@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from helpers import layout_backend
+
 import warnings
 
 import pytest
@@ -102,7 +104,7 @@ def test_diagram_arrows_do_not_opt_into_document_halo():
             "halo": True,
         }
     )
-    pict = Pict(backend="native")
+    pict = Pict(backend=layout_backend())
     layouts = pict.layout(doc).molecules
     scene = build_scene(layouts, doc.molecules, doc)
     assert any(isinstance(p, PathPrim) and "head" in (p.cls or "") for p in scene.overlays)
@@ -129,7 +131,7 @@ def test_molecule_caption_does_not_opt_into_document_halo():
             "halo": True,
         }
     )
-    pict = Pict(backend="native")
+    pict = Pict(backend=layout_backend())
     bare_layout = pict.layout(bare).molecules[0]
     titled_layout = pict.layout(titled).molecules[0]
     _, bare_halo = paint_molecule(bare_layout, bare.molecules[0], halo=True)
@@ -184,7 +186,7 @@ def test_reaction_scheme_svg_draws_overlays():
             },
         }
     )
-    pict = Pict(backend="native")
+    pict = Pict(backend=layout_backend())
     layouts = pict.layout(doc).molecules
     with warnings.catch_warnings(record=True):
         warnings.simplefilter("always")
@@ -192,7 +194,7 @@ def test_reaction_scheme_svg_draws_overlays():
     scene = build_scene(layouts, doc.molecules, doc, positions=positions)
     assert scene.overlays
     assert any(isinstance(p, PathPrim) and "edge" in (p.cls or "") for p in scene.overlays)
-    svg = render(doc, backend="native")
+    svg = render(doc, backend=layout_backend())
     assert 'class="xpict-overlays"' in svg or "xpict-overlays" in svg
     assert "ADH" in svg
     assert "ALDH" in svg
@@ -220,7 +222,7 @@ def test_network_dashed_edge_in_svg():
             },
         }
     )
-    svg = render(doc, backend="native")
+    svg = render(doc, backend=layout_backend())
     assert "stroke-dasharray" in svg
     assert "weak" in svg
 
@@ -238,7 +240,7 @@ def test_reaction_elk_defaults_wider_spacing():
             },
         }
     )
-    layouts = Pict(backend="native").layout(doc).molecules
+    layouts = Pict(backend=layout_backend()).layout(doc).molecules
     graph = elk_graph(layouts, doc)
     opts = graph["layoutOptions"]
     assert opts["elk.direction"] == "RIGHT"
@@ -277,7 +279,7 @@ def test_reaction_row_fallback_centers(monkeypatch):
             },
         }
     )
-    layouts = Pict(backend="native").layout(doc).molecules
+    layouts = Pict(backend=layout_backend()).layout(doc).molecules
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         positions = layout_diagram(layouts, doc)
@@ -321,7 +323,7 @@ def test_branched_reaction_uses_elk_routes():
             },
         }
     )
-    layouts = Pict(backend="native").layout(doc).molecules
+    layouts = Pict(backend=layout_backend()).layout(doc).molecules
     place = layout_diagram_ex(layouts, doc)
     assert len(place.positions) == 5
     # Not a single horizontal line — branches occupy distinct Y bands.
@@ -343,7 +345,7 @@ def test_branched_reaction_uses_elk_routes():
     )
     # Multi-segment path data (orthogonal route).
     assert any(isinstance(p, PathPrim) and p.d.count("L") >= 2 for p in scene.overlays)
-    svg = render(doc, backend="native")
+    svg = render(doc, backend=layout_backend())
     assert "pict-overlays" in svg
     assert "ADH" in svg and "CYP" in svg and "side" in svg
     assert "stroke-dasharray" in svg

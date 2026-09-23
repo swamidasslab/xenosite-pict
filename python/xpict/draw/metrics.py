@@ -16,7 +16,7 @@ Geometry that xenopict does not override comes from the engines it sits on:
   bond stroke (Indigo’s thin-stroke wedges were ~0.17)
 
 ``coord_scale`` maps layout units onto ``SCALE`` so Indigo (bond ≈ 1)
-and native (bond = 1.5) depict at the same size. SVG roots use those
+and RDKit (bond ≈ 1.5) depict at the same size. SVG roots use those
 drawing units as ``width``/``height`` (same as viewBox), matching
 xenosite.org’s data-URI ``<img>`` intrinsic-size pattern.
 """

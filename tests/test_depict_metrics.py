@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from helpers import layout_backend
+
 import math
 import re
 
@@ -30,8 +32,7 @@ from xpict.draw.scene_builder import normalize_coords
 
 
 def _backend() -> str:
-    """MVP layout backend (indigo is out of scope for now)."""
-    return "native"
+    return layout_backend()
 
 
 def _path_ys(d: str) -> list[float]:
@@ -130,7 +131,7 @@ def test_hash_count_scales_with_length():
 
 
 def test_svg_uses_reference_font_and_butt_bonds():
-    svg = render({"molecules": [{"smiles": "CC(=O)C"}]}, backend="native")
+    svg = render({"molecules": [{"smiles": "CC(=O)C"}]}, backend=layout_backend())
     # Labels are glyph paths from Liberation Sans (data-text carries the run).
     assert "data-text=" in svg
     assert 'stroke-linecap="round"' in svg
@@ -154,10 +155,11 @@ def test_hetero_labels_include_implicit_h():
 
 def test_anion_is_not_a_radical_dot():
     backend = _backend()
-    lay = Pict(backend=backend).layout({"molecules": [{"smiles": "[O-]"}]}).molecules[0]
+    # Hydroxide — use [OH-]; bare [O-] is a radical anion in RDKit.
+    lay = Pict(backend=backend).layout({"molecules": [{"smiles": "[OH-]"}]}).molecules[0]
     assert lay.atoms[0].charge == -1
     assert lay.atoms[0].radical == 0
-    svg = render({"molecules": [{"smiles": "[O-]"}]}, backend=backend)
+    svg = render({"molecules": [{"smiles": "[OH-]"}]}, backend=backend)
     assert "radical" not in svg
     assert "−" in svg or "-" in svg
 
@@ -183,12 +185,12 @@ def test_wedge_and_hash_and_wavy_and_crossed_in_svg():
 
 
 def test_radical_dot_still_drawn():
-    svg = render({"molecules": [{"smiles": "[CH3]"}]}, backend="native")
+    svg = render({"molecules": [{"smiles": "[CH3]"}]}, backend=layout_backend())
     assert "radical" in svg
     assert "CH3" in svg or "C" in svg
 
 
-def test_mean_bond_scale_native():
+def test_mean_bond_scale():
     backend = _backend()
     lay = Pict(backend=backend).layout({"molecules": [{"smiles": "c1ccccc1"}]}).molecules[0]
     coords, _, _ = normalize_coords(lay)

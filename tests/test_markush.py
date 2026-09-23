@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from helpers import layout_backend
+
 import pytest
 
 from xpict import Pict, render
@@ -18,7 +20,7 @@ from xpict.draw.markush import (
 
 
 def test_rgroups_list_assigns_stars_in_order():
-    lay = Pict(backend="native").layout({"molecules": [{"smiles": "*C*"}]}).molecules[0]
+    lay = Pict(backend=layout_backend()).layout({"molecules": [{"smiles": "*C*"}]}).molecules[0]
     stars = star_atom_indices(lay)
     assert len(stars) == 2
     ov = resolve_rgroups(lay, ["R¹", None])
@@ -27,7 +29,7 @@ def test_rgroups_list_assigns_stars_in_order():
 
 
 def test_rgroups_dict_by_star_ordinal():
-    lay = Pict(backend="native").layout({"molecules": [{"smiles": "*CC*"}]}).molecules[0]
+    lay = Pict(backend=layout_backend()).layout({"molecules": [{"smiles": "*CC*"}]}).molecules[0]
     ov = resolve_rgroups(lay, {"1": "R2", "0": "R1"})
     stars = star_atom_indices(lay)
     assert ov[stars[0]] == "R1"
@@ -41,7 +43,7 @@ def test_rgroups_render_label_on_star():
                 {"smiles": "*C", "rgroups": ["R¹"]},
             ]
         },
-        backend="native",
+        backend=layout_backend(),
     )
     assert "R¹" in svg or 'data-text="R¹"' in svg or "R" in svg
 
@@ -124,13 +126,13 @@ def test_ring_attachment_draws_callout():
                 }
             ]
         },
-        backend="native",
+        backend=layout_backend(),
     )
     assert "annot-label" in svg or "annot-arrow" in svg
 
 
 def test_apply_rgroup_texts_overrides_display():
-    lay = Pict(backend="native").layout({"molecules": [{"smiles": "*C"}]}).molecules[0]
+    lay = Pict(backend=layout_backend()).layout({"molecules": [{"smiles": "*C"}]}).molecules[0]
     mol = MoleculeSpec.model_validate({"smiles": "*C", "rgroups": ["X"]})
     texts = apply_rgroup_texts(lay, mol, [display_text(a) for a in lay.atoms])
     star_i = next(i for i, a in enumerate(lay.atoms) if a.element == "*")

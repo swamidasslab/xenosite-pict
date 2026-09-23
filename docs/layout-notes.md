@@ -17,7 +17,7 @@ that as the guide:
 Hard cases (bridged cages, congested chains, stereo centers, macrocycles) are the
 test of quality — not benzene.
 
-## Strategic target: RDKit for coords+align now; native long-term; Indigo alternate
+## Strategic target: RDKit for coords+align; Indigo alternate
 
 **MVP (shared Rust paint):** one molecule — Kekulé depiction, atom/bond
 **marks** (circles), atom/bond **shading**, backbone/label **color**, plus
@@ -33,11 +33,12 @@ test of quality — not benzene.
 **Alternate path:** **Indigo** layout + **fake/rigid align** implemented in Rust
 (Kabsch / shared transforms only — no template depict).
 
-**Long-term:** grow **native** layout+draw until the hard-case gallery is green;
-RDKit remains the quality reference and the practical default while that matures.
+There is **no in-house SMILES layout backend** — experimental native layout was
+removed after it failed hard cases (long ring substituents curling into false
+rings). Own the **drawing** path in Rust; leave 2D coords to RDKit/Indigo.
 **Chematic is out.**
 
-Until native wins:
+Until drawing owns the hard-case gallery:
 
 1. Learn algorithms from RDKit / Indigo / CoordGen / CDK (read their sources).
 2. Own the **drawing** path (skeleton → offsets → wedges; our SVG), migrating into Rust.
@@ -74,9 +75,8 @@ Rust draw + optional rigid-align helpers. Indigo skip RDKit align → Rust fake 
 
 ### Layout backends
 
-1. **rdkit** — preferred when installed (focus now).
-2. **native** — in-house; long-term product path.
-3. **indigo** — alternate; pair with Rust rigid/fake align.
+1. **rdkit** — default when installed (required for trustworthy coords).
+2. **indigo** — alternate; pair with Rust rigid/fake align.
 
 CoordGen / CDK remain **algorithm references**, not installed layout backends.
 
@@ -125,7 +125,7 @@ Sources: `Depictor/EmbeddedFrag.cpp`, `DepictUtils.cpp` (`embedRing`).
 
 | Stage | Owner | Role of SSSR |
 | --- | --- | --- |
-| Atom coordinates | Backend today; **native layout target** | Regular / fused / bridged / template |
+| Atom coordinates | RDKit (default) / Indigo (alternate) | Regular / fused / bridged / template |
 | Kekulé offsets, aromatic circle | Drawer (`draw/rings.py`, `scene_builder`) | Interior normals; optional circle |
 | “Can all faces be regular?” | Classifier in `draw/rings.py` | FUSED/SPIRO/BRIDGED + cage (atom in ≥3 rings) |
 
@@ -170,30 +170,12 @@ glyphs; document ``baseFontSize`` is 0.6 but drawn caps read smaller).
 Stroke tracks the Liberation stem (``≈0.042 × bond``). Double-bond offset
 stays RDKit’s ``0.15``. See ``draw/metrics.py``.
 ``normalize_coords`` scales each layout so the mean bond is that pixel
-length (Indigo bonds are 1.0; native bonds are 1.5).
+length (Indigo bonds are 1.0; RDKit bonds are typically ~1.5 before scale).
 
 `BondLayout.stereo` carries `up`/`down`/`either`/`none`. RDKit (`WedgeMolBonds`)
 and Indigo backends populate it; `draw.bonds` renders solid/hashed wedges, wavy
 either singles, and crossed either doubles (thin end at `begin` = stereocenter).
-Native now assigns wedges from OpenSMILES ``@``/``@@`` with a 2D parity
-heuristic (not full CIP). Native also enforces E/Z from OpenSMILES ``/`` ``\\``
-by flipping the smaller substituent tree across the double-bond axis after
-placement (collision flips run first). CIP-accurate tetrahedral wedges remain open.
-
-## Native quality bar (demonstration checklist)
-
-Native is “good enough” only when hard-case demos show, without relying on Indigo
-coords for those molecules:
-
-- [x] Simple + fused aromatics (benzene, naphthalene, anthracene, phenol) — regular faces
-- [x] Bridged/cage (norbornane) — no crash; no fake all-regular claim
-- [x] Chains (n-alkanes, carbonyl branches) — longest-chain seed + 120° zig-zag
-- [~] Congested substituents — terminal collision flip across attachment (1,2,3-Me₃Ph); deeper branch flips still open
-- [~] Stereo — tetrahedral `@`/`@@` wedges (parity heuristic); E/Z from `/` `\` enforced on native coords
-- [x] Side-by-side gallery vs Indigo on the same SMILES set (`poc-e-*`)
-
-Until that checklist is green, **prefer RDKit** for demos that need trustworthy
-coords; keep Indigo available as alternate; keep growing native.
+CIP-accurate tetrahedral wedges remain open for edge cases.
 
 ## ELK for multi-mol diagrams
 

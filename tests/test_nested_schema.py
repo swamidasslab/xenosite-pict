@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from helpers import layout_backend
+
 import pytest
 
 from xpict import render
@@ -118,7 +120,7 @@ def test_roundtrip_legacy_via_pictspec():
 
 
 def test_render_nested_mol():
-    svg = render({"type": "mol", "smiles": "CCO"}, backend="native")
+    svg = render({"type": "mol", "smiles": "CCO"}, backend=layout_backend())
     assert "<svg" in svg
 
 

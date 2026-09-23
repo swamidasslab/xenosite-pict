@@ -78,7 +78,7 @@ docs = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["python"]
+pythonpath = ["python", "tests"]
 
 [tool.ruff]
 line-length = 100

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from helpers import layout_backend
+
 import math
 import re
 
@@ -49,7 +51,7 @@ def test_svg_shade_uses_xenosite_not_homemade_pink():
                 }
             ]
         },
-        backend="native",
+        backend=layout_backend(),
     )
     fills = re.findall(
         r'class="shade"[^>]*fill="(rgb\([^"]+\))"|fill="(rgb\([^"]+\))"[^>]*class="shade"', svg
@@ -68,7 +70,7 @@ def test_svg_shade_uses_xenosite_not_homemade_pink():
 def test_svg_layer_order_shading_before_halo():
     svg = render(
         {"molecules": [{"smiles": "CCO", "shade": {"atoms": [0.2, 0.5, 0.9]}}]},
-        backend="native",
+        backend=layout_backend(),
     )
     i_shade = svg.index('class="layer-shading"')
     i_halo = svg.index('class="xpict-halo"')
@@ -100,8 +102,7 @@ def test_ring_double_offset_distance_is_full_offset_px():
 
 
 def _backend() -> str:
-    """MVP layout backend (indigo is out of scope for now)."""
-    return "native"
+    return layout_backend()
 
 
 def test_rendered_ring_doubles_sit_inside():

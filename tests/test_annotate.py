@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from helpers import layout_backend
+
 import re
 
 import pytest
@@ -56,7 +58,7 @@ def test_callout_svg_has_label_and_arrow():
                 }
             ]
         },
-        backend="native",
+        backend=layout_backend(),
     )
     assert "annot-label" in svg
     assert "annot-arrow" in svg
@@ -78,7 +80,7 @@ def test_region_kinds_emit_paths():
                     }
                 ]
             },
-            backend="native",
+            backend=layout_backend(),
         )
         assert cls in svg
 
@@ -100,7 +102,7 @@ def test_ring_callout_uses_centroid():
                 }
             ]
         },
-        backend="native",
+        backend=layout_backend(),
     )
     assert "annot-label" in svg
     assert re.search(r"data-text=\"Ar\"", svg) or "Ar" in svg
@@ -109,7 +111,7 @@ def test_ring_callout_uses_centroid():
 def test_annotations_land_on_marks_layer():
     from xpict import Pict
 
-    pict = Pict(backend="native")
+    pict = Pict(backend=layout_backend())
     spec = PictSpec.model_validate(
         {
             "molecules": [

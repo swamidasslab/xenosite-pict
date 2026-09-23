@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from helpers import layout_backend
+
 import re
 
 from xpict import render
@@ -10,7 +12,7 @@ from xpict import render
 def test_mol_color_tints_bonds_and_labels():
     svg = render(
         {"molecules": [{"smiles": "CCO", "color": "#06c"}]},
-        backend="native",
+        backend=layout_backend(),
     )
     # Bond strokes use the override.
     assert re.search(r'class="[^"]*bond-skeleton[^"]*"[^>]*stroke="#06c"', svg) or re.search(
@@ -21,6 +23,6 @@ def test_mol_color_tints_bonds_and_labels():
 
 
 def test_default_ink_is_near_black():
-    svg = render({"molecules": [{"smiles": "CCO"}]}, backend="native")
+    svg = render({"molecules": [{"smiles": "CCO"}]}, backend=layout_backend())
     assert 'stroke="#111"' in svg
     assert re.search(r'data-text="OH"[^>]*fill="#111"|fill="#111"[^>]*data-text="OH"', svg)
