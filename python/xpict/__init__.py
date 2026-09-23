@@ -40,6 +40,7 @@ from xpict.warnings import PictBackendWarning
 from xpict.edge_plan import build_align_plan, process_edge_plan, validate_edge_plan
 from xpict.contracts.edge import EdgePlan, EdgeResult, MolTemplate
 from xpict.future import PictSpec
+from xpict.native_bridge import plan_edge, render_doc
 
 __version__ = "0.3.0"
 
@@ -61,8 +62,10 @@ __all__ = [
     "build_align_plan",
     "depict",
     "mol",
+    "plan_edge",
     "process_edge_plan",
     "render",
+    "render_doc",
     "to_svg",
     "validate_edge_plan",
     "__version__",

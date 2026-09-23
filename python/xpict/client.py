@@ -19,7 +19,6 @@ from typing import Any, Sequence
 from xpict.contracts.scene import Scene
 from xpict.draw.metrics import SCALE
 from xpict.draw.svg import scene_to_svg as _scene_to_svg
-from xpict.structure import cx_atom_labels
 
 # Keep in sync with ``xpict::align_opts::MIN_MCS_ATOMS``.
 _MIN_MCS_ATOMS = 3
@@ -532,6 +531,8 @@ def _apply_star_labels(
 
 
 def _apply_cx_by_index(molecule: dict[str, Any], source: str) -> dict[str, Any]:
+    from xpict.structure import cx_atom_labels
+
     aliases = cx_atom_labels(source)
     if not aliases:
         return molecule

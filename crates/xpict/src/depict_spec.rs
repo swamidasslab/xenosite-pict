@@ -1,195 +1,89 @@
-//! Declarative document — strict subset of future ``PictSpec``.
+//! Declarative document — thin host over [`xpict_core::doc`].
 //!
-//! Root is ``type: "mol"`` or ``type: "group"`` with ``children``. Calls the
-//! simple [`crate::render`] / [`crate::mol`] client internally.
-//!
-//! Markush / star text: [`MolNode::star_labels`] (encounter order) or CXSMILES
-//! aliases. Document ``rgroups`` is not on the public document API yet.
+//! Pass 1 [`xpict_core::plan_edge`] → [`crate::process_edge_plan`] →
+//! pass 2 [`xpict_core::render_doc`].
 
-use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
-use crate::{render, Error, Mol, MolRenderOptions, Rendered};
+use xpict_core::cxsmiles::smiles_base;
+use xpict_core::doc::{assign_mol_ids, plan_edge, render_doc};
 
-/// Per-atom / per-bond colormap scores (document ``shade``).
-///
-/// ``vmin``/``vmax`` default to ``0``/``1`` — scores are **not** auto-scaled
-/// to the data range.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ShadeSpec {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub atoms: Option<Vec<f64>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub bonds: Option<Vec<f64>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub colormap: Option<String>,
-    #[serde(default = "default_shade_vmin")]
-    pub vmin: f64,
-    #[serde(default = "default_shade_vmax")]
-    pub vmax: f64,
-}
+use crate::edge_plan::process_edge_plan_with_frames;
+use crate::{Error, Rendered, SvgAtom, SvgBond};
 
-fn default_shade_vmin() -> f64 {
-    0.0
-}
-fn default_shade_vmax() -> f64 {
-    1.0
-}
-
-impl Default for ShadeSpec {
-    fn default() -> Self {
-        Self {
-            atoms: None,
-            bonds: None,
-            colormap: None,
-            vmin: 0.0,
-            vmax: 1.0,
-        }
-    }
-}
-
-/// Mol node — subset of future ``MolNode``.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct MolNode {
-    #[serde(rename = "type", default = "mol_type")]
-    pub type_: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub smiles: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cxsmiles: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub molfile: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub color: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub shade: Option<ShadeSpec>,
-    /// Labels for ``*`` atoms in layout encounter order (chem markup OK).
-    /// Wins over CXSMILES aliases when both are present.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub star_labels: Option<Vec<Option<String>>>,
-    /// Uniform diagram scale (``1.0`` = house size). Omitted → ``1.0``.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub scale: Option<f64>,
-    /// Ink weight relative to house (``1.0``). Min ~``2/3`` (Regular stem).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub weight: Option<f64>,
-}
-
-fn mol_type() -> String {
-    "mol".into()
-}
-
-/// Declarative document (``mol`` or ``group`` root).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "lowercase")]
-pub enum DepictSpec {
-    Mol {
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        smiles: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        cxsmiles: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        molfile: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        id: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        color: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        shade: Option<ShadeSpec>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        star_labels: Option<Vec<Option<String>>>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        scale: Option<f64>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        weight: Option<f64>,
-    },
-    Group {
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        id: Option<String>,
-        #[serde(default)]
-        children: Vec<MolNode>,
-    },
-}
-
-impl DepictSpec {
-    fn owned_mols(&self) -> Vec<MolNode> {
-        match self {
-            DepictSpec::Mol {
-                smiles,
-                cxsmiles,
-                molfile,
-                id,
-                color,
-                shade,
-                star_labels,
-                scale,
-                weight,
-            } => vec![MolNode {
-                type_: "mol".into(),
-                smiles: smiles.clone(),
-                cxsmiles: cxsmiles.clone(),
-                molfile: molfile.clone(),
-                id: id.clone(),
-                color: color.clone(),
-                shade: shade.clone(),
-                star_labels: star_labels.clone(),
-                scale: *scale,
-                weight: *weight,
-            }],
-            DepictSpec::Group { children, .. } => children.clone(),
-        }
-    }
-}
-
-impl MolNode {
-    fn structure(&self) -> Result<&str, Error> {
-        if let Some(ref s) = self.molfile {
-            if !s.trim().is_empty() {
-                return Ok(s.as_str());
-            }
-        }
-        if let Some(ref s) = self.cxsmiles {
-            if !s.trim().is_empty() {
-                return Ok(s.as_str());
-            }
-        }
-        if let Some(ref s) = self.smiles {
-            if !s.trim().is_empty() {
-                return Ok(s.as_str());
-            }
-        }
-        Err(Error::Message(
-            "mol node needs smiles, cxsmiles, or molfile".into(),
-        ))
-    }
-}
+pub use xpict_core::{DepictSpec, MolNode, ShadeSpec};
 
 /// Alias of [`MolNode`].
 pub type MolSpec = MolNode;
 
-/// Render every mol via the simple [`crate::render`] client.
+fn to_coord_list(atoms: &[xpict_core::scene::AtomIn]) -> Vec<SvgAtom> {
+    atoms
+        .iter()
+        .map(|a| SvgAtom {
+            index: a.index,
+            element: a.symbol().to_string(),
+            x: a.x,
+            y: a.y,
+            label: a.label.clone(),
+            charge: a.charge,
+        })
+        .collect()
+}
+
+fn source_of(node: &MolNode) -> Result<String, Error> {
+    node.structure().map(str::to_string).map_err(Error::Message)
+}
+
+/// Declarative document → [`Rendered`] list via core plan/paint + RDKit edge.
 pub fn depict(spec: &DepictSpec) -> Result<Vec<Rendered>, Error> {
-    let mut out: Vec<Rendered> = Vec::new();
-    for entry in spec.owned_mols() {
-        let structure = entry.structure()?;
-        let mut mol = Mol::from_source(structure)?;
-        let opts = MolRenderOptions {
-            id: entry.id.clone(),
-            color: entry.color.clone(),
-            atom_shade: entry.shade.as_ref().and_then(|s| s.atoms.clone()),
-            bond_shade: entry.shade.as_ref().and_then(|s| s.bonds.clone()),
-            shade_vmin: entry.shade.as_ref().map(|s| s.vmin),
-            shade_vmax: entry.shade.as_ref().map(|s| s.vmax),
-            mark_atoms: None,
-            mark_bonds: None,
-            star_labels: entry.star_labels.clone(),
-            scale: entry.scale,
-            weight: entry.weight,
-            align_to: None,
-            atom_map: None,
-        };
-        out.push(render(&mut mol, opts)?);
+    let Some(plan) = plan_edge(spec).map_err(Error::Message)? else {
+        return Ok(vec![]);
+    };
+    let (edge, frames) = process_edge_plan_with_frames(&plan)?;
+    let painted = render_doc(spec, &edge).map_err(Error::Message)?;
+    let mols = spec.mols();
+    let ids = assign_mol_ids(&mols).map_err(Error::Message)?;
+    let id_to_node: HashMap<&str, &MolNode> = ids
+        .iter()
+        .zip(mols.iter())
+        .map(|(id, n)| (id.as_str(), n))
+        .collect();
+
+    let mut out = Vec::with_capacity(painted.len());
+    for row in painted {
+        let node = id_to_node
+            .get(row.id.as_str())
+            .copied()
+            .ok_or_else(|| Error::Message(format!("missing mol node {}", row.id)))?;
+        let source = source_of(node)?;
+        let frame = frames
+            .get(&row.id)
+            .cloned()
+            .unwrap_or_else(|| smiles_base(&source));
+        let coords = to_coord_list(&row.molecule.atoms);
+        let bonds: Vec<SvgBond> = row
+            .molecule
+            .bonds
+            .iter()
+            .map(|b| SvgBond {
+                index: b.index,
+                begin: b.begin,
+                end: b.end,
+                order: b.order,
+                stereo: b.stereo.clone(),
+            })
+            .collect();
+        out.push(Rendered {
+            width: row.scene.width,
+            height: row.scene.height,
+            scene: row.scene,
+            molecule: row.molecule,
+            source,
+            frame_molblock: frame,
+            svg_coords: coords.clone(),
+            coords,
+            bonds,
+        });
     }
     Ok(out)
 }

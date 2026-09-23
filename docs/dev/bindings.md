@@ -40,13 +40,27 @@ cargo test -p xpict
 | Package | `xpict` | `@xenosite/xpict` | crates.io `xpict` |
 | Public API | `Mol` / `render` / `to_svg` (client) | `xpict.mol` / `render` / `toSvg` / `depict` | same + `depict` batch stub |
 | Paint ABI | `_native.depict_molecule` | wasm `depictMolecule` (internal) | `xpict_core::depict_molecule` |
+| Document | `_native.plan_edge` → `process_edge_plan` → `_native.render_doc` | wasm `planEdge` → `processEdgePlan` → `renderDoc` | `plan_edge` → `process_edge_plan` → `render_doc` |
 | Init | (import extension) | auto on first `render` | link-time RDKit |
 
 **Publish / registries:** [`.github/PUBLISH.md`](../../.github/PUBLISH.md).
 
 Python keeps the full `_native` surface (offsets, plotdots, halos, ELK, …).
-JS MVP wasm only binds `depictMolecule`; RDKit layout/align stay in TS.
+JS wasm binds paint + document two-pass (`depictMolecule`, `planEdge`,
+`renderDoc`, `validateEdgePlan`); RDKit layout/align stay in TS. Chrome
+(CX / star_labels / shade / color) and EdgePlan structural validation are
+applied in core — clients only process ``EdgePlan`` between passes.
 The native `crates/xpict` package is **not** linked into py/wasm.
+
+### Where to test
+
+| Logic | Test once in |
+| --- | --- |
+| CX parse / apply, `plan_edge`, `render_doc` chrome, EdgePlan validate | `xpict-core` |
+| RDKit / MinimalLib `process_edge_plan` (atom_map, MCS, fallback) | each host (Rust `xpict`, Python, JS) |
+| Public `depict` / `render` wiring | one smoke per language |
+
+Do **not** re-assert core behavior in Py + JS + Rust host suites.
 
 ## Adding a shared export
 

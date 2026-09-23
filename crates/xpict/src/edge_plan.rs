@@ -49,8 +49,17 @@ fn source_of(node: &MolTemplate) -> Result<String, Error> {
 /// Align failure → automatic free (unaligned) layout; ``method: None``,
 /// ``ok: true`` when coords were produced.
 pub fn process_edge_plan(plan: &EdgePlan) -> Result<EdgeResult, Error> {
+    Ok(process_edge_plan_with_frames(plan)?.0)
+}
+
+/// Like [`process_edge_plan`], plus pose molblocks keyed by mol id (for
+/// [`crate::Rendered::frame_molblock`]).
+pub fn process_edge_plan_with_frames(
+    plan: &EdgePlan,
+) -> Result<(EdgeResult, HashMap<String, String>), Error> {
     plan.validate().map_err(Error::Parse)?;
     let mut task_results = Vec::new();
+    let mut all_poses: HashMap<String, String> = HashMap::new();
 
     for task in &plan.tasks {
         match task {
@@ -62,6 +71,7 @@ pub fn process_edge_plan(plan: &EdgePlan) -> Result<EdgeResult, Error> {
                     visit(root, None, &mut rows, &mut poses)?;
                 }
 
+                all_poses.extend(poses);
                 let ok = rows.iter().all(|r| r.ok);
                 task_results.push(EdgeTaskResult::CoordGen {
                     ok,
@@ -71,7 +81,7 @@ pub fn process_edge_plan(plan: &EdgePlan) -> Result<EdgeResult, Error> {
         }
     }
 
-    Ok(EdgeResult::new_v1(task_results))
+    Ok((EdgeResult::new_v1(task_results), all_poses))
 }
 
 fn free_layout(

@@ -19,23 +19,10 @@ _MIN_MCS_ATOMS = 3
 
 
 def validate_edge_plan(plan: EdgePlan | dict[str, Any]) -> EdgePlan:
-    """Parse + structural checks (unique ids, roots have no align)."""
-    p = plan if isinstance(plan, EdgePlan) else EdgePlan.model_validate(plan)
-    seen: set[str] = set()
+    """Structural checks via Rust core (unique ids, roots, structure fields)."""
+    from xpict.native_bridge import validate_edge_plan as _core_validate
 
-    def walk(node: MolTemplate, *, is_root: bool) -> None:
-        if node.id in seen:
-            raise ValueError(f"duplicate MolTemplate id {node.id}")
-        seen.add(node.id)
-        if is_root and node.align is not None:
-            raise ValueError(f"MolTemplate {node.id}: roots must have align=null")
-        for child in node.template_for:
-            walk(child, is_root=False)
-
-    for task in p.tasks:
-        for root in task.roots:
-            walk(root, is_root=True)
-    return p
+    return EdgePlan.model_validate(_core_validate(plan))
 
 
 def build_align_plan(

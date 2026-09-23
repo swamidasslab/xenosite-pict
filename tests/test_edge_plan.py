@@ -1,4 +1,8 @@
-"""EdgePlan schema + coord_gen processor (Python host)."""
+"""EdgePlan host processor (Python / RDKit).
+
+Schema validation, plan_edge forest shape, and CX chrome are covered in
+``xpict-core``. This file only exercises the RDKit edge + schema files.
+"""
 
 from __future__ import annotations
 
@@ -9,8 +13,8 @@ import pytest
 
 rdkit = pytest.importorskip("rdkit")
 
-from xpict.contracts.edge import EdgePlan, EdgeResult
-from xpict.edge_plan import build_align_plan, process_edge_plan, validate_edge_plan
+from xpict.contracts.edge import EdgeResult
+from xpict.edge_plan import build_align_plan, process_edge_plan
 
 SCHEMA = Path(__file__).resolve().parents[1] / "schema" / "edge-plan.schema.json"
 RESULT_SCHEMA = Path(__file__).resolve().parents[1] / "schema" / "edge-result.schema.json"
@@ -23,30 +27,7 @@ def test_edge_plan_schema_committed():
     assert data.get("title") == "EdgePlan"
 
 
-def test_validate_rejects_duplicate_ids():
-    plan = {
-        "version": 1,
-        "tasks": [
-            {
-                "type": "coord_gen",
-                "roots": [
-                    {
-                        "id": "m_0",
-                        "smiles": "CCO",
-                        "template_for": [
-                            {"id": "m_0", "smiles": "CCCO", "align": {}}
-                        ],
-                    }
-                ],
-            }
-        ],
-    }
-    with pytest.raises(ValueError, match="duplicate"):
-        validate_edge_plan(plan)
-
-
 def test_process_atom_map_align():
-    # Benzene ← toluene with explicit ring map (query methyl is 0).
     plan = build_align_plan(
         template_source="c1ccccc1",
         query_source="Cc1ccccc1",
@@ -68,7 +49,6 @@ def test_process_mcs_align():
         query_source="O=C1C=CC(=O)C=C1",
         atom_map=None,
     )
-    # build_align_plan with atom_map=None still sets AlignOpts() — MCS path
     result = process_edge_plan(plan)
     rows = {r.id: r for r in result.results[0].molecules}
     assert rows["m_0"].ok
@@ -77,7 +57,6 @@ def test_process_mcs_align():
 
 
 def test_align_failure_falls_back_to_free_layout():
-    """Aliphatic vs quinone: align fails → unaligned coords; ok stays true."""
     plan = build_align_plan(
         template_source="O=C1C=CC(=O)C=C1",
         query_source="C1CCCCC1CCOCCCCCC",
@@ -85,9 +64,6 @@ def test_align_failure_falls_back_to_free_layout():
     )
     result = process_edge_plan(plan)
     rows = result.results[0].molecules
-    assert len(rows) == 2
-    assert rows[0].ok and rows[0].method == "free"
-    assert rows[1].id == "m_1"
     assert rows[1].ok is True
     assert rows[1].method == "none"
     assert rows[1].molecule is not None

@@ -88,6 +88,10 @@ export interface MolNode extends NodeBase {
    * Wins over `rgroups` / CX aliases when set. Prefer on the public document API.
    */
   star_labels?: (string | null)[];
+  /** Id of another mol in this group to use as align template. */
+  align_to?: string | null;
+  /** Pairs `[queryAtom, templateAtom]` vs the template; skips MCS when set. */
+  atom_map?: Array<[number, number]> | null;
   ring_attachments?: RingAttachmentSpec[];
   rtable?: string[][] | RTableSpec;
   marks?: MarkSpec[];
@@ -143,6 +147,11 @@ export interface AnnotationNode extends NodeBase {
 
 export interface ContainerNode extends NodeBase {
   type: "group" | "grid" | "stack" | "reaction" | "network";
+  /**
+   * When true on a group, later mol children align onto the first
+   * (or each child's ``align_to``).
+   */
+  align?: boolean;
 }
 
 /** Canonical nested figure document (root node). */

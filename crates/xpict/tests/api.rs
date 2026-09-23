@@ -294,6 +294,7 @@ fn depict_nested_group() {
     use xpict::{depict, DepictSpec, MolNode};
     let out = depict(&DepictSpec::Group {
         id: None,
+        align: false,
         children: vec![
             MolNode {
                 smiles: Some("CCO".into()),
@@ -326,6 +327,8 @@ fn depict_cx_markush_alias() {
         star_labels: None,
         scale: None,
         weight: None,
+        align_to: None,
+        atom_map: None,
     })
     .unwrap();
     let svg = out[0].to_svg();
@@ -349,6 +352,8 @@ fn depict_star_labels() {
         star_labels: Some(vec![Some("$R_1$".into())]),
         scale: None,
         weight: None,
+        align_to: None,
+        atom_map: None,
     })
     .unwrap();
     let svg = out[0].to_svg();

@@ -1,7 +1,9 @@
-//! EdgePlan processor tests (native RDKit) — parity with Python / JS.
+//! EdgePlan processor tests (native RDKit host).
+//!
+//! Plan validation / forest shape / CX chrome: ``xpict-core``.
 
-use xpict::{build_align_plan, process_edge_plan, EdgePlan, EdgeTask, MolTemplate};
-use xpict_core::edge::{AlignOpts, CoordMethod, EdgeTaskResult};
+use xpict::{build_align_plan, process_edge_plan};
+use xpict_core::edge::{CoordMethod, EdgeTaskResult};
 
 #[test]
 fn edge_plan_atom_map_align() {
@@ -46,26 +48,4 @@ fn edge_plan_align_failure_falls_back() {
         .as_deref()
         .unwrap_or("")
         .contains("fell back"));
-}
-
-#[test]
-fn edge_plan_rejects_duplicate_ids() {
-    let plan = EdgePlan::new_v1(vec![EdgeTask::CoordGen {
-        roots: vec![MolTemplate {
-            id: "m_0".into(),
-            smiles: Some("CCO".into()),
-            cxsmiles: None,
-            molfile: None,
-            align: None,
-            template_for: vec![MolTemplate {
-                id: "m_0".into(),
-                smiles: Some("CCCO".into()),
-                cxsmiles: None,
-                molfile: None,
-                align: Some(AlignOpts::default()),
-                template_for: vec![],
-            }],
-        }],
-    }]);
-    assert!(process_edge_plan(&plan).is_err());
 }

@@ -25,6 +25,7 @@ export type {
 export {
   buildAlignPlan,
   processEdgePlan,
+  processEdgePlanWithFrames,
   validateEdgePlan,
   MIN_MCS_ATOMS as EDGE_MIN_MCS_ATOMS,
 } from "./edge-plan.js";

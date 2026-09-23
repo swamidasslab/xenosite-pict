@@ -21,6 +21,7 @@
 //! use xpict::{depict, DepictSpec, MolNode};
 //! let out = depict(&DepictSpec::Group {
 //!     id: None,
+//!     align: false,
 //!     children: vec![
 //!         MolNode { smiles: Some("CCO".into()), ..Default::default() },
 //!         MolNode { smiles: Some("CCCO".into()), ..Default::default() },
@@ -31,7 +32,6 @@
 #![allow(clippy::module_name_repetitions)]
 
 mod align_opts;
-mod cxsmiles;
 mod depict_spec;
 mod edge_plan;
 mod ffi;
@@ -41,9 +41,9 @@ mod svg;
 pub use align_opts::{
     align_succeeded, minimallib_align_details, MCS_DETAILS_JSON, MIN_MCS_ATOMS,
 };
-pub use cxsmiles::{cx_atom_labels, smiles_base};
 pub use depict_spec::{depict, DepictSpec, MolNode, MolSpec, ShadeSpec};
-pub use edge_plan::{build_align_plan, process_edge_plan};
+pub use edge_plan::{build_align_plan, process_edge_plan, process_edge_plan_with_frames};
+pub use xpict_core::{cx_atom_labels, smiles_base};
 
 pub use layout::{
     layout_with_rdkit, layout_with_rdkit_meta, sanitize_dummy_molblock, source_to_molblock,
@@ -54,7 +54,9 @@ pub use xpict_core::edge::{
     EdgeTask, EdgeTaskResult, MolTemplate,
 };
 pub use xpict_core::scene::{AtomIn, BondIn, MoleculeIn, Scene};
-pub use xpict_core::{depict_molecule, SCALE};
+pub use xpict_core::{
+    apply_cx_by_index, apply_star_labels, depict_molecule, plan_edge, render_doc, SCALE,
+};
 
 use xpict_core::scene::AtomIn as CoreAtom;
 
@@ -189,58 +191,6 @@ pub struct MolRenderOptions {
     pub atom_map: Option<Vec<(u32, u32)>>,
 }
 
-fn is_star(a: &CoreAtom) -> bool {
-    if a.element.as_deref() == Some("*") {
-        return true;
-    }
-    a.z == Some(0)
-}
-
-fn apply_star_labels(mut molecule: MoleculeIn, labels: &[Option<String>]) -> MoleculeIn {
-    if labels.is_empty() {
-        return molecule;
-    }
-    let stars: Vec<usize> = molecule
-        .atoms
-        .iter()
-        .enumerate()
-        .filter(|(_, a)| is_star(a))
-        .map(|(i, _)| i)
-        .collect();
-    if stars.is_empty() {
-        return molecule;
-    }
-    for (k, raw) in labels.iter().enumerate() {
-        if k >= stars.len() {
-            break;
-        }
-        let label = match raw {
-            None => "*".to_string(),
-            Some(s) if s.trim().is_empty() => "*".to_string(),
-            Some(s) => s.trim().to_string(),
-        };
-        molecule.atoms[stars[k]].label = Some(label);
-    }
-    molecule
-}
-
-fn apply_cx_by_index(mut molecule: MoleculeIn, source: &str) -> MoleculeIn {
-    let aliases = cx_atom_labels(source);
-    if aliases.is_empty() {
-        return molecule;
-    }
-    for a in &mut molecule.atoms {
-        let idx = a.index as usize;
-        if let Some(Some(label)) = aliases.get(idx) {
-            let label = label.trim();
-            if !label.is_empty() {
-                a.label = Some(label.to_string());
-            }
-        }
-    }
-    molecule
-}
-
 fn apply_opts(mut molecule: MoleculeIn, opts: &MolRenderOptions, source: &str) -> MoleculeIn {
     if let Some(ref id) = opts.id {
         molecule.id = Some(id.clone());
@@ -273,7 +223,7 @@ fn apply_opts(mut molecule: MoleculeIn, opts: &MolRenderOptions, source: &str) -
         molecule.weight = weight;
     }
     if let Some(ref labels) = opts.star_labels {
-        molecule = apply_star_labels(molecule, labels);
+        apply_star_labels(&mut molecule, labels);
     } else {
         molecule = apply_cx_by_index(molecule, source);
     }

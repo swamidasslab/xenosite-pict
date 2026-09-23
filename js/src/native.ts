@@ -1,10 +1,14 @@
 /**
- * Internal wasm loader for the MVP paint path.
- * Not part of the package public API — used by ``api.ts`` only.
+ * Internal wasm loader — paint + document two-pass.
+ * Document: ``planEdge`` → host ``processEdgePlan`` → ``renderDoc``.
+ * Chrome (CX / star / shade) is applied in core ``renderDoc``.
  */
 
 import init, {
   depictMolecule as wasmDepictMolecule,
+  planEdge as wasmPlanEdge,
+  renderDoc as wasmRenderDoc,
+  validateEdgePlan as wasmValidateEdgePlan,
   type InitInput,
 } from "./wasm/xpict_core.js";
 
@@ -51,10 +55,32 @@ export function isNativeReady(): boolean {
   return ready;
 }
 
-/** MVP paint: `MoleculeIn` JSON → `Scene` JSON. */
-export function depictMolecule(moleculeJson: string): string {
+function requireReady(): void {
   if (!ready) {
     throw new Error("xpict wasm not initialized");
   }
+}
+
+/** MVP paint: `MoleculeIn` JSON → `Scene` JSON. */
+export function depictMolecule(moleculeJson: string): string {
+  requireReady();
   return wasmDepictMolecule(moleculeJson);
+}
+
+/** Validate EdgePlan JSON via Rust core. */
+export function validateEdgePlanJson(planJson: string): string {
+  requireReady();
+  return wasmValidateEdgePlan(planJson);
+}
+
+/** Pass 1: DepictSpec JSON → EdgePlan JSON (or null). */
+export function planEdgeJson(specJson: string): string {
+  requireReady();
+  return wasmPlanEdge(specJson);
+}
+
+/** Pass 2: DepictSpec + EdgeResult JSON → DocPaint list JSON. */
+export function renderDocJson(specJson: string, edgeJson: string): string {
+  requireReady();
+  return wasmRenderDoc(specJson, edgeJson);
 }
