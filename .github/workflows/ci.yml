@@ -2,11 +2,9 @@
 #
 # Rust:   cargo test + llvm-cov on xpict-core (≥97% lines; push to 100%)
 # JS:     tsc --strict
-# Python: pytest on 3.11–3.13 (Linux, with RDKit) + Rust-extension smoke on
-#         macos/windows (layout tests skip without RDKit);
-#         pyright runs on the single 3.12 + rdkit job
+# Python: pytest + RDKit on 3.11–3.13 (Linux) and native-smoke (macOS/Windows);
+#         pyright on every Linux Python job
 # RDKit:  required for layout (experimental native layout removed)
-#         RDKit tests skip via importorskip/skipif
 # PyPI wheels (all arches): see build-python-wheels.yml / pypi.yml / release.yml
 
 name: CI
@@ -112,21 +110,13 @@ jobs:
         run: npm run test:api
 
   python-test:
-    name: Python pytest ${{ matrix.python-version }}${{ matrix.with_rdkit && ' + rdkit + pyright' || '' }}
+    name: Python pytest ${{ matrix.python-version }} + rdkit + pyright
     needs: [rust]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - python-version: "3.11"
-            with_rdkit: true
-          # Single CI env with the prebuilt PyPI rdkit wheel: pytest (incl.
-          # RDKit tests) + pyright. Layout requires RDKit (native layout removed).
-          - python-version: "3.12"
-            with_rdkit: true
-          - python-version: "3.13"
-            with_rdkit: true
+        python-version: ["3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
 
@@ -137,7 +127,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: ". -> target"
-          shared-key: py-${{ matrix.python-version }}${{ matrix.with_rdkit && '-rdkit' || '' }}
+          shared-key: py-${{ matrix.python-version }}-rdkit
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
@@ -145,27 +135,19 @@ jobs:
           python-version: ${{ matrix.python-version }}
           enable-cache: true
 
-      - name: Sync Python deps (dev${{ matrix.with_rdkit && ' + rdkit' || '' }})
-        run: |
-          if [ "${{ matrix.with_rdkit }}" = "true" ]; then
-            uv sync --group dev --extra rdkit
-          else
-            uv sync --group dev
-          fi
+      - name: Sync Python deps (dev + rdkit)
+        run: uv sync --group dev --extra rdkit
 
       - name: Confirm RDKit import
-        if: matrix.with_rdkit
         run: uv run python -c "import rdkit; print('rdkit', rdkit.__version__)"
 
       - name: Strict pyright
-        if: matrix.with_rdkit
         run: uv run pyright
 
       - name: Pytest
         run: uv run pytest -q
 
-  # Smoke: abi3 extension builds and tests on Apple Silicon + Windows x64.
-  # No RDKit here — layout tests skip; Linux jobs cover RDKit layout.
+  # abi3 extension + full pytest (incl. RDKit layout) on Apple Silicon + Windows.
   python-native-smoke:
     name: Python native smoke (${{ matrix.os }})
     needs: [rust]
@@ -192,8 +174,11 @@ jobs:
           python-version: "3.12"
           enable-cache: true
 
-      - name: Sync Python deps (dev)
-        run: uv sync --group dev
+      - name: Sync Python deps (dev + rdkit)
+        run: uv sync --group dev --extra rdkit
+
+      - name: Confirm RDKit import
+        run: uv run python -c "import rdkit; print('rdkit', rdkit.__version__)"
 
       - name: Pytest
         run: uv run pytest -q

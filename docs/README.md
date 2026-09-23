@@ -26,8 +26,4 @@ uv run --group docs mkdocs serve
 # http://127.0.0.1:8000/
 ```
 
-## Publish
-
-Every push to `main` deploys via [`.github/workflows/pages.yml`](../.github/workflows/pages.yml).
-
-Live: https://swamidasslab.github.io/xenosite-pict/
+Live site: https://swamidasslab.github.io/xenosite-pict/
