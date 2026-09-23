@@ -1,9 +1,10 @@
 # All-or-none product release (major/minor, or coordinated same version).
 #
 # Triggers:
-#   - tag release/v*  (e.g. release/v0.2.0) → publish core, rust, js, python
+#   - tag release/v*  (e.g. release/v0.2.0) → publish core, rust, js
 #   - workflow_dispatch → version + optional dry_run
 #
+# Python → separate pypi.yml (Trusted Publishing: pypi.yml + env pypi).
 # Language-only tags (js/v*, py/v*, …) cannot ship X.Y.0 — see .github/PUBLISH.md.
 
 name: release
@@ -206,34 +207,6 @@ jobs:
             npm publish
           fi
 
-  # Same platform matrix as pypi.yml (Linux/macOS/Windows × x86_64+ARM).
-  wheels-py:
-    needs: [meta, bump]
-    uses: ./.github/workflows/build-python-wheels.yml
-    with:
-      version_tree_artifact: release-tree
-
-  publish-py:
-    needs: [meta, wheels-py]
-    runs-on: ubuntu-latest
-    environment: pypi
-    steps:
-      - name: Download wheels + sdist
-        uses: actions/download-artifact@v4
-        with:
-          pattern: wheels-*
-          merge-multiple: true
-          path: dist
-      - name: List artifacts
-        run: ls -la dist
-      - name: Publish PyPI
-        if: needs.meta.outputs.dry_run != 'true'
-        uses: PyO3/maturin-action@v1
-        with:
-          command: upload
-          args: --skip-existing dist/*
-        env:
-          MATURIN_PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
-      - name: Dry-run note
-        if: needs.meta.outputs.dry_run == 'true'
-        run: echo dry_run skipped PyPI publish
+  # Python wheels + PyPI upload live in pypi.yml (Trusted Publishing is
+  # registered for workflow `pypi.yml` + environment `pypi` only — not here).
+  # After a product `release/v*`, dispatch pypi.yml (or tag py/v* for patches).

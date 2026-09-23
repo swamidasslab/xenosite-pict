@@ -51,8 +51,9 @@ The **public API** to document and version is the single-molecule client:
    ```
 
 4. [`release.yml`](https://github.com/swamidasslab/xenosite-pict/blob/main/.github/workflows/release.yml) publishes **xpict-core →
-   xpict → JS → Python** (waits for crates.io to index core before `xpict`).
-   Environments `crates` / `npm` / `pypi` must allow `release/v*` tags.
+   xpict → JS**. Then dispatch **[`pypi.yml`](https://github.com/swamidasslab/xenosite-pict/blob/main/.github/workflows/pypi.yml)**
+   (Trusted Publisher is **`pypi.yml` + environment `pypi` only** — not
+   `release.yml`). Environments `crates` / `npm` must allow `release/v*` tags.
 
 Do **not** tag `js/v0.2.0` alone — it will fail the patch-only gate.
 
@@ -151,15 +152,23 @@ git tag py/v0.1.5
 git push origin py/v0.1.5
 ```
 
+### Auth: Trusted Publishing only (no API token)
+
+Publisher on PyPI: workflow **`pypi.yml`**, environment **`pypi`**.
+
+Workflows omit `MATURIN_PYPI_TOKEN` so maturin uses OIDC. Passing an empty
+token (e.g. unset `PYPI_API_TOKEN` secret) forces password auth and **breaks**
+Trusted Publishing. **`release.yml` does not upload to PyPI.**
+
 ### One-time setup
 
-1. Create a PyPI project `xpict`.
-2. Trusted Publishing → this repo, workflow **`pypi.yml`** (and allow
-   `release.yml` if using OIDC there too). Point the publisher at the **`pypi`**
-   GitHub Environment if you use one.
-3. Or add **`PYPI_API_TOKEN`** as an environment secret on **`pypi`**
-   (used by `pypi.yml` and `release.yml`).
-4. Allow deployment from tags `py/v*` and `release/v*` (or “No restriction”).
+1. Create a PyPI project `xpict` (or pending publisher before first upload).
+2. Trusted Publishing → this repo, workflow **`pypi.yml`**, environment **`pypi`**.
+3. GitHub Environment **`pypi`**: allow tags `py/v*` and workflow_dispatch (or
+   “No restriction”). No `PYPI_API_TOKEN` secret.
+
+After a product `release/vX.Y.0`, run **Actions → pypi → Run workflow**
+(versions already bumped in-tree). For patches: `git tag py/vX.Y.Z && git push`.
 
 ```bash
 uv sync --extra rdkit
