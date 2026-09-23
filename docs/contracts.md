@@ -21,7 +21,7 @@ Committed JSON Schema:
 
 ## Single-molecule client
 
-``mol`` / ``render`` / ``toSvg`` (JS, Rust) — imperative one-mol API. Options:
+``mol`` / ``render`` / ``toSvg`` (JS, Python, Rust) — imperative one-mol API. Options:
 ``color``, ``atom_shade``, ``bond_shade``, ``star_labels``, ``bold_labels``,
 ``align_to``, ``id``. The document path uses this layer internally where it
 exists.
