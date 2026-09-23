@@ -33,10 +33,11 @@ Committed JSON Schema:
 ``mol`` / ``render`` / ``toSvg`` (JS, Python, Rust) — imperative one-mol API. Options:
 ``color``, ``atom_shade``, ``bond_shade``, ``star_labels``, ``weight``
 (default ``1`` = house; min ``2/3``), ``scale``, ``align_to``, ``atom_map``
-(``(query, template)`` pairs; requires ``align_to``; skips MCS), ``id``. The
-document path uses this layer internally where it
-exists. Prefer the document two-pass (``plan_edge`` /
-``process_edge_plan`` / ``render_doc``) for nested ``DepictSpec``.
+(``(query, template)`` pairs; requires ``align_to``; skips MCS), ``id``.
+
+**Live nested ``DepictSpec``** uses the document two-pass in all languages:
+``plan_edge`` → host ``process_edge_plan`` → ``render_doc`` (chrome in core).
+Prefer that path for nested documents.
 
 
 ## Future (design)

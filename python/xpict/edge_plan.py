@@ -93,12 +93,27 @@ def process_edge_plan(plan: EdgePlan | dict[str, Any]) -> EdgeResult:
     Align failure → automatic free (unaligned) layout for that mol; ``method``
     is ``none`` and ``ok`` stays true when coords were produced.
     """
+    return process_edge_plan_with_frames(plan)[0]
+
+
+def process_edge_plan_with_frames(
+    plan: EdgePlan | dict[str, Any],
+) -> tuple[EdgeResult, dict[str, str]]:
+    """Like :func:`process_edge_plan`, plus pose molblocks keyed by mol id."""
+    from xpict.contracts.edge import MoleculeIn
+
     p = validate_edge_plan(plan)
     task_results: list[CoordGenTaskResult] = []
+    all_frames: dict[str, str] = {}
 
     for task in p.tasks:
         rows: list[CoordGenMoleculeResult] = []
         poses: dict[str, str] = {}
+
+        def _mol(molecule: dict[str, Any] | None) -> MoleculeIn | None:
+            if molecule is None:
+                return None
+            return MoleculeIn.model_validate(molecule)
 
         def visit(node: MolTemplate, parent_id: str | None) -> None:
             source = _source_of(node)
@@ -130,7 +145,7 @@ def process_edge_plan(plan: EdgePlan | dict[str, Any]) -> EdgeResult:
                             ok=True,
                             method="free",
                             used_map=None,
-                            molecule=molecule,
+                            molecule=_mol(molecule),
                             error=None,
                         )
                     )
@@ -152,13 +167,11 @@ def process_edge_plan(plan: EdgePlan | dict[str, Any]) -> EdgeResult:
                                 ok=True,
                                 method=method,  # type: ignore[arg-type]
                                 used_map=used,
-                                molecule=molecule,
+                                molecule=_mol(molecule),
                                 error=None,
                             )
                         )
                     else:
-                        # Align soft-fail already returned free coords from layout;
-                        # re-run unaligned to guarantee a clean free pose.
                         molecule, pose = free_layout()
                         rows.append(
                             CoordGenMoleculeResult(
@@ -166,7 +179,7 @@ def process_edge_plan(plan: EdgePlan | dict[str, Any]) -> EdgeResult:
                                 ok=True,
                                 method="none",
                                 used_map=None,
-                                molecule=molecule,
+                                molecule=_mol(molecule),
                                 error="align failed; fell back to unaligned coord gen",
                             )
                         )
@@ -180,7 +193,7 @@ def process_edge_plan(plan: EdgePlan | dict[str, Any]) -> EdgeResult:
                             ok=True,
                             method="none" if parent_id is not None else "free",
                             used_map=None,
-                            molecule=molecule,
+                            molecule=_mol(molecule),
                             error=(
                                 f"align/layout error ({e}); fell back to unaligned coord gen"
                                 if parent_id is not None
@@ -208,9 +221,8 @@ def process_edge_plan(plan: EdgePlan | dict[str, Any]) -> EdgeResult:
         for root in task.roots:
             visit(root, None)
 
+        all_frames.update(poses)
         task_ok = all(r.ok for r in rows)
-        task_results.append(
-            CoordGenTaskResult(ok=task_ok, molecules=rows)
-        )
+        task_results.append(CoordGenTaskResult(ok=task_ok, molecules=rows))
 
-    return EdgeResult(version=1, results=task_results)
+    return EdgeResult(version=1, results=task_results), all_frames
