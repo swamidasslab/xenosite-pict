@@ -62,6 +62,19 @@ Do **not** tag `js/v0.2.0` alone — it will fail the patch-only gate.
 
 Package: **`@xenosite/xpict`** on the public npm registry.
 
+### Stage (no publish)
+
+Verify the full build + pack path without writing to npmjs.org (no
+`NPM_TOKEN` needed):
+
+1. Actions → **Publish JS package** → **Run workflow**
+2. Leave **Stage only** (`dry_run`) checked (default)
+3. Download the `npm-stage-*` artifact (the `.tgz`) when the run finishes
+
+Locally: `cd js && npm ci && npm run build && npm pack && npm publish --dry-run`.
+
+### Publish a patch
+
 ```bash
 # Z must be >= 1. In-tree major.minor must already match others.
 git tag js/v0.1.5

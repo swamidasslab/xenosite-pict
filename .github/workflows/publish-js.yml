@@ -2,10 +2,14 @@
 #
 # Triggers:
 #   - tag js/v*  (e.g. js/v0.1.1) → sets version from tag and publishes
-#   - workflow_dispatch → publishes package.json version as-is
+#   - workflow_dispatch → package.json version; default is **stage** (pack only)
 #
-# One-time: npmjs.org org/user owns scope @xenosite; environment secret
-# NPM_TOKEN on the `npm` GitHub Environment (Automation token). Consumers:
+# Stage (no registry write): Actions → Publish JS package → Run workflow with
+# dry_run checked. Builds, tests, `npm pack`, uploads the tarball artifact.
+# Does not need NPM_TOKEN.
+#
+# One-time for real publish: npmjs.org org/user owns scope @xenosite; environment
+# secret NPM_TOKEN on the `npm` GitHub Environment (Automation token). Consumers:
 # npm install @xenosite/xpict (no .npmrc).
 #
 # Gated on CI (Rust test+coverage, strict tsc, pyright, pytest).
@@ -19,9 +23,9 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: "Build and pack only (do not publish)"
+        description: "Stage only — build + npm pack (do not publish)"
         type: boolean
-        default: false
+        default: true
 
 permissions:
   contents: read
@@ -37,7 +41,8 @@ jobs:
   publish:
     needs: checks
     runs-on: ubuntu-latest
-    environment: npm
+    # Skip npm env (and NPM_TOKEN) when staging via workflow_dispatch.
+    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && fromJSON('null') || 'npm' }}
     defaults:
       run:
         working-directory: js
@@ -95,9 +100,22 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         run: bash ../scripts/check_version_policy.sh "$(node -p "require('./package.json').version")"
 
-      - name: Pack (dry run)
+      - name: Stage — npm pack
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
-        run: npm pack
+        id: pack
+        run: |
+          TGZ="$(npm pack --json | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8"))[0].filename')"
+          echo "tarball=$TGZ" >> "$GITHUB_OUTPUT"
+          ls -la "$TGZ"
+          npm publish --dry-run --access public
+
+      - name: Upload staged tarball
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-stage-${{ github.run_id }}
+          path: js/${{ steps.pack.outputs.tarball }}
+          if-no-files-found: error
 
       - name: Publish to npmjs.org
         if: ${{ github.event_name != 'workflow_dispatch' || !inputs.dry_run }}
