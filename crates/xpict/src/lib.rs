@@ -164,6 +164,10 @@ pub struct MolRenderOptions {
     pub color: Option<String>,
     pub atom_shade: Option<Vec<f64>>,
     pub bond_shade: Option<Vec<f64>>,
+    /// Shade window low (default ``0`` in paint). Not inferred from data.
+    pub shade_vmin: Option<f64>,
+    /// Shade window high (default ``1`` in paint). Not inferred from data.
+    pub shade_vmax: Option<f64>,
     pub mark_atoms: Option<Vec<i32>>,
     pub mark_bonds: Option<Vec<(i32, i32)>>,
     pub star_labels: Option<Vec<Option<String>>>,
@@ -239,6 +243,12 @@ fn apply_opts(mut molecule: MoleculeIn, opts: &MolRenderOptions, source: &str) -
     }
     if let Some(ref shade) = opts.bond_shade {
         molecule.bond_shade = Some(shade.clone());
+    }
+    if let Some(vmin) = opts.shade_vmin {
+        molecule.shade_vmin = Some(vmin);
+    }
+    if let Some(vmax) = opts.shade_vmax {
+        molecule.shade_vmax = Some(vmax);
     }
     if let Some(ref marks) = opts.mark_atoms {
         molecule.mark_atoms = marks.clone();

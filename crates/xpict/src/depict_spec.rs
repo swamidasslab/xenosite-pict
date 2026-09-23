@@ -11,7 +11,10 @@ use serde::{Deserialize, Serialize};
 use crate::{render, Error, Mol, MolRenderOptions, Rendered};
 
 /// Per-atom / per-bond colormap scores (document ``shade``).
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+///
+/// ``vmin``/``vmax`` default to ``0``/``1`` — scores are **not** auto-scaled
+/// to the data range.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShadeSpec {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub atoms: Option<Vec<f64>>,
@@ -19,10 +22,29 @@ pub struct ShadeSpec {
     pub bonds: Option<Vec<f64>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub colormap: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub vmin: Option<f64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub vmax: Option<f64>,
+    #[serde(default = "default_shade_vmin")]
+    pub vmin: f64,
+    #[serde(default = "default_shade_vmax")]
+    pub vmax: f64,
+}
+
+fn default_shade_vmin() -> f64 {
+    0.0
+}
+fn default_shade_vmax() -> f64 {
+    1.0
+}
+
+impl Default for ShadeSpec {
+    fn default() -> Self {
+        Self {
+            atoms: None,
+            bonds: None,
+            colormap: None,
+            vmin: 0.0,
+            vmax: 1.0,
+        }
+    }
 }
 
 /// Mol node — subset of future ``MolNode``.
@@ -157,6 +179,8 @@ pub fn depict(spec: &DepictSpec) -> Result<Vec<Rendered>, Error> {
             color: entry.color.clone(),
             atom_shade: entry.shade.as_ref().and_then(|s| s.atoms.clone()),
             bond_shade: entry.shade.as_ref().and_then(|s| s.bonds.clone()),
+            shade_vmin: entry.shade.as_ref().map(|s| s.vmin),
+            shade_vmax: entry.shade.as_ref().map(|s| s.vmax),
             mark_atoms: None,
             mark_bonds: None,
             star_labels: entry.star_labels.clone(),

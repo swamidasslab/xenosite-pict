@@ -1,5 +1,5 @@
 /**
- * GitHub Pages demo — two SMILES, query aligned to template, optional shade.
+ * GitHub Pages demo — two SMILES, molecule 2 aligned to molecule 1, optional shade.
  * Redraws on any input change (no Draw button). Atom/bond marks are not shown.
  */
 import { xpict } from "./pkg/index.js";
@@ -90,8 +90,8 @@ async function draw() {
   setStatus("Loading RDKit + wasm…");
 
   try {
-    const template = xpict.mol(smiles1);
-    const rendered1 = await xpict.render(template, {
+    const mol1 = xpict.mol(smiles1);
+    const rendered1 = await xpict.render(mol1, {
       color: opts.color1,
       weight: opts.weight,
       ...(opts.star_labels1 ? { star_labels: opts.star_labels1 } : {}),
@@ -99,20 +99,20 @@ async function draw() {
     if (gen !== drawGen) return;
     showSvg(out1, xpict.toSvg(rendered1.scene));
 
-    const queryOpts = {
+    const mol2Opts = {
       color: opts.color2,
       weight: opts.weight,
       ...(opts.star_labels2 ? { star_labels: opts.star_labels2 } : {}),
       ...(opts.atom_shade ? { atom_shade: opts.atom_shade } : {}),
       ...(opts.bond_shade ? { bond_shade: opts.bond_shade } : {}),
-      ...(opts.align ? { align_to: template } : {}),
+      ...(opts.align ? { align_to: mol1 } : {}),
     };
-    const rendered2 = await xpict.render(xpict.mol(smiles2), queryOpts);
+    const rendered2 = await xpict.render(xpict.mol(smiles2), mol2Opts);
     if (gen !== drawGen) return;
     showSvg(out2, xpict.toSvg(rendered2.scene));
 
     setStatus(
-      `OK — template ${rendered1.coords.length} atoms · query ${rendered2.coords.length} atoms` +
+      `OK — molecule 1: ${rendered1.coords.length} atoms · molecule 2: ${rendered2.coords.length} atoms` +
         (opts.align ? " · aligned" : " · free layout")
     );
   } catch (err) {

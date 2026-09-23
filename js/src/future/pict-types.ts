@@ -251,7 +251,11 @@ export interface AnnotationSpec {
 
 export interface ShadeSpec {
   atoms?: number[];
+  bonds?: number[];
+  colormap?: string;
+  /** Shade window low (default 0). Not auto-scaled from data. */
   vmin?: number;
+  /** Shade window high (default 1). Not auto-scaled from data. */
   vmax?: number;
 }
 

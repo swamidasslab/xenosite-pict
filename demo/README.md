@@ -1,6 +1,6 @@
 # xpict browser demo (source)
 
-Interactive JS demo: two SMILES, query aligned to template, paint options.
+Interactive JS demo: two SMILES, molecule 2 aligned to molecule 1, paint options.
 
 **Published** on the docs site under **`/js/demo/`** (not the Pages root).
 

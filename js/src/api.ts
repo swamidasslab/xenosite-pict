@@ -79,6 +79,10 @@ export type MolRenderOptions = {
   color?: string;
   atom_shade?: number[];
   bond_shade?: number[];
+  /** Shade window low (default 0). Not inferred from data. */
+  shade_vmin?: number;
+  /** Shade window high (default 1). Not inferred from data. */
+  shade_vmax?: number;
   mark_atoms?: number[];
   mark_bonds?: Array<[number, number]>;
   /**
@@ -115,7 +119,9 @@ export type MolNode = {
     atoms?: number[];
     bonds?: number[];
     colormap?: string;
+    /** Shade window low (default 0). Not auto-scaled from data. */
     vmin?: number;
+    /** Shade window high (default 1). Not auto-scaled from data. */
     vmax?: number;
   };
   /**
@@ -255,6 +261,8 @@ function applyOpts(
   if (opts.color !== undefined) out.color = opts.color;
   if (opts.atom_shade !== undefined) out.atom_shade = opts.atom_shade;
   if (opts.bond_shade !== undefined) out.bond_shade = opts.bond_shade;
+  if (opts.shade_vmin !== undefined) out.shade_vmin = opts.shade_vmin;
+  if (opts.shade_vmax !== undefined) out.shade_vmax = opts.shade_vmax;
   if (opts.mark_atoms !== undefined) out.mark_atoms = opts.mark_atoms;
   if (opts.mark_bonds !== undefined) out.mark_bonds = opts.mark_bonds;
   if (opts.weight !== undefined) out.weight = opts.weight;
@@ -379,6 +387,10 @@ async function depict(spec: DepictSpec): Promise<Rendered[]> {
       star_labels: entry.star_labels,
       scale: entry.scale,
       weight: entry.weight,
+      // Document shade defaults to 0..1 (serde/JS); pass through so paint
+      // never auto-windows to the data range.
+      shade_vmin: entry.shade?.vmin ?? 0,
+      shade_vmax: entry.shade?.vmax ?? 1,
     };
     out.push(await render(m, opts));
   }

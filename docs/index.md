@@ -77,7 +77,7 @@ Build a mol, render with options, turn the scene into SVG.
 
 <figure markdown="span">
 ![Toluene](assets/examples/toluene.svg)
-<figcaption>Query mol for `align_to`</figcaption>
+<figcaption>Molecule 2 (`align_to`)</figcaption>
 </figure>
 
 </div>

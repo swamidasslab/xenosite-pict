@@ -34,7 +34,7 @@ const aligned = await xpict.render(xpict.mol("Cc1ccccc1"), {
 
 <figure markdown="span">
 ![Toluene](../assets/examples/toluene.svg)
-<figcaption>`align_to` query</figcaption>
+<figcaption>Molecule 2 (`align_to`)</figcaption>
 </figure>
 
 <figure markdown="span">

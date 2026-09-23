@@ -31,9 +31,9 @@
       <p class="brand">xpict</p>
       <h1>Align two molecules</h1>
       <p class="lede">
-        JavaScript demo — enter SMILES for a template and a query. The query
-        is MCS-aligned onto the template pose (aromatic rings match kekulé /
-        quinone forms), then painted to SVG.
+        JavaScript demo — enter SMILES for molecule 1 and molecule 2.
+        Molecule 2 is MCS-aligned onto molecule 1’s pose (aromatic rings match
+        kekulé / quinone forms), then painted to SVG.
       </p>
     </header>
 
@@ -42,7 +42,7 @@
         <fieldset class="inputs">
           <legend>Molecules</legend>
           <label>
-            <span>Template SMILES</span>
+            <span>Molecule 1 SMILES</span>
             <input
               id="smiles1"
               name="smiles1"
@@ -53,7 +53,7 @@
             />
           </label>
           <label>
-            <span>Query SMILES <em>(aligned to template)</em></span>
+            <span>Molecule 2 SMILES <em>(aligned to molecule 1)</em></span>
             <input
               id="smiles2"
               name="smiles2"
@@ -65,7 +65,7 @@
           </label>
           <label class="check">
             <input id="align" name="align" type="checkbox" checked />
-            <span>Align query to template</span>
+            <span>Align molecule 2 to molecule 1</span>
           </label>
           <label>
             <span>Weight <em>(1 = house, min 2/3)</em></span>
@@ -79,7 +79,7 @@
             />
           </label>
           <label>
-            <span>Template star labels <em>(* order, comma-separated)</em></span>
+            <span>Molecule 1 star labels <em>(* order, comma-separated)</em></span>
             <input
               id="star_labels1"
               name="star_labels1"
@@ -90,7 +90,7 @@
             />
           </label>
           <label>
-            <span>Query star labels <em>(* order, comma-separated)</em></span>
+            <span>Molecule 2 star labels <em>(* order, comma-separated)</em></span>
             <input
               id="star_labels2"
               name="star_labels2"
@@ -106,15 +106,15 @@
           <legend>Shading</legend>
           <div class="opt-grid">
             <label>
-              <span>Template color</span>
+              <span>Molecule 1 color</span>
               <input id="color1" name="color1" type="color" value="#1c2430" />
             </label>
             <label>
-              <span>Query color</span>
+              <span>Molecule 2 color</span>
               <input id="color2" name="color2" type="color" value="#0b6e4f" />
             </label>
             <label class="wide">
-              <span>Atom shade <em>(query, one float per atom)</em></span>
+              <span>Atom shade <em>(molecule 2, one float per atom)</em></span>
               <input
                 id="atom_shade"
                 name="atom_shade"
@@ -125,7 +125,7 @@
               />
             </label>
             <label class="wide">
-              <span>Bond shade <em>(query, one float per bond)</em></span>
+              <span>Bond shade <em>(molecule 2, one float per bond)</em></span>
               <input
                 id="bond_shade"
                 name="bond_shade"
@@ -146,11 +146,11 @@
 
       <section class="canvas" aria-live="polite">
         <figure>
-          <figcaption>Template</figcaption>
+          <figcaption>Molecule 1</figcaption>
           <div class="frame" id="out1"></div>
         </figure>
         <figure>
-          <figcaption>Query</figcaption>
+          <figcaption>Molecule 2</figcaption>
           <div class="frame" id="out2"></div>
         </figure>
       </section>

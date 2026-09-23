@@ -140,6 +140,8 @@ fn layout_out_to_molecule(
         color: None,
         atom_shade: None,
         bond_shade: None,
+        shade_vmin: None,
+        shade_vmax: None,
         mark_atoms: Vec::new(),
         mark_bonds: Vec::new(),
         weight: 1.0,
