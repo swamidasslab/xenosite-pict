@@ -15,6 +15,11 @@ Generic rules (no per-type name tables):
 5. Root ``oneOf`` with a discriminator → ``RootModel``.
 6. Non-required arrays → ``default_factory=list``; other optionals → ``| None``.
 7. Fixed-length 2-item arrays → ``tuple[T, U]``.
+8. Disc fields (``type``/``kind``) whose schema is a single-value string enum
+   (inline or ``$ref``) → ``Literal['v'] = 'v'``.
+
+Modules are driven only by schema files + titles (see ``MODULES``). Host
+helpers (``mols``, ``MolSpec``) live outside this emitter.
 
 Invoked by ``scripts/generate_live_types.sh`` / ``make types``.
 """
@@ -30,6 +35,26 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA = ROOT / "schema"
 OUT = ROOT / "python" / "xpict" / "contracts"
+
+# schema file(s) → output module. Multiple files merge definitions and emit
+# each schema's ``title`` as a root (EdgePlan + EdgeResult).
+MODULES: list[tuple[str, tuple[str, ...], str]] = [
+    (
+        "scene.py",
+        ("scene.schema.json",),
+        "Drawable scene graph — live ABI from xpict-core (schemars).",
+    ),
+    (
+        "edge.py",
+        ("edge-plan.schema.json", "edge-result.schema.json"),
+        "EdgePlan / EdgeResult — live ABI from xpict-core (schemars).",
+    ),
+    (
+        "depict.py",
+        ("xpict.schema.json",),
+        "DepictSpec — live document ABI from xpict-core (schemars).",
+    ),
+]
 
 STRICT_MODEL = '''\
 class StrictModel(BaseModel):
@@ -122,6 +147,14 @@ def _object_disc_value(node: dict[str, Any], key: str) -> str | None:
     )
 
 
+def _root_body(schema: dict[str, Any]) -> dict[str, Any]:
+    return {
+        k: v
+        for k, v in schema.items()
+        if k not in ("definitions", "$defs", "$schema")
+    }
+
+
 @dataclass
 class Emitter:
     schema: dict[str, Any]
@@ -156,6 +189,13 @@ class Emitter:
         if len(parts) >= 2:
             return _pascal(val) + "".join(parts[1:])
         return _pascal(val)
+
+    def single_enum_value(self, node: dict[str, Any]) -> str | None:
+        """Resolve inline / $ref single-value string enums (disc tags)."""
+        inner, _ = _unwrap(node)
+        if (r := _ref(inner)) and r in self.defs():
+            return _single_str_enum(self.defs()[r])
+        return _single_str_enum(inner)
 
     def ty(self, node: dict[str, Any]) -> str:
         node, nullable = _unwrap(node)
@@ -290,7 +330,7 @@ class Emitter:
     def emit_object(self, name: str, node: dict[str, Any]) -> None:
         if name in self.emitted:
             return
-        self.emitted.add(name)  # break recursion (MolTemplate)
+        self.emitted.add(name)  # break recursion
         props = dict(node.get("properties") or {})
         for pschema in props.values():
             self.preemit(pschema)
@@ -302,6 +342,11 @@ class Emitter:
                 keys.insert(0, pref)
         fields: list[str] = []
         for pname in keys:
+            # Disc tags: single-value string enum → Literal for pydantic tagged unions.
+            if pname in ("type", "kind"):
+                if (tag := self.single_enum_value(props[pname])) is not None:
+                    fields.append(f"    {pname}: Literal[{tag!r}] = {tag!r}")
+                    continue
             ann, default, fargs = self._field(props[pname], required=pname in required)
             # Prefer ``= None`` / plain defaults so pyright sees optional ctor params
             # (``Field(None, …)`` is often treated as required by the type checker).
@@ -365,12 +410,7 @@ class Emitter:
                 ann = ann[: -len(" | None")]
         return ann, default, fargs
 
-    def emit_root(self, title: str) -> None:
-        root = {
-            k: v
-            for k, v in self.schema.items()
-            if k not in ("definitions", "$defs", "$schema")
-        }
+    def emit_root(self, title: str, root: dict[str, Any]) -> None:
         if "oneOf" in root:
             self.emit_union(title, root)
             members = self._union_members(title)
@@ -393,6 +433,10 @@ class Emitter:
                 )
         elif root.get("type") == "object" or "properties" in root:
             self.emit_object(title, root)
+        else:
+            raise ValueError(f"unsupported root schema for {title!r}")
+
+    def emit_remaining_defs(self) -> None:
         for name in list(self.defs()):
             self.emit_def(name)
 
@@ -428,91 +472,27 @@ class Emitter:
         )
 
 
-def emit_scene() -> str:
-    schema = _load("scene.schema.json")
-    em = Emitter(schema, "Drawable scene graph — live ABI from xpict-core (schemars).")
-    for name in ("TextAnchor", "LayerName", "Primitive", "Layer", "Viewport"):
-        if name in em.defs():
-            em.emit_def(name)
-    em.emit_object(
-        "Scene",
-        {k: v for k, v in schema.items() if k not in ("definitions", "$defs", "$schema")},
-    )
-    return em.render()
-
-
-def emit_edge() -> str:
-    plan, result = _load("edge-plan.schema.json"), _load("edge-result.schema.json")
-    merged = {
-        **{k: plan[k] for k in ("$schema", "title", "description", "type", "required", "properties") if k in plan},
-        "definitions": {**_defs(result), **_defs(plan)},
-    }
-    em = Emitter(merged, "EdgePlan / EdgeResult — live ABI from xpict-core (schemars).")
-    for name in (
-        "AlignOpts",
-        "AtomIn",
-        "BondIn",
-        "MoleculeIn",
-        "MolTemplate",
-        "CoordMethod",
-        "EdgeTask",
-        "EdgePlan",
-        "CoordGenMoleculeResult",
-        "EdgeTaskResult",
-        "EdgeResult",
-    ):
-        if name == "EdgePlan":
-            em.emit_object(
-                "EdgePlan",
-                {k: v for k, v in plan.items() if k not in ("definitions", "$defs", "$schema")},
-            )
-        elif name == "EdgeResult":
-            em.emit_object(
-                "EdgeResult",
-                {k: v for k, v in result.items() if k not in ("definitions", "$defs", "$schema")},
-            )
-        elif name in em.defs():
-            em.emit_def(name)
-    return em.render()
-
-
-# Host helper injected into DepictSpec class body (not schema-derived).
-DEPICT_MOLS_METHOD = '''
-    def mols(self) -> list[MolNode]:
-        """Flatten mol root or group children (host helper, not on the wire)."""
-        root = self.root
-        if isinstance(root, MolNode):
-            return [root]
-        return list(root.children)
-'''
-
-
-def emit_depict() -> str:
-    schema = _load("xpict.schema.json")
-    em = Emitter(schema, "DepictSpec — live document ABI from xpict-core (schemars).")
-    for name in ("AlignToSpec", "AlignTo", "ShadeSpec", "MolNodeKind", "MolNode"):
-        if name in em.defs():
-            em.emit_def(name)
-    # MolNode.type comes from an enum def / string default — normalize disc Literal.
-    em._force_literal("MolNode", "type", "mol")
-    em.emit_root("DepictSpec")
-    # Inject host helper into DepictSpec class; keep public alias.
-    for i, block in enumerate(em.blocks):
-        if "class DepictSpec(" in block:
-            em.blocks[i] = block.rstrip() + "\n" + DEPICT_MOLS_METHOD
-            break
-    em.blocks.append("MolSpec = MolNode")
+def emit_module(schema_files: tuple[str, ...], module_doc: str) -> str:
+    """Load schema file(s), merge definitions, emit each title as a root."""
+    schemas = [_load(name) for name in schema_files]
+    for s, name in zip(schemas, schema_files):
+        if not s.get("title"):
+            raise ValueError(f"{name}: schema root needs a title")
+    merged_defs: dict[str, Any] = {}
+    for s in schemas:
+        merged_defs.update(_defs(s))
+    em = Emitter({"definitions": merged_defs}, module_doc)
+    for s in schemas:
+        title = str(s["title"])
+        em.emit_root(title, _root_body(s))
+    em.emit_remaining_defs()
     return em.render()
 
 
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
-    for filename, fn in (
-        ("scene.py", emit_scene),
-        ("edge.py", emit_edge),
-        ("depict.py", emit_depict),
-    ):
-        text = fn()
+    for filename, schema_files, doc in MODULES:
+        text = emit_module(schema_files, doc)
         path = OUT / filename
         path.write_text(text, encoding="utf-8")
         print(f"wrote {path.relative_to(ROOT)} ({len(text.splitlines())} lines)")

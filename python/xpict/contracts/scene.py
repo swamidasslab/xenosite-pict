@@ -19,12 +19,6 @@ class StrictModel(BaseModel):
         kwargs.setdefault("exclude_none", True)
         return super().model_dump_json(*args, **kwargs)
 
-TextAnchor = Literal['start', 'middle', 'end']
-
-
-LayerName = Literal['shading', 'halo', 'bonds', 'labels', 'marks', 'overlay']
-
-
 class PathPrim(StrictModel):
     kind: Literal['path'] = 'path'
     d: str
@@ -50,6 +44,9 @@ class CirclePrim(StrictModel):
     stroke_width: float = 1.5
 
 
+TextAnchor = Literal['start', 'middle', 'end']
+
+
 class TextPrim(StrictModel):
     """Logical text; serializers outline to glyph paths (Liberation) or emit `<text>` when the host prefers."""
     kind: Literal['text'] = 'text'
@@ -63,6 +60,9 @@ class TextPrim(StrictModel):
 
 
 Primitive = Annotated[PathPrim | CirclePrim | TextPrim, Field(discriminator='kind')]
+
+
+LayerName = Literal['shading', 'halo', 'bonds', 'labels', 'marks', 'overlay']
 
 
 class Layer(StrictModel):

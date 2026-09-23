@@ -4,7 +4,10 @@ Full nested ``PictSpec`` / shorthand / diagram chrome lives under
 ``xpict.future`` for design review until those features ship.
 """
 
-from xpict.contracts.depict import AlignToSpec, DepictSpec, GroupNode, MolNode, MolSpec
+from __future__ import annotations
+
+from xpict.contracts.depict import AlignToSpec, GroupNode, MolNode
+from xpict.contracts.depict import DepictSpec as _DepictSpec
 from xpict.contracts.edge import (
     AlignOpts,
     AtomIn,
@@ -32,6 +35,21 @@ from xpict.contracts.scene import (
     TextPrim,
     Viewport,
 )
+
+# Public alias (Rust ``type MolSpec = MolNode``); not on the wire schema.
+MolSpec = MolNode
+
+
+class DepictSpec(_DepictSpec):
+    """Live document root — generated wire model + host ``mols()`` helper."""
+
+    def mols(self) -> list[MolNode]:
+        """Flatten mol root or group children (mirrors Rust ``DepictSpec::mols``)."""
+        root = self.root
+        if isinstance(root, MolNode):
+            return [root]
+        return list(root.children)
+
 
 __all__ = [
     "AlignOpts",

@@ -1,6 +1,6 @@
 """Public re-exports — live contracts + future PictSpec (lab)."""
 
-from xpict.contracts.depict import DepictSpec, MolSpec
+from xpict.contracts import DepictSpec, MolSpec
 from xpict.contracts.layout import MoleculeLayout
 from xpict.contracts.scene import Scene
 from xpict.future.nodes import (

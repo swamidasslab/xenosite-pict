@@ -76,13 +76,3 @@ class DepictSpec(RootModel[DepictSpecRoot]):
         kwargs.setdefault('exclude_none', True)
         return super().model_dump_json(*args, **kwargs)
 
-    def mols(self) -> list[MolNode]:
-        """Flatten mol root or group children (host helper, not on the wire)."""
-        root = self.root
-        if isinstance(root, MolNode):
-            return [root]
-        return list(root.children)
-
-
-
-MolSpec = MolNode

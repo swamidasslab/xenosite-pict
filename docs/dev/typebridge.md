@@ -53,10 +53,12 @@ xpict-core (serde types)
     ├─ feature `codegen` → schemars::JsonSchema  → schema/*.json (live: edge, scene, xpict)
     ├─ feature `codegen` → ts_rs::TS             → js/src/generated/*.ts
     └─ schemars JSON → scripts/generate_live_python.py → python/xpict/contracts/{edge,scene,depict}.py
-       (rule-based: kind→*Prim, type+FooBar→{Val}Bar, Spec→*Node, reuse matching defs;
-        RootModel for tagged roots; mols() is a tiny hand attach on DepictSpec)
-python/xpict/contracts/layout.py   hand (Python-internal MoleculeLayout only)
-xpict.future                       unchanged Pydantic SoT → schema/future/
+       (schema-driven only: MODULES maps files→output; titles become roots;
+        kind→*Prim, type+FooBar→{Val}Bar, Spec→*Node, reuse matching defs;
+        RootModel for tagged roots)
+python/xpict/contracts/__init__.py  hand: DepictSpec.mols() + MolSpec alias
+python/xpict/contracts/layout.py    hand (Python-internal MoleculeLayout only)
+xpict.future                        unchanged Pydantic SoT → schema/future/
 ```
 
 Commands:
@@ -76,6 +78,7 @@ Commands:
 ## What stays hand-written
 
 - Host logic (`process_edge_plan`, SVG serializers, single-mol `Mol` / `Rendered`)  
+- `python/xpict/contracts/__init__.py` — `DepictSpec.mols()` + `MolSpec` alias  
 - `python/xpict/contracts/layout.py` (Python-internal MoleculeLayout)  
 - Future PictSpec (Python + `schema/future/` only — no JS mirror)  
 - Wasm still stringly JSON FFI; generated TS/Python type the payloads  

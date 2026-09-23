@@ -11,7 +11,8 @@ import json
 from typing import Any
 
 from xpict.client import Rendered, SvgAtom, SvgBond, to_svg
-from xpict.contracts.depict import DepictSpec, MolNode
+from xpict.contracts import DepictSpec
+from xpict.contracts.depict import MolNode
 from xpict.contracts.scene import Scene
 from xpict.edge_plan import process_edge_plan_with_frames
 from xpict.native_bridge import plan_edge, render_doc
@@ -23,6 +24,7 @@ def _as_depict_spec(spec: DepictSpec | dict[str, Any] | str) -> DepictSpec:
     if isinstance(spec, str):
         return DepictSpec.model_validate(json.loads(spec))
     return DepictSpec.model_validate(spec)
+
 
 def _structure(node: MolNode) -> str:
     for field in (node.molfile, node.cxsmiles, node.smiles):

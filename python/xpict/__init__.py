@@ -33,7 +33,7 @@ from xpict.client import (
     render as render_mol,
     to_svg,
 )
-from xpict.contracts.depict import DepictSpec, MolSpec
+from xpict.contracts import DepictSpec, MolSpec
 from xpict.contracts.scene import Scene
 from xpict.depict_spec import depict, depict_svg, is_live_depict_spec
 from xpict.warnings import PictBackendWarning

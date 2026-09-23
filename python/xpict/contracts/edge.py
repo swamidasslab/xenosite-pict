@@ -25,6 +25,33 @@ class AlignOpts(StrictModel):
     min_atoms: Annotated[int | None, Field(description='Override [`MIN_MCS_ATOMS`] when set.')] = None
 
 
+class MolTemplate(StrictModel):
+    """One node in a coord_gen forest (root = free layout; children align to parent)."""
+    id: Annotated[str, Field(description='Rust-assigned unique id; round-trips to the document node.')]
+    align: Annotated[AlignOpts | None, Field(description='Opts for aligning onto the parent; `None` on roots.')] = None
+    cxsmiles: str | None = None
+    molfile: str | None = None
+    smiles: str | None = None
+    template_for: list[MolTemplate] = Field(default_factory=list, description='Children that use this node as their align template.')
+
+
+class CoordGenTask(StrictModel):
+    type: Literal['coord_gen'] = 'coord_gen'
+    roots: list[MolTemplate] = Field(default_factory=list)
+
+
+EdgeTask = CoordGenTask
+
+
+class EdgePlan(StrictModel):
+    """Host callback request."""
+    version: int
+    tasks: list[EdgeTask] = Field(default_factory=list)
+
+
+CoordMethod = Literal['free', 'atom_map', 'mcs', 'none']
+
+
 class AtomIn(StrictModel):
     """Atom input for a molecule depict call (SVG-space coords from the caller)."""
     index: int
@@ -60,33 +87,6 @@ class MoleculeIn(StrictModel):
     shade_vmax: Annotated[float | None, Field(description='Shade colormap window high (default ``1``). Not inferred from data.')] = None
     shade_vmin: Annotated[float | None, Field(description='Shade colormap window low (default ``0``). Not inferred from data.')] = None
     weight: Annotated[float | None, Field(description='Ink weight for backbone stroke and label glyph thicken. ``1.0`` = house; may go down to ~``2/3`` (Regular stem); typical thicken up to ~2.')] = None
-
-
-class MolTemplate(StrictModel):
-    """One node in a coord_gen forest (root = free layout; children align to parent)."""
-    id: Annotated[str, Field(description='Rust-assigned unique id; round-trips to the document node.')]
-    align: Annotated[AlignOpts | None, Field(description='Opts for aligning onto the parent; `None` on roots.')] = None
-    cxsmiles: str | None = None
-    molfile: str | None = None
-    smiles: str | None = None
-    template_for: list[MolTemplate] = Field(default_factory=list, description='Children that use this node as their align template.')
-
-
-CoordMethod = Literal['free', 'atom_map', 'mcs', 'none']
-
-
-class CoordGenTask(StrictModel):
-    type: Literal['coord_gen'] = 'coord_gen'
-    roots: list[MolTemplate] = Field(default_factory=list)
-
-
-EdgeTask = CoordGenTask
-
-
-class EdgePlan(StrictModel):
-    """Host callback request."""
-    version: int
-    tasks: list[EdgeTask] = Field(default_factory=list)
 
 
 class CoordGenMoleculeResult(StrictModel):
