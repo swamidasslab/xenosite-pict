@@ -1,6 +1,6 @@
 # Contracts
 
-## Live document (shipped)
+## Document (shipped)
 
 Pydantic under ``xpict.contracts`` — **strict subset** of future nested
 ``PictSpec``:
@@ -11,11 +11,11 @@ Pydantic under ``xpict.contracts`` — **strict subset** of future nested
 | ``Scene`` (+ primitives) | Paint ABI (Rust / JS / Python serializers) |
 | ``MoleculeLayout`` / ``LayoutResult`` | Backend layout result |
 
-Every live document must also validate as ``xpict.future.PictSpec``.
+Every document must also validate as ``xpict.future.PictSpec``.
 
 Committed JSON Schema:
 
-- ``schema/xpict.schema.json`` — live ``DepictSpec``
+- ``schema/xpict.schema.json`` — ``DepictSpec``
 - ``schema/scene.schema.json`` — scene graph
 - ``schema/layout.schema.json`` — layout result
 
@@ -33,7 +33,7 @@ Full nested ``PictSpec`` lives in ``xpict.future`` and
 
 ## Runtime vs document
 
-- **Live mol node:** ``smiles`` / ``cxsmiles`` / ``molfile``, ``id``, ``color``,
+- **Mol node:** ``smiles`` / ``cxsmiles`` / ``molfile``, ``id``, ``color``,
   ``shade``. Markush / star text on the document path: CX braced aliases.
 - **Single-mol ``render`` only:** ``align_to`` as Mol / Rendered (or pose
   molblock), plus flat ``atom_shade`` / ``star_labels`` (chem markup).

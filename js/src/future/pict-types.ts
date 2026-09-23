@@ -1,7 +1,7 @@
 /**
  * Future nested PictSpec types (design / refinement — not the ship surface).
  *
- * Live public API types live in ``api.ts`` (``Mol`` / ``MolSpec`` /
+ * Public API types are in ``api.ts`` (``Mol`` / ``MolSpec`` /
  * ``DepictSpec`` / ``Rendered``). This file mirrors
  * ``schema/future/xpict.schema.json``.
  *

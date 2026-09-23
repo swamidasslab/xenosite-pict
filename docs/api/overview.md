@@ -106,7 +106,7 @@ When `star_labels` is omitted, CXSMILES `|$…$|` aliases apply by atom index.
 
 ## Declarative document
 
-Nested JSON: `type: "mol"` or `type: "group"` + `children`. Live fields today:
+Nested JSON: `type: "mol"` or `type: "group"` + `children`. Fields today:
 structure strings, `id`, `color`, `shade`. Markush text on this path uses CX
 braced aliases. A document `rgroups` key is **not** public yet.
 

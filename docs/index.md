@@ -98,9 +98,9 @@ CXSMILES trailer when `star_labels` is omitted:
 
 ## Declarative document
 
-Nested JSON — a **strict subset** of future `PictSpec`. The live fields today
-are structure, `id`, `color`, and `shade`. Richer diagram nodes stay under
-`xpict.future` until they graduate; every live document must still validate as
+Nested JSON — a **strict subset** of future `PictSpec`. Fields today are
+structure, `id`, `color`, and `shade`. Richer diagram nodes stay under
+`xpict.future` until they graduate; every document must still validate as
 future `PictSpec`.
 
 === "JavaScript"

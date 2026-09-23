@@ -110,9 +110,9 @@ let results = depict(&DepictSpec::Group {
 })?;
 ```
 
-Live contract: `DepictSpec` / `MolNode` in `xpict.contracts.depict`. Document
-fields today: structure, `id`, `color`, `shade`. Nested diagrams / ELK /
-reaction chrome stay under `xpict.future` until they graduate.
+Contract: `DepictSpec` / `MolNode` in `xpict.contracts.depict`. Document fields
+today: structure, `id`, `color`, `shade`. Nested diagrams / ELK / reaction
+chrome stay under `xpict.future` until they graduate.
 
 ## Docs & demo
 

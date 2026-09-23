@@ -1,4 +1,4 @@
-"""Live declarative document — strict subset of ``xpict.future`` PictSpec.
+"""Declarative document — strict subset of ``xpict.future`` PictSpec.
 
 Public document shape matches the nested future tree, trimmed to what paint
 supports today:
@@ -34,7 +34,7 @@ class StrictModel(BaseModel):
 
 
 class MolNode(StrictModel):
-    """Live molecule node — subset of future ``MolNode`` / ``MoleculeSpec``."""
+    """Molecule node — subset of future ``MolNode`` / ``MoleculeSpec``."""
 
     type: Literal["mol"] = "mol"
     id: str | None = Field(default=None, description="Optional stable id")
@@ -62,7 +62,7 @@ class MolNode(StrictModel):
 
 
 class GroupNode(StrictModel):
-    """Live group — subset of future ``GroupNode`` (mol children only today)."""
+    """Group — subset of future ``GroupNode`` (mol children only today)."""
 
     type: Literal["group"] = "group"
     id: str | None = Field(default=None, description="Optional stable id")
