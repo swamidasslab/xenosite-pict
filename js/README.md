@@ -1,20 +1,37 @@
 # @xenosite/xpict
 
-**Declarative molecule depiction** — JavaScript/TypeScript (browser + Node).
+Molecule depiction for JavaScript/TypeScript (browser + Node).
 
 **npm:** [`@xenosite/xpict`](https://www.npmjs.com/package/@xenosite/xpict)  
-**Docs:** [GitHub Pages](https://swamidasslab.github.io/xenosite-pict/) ·
-[label markup](https://github.com/swamidasslab/xenosite-pict/blob/main/docs/label-markup.md)
+**Docs:** [GitHub Pages](https://swamidasslab.github.io/xenosite-pict/)
 
 ```bash
 npm install @xenosite/xpict
 ```
 
-## Preferred — nested document
+## Single molecule
 
 ```ts
 import { xpict } from "@xenosite/xpict";
 
+const home = xpict.mol("c1ccccc1");
+const rendered = await xpict.render(home, {
+  color: "#0b6e4f",
+  atom_shade: [0, 0, 0.2, 0, 0, 0.9],
+  star_labels: ["$R_1$"], // when the mol has *
+});
+const svg = xpict.toSvg(rendered.scene);
+const aligned = await xpict.render(xpict.mol("Cc1ccccc1"), { align_to: home });
+```
+
+### `render` options
+
+`color`, `atom_shade`, `bond_shade`, `star_labels`, `bold_labels`,
+`align_to` (`Mol` | `Rendered`), `id`.
+
+## Declarative document
+
+```ts
 const [r] = await xpict.depict({
   type: "mol",
   smiles: "CCO",
@@ -29,23 +46,6 @@ const batch = await xpict.depict({
   ],
 });
 ```
-
-## Simple — single molecule
-
-```ts
-const home = xpict.mol("c1ccccc1");
-const rendered = await xpict.render(home, {
-  color: "#0b6e4f",
-  atom_shade: [0, 0, 0.2, 0, 0, 0.9],
-});
-const svg = xpict.toSvg(rendered.scene);
-const aligned = await xpict.render(xpict.mol("Cc1ccccc1"), { align_to: home });
-```
-
-### Simple `render` options
-
-`color`, `atom_shade`, `bond_shade`, `star_labels`, `bold_labels`,
-`align_to` (`Mol` | `Rendered`), `id`.
 
 RDKit + WASM initialize on first `render` / `depict`.
 

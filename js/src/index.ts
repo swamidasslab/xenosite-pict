@@ -1,8 +1,8 @@
 /**
- * `@xenosite/xpict` — molecule depiction for xenosite.org.
+ * `@xenosite/xpict` — molecule depiction for the web.
  *
- * Preferred: ``xpict.depict`` (nested PictSpec subset).
- * Simple: ``xpict.mol`` / ``xpict.render`` / ``xpict.toSvg``.
+ * Single molecule: ``xpict.mol`` / ``xpict.render`` / ``xpict.toSvg``.
+ * Declarative document: ``xpict.depict`` (nested PictSpec subset).
  */
 
 export { xpict } from "./api.js";

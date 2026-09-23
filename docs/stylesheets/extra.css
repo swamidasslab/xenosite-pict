@@ -30,6 +30,39 @@
   color: var(--md-default-fg-color--light);
 }
 
+/* Code walkthrough: resulting SVG under each sample */
+.example-out {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-start;
+  margin: 0.75rem 0 1.5rem;
+}
+
+.example-out figure {
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 0.4rem;
+  background: var(--md-default-bg-color);
+  text-align: center;
+  max-width: 280px;
+}
+
+.example-out img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 180px;
+  object-fit: contain;
+  margin: 0 auto 0.35rem;
+}
+
+.example-out figcaption {
+  font-size: 0.75rem;
+  color: var(--md-default-fg-color--light);
+}
+
 .api-frame {
   position: relative;
   width: 100%;

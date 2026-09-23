@@ -78,6 +78,27 @@ CASES: dict[str, dict] = {
             "vmax": 1.0,
         },
     },
+    # Walkthrough / API docs (shown next to code samples).
+    "benzene_color": {
+        "type": "mol",
+        "smiles": "c1ccccc1",
+        "color": "#0b6e4f",
+    },
+    "toluene": {"type": "mol", "smiles": "Cc1ccccc1"},
+    "star_r1": {
+        "type": "mol",
+        "cxsmiles": "*C |$R_{1};$|",
+    },
+    "ethanol_shade": {
+        "type": "mol",
+        "smiles": "CCO",
+        "color": "#0b6e4f",
+        "shade": {
+            "atoms": [0.0, 0.2, 0.9],
+            "vmin": 0.0,
+            "vmax": 1.0,
+        },
+    },
 }
 
 

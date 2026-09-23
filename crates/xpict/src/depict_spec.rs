@@ -48,7 +48,7 @@ fn mol_type() -> String {
     "mol".into()
 }
 
-/// Preferred declarative document (``mol`` or ``group`` root).
+/// Declarative document (``mol`` or ``group`` root).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum DepictSpec {

@@ -1,22 +1,22 @@
 /**
- * Public surface for xenosite: declarative documents + a simple single-mol client.
+ * Public surface: single-mol client + declarative document (same paint).
  * RDKit stays hidden (auto script in browser / npm on Node).
  *
- * Preferred — nested document (strict subset of PictSpec):
+ * Single molecule:
+ * ```ts
+ * const mol = xpict.mol("CCCC");
+ * const rendered = await xpict.render(mol, { color: "#0b6e4f" });
+ * const svg = xpict.toSvg(rendered.scene);
+ * const aligned = await xpict.render(xpict.mol("CCCO"), { align_to: mol });
+ * ```
+ *
+ * Declarative document (expanding toward PictSpec):
  * ```ts
  * const [r] = await xpict.depict({
  *   type: "mol",
  *   cxsmiles: "*c1ccccc1Cl |$R_{1};;;;;$|",
  * });
  * const svg = xpict.toSvg(r.scene);
- * ```
- *
- * Simple — single molecule (``star_labels`` for bare SMILES stars):
- * ```ts
- * const mol = xpict.mol("CCCC");
- * const rendered = await xpict.render(mol, { color: "#0b6e4f" });
- * const svg = xpict.toSvg(rendered.scene);
- * const aligned = await xpict.render(xpict.mol("CCCO"), { align_to: mol });
  * ```
  */
 
@@ -125,7 +125,7 @@ export type GroupNode = {
   children: MolNode[];
 };
 
-/** Preferred declarative document (nested subset of PictSpec). */
+/** Declarative document (nested subset of PictSpec; still expanding). */
 export type DepictSpec = MolNode | GroupNode;
 
 /** Alias of {@link MolNode}. */
@@ -350,8 +350,8 @@ function molNodesFromSpec(spec: DepictSpec): MolNode[] {
 }
 
 /**
- * Preferred document API: nested PictSpec subset → ``Rendered[]``.
- * Implemented via the simple ``mol`` / ``render`` client.
+ * Declarative document → ``Rendered[]`` (nested PictSpec subset).
+ * Implemented via the single-mol ``mol`` / ``render`` client.
  */
 async function depict(spec: DepictSpec): Promise<Rendered[]> {
   const out: Rendered[] = [];
@@ -374,6 +374,6 @@ export const xpict = {
   render,
   /** Scene JSON → SVG string (tweak ``rendered.scene`` first if needed). */
   toSvg: sceneToSvg,
-  /** Preferred declarative document → ``Rendered[]`` (grows toward PictSpec). */
+  /** Declarative document → ``Rendered[]`` (expanding toward PictSpec). */
   depict,
 } as const;

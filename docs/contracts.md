@@ -1,50 +1,48 @@
 # Contracts
 
-## Live (shipped)
+## Live document (shipped)
 
 Pydantic under ``xpict.contracts`` — **strict subset** of future nested
 ``PictSpec``:
 
 | Model | Role |
 | --- | --- |
-| ``DepictSpec`` / ``MolNode`` | Preferred document: ``type: "mol"`` or ``type: "group"`` + ``children`` |
+| ``DepictSpec`` / ``MolNode`` | Declarative document: ``type: "mol"`` or ``type: "group"`` + ``children`` |
 | ``Scene`` (+ primitives) | Paint ABI (Rust / JS / Python serializers) |
 | ``MoleculeLayout`` / ``LayoutResult`` | Backend layout result |
 
 Every live document must also validate as ``xpict.future.PictSpec``.
 
-JSON Schema (committed):
+Committed JSON Schema:
 
-- ``schema/xpict.schema.json`` — **live** ``DepictSpec``
+- ``schema/xpict.schema.json`` — live ``DepictSpec``
 - ``schema/scene.schema.json`` — scene graph
 - ``schema/layout.schema.json`` — layout result
 
-```bash
-uv run xpict-export-schema
-```
+## Single-molecule client
 
-## Simple client (not a JSON document)
-
-``mol`` / ``render`` / ``toSvg`` — imperative single-mol API. Options:
+``mol`` / ``render`` / ``toSvg`` (JS, Rust) — imperative one-mol API. Options:
 ``color``, ``atom_shade``, ``bond_shade``, ``star_labels``, ``bold_labels``,
-``align_to``, ``id``. Document path calls this layer internally.
+``align_to``, ``id``. The document path uses this layer internally where it
+exists.
 
-## Future (design / refinement)
+## Future (design)
 
 Full nested ``PictSpec`` lives in ``xpict.future`` and
-``schema/future/xpict.schema.json``. Comments welcome.
+``schema/future/xpict.schema.json``. Feedback welcome.
 
 ## Runtime vs document
 
 - **Live mol node:** ``smiles`` / ``cxsmiles`` / ``molfile``, ``id``, ``color``,
   ``shade``. Markush / star text on the document path: CX braced aliases.
-- **Simple ``render`` only:** ``align_to`` as Mol / Rendered (or pose molblock),
-  plus flat ``atom_shade`` / ``star_labels`` (chem markup for scripts).
-  Document ``rgroups`` is not public yet (future PictSpec).
+- **Single-mol ``render`` only:** ``align_to`` as Mol / Rendered (or pose
+  molblock), plus flat ``atom_shade`` / ``star_labels`` (chem markup).
+  Document ``rgroups`` is not public yet.
 - **Runtime only:** layout backend, output format.
 
 Label scripts: [Label markup](label-markup.md).
 
 ## Partial backend support
 
-If a backend cannot honor an option, it must ``warnings.warn(..., PictBackendWarning)`` and continue best-effort.
+If a backend cannot honor an option, it must
+``warnings.warn(..., PictBackendWarning)`` and continue best-effort.
