@@ -1,6 +1,6 @@
 /**
  * Align smoke: RDKit MCS (element + hybridization; BondCompare Any;
- * RingMatchesRingOnly).
+ * BondRingMatchesRingOnly).
  * Symmetric cores may embed many ways — assert overlay hits, not fixed indices.
  * Run: `npx tsx src/align.smoke.ts`
  */
@@ -99,7 +99,7 @@ function coordsKey(r: Rendered): string {
   }
 }
 
-// RingMatchesRingOnly: open chain must not wrap onto a ring path.
+// BondRingMatchesRingOnly: open-chain path must not match through ring bonds.
 {
   const ring = xpict.mol("C1CCCOC1");
   const rR = await xpict.render(ring);

@@ -18,12 +18,13 @@ _ORDER_CAP = 24
 
 
 def mcs_params():
-    """FMCS: element + hybridization atoms; any-bond; ring↔ring / chain↔chain only.
+    """FMCS: element + hybridization atoms; any-bond; ring bonds ↔ ring bonds only.
 
     Hybridization separates aliphatic rings from quinones without a post-filter.
-    ``RingMatchesRingOnly`` stops an open chain from wrapping onto a ring path
-    (RDKit's documented default oddity — not a per-pair filter).
-    Parity with JS MinimalLib (isotope-encoded Z×10+hyb + ``AtomCompare: Isotopes``).
+    ``BondCompareParameters.RingMatchesRingOnly`` stops an open-chain path from
+    matching through ring bonds (so Depictor does not pin a chain onto a ring
+    arc). Ring *atoms* may still match chain atoms; only bond ring-membership
+    is constrained. Parity with JS MinimalLib ``BondRingMatchesRingOnly``.
     Shared by document align and single-mol ``client`` layout.
     """
     from rdkit.Chem import rdFMCS
@@ -40,8 +41,7 @@ def mcs_params():
     params.Timeout = 2
     params.AtomTyper = _ElemHyb()
     params.BondTyper = rdFMCS.BondCompare.CompareAny
-    # Both atom + bond flags: custom AtomTyper alone does not enforce ring↔ring.
-    params.AtomCompareParameters.RingMatchesRingOnly = True
+    # Bond-only: ring atoms matching chain atoms is fine; ring↔chain bonds are not.
     params.BondCompareParameters.RingMatchesRingOnly = True
     return params
 
@@ -243,7 +243,7 @@ class RdkitAligner(RigidAligner):
     """Template depiction via RDKit ``GenerateDepictionMatching2DStructure``.
 
     MCS: element + hybridization atoms, ``BondCompare.CompareAny``,
-    ``RingMatchesRingOnly`` (parity with Rust/JS ``align_opts``). No
+    bond ``RingMatchesRingOnly`` (parity with Rust/JS ``align_opts``). No
     element-only MCS fallback. The reference layout / pose mol is never
     modified.
     """

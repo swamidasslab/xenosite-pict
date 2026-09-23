@@ -199,7 +199,7 @@ fn align_mcs_rejects_aliphatic_vs_quinone() {
     );
 }
 
-/// RingMatchesRingOnly: open chain must not wrap onto a ring path.
+/// Bond RingMatchesRingOnly: open-chain path must not match through ring bonds.
 #[test]
 fn align_mcs_rejects_ring_vs_open_chain() {
     let mut ring = mol("C1CCCOC1").unwrap();

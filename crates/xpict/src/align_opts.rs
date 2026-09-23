@@ -6,12 +6,13 @@
 //! MCS atom identity is **element + hybridization**; bonds are
 //! ``BondCompare: Any`` so aromatic ↔ kekulé / quinone still match, while
 //! aliphatic rings (SP3) do not match quinones (SP2).
-//! ``RingMatchesRingOnly`` keeps ring atoms/bonds from matching chain
-//! atoms/bonds (so an open chain does not wrap onto a ring path).
+//! Bond ``RingMatchesRingOnly`` keeps ring *bonds* from matching chain
+//! bonds (an open chain must not pin onto a ring arc). Ring *atoms* may
+//! still match chain atoms.
 //!
 //! - Python / Rust (native FMCS): ``MCSAtomCompare`` / C++ AtomTyper
 //!   (atomic number + hybridization) + ``BondCompareAny`` +
-//!   ``RingMatchesRingOnly`` on atom and bond compare parameters
+//!   ``BondCompareParameters.RingMatchesRingOnly``
 //! - JS MinimalLib (no custom AtomTyper): isotope-encode ``Z×10+hyb`` then
 //!   [`MCS_DETAILS_JSON`] (`AtomCompare: Isotopes`); strip isotopes from the
 //!   SMARTS before `generate_aligned_coords`
@@ -19,17 +20,17 @@
 //! Language bindings should not reinvent Kabsch — call RDKit with these
 //! option shapes:
 //!
-//! 1. MCS: element+hybridization + ring↔ring only (see above)
+//! 1. MCS: element+hybridization + ring-bond↔ring-bond only (see above)
 //! 2. Align: [`minimallib_align_details`] → `generate_aligned_coords`
 //! 3. Treat empty / `"{}"` as failure ([`align_succeeded`])
 
 /// MinimalLib / `findMCS_P` JSON after isotope-encoding ``Z×10+hyb`` on copies.
 /// Native Rust/Python do **not** use this — they set a custom AtomTyper.
-/// Top-level ``RingMatchesRingOnly`` sets both atom and bond flags in
-/// ``parseMCSParametersJSON``.
+/// ``BondRingMatchesRingOnly`` sets only the bond flag in
+/// ``parseMCSParametersJSON`` (not the atom flag).
 pub const MCS_DETAILS_JSON: &str = concat!(
     r#"{"AtomCompare":"Isotopes","BondCompare":"Any","Timeout":2,"#,
-    r#""RingMatchesRingOnly":true}"#
+    r#""BondRingMatchesRingOnly":true}"#
 );
 
 /// Minimum MCS atom count before we trust the pattern.
@@ -92,6 +93,8 @@ mod tests {
     fn mcs_details_isotopes_any_for_minimallib() {
         assert!(MCS_DETAILS_JSON.contains("Isotopes"));
         assert!(MCS_DETAILS_JSON.contains("Any"));
-        assert!(MCS_DETAILS_JSON.contains(r#""RingMatchesRingOnly":true"#));
+        assert!(MCS_DETAILS_JSON.contains(r#""BondRingMatchesRingOnly":true"#));
+        assert!(!MCS_DETAILS_JSON.contains(r#""RingMatchesRingOnly""#));
+        assert!(!MCS_DETAILS_JSON.contains("AtomRingMatchesRingOnly"));
     }
 }

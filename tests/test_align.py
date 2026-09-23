@@ -340,10 +340,12 @@ def test_rdkit_mcs_aniline_quinone_imine():
 
 @pytest.mark.skipif(not rdkit_available(), reason="rdkit not installed")
 def test_rdkit_mcs_rejects_ring_vs_open_chain():
-    """RingMatchesRingOnly: open chain must not wrap onto a ring path.
+    """Bond RingMatchesRingOnly: open-chain path must not match through ring bonds.
 
-    Without it, MCS maps O=CCCCCO onto C1CCCOC1 and Depictor curls the
-    chain so the terminal =O and OH face each other.
+    Without it, MCS maps O=CCCCCO onto a C1CCCOC1 ring arc and Depictor pins
+    the matched carbons to ring coords — the free O=C then has no linear turn
+    and the terminals face each other. Ring *atoms* matching chain atoms is
+    still allowed; only ring↔chain *bonds* are blocked.
     """
     from xpict.align_rdkit import _fmcs_mapping
 

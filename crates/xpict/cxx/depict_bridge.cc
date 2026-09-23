@@ -47,7 +47,7 @@ void ensure_2d(RDKit::ROMol &mol) {
   }
 }
 
-/** FMCS: element + hybridization atoms, any-bond, ring↔ring only
+/** FMCS: element + hybridization atoms, any-bond, ring-bond↔ring-bond only
  *  (parity with Python ``mcs_params``). */
 bool mcs_atom_compare_elements_hybridization(
     const RDKit::MCSAtomCompareParameters &, const RDKit::ROMol &mol1,
@@ -71,8 +71,7 @@ std::unique_ptr<RDKit::ROMol> mcs_pattern(const RDKit::ROMol &mol,
   params.Timeout = 2;
   params.AtomTyper = mcs_atom_compare_elements_hybridization;
   params.setMCSBondTyperFromEnum(RDKit::BondCompareAny);
-  // Custom AtomTyper alone does not enforce ring↔ring; set both flags.
-  params.AtomCompareParameters.RingMatchesRingOnly = true;
+  // Bond-only: ring atoms may match chain atoms; ring↔chain bonds may not.
   params.BondCompareParameters.RingMatchesRingOnly = true;
   RDKit::MCSResult mcs = RDKit::findMCS(mols, &params);
   if (mcs.NumAtoms < kMinMcsAtoms || mcs.SmartsString.empty()) {

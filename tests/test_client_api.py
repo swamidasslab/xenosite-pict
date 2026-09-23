@@ -78,7 +78,7 @@ def test_phenol_quinone_mcs():
 
 
 def test_ring_vs_open_chain_no_mcs():
-    """RingMatchesRingOnly: O=CCCCCO must not wrap onto C1CCCOC1."""
+    """Bond RingMatchesRingOnly: O=CCCCCO must not pin onto C1CCCOC1 ring bonds."""
     ring = mol("C1CCCOC1")
     free = render(mol("O=CCCCCO"))
     aligned = render(mol("O=CCCCCO"), {"align_to": ring})
