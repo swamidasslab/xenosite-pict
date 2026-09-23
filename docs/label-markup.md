@@ -49,37 +49,32 @@ flowchart LR
 ```
 
 Bare `R1` (no markup) stays the literal characters **R1**. For subscripts,
-pass chem markup (`R_{1}`, `$R_1$`) on the label string.
+pass chem markup (`R_{1}`, `$R_1$`) via `star_labels` — not as ChemAxon CX
+syntax.
 
-## CXSMILES: what works, what does not
+## CXSMILES aliases
 
-ChemAxon atom labels live inside a trailer whose **delimiters are `$`**:
+ChemAxon atom labels sit in a trailer whose **delimiters are `$`**:
 
 ```text
 *c1ccccc1Cl |$R1;;;;;$|
 ```
 
-That outer `|$ … $|` is CX syntax, not xpict math mode. Consequences:
+That is ordinary CXSMILES. The alias string is painted as given, so `R1`
+renders as **R1** (no subscript). Unicode in the alias (`R₁`) also works when
+your source encoding keeps it.
 
-| Want | In CX trailer? | Notes |
-| --- | --- | --- |
-| Literal `R1` | Yes | Painted as R1 (no subscript) |
-| Subscript R₁ via `R_{1}` | Yes | Braced `_{…}` needs no `$…$` zone |
-| Unicode `R₁` | Yes | Works if your source encoding keeps it |
-| `$R_1$` math zone | **No (practical)** | Inner `$` fights the CX `$…$` delimiters |
-| `\alpha`, `\beta`, … | Fragile / avoid | Backslashes and CX tooling vary |
-| `**bold**` / `*italic*` | Fragile / avoid | `*` collides with star atoms and CX |
-| Multi-char markup with `;` | **No** | `;` separates CX alias slots |
+Do **not** treat xpict chem markup (`$R_1$`, `R_{1}`) as CXSMILES. Inner `$`
+fights the CX `$…$` delimiters; braced forms are an xpict dialect, not
+ChemAxon.
 
-**Rule of thumb:** use CX for plain aliases or braced scripts (`R_{1}`,
-`R_{12}`). For richer markup (`$R_1$`, Greek, bold), use the single-molecule
-`star_labels` option (not a document `rgroups` key — that stays in
-`xpict.future` until it graduates).
+| Want | Prefer |
+| --- | --- |
+| Round-trip CX from another tool | CX trailer with plain aliases (`R1`, `Cl`, …) |
+| Publication Markush with R₁ / Greek / bold | simple `star_labels` + chem markup |
+| Both CX topology and rich labels | CX for structure; override labels via `star_labels` |
 
 ## JSON opts and the document schema
-
-Full dialect is available wherever the label is a normal JSON string (no CX
-`$` wrapper):
 
 ### Simple API (single mol)
 
@@ -100,10 +95,9 @@ mol.render(MolRenderOptions {
 
 `star_labels` **wins over** CX aliases when both are present.
 
-### Declarative document (nested subset of PictSpec)
+### Declarative document
 
-Document nodes carry structure + shade + color. Markush text on this path is
-CX braced aliases today:
+Document Markush text today is CX aliases on `cxsmiles`:
 
 ```json
 {
@@ -111,7 +105,7 @@ CX braced aliases today:
   "children": [
     {
       "type": "mol",
-      "cxsmiles": "*c1ccccc1Cl |$R_{1};;;;;$|"
+      "cxsmiles": "*c1ccccc1Cl |$R1;;;;;$|"
     }
   ]
 }
@@ -119,23 +113,3 @@ CX braced aliases today:
 
 A document-level `rgroups` field is **not** public yet (it remains on future
 `PictSpec` / `MoleculeSpec`). Use CX or `star_labels` until it graduates.
-
-## Picking a path
-
-| Goal | Prefer |
-| --- | --- |
-| Round-trip a CXSMILES from another tool | CX trailer; braced `R_{1}` if you need scripts |
-| Publication Markush with `$R_1$`, Greek, bold | simple `star_labels` |
-| Both CX topology and rich labels | CX for structure; override via `star_labels` |
-
-## Not supported (on purpose)
-
-Fractions, matrices, real TeX layout, Markdown `_emphasis_` (would break
-`my_name`). Put chemistry scripts in `$…$` or use `_{…}` / `^{…}`.
-
-## Why not an existing crate?
-
-Math crates (`pulldown-latex`, `tex2math`, …) emit **MathML**. xpict paints
-**glyph paths** with fake sub/superscripts so labels match bond ink. Pulling a
-full math engine would add weight and a second sink without removing our
-outline step.

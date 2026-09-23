@@ -14,7 +14,7 @@
  * ```ts
  * const [r] = await xpict.depict({
  *   type: "mol",
- *   cxsmiles: "*c1ccccc1Cl |$R_{1};;;;;$|",
+ *   cxsmiles: "*c1ccccc1Cl |$R1;;;;;$|",
  * });
  * const svg = xpict.toSvg(r.scene);
  * ```
@@ -44,7 +44,7 @@ export type {
 export type Mol = {
   source: string;
   /**
-   * Coord-bearing molblock for the home frame.
+   * Coord-bearing molblock for the alignment frame.
    * Filled on first render; carried for ``align_to``.
    */
   frame_molblock?: string;
@@ -98,7 +98,7 @@ export type MolRenderOptions = {
 
 /**
  * Mol node — strict subset of future PictSpec ``type: "mol"``.
- * Star / Markush text: CX braced aliases on ``cxsmiles``, or
+ * Star / Markush text: CX aliases on ``cxsmiles``, or
  * ``star_labels`` on ``render`` — document ``rgroups`` is not public yet.
  */
 export type MolNode = {

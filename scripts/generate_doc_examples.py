@@ -47,8 +47,8 @@ CASES: dict[str, dict] = {
     },
     "markush": {
         "type": "mol",
-        # Braced markup inside CX — see docs/label-markup.md
-        "cxsmiles": "*c1ccccc1Cl |$R_{1};;;;;$|",
+        # Real ChemAxon CXSMILES atom alias (literal R1).
+        "cxsmiles": "*c1ccccc1Cl |$R1;;;;;$|",
     },
     # Sparse shade: most zeros, a few hot atoms (SoM-style highlight).
     "aspirin_shade": {
@@ -85,9 +85,10 @@ CASES: dict[str, dict] = {
         "color": "#0b6e4f",
     },
     "toluene": {"type": "mol", "smiles": "Cc1ccccc1"},
+    # Visual match for star_labels: ["$R_1$"] — Unicode alias in CX (real CXSMILES).
     "star_r1": {
         "type": "mol",
-        "cxsmiles": "*C |$R_{1};$|",
+        "cxsmiles": "*C |$R₁;$|",
     },
     "ethanol_shade": {
         "type": "mol",

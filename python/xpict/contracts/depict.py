@@ -6,7 +6,7 @@ supports today:
 - Root is a ``type: "mol"`` leaf, or a ``type: "group"`` with ``children``
 - Molecule discriminator is ``type: "mol"``
 - Shade via ``shade: {atoms, bonds, …}``
-- Markush / star text via CXSMILES aliases (chem markup ``R_{1}``) or the
+- Markush / star text via CXSMILES aliases (e.g. ``|$R1;;;;;$|``) or the
   single-mol client's ``star_labels`` — not a document ``rgroups`` key yet
 
 Everything here must validate as :class:`~xpict.future.nodes.PictSpec`.

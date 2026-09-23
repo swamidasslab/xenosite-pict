@@ -25,7 +25,7 @@ svg = render({
 svg = render({
     "type": "group",
     "children": [
-        {"type": "mol", "cxsmiles": "*c1ccccc1Cl |$R_{1};;;;;$|"},
+        {"type": "mol", "cxsmiles": "*c1ccccc1Cl |$R1;;;;;$|"},
         {"type": "mol", "smiles": "c1ccccc1O"},
     ],
 })
@@ -40,7 +40,7 @@ svg = render({
 
 <figure markdown="span">
 ![Markush](../assets/examples/markush.svg)
-<figcaption>CX `|$R_{1};;;;;$|`</figcaption>
+<figcaption>CX `|$R1;;;;;$|`</figcaption>
 </figure>
 
 <figure markdown="span">

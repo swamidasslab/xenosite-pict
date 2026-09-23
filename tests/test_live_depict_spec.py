@@ -24,7 +24,7 @@ def test_live_group_children():
             "type": "group",
             "children": [
                 {"type": "mol", "smiles": "CCO", "shade": {"atoms": [0.0, 0.2, 0.9]}},
-                {"type": "mol", "cxsmiles": "*c1ccccc1Cl |$R_{1};;;;;$|"},
+                {"type": "mol", "cxsmiles": "*c1ccccc1Cl |$R1;;;;;$|"},
             ],
         }
     )

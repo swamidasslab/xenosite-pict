@@ -12,8 +12,8 @@ npm install @xenosite/xpict
 ```js
 import { xpict } from "@xenosite/xpict";
 
-const home = xpict.mol("c1ccccc1");
-const rendered = await xpict.render(home, {
+const benzene = xpict.mol("c1ccccc1");
+const rendered = await xpict.render(benzene, {
   color: "#0b6e4f",
   atom_shade: [0, 0, 0.2, 0, 0, 0.9],
   star_labels: ["$R_1$"], // when the source has *
@@ -21,7 +21,7 @@ const rendered = await xpict.render(home, {
 document.body.innerHTML = xpict.toSvg(rendered.scene);
 
 const aligned = await xpict.render(xpict.mol("Cc1ccccc1"), {
-  align_to: home, // or align_to: rendered
+  align_to: benzene, // or align_to: rendered
 });
 ```
 

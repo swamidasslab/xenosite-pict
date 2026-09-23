@@ -14,14 +14,14 @@ npm install @xenosite/xpict
 ```ts
 import { xpict } from "@xenosite/xpict";
 
-const home = xpict.mol("c1ccccc1");
-const rendered = await xpict.render(home, {
+const benzene = xpict.mol("c1ccccc1");
+const rendered = await xpict.render(benzene, {
   color: "#0b6e4f",
   atom_shade: [0, 0, 0.2, 0, 0, 0.9],
   star_labels: ["$R_1$"], // when the mol has *
 });
 const svg = xpict.toSvg(rendered.scene);
-const aligned = await xpict.render(xpict.mol("Cc1ccccc1"), { align_to: home });
+const aligned = await xpict.render(xpict.mol("Cc1ccccc1"), { align_to: benzene });
 ```
 
 ### `render` options
@@ -42,7 +42,7 @@ const svg = xpict.toSvg(r.scene);
 const batch = await xpict.depict({
   type: "group",
   children: [
-    { type: "mol", cxsmiles: "*c1ccccc1Cl |$R_{1};;;;;$|" },
+    { type: "mol", cxsmiles: "*c1ccccc1Cl |$R1;;;;;$|" },
   ],
 });
 ```

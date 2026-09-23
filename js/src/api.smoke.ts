@@ -154,7 +154,7 @@ const both = await xpict.render(xpict.mol("*C* |$R1;;R2;$|"));
   }
 }
 
-// Document Markush: CX braced markup (no public rgroups key yet).
+// Document batch (group of mols).
 const batch = await xpict.depict({
   type: "group",
   children: [
@@ -166,17 +166,17 @@ if (batch.length !== 2) throw new Error(`depict length ${batch.length}`);
 if (batch[0]!.molecule.atoms.length !== 3) throw new Error("depict[0] atoms");
 if (batch[1]!.molecule.atoms.length !== 4) throw new Error("depict[1] atoms");
 
-// Document Markush: CX braced markup (no public rgroups key yet).
+// Document Markush: real CXSMILES alias (literal R1).
 const markush = await xpict.depict({
   type: "mol",
-  cxsmiles: "*c1ccccc1Cl |$R_{1};;;;;$|",
+  cxsmiles: "*c1ccccc1Cl |$R1;;;;;$|",
 });
 {
   const texts = [...xpict.toSvg(markush[0]!.scene).matchAll(/data-text="([^"]*)"/g)].map(
     (m) => m[1]
   );
-  if (!texts.includes("R₁")) {
-    throw new Error(`CX R_{1} should paint R₁, got ${JSON.stringify(texts)}`);
+  if (!texts.includes("R1")) {
+    throw new Error(`CX R1 should paint R1, got ${JSON.stringify(texts)}`);
   }
 }
 

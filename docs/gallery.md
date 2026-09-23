@@ -52,13 +52,13 @@ Label scripts: [Label markup](label-markup.md).
 
 ## Markush labels
 
-CX braced markup (`R_{1}` inside the trailer):
+ChemAxon CXSMILES aliases, or `star_labels` with chem markup for subscripts:
 
 <div class="gallery-grid" markdown>
 
 <figure markdown="span">
-![Markush via CX R₁](assets/examples/markush.svg)
-<figcaption>CX — <code>|$R_{1};;;;;$|</code> → R₁</figcaption>
+![Markush via CX R1](assets/examples/markush.svg)
+<figcaption><code>*c1ccccc1Cl |$R1;;;;;$|</code></figcaption>
 </figure>
 
 <figure markdown="span">

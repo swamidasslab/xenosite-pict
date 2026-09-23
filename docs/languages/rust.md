@@ -16,8 +16,8 @@ xpict-core = "0.1"
 ```rust
 use xpict::{mol, MolRenderOptions};
 
-let mut home = mol("c1ccccc1")?;
-let rendered = home.render(MolRenderOptions {
+let mut benzene = mol("c1ccccc1")?;
+let rendered = benzene.render(MolRenderOptions {
     color: Some("#0b6e4f".into()),
     atom_shade: Some(vec![0.0, 0.0, 0.2, 0.0, 0.0, 0.9]),
     star_labels: Some(vec![Some("$R_1$".into())]), // when source has *
@@ -54,7 +54,7 @@ let out = depict(&DepictSpec::Group {
             ..Default::default()
         },
         MolNode {
-            cxsmiles: Some("*c1ccccc1Cl |$R_{1};;;;;$|".into()),
+            cxsmiles: Some("*c1ccccc1Cl |$R1;;;;;$|".into()),
             ..Default::default()
         },
     ],

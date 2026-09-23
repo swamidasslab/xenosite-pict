@@ -101,11 +101,11 @@ fn depict_nested_group() {
 }
 
 #[test]
-fn depict_cx_markush_markup() {
+fn depict_cx_markush_alias() {
     use xpict::{depict, DepictSpec};
     let out = depict(&DepictSpec::Mol {
         smiles: None,
-        cxsmiles: Some("*C |$R_{1};$|".into()),
+        cxsmiles: Some("*C |$R1;$|".into()),
         molfile: None,
         id: None,
         color: None,
@@ -114,8 +114,8 @@ fn depict_cx_markush_markup() {
     .unwrap();
     let svg = out[0].to_svg();
     assert!(
-        svg.contains("R₁") || svg.contains("data-text=\"R₁\""),
-        "expected R₁ from CX braced markup, got snippet {}",
+        svg.contains("data-text=\"R1\"") || svg.contains(">R1<"),
+        "expected literal R1 from CX alias, got snippet {}",
         &svg[..svg.len().min(200)]
     );
 }
