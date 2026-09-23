@@ -1,4 +1,4 @@
-//! Export live JSON Schema from Rust (schemars): EdgePlan / EdgeResult / Scene.
+//! Export live JSON Schema from Rust (schemars): EdgePlan / EdgeResult / Scene / DepictSpec.
 //!
 //! ```text
 //! cargo run -p xpict-core --example export_live_schema --features codegen
@@ -8,7 +8,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use schemars::schema_for;
-use xpict_core::{EdgePlan, EdgeResult, Scene};
+use xpict_core::{DepictSpec, EdgePlan, EdgeResult, Scene};
 
 fn write(root: &std::path::Path, name: &str, schema: schemars::schema::RootSchema) {
     let path = root.join(name);
@@ -29,4 +29,5 @@ fn main() {
     write(&root, "edge-plan.schema.json", schema_for!(EdgePlan));
     write(&root, "edge-result.schema.json", schema_for!(EdgeResult));
     write(&root, "scene.schema.json", schema_for!(Scene));
+    write(&root, "xpict.schema.json", schema_for!(DepictSpec));
 }

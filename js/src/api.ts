@@ -120,63 +120,38 @@ export type MolRenderOptions = {
 };
 
 /**
- * Mol node — strict subset of future PictSpec ``type: "mol"``.
+ * Mol / group document types — generated from ``xpict-core`` (``make types``).
  * Star / Markush text: ``star_labels`` (encounter order) or CX aliases on
  * ``cxsmiles``. Document ``rgroups`` is not public yet.
  */
-export type MolNode = {
-  type: "mol";
-  smiles?: string;
-  cxsmiles?: string;
-  molfile?: string;
-  id?: string;
-  color?: string;
-  /** Per-atom / per-bond colormap scores (document shade). */
-  shade?: {
-    atoms?: number[];
-    bonds?: number[];
-    colormap?: string;
-    /** Shade window low (default 0). Not auto-scaled from data. */
-    vmin?: number;
-    /** Shade window high (default 1). Not auto-scaled from data. */
-    vmax?: number;
-  };
-  /**
-   * Labels for ``*`` atoms in layout encounter order (chem markup OK).
-   * Wins over CXSMILES aliases when both are present.
-   */
-  star_labels?: Array<string | null>;
-  /** Uniform diagram scale (`1` = house size). */
-  scale?: number;
-  /**
-   * Ink weight relative to house (`1`). Min `2/3` (Regular stem).
-   */
-  weight?: number;
-  /**
-   * Align template: id string, or `{ ref, atom_map?, min_atoms? }`.
-   * When omitted and the group has ``align: true``, defaults to the first child.
-   */
-  align_to?: string | {
-    ref: string;
-    atom_map?: Array<[number, number]> | null;
-    min_atoms?: number | null;
-  };
-};
+export type {
+  AlignTo,
+  AlignToSpec,
+  MolNode,
+  ShadeSpec,
+} from "./generated/depict-abi.js";
 
-/** Group — ``children`` of mol nodes only (today). */
-export type GroupNode = {
-  type: "group";
-  id?: string;
-  /**
-   * When true, later children align onto the first (or each child's
-   * ``align_to``). Builds an EdgePlan coord_gen forest.
-   */
+import type {
+  DepictSpec as GeneratedDepictSpec,
+  MolNode,
+} from "./generated/depict-abi.js";
+
+/**
+ * Group — ``children`` of mol nodes only (today).
+ * ``align`` defaults to false on the wire (`#[serde(default)]`); optional here
+ * so callers may omit it (ts-rs cannot mark non-Option defaults optional).
+ */
+export type GroupNode = Omit<
+  Extract<GeneratedDepictSpec, { type: "group" }>,
+  "align"
+> & {
   align?: boolean;
-  children: MolNode[];
 };
 
 /** Declarative document (nested subset of PictSpec; still expanding). */
-export type DepictSpec = MolNode | GroupNode;
+export type DepictSpec =
+  | Extract<GeneratedDepictSpec, { type: "mol" }>
+  | GroupNode;
 
 /** Alias of {@link MolNode}. */
 export type MolSpec = MolNode;

@@ -1,6 +1,6 @@
 # Plan: Rust-first live contracts
 
-**Status:** in progress (EdgePlan + Scene cut over; DepictSpec next).  
+**Status:** live EdgePlan + Scene + DepictSpec cut over; Python hand until a faithful emitter.  
 **Original proposal:** [typebridge](https://crates.io/crates/typebridge).  
 **Chosen toolchain after spike:** **schemars** (JSON Schema) + **ts-rs** (TypeScript). Python Pydantic for live stays hand-written for now (see below).
 
@@ -50,7 +50,7 @@ Annotated AlignTo / DepictSpec / EdgeTask / EdgePlan with `TypeWriter`. Output w
 
 ```
 xpict-core (serde types)
-    ├─ feature `codegen` → schemars::JsonSchema  → schema/*.json (live)
+    ├─ feature `codegen` → schemars::JsonSchema  → schema/*.json (live: edge, scene, xpict)
     └─ feature `codegen` → ts_rs::TS             → js/src/generated/*.ts
 python/xpict/contracts/*   hand StrictModel (parity tests vs Rust fixtures)
 xpict.future               unchanged Pydantic SoT → schema/future/
@@ -66,8 +66,8 @@ Commands:
 0. ~~Spike typebridge~~ → **done; pivoted**  
 1. ~~**Infra + EdgePlan/EdgeResult**~~ — annotate edge + `MoleculeIn` inputs; generate TS + schema; JS imports generated types; Python hand + fixture parity  
 2. ~~**Scene** paint ABI~~ — `Primitive` / `Layer` / `Viewport` / `Scene` via ts-rs + `schema/scene.schema.json`; JS `scene-svg` imports generated (aliases `ScenePrimitive` etc. kept); Python Scene stays hand (may carry host-only `font_family` / `meta` until aligned)  
-3. **DepictSpec / MolNode / AlignTo** — same pattern  
-4. Retire Pydantic as live schema SoT in `export_schema.py` (future-only)  
+3. ~~**DepictSpec / MolNode / AlignTo**~~ — same pattern; `schema/xpict.schema.json` from Rust; JS imports `depict-abi`; Python DepictSpec stays hand  
+4. Retire leftover live Pydantic schema mentions in docs; keep future PictSpec on Pydantic  
 5. Revisit Python codegen if/when an emitter matches StrictModel quality (or write a thin custom one)
 
 ## What stays hand-written
@@ -75,7 +75,8 @@ Commands:
 - Host logic (`process_edge_plan`, SVG serializers, single-mol `Mol` / `Rendered`)  
 - Live **Python** contracts until codegen quality catches up  
 - Future PictSpec  
-- Wasm still stringly JSON FFI; generated TS types the payloads
+- Wasm still stringly JSON FFI; generated TS types the payloads  
+- JS `GroupNode.align?` remapped optional (ts-rs cannot optional-ize non-`Option` serde defaults)
 
 ## Risks
 

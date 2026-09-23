@@ -40,6 +40,9 @@ if [[ -d "$BINDINGS" ]]; then
   write_barrel "$OUT_TS/scene-abi.ts" \
     TextAnchor LayerName Primitive Layer Viewport Scene
 
+  write_barrel "$OUT_TS/depict-abi.ts" \
+    ShadeSpec AlignToSpec AlignTo MolNode DepictSpec
+
   echo "wrote $OUT_TS/*.ts"
 else
   echo "error: no bindings/ from ts-rs" >&2
@@ -49,4 +52,4 @@ fi
 echo "==> schemars live schemas"
 cargo run -p xpict-core --example export_live_schema --features codegen --quiet
 
-echo "Done. Commit js/src/generated/ and schema/{edge-*,scene}.schema.json when intentional."
+echo "Done. Commit js/src/generated/ and schema/{edge-*,scene,xpict}.schema.json when intentional."

@@ -14,7 +14,7 @@ Pydantic under ``xpict.contracts`` — **strict subset** of future nested
 stack only — not a shipped contract. The old ``LayoutResult`` wrapper and
 ``schema/layout.schema.json`` are removed.
 
-Live **EdgePlan / EdgeResult** and **Scene** (paint ABI) are defined in Rust
+Live **EdgePlan / EdgeResult**, **Scene**, and **DepictSpec** are defined in Rust
 (``xpict-core``). TypeScript is generated (``make types`` → ``js/src/generated``);
 JSON Schema is schemars. See [`docs/dev/typebridge.md`](dev/typebridge.md).
 
@@ -22,7 +22,7 @@ Every document must also validate as ``xpict.future.PictSpec``.
 
 Committed JSON Schema:
 
-- ``schema/xpict.schema.json`` — ``DepictSpec`` (Pydantic today)
+- ``schema/xpict.schema.json`` — live ``DepictSpec`` from **Rust** (schemars)
 - ``schema/scene.schema.json`` — scene graph from **Rust** (schemars)
 - ``schema/edge-plan.schema.json`` / ``edge-result.schema.json`` — from **Rust**
   (schemars)

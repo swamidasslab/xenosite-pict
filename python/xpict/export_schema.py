@@ -8,7 +8,6 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-from xpict.contracts.depict import DepictSpec
 from xpict.future.nodes import PictSpec
 
 _REPO_SCHEMA = Path(__file__).resolve().parents[2] / "schema"
@@ -296,27 +295,20 @@ def export_schemas(out_dir: Path | None = None, *, minify: bool = True) -> dict[
     future_dir = (out_dir / "future") if out_dir is not None else _FUTURE_SCHEMA
     future_dir.mkdir(parents=True, exist_ok=True)
 
-    # Live edge + scene schemas are owned by Rust (schemars via ``make types``).
-    live = {
-        "xpict.schema.json": DepictSpec.model_json_schema(),
-    }
+    # Live schemas are owned by Rust (schemars via ``make types``).
+    # This export only (re)writes future PictSpec under ``schema/future/``.
+    live_rust = (
+        "xpict.schema.json",
+        "edge-plan.schema.json",
+        "edge-result.schema.json",
+        "scene.schema.json",
+    )
     future = {
         "xpict.schema.json": factor_node_common_allof(PictSpec.model_json_schema()),
     }
 
     written: dict[str, Path] = {}
-    for name, schema in live.items():
-        if minify:
-            schema = minify_json_schema(schema)
-        path = target / name
-        path.write_text(json.dumps(schema, indent=2) + "\n", encoding="utf-8")
-        written[name] = path
-    # Preserve Rust-owned schemas when present (export does not rewrite them).
-    for rust_name in (
-        "edge-plan.schema.json",
-        "edge-result.schema.json",
-        "scene.schema.json",
-    ):
+    for rust_name in live_rust:
         rust_path = target / rust_name
         if rust_path.is_file():
             written[rust_name] = rust_path
@@ -345,11 +337,6 @@ def main() -> None:
     print(json.dumps(mol, indent=2)[:600])
     assert "NodeCommon" in mini["$defs"]
     assert mol.get("allOf")
-    live = minify_json_schema(DepictSpec.model_json_schema())
-    print(
-        f"xpict.schema.json (live DepictSpec)  "
-        f"{len(json.dumps(live, indent=2).splitlines())} lines"
-    )
     for _, path in export_schemas().items():
         print(f"wrote {path}")
 
