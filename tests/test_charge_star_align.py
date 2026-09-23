@@ -70,11 +70,9 @@ def test_indigo_star_and_charge():
 
 @pytest.mark.skip(reason="indigo not in MVP")
 def test_indigo_cx_star_name():
-    lay = (
-        Pict(backend="indigo")
-        .layout({"molecules": [{"cxsmiles": "*C1ccccc1 |$R1;;;;;$|"}]})
-        .molecules[0]
-    )
+    lay = Pict(backend="indigo").layout(
+        {"molecules": [{"cxsmiles": "*C1ccccc1 |$R1;;;;;$|"}]}
+    )[0]
     star = next(a for a in lay.atoms if a.element == "*")
     assert star.label == "R1"
 

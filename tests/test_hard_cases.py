@@ -334,11 +334,9 @@ def test_norbornane_pair_is_cdk_bridged():
 def test_long_ring_substituent_does_not_curl_into_false_ring():
     """C1CCCCC1CCOCCCCCC — chain must stay extended (regression vs removed native)."""
     backend = _chem_backend()
-    layout = (
-        Pict(backend=backend)
-        .layout({"molecules": [{"smiles": "C1CCCCC1CCOCCCCCC"}]})
-        .molecules[0]
-    )
+    layout = Pict(backend=backend).layout(
+        {"molecules": [{"smiles": "C1CCCCC1CCOCCCCCC"}]}
+    )[0]
     by = {a.index: a for a in layout.atoms}
     # Sidechain after the ring attachment (indices 6..14 in RDKit encounter order).
     chain = [by[i] for i in range(6, 15)]
