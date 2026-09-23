@@ -15,8 +15,9 @@ stack only — not a shipped contract. The old ``LayoutResult`` wrapper and
 ``schema/layout.schema.json`` are removed.
 
 Live **EdgePlan / EdgeResult**, **Scene**, and **DepictSpec** are defined in Rust
-(``xpict-core``). TypeScript is generated (``make types`` → ``js/src/generated``);
-JSON Schema is schemars. See [`docs/dev/typebridge.md`](dev/typebridge.md).
+(``xpict-core``). TypeScript (ts-rs) and Pydantic (``make types`` →
+``scripts/generate_live_python.py``) are generated; JSON Schema is schemars.
+See [`docs/dev/typebridge.md`](dev/typebridge.md).
 
 Every document must also validate as ``xpict.future.PictSpec``.
 

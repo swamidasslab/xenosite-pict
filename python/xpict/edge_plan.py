@@ -36,6 +36,7 @@ def build_align_plan(
     """Two-node forest: template root + one query child (simple-client helper)."""
     child_align = AlignOpts(atom_map=atom_map) if atom_map is not None else AlignOpts()
     return EdgePlan(
+        version=1,
         tasks=[
             CoordGenTask(
                 roots=[
@@ -212,4 +213,4 @@ def process_edge_plan(plan: EdgePlan | dict[str, Any]) -> EdgeResult:
             CoordGenTaskResult(ok=task_ok, molecules=rows)
         )
 
-    return EdgeResult(results=task_results)
+    return EdgeResult(version=1, results=task_results)

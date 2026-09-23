@@ -108,14 +108,23 @@ impl AlignTo {
     }
 }
 
+/// Discriminator for mol nodes (`"type": "mol"`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
+pub enum MolNodeKind {
+    #[default]
+    Mol,
+}
+
 /// Mol node — subset of future ``MolNode``.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
 #[cfg_attr(feature = "codegen", ts(export))]
 pub struct MolNode {
-    #[serde(rename = "type", default = "mol_type")]
-    #[cfg_attr(feature = "codegen", ts(type = "\"mol\"", rename = "type"))]
-    pub type_: String,
+    #[serde(rename = "type", default)]
+    pub type_: MolNodeKind,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub smiles: Option<String>,
@@ -147,10 +156,6 @@ pub struct MolNode {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub align_to: Option<AlignTo>,
-}
-
-fn mol_type() -> String {
-    "mol".into()
 }
 
 /// Declarative document (`mol` or `group` root).
@@ -219,7 +224,7 @@ impl DepictSpec {
                 weight,
                 align_to,
             } => vec![MolNode {
-                type_: "mol".into(),
+                type_: MolNodeKind::Mol,
                 smiles: smiles.clone(),
                 cxsmiles: cxsmiles.clone(),
                 molfile: molfile.clone(),

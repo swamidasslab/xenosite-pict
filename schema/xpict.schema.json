@@ -261,7 +261,11 @@
         },
         "type": {
           "default": "mol",
-          "type": "string"
+          "allOf": [
+            {
+              "$ref": "#/definitions/MolNodeKind"
+            }
+          ]
         },
         "weight": {
           "type": [
@@ -271,6 +275,13 @@
           "format": "double"
         }
       }
+    },
+    "MolNodeKind": {
+      "description": "Discriminator for mol nodes (`\"type\": \"mol\"`).",
+      "type": "string",
+      "enum": [
+        "mol"
+      ]
     },
     "ShadeSpec": {
       "description": "Per-atom / per-bond colormap scores.",

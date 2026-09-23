@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Regenerate live TypeScript + JSON Schema from xpict-core (schemars + ts-rs).
-# Python live contracts stay hand-written for now — see docs/dev/typebridge.md.
+# Regenerate live TypeScript + JSON Schema + Python from xpict-core (schemars + ts-rs).
+# Future PictSpec stays Pydantic — see docs/dev/typebridge.md.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -41,7 +41,7 @@ if [[ -d "$BINDINGS" ]]; then
     TextAnchor LayerName Primitive Layer Viewport Scene
 
   write_barrel "$OUT_TS/depict-abi.ts" \
-    ShadeSpec AlignToSpec AlignTo MolNode DepictSpec
+    ShadeSpec AlignToSpec AlignTo MolNodeKind MolNode DepictSpec
 
   echo "wrote $OUT_TS/*.ts"
 else
@@ -52,4 +52,7 @@ fi
 echo "==> schemars live schemas"
 cargo run -p xpict-core --example export_live_schema --features codegen --quiet
 
-echo "Done. Commit js/src/generated/ and schema/{edge-*,scene,xpict}.schema.json when intentional."
+echo "==> Python live contracts (schemars → StrictModel)"
+python3 "$ROOT/scripts/generate_live_python.py"
+
+echo "Done. Commit js/src/generated/, python/xpict/contracts/{edge,scene,depict}.py, and schema/{edge-*,scene,xpict}.schema.json when intentional."

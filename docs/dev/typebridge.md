@@ -1,14 +1,14 @@
 # Plan: Rust-first live contracts
 
-**Status:** live EdgePlan + Scene + DepictSpec cut over; Python hand until a faithful emitter.  
+**Status:** live EdgePlan + Scene + DepictSpec cut over for TS, JSON Schema, and Python.  
 **Original proposal:** [typebridge](https://crates.io/crates/typebridge).  
-**Chosen toolchain after spike:** **schemars** (JSON Schema) + **ts-rs** (TypeScript). Python Pydantic for live stays hand-written for now (see below).
+**Chosen toolchain after spike:** **schemars** (JSON Schema) + **ts-rs** (TypeScript) + custom schemars→StrictModel Python emitter.
 
 ## Goal (unchanged)
 
 | Surface | Source of truth | Client bindings |
 | --- | --- | --- |
-| **Live** (shipped) | Rust (`xpict-core` serde types) | Generated **TypeScript** (ts-rs); committed JSON Schema (schemars); hand Pydantic until a faithful emitter exists |
+| **Live** (shipped) | Rust (`xpict-core` serde types) | Generated **TypeScript** (ts-rs); committed JSON Schema (schemars); generated **Pydantic** (`scripts/generate_live_python.py`) |
 | **Future** (design) | Python `xpict.future` | `schema/future/`; no parallel JS tree |
 
 Invariant: every live document must still validate as future `PictSpec`.
@@ -51,31 +51,32 @@ Annotated AlignTo / DepictSpec / EdgeTask / EdgePlan with `TypeWriter`. Output w
 ```
 xpict-core (serde types)
     ├─ feature `codegen` → schemars::JsonSchema  → schema/*.json (live: edge, scene, xpict)
-    └─ feature `codegen` → ts_rs::TS             → js/src/generated/*.ts
-python/xpict/contracts/*   hand StrictModel (parity tests vs Rust fixtures)
-xpict.future               unchanged Pydantic SoT → schema/future/
+    ├─ feature `codegen` → ts_rs::TS             → js/src/generated/*.ts
+    └─ schemars JSON → scripts/generate_live_python.py → python/xpict/contracts/{edge,scene,depict}.py
+python/xpict/contracts/layout.py   hand (Python-internal MoleculeLayout only)
+xpict.future                       unchanged Pydantic SoT → schema/future/
 ```
 
 Commands:
 
-- `make types` — build/export with `--features codegen`, copy TS + write live schemas  
+- `make types` — TS + live schemas + live Python contracts  
 - `make types-check` — regenerate and `git diff --exit-code`
 
 ## Phased delivery (revised)
 
 0. ~~Spike typebridge~~ → **done; pivoted**  
-1. ~~**Infra + EdgePlan/EdgeResult**~~ — annotate edge + `MoleculeIn` inputs; generate TS + schema; JS imports generated types; Python hand + fixture parity  
-2. ~~**Scene** paint ABI~~ — `Primitive` / `Layer` / `Viewport` / `Scene` via ts-rs + `schema/scene.schema.json`; JS `scene-svg` imports generated (aliases `ScenePrimitive` etc. kept); Python Scene stays hand (may carry host-only `font_family` / `meta` until aligned)  
-3. ~~**DepictSpec / MolNode / AlignTo**~~ — same pattern; `schema/xpict.schema.json` from Rust; JS imports `depict-abi`; Python DepictSpec stays hand  
-4. Retire leftover live Pydantic schema mentions in docs; keep future PictSpec on Pydantic  
-5. Revisit Python codegen if/when an emitter matches StrictModel quality (or write a thin custom one)
+1. ~~**Infra + EdgePlan/EdgeResult**~~ — annotate edge + `MoleculeIn` inputs; generate TS + schema; JS imports generated types  
+2. ~~**Scene** paint ABI~~ — generated TS + schema; JS `scene-svg` on `scene-abi`  
+3. ~~**DepictSpec / MolNode / AlignTo**~~ — generated TS + schema; JS `depict-abi`  
+4. ~~**Python live contracts**~~ — `scripts/generate_live_python.py` from schemars (`edge`/`scene`/`depict`); `layout.py` stays hand (internal)  
+5. Revisit emitter polish (validators, nicer field order) as needed  
 
 ## What stays hand-written
 
 - Host logic (`process_edge_plan`, SVG serializers, single-mol `Mol` / `Rendered`)  
-- Live **Python** contracts until codegen quality catches up  
+- `python/xpict/contracts/layout.py` (Python-internal MoleculeLayout)  
 - Future PictSpec (Python + `schema/future/` only — no JS mirror)  
-- Wasm still stringly JSON FFI; generated TS types the payloads  
+- Wasm still stringly JSON FFI; generated TS/Python type the payloads  
 - JS `GroupNode.align?` remapped optional (ts-rs cannot optional-ize non-`Option` serde defaults)
 
 ## Risks
