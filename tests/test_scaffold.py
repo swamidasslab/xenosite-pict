@@ -58,8 +58,10 @@ def test_export_schemas(tmp_path: Path):
     assert "MolNode" in blob
     assert "GroupNode" in blob
     assert "children" in blob
-    # Atom marks are off the public live surface for now.
+    assert "star_labels" in blob
+    # Atom marks / document rgroups are off the public live surface for now.
     assert "mark_atoms" not in blob
+    assert "rgroups" not in blob
     # Full nested PictSpec is under schema/future/.
     assert "future/xpict.schema.json" in written
     future = json.loads(written["future/xpict.schema.json"].read_text())

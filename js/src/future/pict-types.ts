@@ -83,6 +83,11 @@ export interface MolNode extends NodeBase {
   ids?: Record<string, number | number[]>;
   rings?: Record<string, number[]>;
   rgroups?: (string | null)[] | Record<string, string | null>;
+  /**
+   * Labels for `*` atoms in layout encounter order (chem markup OK).
+   * Wins over `rgroups` / CX aliases when set. Prefer on the public document API.
+   */
+  star_labels?: (string | null)[];
   ring_attachments?: RingAttachmentSpec[];
   rtable?: string[][] | RTableSpec;
   marks?: MarkSpec[];
@@ -175,6 +180,11 @@ export interface MoleculeSpec {
    * dict = star ordinal → label.
    */
   rgroups?: (string | null)[] | Record<string, string | null>;
+  /**
+   * Labels for `*` atoms in layout encounter order (chem markup OK).
+   * Wins over `rgroups` / CX aliases when set.
+   */
+  star_labels?: (string | null)[];
   /** Ring-centered attachments (uncertain site); label required. */
   ring_attachments?: RingAttachmentSpec[];
   /** R-group table (`rows` matrix or `{groups, rows}`). */

@@ -136,6 +136,7 @@ class MolNode(NodeCommon):
     ids: dict[str, int | list[int]] = Field(default_factory=dict)
     rings: dict[str, list[int]] = Field(default_factory=dict)
     rgroups: _RGroupsInput = None
+    star_labels: list[str | None] | None = None
     ring_attachments: list[RingAttachmentSpec] = Field(default_factory=list)
     rtable: _RTableInput = None
     marks: list[MarkSpec] = Field(default_factory=list)
@@ -413,6 +414,7 @@ def mol_to_molecule_spec(node: MolNode) -> MoleculeSpec:
         ids=node.ids,
         rings=node.rings,
         rgroups=node.rgroups,
+        star_labels=node.star_labels,
         ring_attachments=node.ring_attachments,
         rtable=node.rtable,
         marks=node.marks,

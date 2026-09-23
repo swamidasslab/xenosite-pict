@@ -18,6 +18,15 @@ def test_live_mol_root():
     assert doc.mols()[0].color == "#111"
 
 
+def test_live_star_labels():
+    doc = DepictSpec.model_validate(
+        {"type": "mol", "smiles": "*C", "star_labels": ["$R_1$", None]}
+    )
+    assert doc.root.star_labels == ["$R_1$", None]
+    future = PictSpec.model_validate(doc.model_dump(mode="json"))
+    assert future.root.star_labels == ["$R_1$", None]  # type: ignore[union-attr]
+
+
 def test_live_group_children():
     doc = DepictSpec.model_validate(
         {

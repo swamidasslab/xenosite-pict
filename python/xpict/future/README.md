@@ -5,8 +5,9 @@ legacy `{ molecules, diagram }` lift.
 
 The **shipped** document contract is `xpict.contracts.depict` — a **strict
 subset** of this tree (`type: "mol"` | `type: "group"` + `children`, plus
-`shade` / …). Document `rgroups` and richer nodes stay here until they
-graduate. Every shipped document must validate against this full tree too.
+`shade` / `star_labels` / …). Document `rgroups` and richer nodes stay here
+until they graduate. Every shipped document must validate against this full
+tree too.
 
 JSON Schema: `schema/future/xpict.schema.json`.
 

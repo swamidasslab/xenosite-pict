@@ -247,12 +247,34 @@ fn depict_cx_markush_alias() {
         id: None,
         color: None,
         shade: None,
+        star_labels: None,
     })
     .unwrap();
     let svg = out[0].to_svg();
     assert!(
         svg.contains("data-text=\"R1\"") || svg.contains(">R1<"),
         "expected literal R1 from CX alias, got snippet {}",
+        &svg[..svg.len().min(200)]
+    );
+}
+
+#[test]
+fn depict_star_labels() {
+    use xpict::{depict, DepictSpec};
+    let out = depict(&DepictSpec::Mol {
+        smiles: Some("*C".into()),
+        cxsmiles: None,
+        molfile: None,
+        id: None,
+        color: None,
+        shade: None,
+        star_labels: Some(vec![Some("$R_1$".into())]),
+    })
+    .unwrap();
+    let svg = out[0].to_svg();
+    assert!(
+        svg.contains("data-text=\"R₁\"") || svg.contains(">R₁<"),
+        "expected R₁ from document star_labels, got snippet {}",
         &svg[..svg.len().min(200)]
     );
 }

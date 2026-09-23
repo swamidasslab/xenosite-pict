@@ -100,8 +100,8 @@ CXSMILES trailer when `star_labels` is omitted:
 ## Declarative document
 
 Nested JSON — a **strict subset** of future `PictSpec`. Fields today are
-structure, `id`, `color`, and `shade`. Richer diagram nodes stay under
-`xpict.future` until they graduate; every document must still validate as
+structure, `id`, `color`, `shade`, and `star_labels`. Richer diagram nodes stay
+under `xpict.future` until they graduate; every document must still validate as
 future `PictSpec`.
 
 === "JavaScript"
@@ -118,7 +118,7 @@ future `PictSpec`.
     const batch = await xpict.depict({
       type: "group",
       children: [
-        { type: "mol", cxsmiles: "*c1ccccc1Cl |$R1;;;;;$|" },
+        { type: "mol", smiles: "*c1ccccc1Cl", star_labels: ["$R_1$"] },
         { type: "mol", smiles: "c1ccccc1O" },
       ],
     });

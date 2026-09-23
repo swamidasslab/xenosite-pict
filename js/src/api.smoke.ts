@@ -181,6 +181,21 @@ const markush = await xpict.depict({
   }
 }
 
+// Document star_labels (chem markup) on DepictSpec mol nodes.
+const docStar = await xpict.depict({
+  type: "mol",
+  smiles: "*C",
+  star_labels: ["$R_1$"],
+});
+{
+  const texts = [...xpict.toSvg(docStar[0]!.scene).matchAll(/data-text="([^"]*)"/g)].map(
+    (m) => m[1]
+  );
+  if (!texts.includes("R₁")) {
+    throw new Error(`document star_labels $R_1$ should paint R₁, got ${JSON.stringify(texts)}`);
+  }
+}
+
 // Simple client: star_labels with chem markup.
 const richStar = await xpict.render(xpict.mol("*C"), { star_labels: ["$R_1$"] });
 {
