@@ -374,36 +374,34 @@ def _layout_with_rdkit(
         if ensure_coords:
             rdDepictor.Compute2DCoords(ref_pose)
 
-        smarts = None
+        aligned_ok = False
         try:
-            mcs = rdFMCS.FindMCS(
-                [ref_pose, rmol],
-                timeout=2,
-                atomCompare=rdFMCS.AtomCompare.CompareElements,
-                bondCompare=rdFMCS.BondCompare.CompareAny,
-            )
+            from xpict.align_rdkit import mcs_params
+
+            mcs = rdFMCS.FindMCS([ref_pose, rmol], mcs_params())
             if (
                 not getattr(mcs, "canceled", False)
                 and mcs.numAtoms >= _MIN_MCS_ATOMS
             ):
-                smarts = mcs.smartsString
+                pattern = Chem.MolFromSmarts(mcs.smartsString)
+                if pattern is not None:  # pyright: ignore[reportUnnecessaryComparison]
+                    ref_match = ref_pose.GetSubstructMatch(pattern)
+                    mol_match = rmol.GetSubstructMatch(pattern)
+                    if (
+                        len(ref_match) >= _MIN_MCS_ATOMS
+                        and len(ref_match) == len(mol_match)
+                    ):
+                        # Atom matches only — do not pass the MCS bond pattern.
+                        atom_map = list(zip(ref_match, mol_match, strict=True))
+                        params = rdDepictor.ConstrainedDepictionParams()
+                        params.allowRGroups = True
+                        params.acceptFailure = False
+                        rdDepictor.GenerateDepictionMatching2DStructure(
+                            rmol, ref_pose, atom_map, -1, params
+                        )
+                        aligned_ok = True
         except Exception:
-            smarts = None
-
-        aligned_ok = False
-        if smarts:
-            pattern = Chem.MolFromSmarts(smarts)
-            if pattern is not None:  # pyright: ignore[reportUnnecessaryComparison]
-                params = rdDepictor.ConstrainedDepictionParams()
-                params.allowRGroups = True
-                params.acceptFailure = False
-                try:
-                    match = rdDepictor.GenerateDepictionMatching2DStructure(
-                        rmol, ref_pose, -1, pattern, params
-                    )
-                    aligned_ok = bool(match)
-                except Exception:
-                    aligned_ok = False
+            aligned_ok = False
 
         if not aligned_ok:
             # Free layout — do not pretend we aligned.

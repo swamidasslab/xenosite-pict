@@ -199,6 +199,21 @@ fn align_mcs_rejects_aliphatic_vs_quinone() {
     );
 }
 
+/// C1CCCOC1 ← O=CCCCCO: MCS atom-map align (no bonded SMARTS pattern).
+#[test]
+fn align_atom_map_thp_chain() {
+    let mut ring = mol("C1CCCOC1").unwrap();
+    let r = ring.render(MolRenderOptions::default()).unwrap();
+    let mut chain = mol("O=CCCCCO").unwrap();
+    let aligned = chain
+        .render(MolRenderOptions {
+            align_to: Some(r.frame().to_string()),
+            ..Default::default()
+        })
+        .unwrap();
+    assert_mcs_overlay(&aligned, &r, 4, "chain→THP atom-map");
+}
+
 /// Asymmetric para-halo pair — F coincides under any valid embedding.
 #[test]
 fn align_asymmetric_para_halo() {

@@ -1,5 +1,6 @@
 /**
- * Align smoke: RDKit MCS (element + hybridization; BondCompare Any).
+ * Align smoke: RDKit MCS (element + hybridization; BondCompare Any);
+ * Depictor/MinimalLib align with atom matches only.
  * Symmetric cores may embed many ways — assert overlay hits, not fixed indices.
  * Run: `npx tsx src/align.smoke.ts`
  */
@@ -96,6 +97,14 @@ function coordsKey(r: Rendered): string {
   if (coordsKey(aligned) !== coordsKey(free)) {
     throw new Error("aliphatic→quinone changed coords despite MCS reject");
   }
+}
+
+// C1CCCOC1 ← O=CCCCCO: MCS atom-map align (no bonded SMARTS pattern).
+{
+  const ring = xpict.mol("C1CCCOC1");
+  const rR = await xpict.render(ring);
+  const aligned = await xpict.render(xpict.mol("O=CCCCCO"), { align_to: ring });
+  assertHits(aligned, rR, 4, "chain→THP atom-map");
 }
 
 // Several queries on one template — template pose must not move.
