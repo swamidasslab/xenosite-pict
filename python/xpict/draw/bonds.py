@@ -24,7 +24,6 @@ from xpict.draw.metrics import (
     BOND_PX,
     CHAIN_END_GAP_PX,
     END_GAP_PX,
-    OFFSET_PX,
     STROKE_PX,
     WEDGE_HALF_PX,
     hash_count,
@@ -178,24 +177,14 @@ def _offset_gap(length: float, *, chain: bool) -> float:
     return min(px, length * 0.22)
 
 
-def _multi_bond_offset_py(length: float) -> float:
-    """Python fallback (mirrors ``xpict-core::bonds``)."""
-    if length < 2.0 * OFFSET_PX:
-        return min(OFFSET_PX, length * 0.25)
-    return OFFSET_PX
-
-
 def multi_bond_offset(length: float) -> float:
     """Parallel spacing for double/triple strokes (RDKit ``multipleBondOffset``).
 
-    Uses ``xpict._native`` when built; otherwise Python fallback.
+    Thin wrapper over ``xpict._native`` / ``xpict-core::bonds``.
     """
-    try:
-        from xpict import _native
+    from xpict.native_bridge import multi_bond_offset as _native_offset
 
-        return float(_native.multi_bond_offset(length))
-    except ImportError:
-        return _multi_bond_offset_py(length)
+    return _native_offset(length)
 
 
 # Parallel lines have |cross(d0, d1)| below this (unit directions).

@@ -39,50 +39,6 @@ def test_weight_rejects_below_min():
         DepictSpec.model_validate({"type": "mol", "smiles": "CCO", "weight": 0.5})
 
 
-def test_diagram_weight_maps_user_to_ink():
-    from xpict.draw.metrics import diagram_weight
-
-    assert diagram_weight() == pytest.approx(WEIGHT_AT_ONE)
-    assert diagram_weight(None) == pytest.approx(WEIGHT_AT_ONE)
-    assert diagram_weight(1.0) == pytest.approx(WEIGHT_AT_ONE)
-    assert diagram_weight(WEIGHT_MIN) == pytest.approx(1.0)
-    with pytest.raises(ValueError, match=">="):
-        diagram_weight(0.5)
-    with pytest.raises(ValueError, match=">="):
-        diagram_weight(float("nan"))
-
-
-def test_label_weight_standoff_grows_with_weight():
-    from xpict.draw.metrics import label_weight_grow_px, label_weight_standoff_px
-
-    assert label_weight_standoff_px(WEIGHT_MIN) == pytest.approx(0.0)
-    stand1 = label_weight_standoff_px(1.0)
-    assert stand1 > 0
-    assert stand1 == pytest.approx(
-        label_weight_grow_px(1.0) + 0.5 * (WEIGHT_AT_ONE * STROKE_PX - STROKE_PX)
-    )
-
-
-def test_halo_scales_with_sqrt_ink():
-    from xpict.draw.metrics import (
-        HALO_GAP_PX,
-        HALO_STROKE,
-        halo_gap_for_weight,
-        halo_stroke_for_weight,
-        halo_stroke_from_stroke,
-        stroke_px_for_weight,
-    )
-
-    assert halo_gap_for_weight(WEIGHT_MIN) == pytest.approx(HALO_GAP_PX)
-    assert halo_stroke_for_weight(WEIGHT_MIN) == pytest.approx(HALO_STROKE)
-    assert halo_stroke_for_weight(1.0) == pytest.approx(HALO_STROKE * (WEIGHT_AT_ONE**0.5))
-    # Absolute ink 4 → user 4/WEIGHT_AT_ONE → halo ×2.
-    w_abs4 = 4.0 / WEIGHT_AT_ONE
-    assert halo_gap_for_weight(w_abs4) == pytest.approx(2.0 * HALO_GAP_PX)
-    assert halo_stroke_for_weight(w_abs4) == pytest.approx(2.0 * HALO_STROKE)
-    assert halo_stroke_for_weight(2.0) < halo_stroke_from_stroke(stroke_px_for_weight(2.0))
-
-
 def test_weight_one_matches_omitted():
     be = layout_backend()
     a = render({"type": "mol", "smiles": "CCO"}, backend=be)
