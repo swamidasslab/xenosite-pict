@@ -78,28 +78,43 @@ export function inferHybridizationCodes(molJson: RdkitMolJson): number[] {
   });
 }
 
-/** Rewrite isotope SMARTS ``[62*]`` → element ``[#6]`` (Z = isotope ÷ 10). */
+/** Rewrite isotope SMARTS ``[62*]`` / ``[63*&!R]`` → element ``[#6]…``. */
 export function smartsIsotopesToElements(smarts: string): string {
-  return smarts.replace(/\[(\d+)\*\]/g, (_m, iso: string) => {
+  return smarts.replace(/\[(\d+)\*([^\]]*)\]/g, (_m, iso: string, rest: string) => {
     const z = Math.floor(Number(iso) / 10);
-    return `[#${z}]`;
+    return `[#${z}${rest}]`;
   });
 }
 
 /**
- * MCS used BondCompare Any — expand aromatic/typed bonds so the SMARTS
- * still matches kekulized MinimalLib mols used at align time.
+ * Drop MCS ring/chain query annotations from SMARTS used at align time.
+ * ``RingMatchesRingOnly`` already constrained the MCS; align mols only need
+ * element + any-bond connectivity.
+ */
+export function smartsStripRingQueries(smarts: string): string {
+  return smarts.replace(/\[([^\]]*)\]/g, (_m, inner: string) => {
+    const cleaned = inner
+      .replace(/[&,]?!?R\d*/g, "")
+      .replace(/;+/g, ";")
+      .replace(/^;|;$/g, "");
+    return `[${cleaned}]`;
+  });
+}
+
+/**
+ * MCS used BondCompare Any — expand aromatic/typed/ring-bond markers so the
+ * SMARTS still matches kekulized MinimalLib mols used at align time.
  */
 export function smartsBondsAny(smarts: string): string {
   // Leave atom brackets intact; collapse bond operator runs to ``~``.
-  return smarts.replace(/\[[^\]]*\]|[:,=\-#]+/g, (m) =>
+  return smarts.replace(/\[[^\]]*\]|[:@!=\-#&;]+/g, (m) =>
     m.startsWith("[") ? m : "~"
   );
 }
 
 /** Isotope SMARTS → element SMARTS with any-bond (align-ready). */
 export function smartsForAlign(smarts: string): string {
-  return smartsBondsAny(smartsIsotopesToElements(smarts));
+  return smartsBondsAny(smartsStripRingQueries(smartsIsotopesToElements(smarts)));
 }
 
 function tagMolblockIsotopes(

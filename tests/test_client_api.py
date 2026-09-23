@@ -77,6 +77,23 @@ def test_phenol_quinone_mcs():
     assert hits >= 6, f"quinone→phenol: expected ≥6 hits, got {hits}"
 
 
+def test_ring_vs_open_chain_no_mcs():
+    """RingMatchesRingOnly: O=CCCCCO must not wrap onto C1CCCOC1."""
+    ring = mol("C1CCCOC1")
+    free = render(mol("O=CCCCCO"))
+    aligned = render(mol("O=CCCCCO"), {"align_to": ring})
+    free_key = [(a.index, round(a.x, 4), round(a.y, 4)) for a in free.coords]
+    aligned_key = [(a.index, round(a.x, 4), round(a.y, 4)) for a in aligned.coords]
+    assert free_key == aligned_key
+    r = render(ring)
+    hits = sum(
+        1
+        for a in aligned.coords
+        if any(((a.x - b.x) ** 2 + (a.y - b.y) ** 2) ** 0.5 < 0.5 for b in r.coords)
+    )
+    assert hits < 4, f"chain→THP should not MCS-align (hits={hits})"
+
+
 def test_multi_query_leaves_template_frame():
     tmpl = mol("c1ccc(O)cc1")
     render(tmpl)
