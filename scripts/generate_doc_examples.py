@@ -50,7 +50,7 @@ CASES: dict[str, dict] = {
         # Real ChemAxon CXSMILES atom alias (literal R1).
         "cxsmiles": "*c1ccccc1Cl |$R1;;;;;$|",
     },
-    # Sparse shade: most zeros, a few hot atoms (SoM-style highlight).
+    # Shade examples: a few hot atoms, rest quiet (keep depictions readable).
     "aspirin_shade": {
         "type": "mol",
         "smiles": "CC(=O)Oc1ccccc1C(=O)O",

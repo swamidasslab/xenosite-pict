@@ -1,4 +1,4 @@
-"""Gallery example regressions — markup, nested docs, sparse shade."""
+"""Gallery example regressions — markup, nested docs, shade."""
 
 from __future__ import annotations
 
