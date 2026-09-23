@@ -2,9 +2,10 @@
  * RDKit layout + template align → {@link MoleculeIn} (SVG / SCALE space).
  *
  * MCS uses element + hybridization (isotope-encoded ``Z×10+hyb`` on copies;
- * ``AtomCompare: Isotopes``) and ``BondCompare: Any``. Align passes **atom
- * matches only** into MinimalLib (unique isotopes + disconnected SMARTS) —
- * not the MCS bond pattern. Protocol mirrors Rust ``xpict::align_opts``.
+ * ``AtomCompare: Isotopes``) and ``BondCompare: Any``. Align calls MinimalLib
+ * ``generate_aligned_coords`` with the MCS isotope ``referenceSmarts`` on those
+ * same tagged copies (MinimalLib has no atom-map overload — that is Python /
+ * native Depictor). Protocol mirrors Rust ``xpict::align_opts``.
  */
 
 import { ensureRdkit, type RdkitMol, type RdkitModule } from "../rdkit-loader.js";
@@ -22,9 +23,6 @@ export const MCS_DETAILS_JSON = JSON.stringify({
   BondCompare: "Any",
   Timeout: 2,
 });
-
-/** Unique isotope base for atom-only MinimalLib align SMARTS. */
-const ALIGN_ISO_BASE = 9100;
 
 const MIN_MCS_ATOMS = 3;
 
@@ -76,81 +74,6 @@ export function inferHybridizationCodes(molJson: RdkitMolJson): number[] {
   });
 }
 
-/** Rewrite isotope SMARTS ``[62*]`` / ``[63*&!R]`` → element ``[#6]…``. */
-export function smartsIsotopesToElements(smarts: string): string {
-  return smarts.replace(/\[(\d+)\*([^\]]*)\]/g, (_m, iso: string, rest: string) => {
-    const z = Math.floor(Number(iso) / 10);
-    return `[#${z}${rest}]`;
-  });
-}
-
-/**
- * Drop MCS ring/chain query annotations from bonded SMARTS used to *find*
- * atom matches (before atom-only align).
- */
-export function smartsStripRingQueries(smarts: string): string {
-  return smarts.replace(/\[([^\]]*)\]/g, (_m, inner: string) => {
-    const cleaned = inner
-      .replace(/[&,]?!?R\d*/g, "")
-      .replace(/;+/g, ";")
-      .replace(/^;|;$/g, "");
-    return `[${cleaned}]`;
-  });
-}
-
-/**
- * MCS used BondCompare Any — expand aromatic/typed/ring-bond markers so the
- * SMARTS still matches kekulized MinimalLib mols when resolving atom pairs.
- */
-export function smartsBondsAny(smarts: string): string {
-  // Leave atom brackets intact; collapse bond operator runs to ``~``.
-  return smarts.replace(/\[[^\]]*\]|[:@!=\-#&;]+/g, (m) =>
-    m.startsWith("[") ? m : "~"
-  );
-}
-
-/** Isotope MCS SMARTS → element + any-bond SMARTS (for match discovery only). */
-export function smartsForAlign(smarts: string): string {
-  return smartsBondsAny(smartsStripRingQueries(smartsIsotopesToElements(smarts)));
-}
-
-/** Disconnected isotope SMARTS for atom-only MinimalLib align. */
-export function atomOnlyIsotopeSmarts(n: number, isoBase = ALIGN_ISO_BASE): string {
-  return Array.from({ length: n }, (_, i) => `[${isoBase + i}*]`).join(".");
-}
-
-/** Write ``M  ISO`` for selected 0-based atom indices (replaces existing ISO). */
-export function tagMolblockAtomIsotopes(
-  molblock: string,
-  atomIsotopes: ReadonlyMap<number, number>
-): string {
-  const lines = molblock
-    .replace(/\r\n/g, "\n")
-    .split("\n")
-    .filter((l) => !l.startsWith("M  ISO"));
-  const end = lines.findIndex((l) => l.startsWith("M  END"));
-  if (end < 0 || atomIsotopes.size === 0) return molblock;
-  const pairs: string[] = [];
-  for (const [idx, iso] of [...atomIsotopes.entries()].sort((a, b) => a[0] - b[0])) {
-    pairs.push(String(idx + 1).padStart(4) + String(iso).padStart(4));
-  }
-  const chunks: string[] = [];
-  for (let i = 0; i < pairs.length; i += 8) {
-    const slice = pairs.slice(i, i + 8);
-    chunks.push("M  ISO" + String(slice.length).padStart(3) + slice.join(""));
-  }
-  lines.splice(end, 0, ...chunks);
-  return lines.join("\n");
-}
-
-function stripMolblockIsotopes(molblock: string): string {
-  return molblock
-    .replace(/\r\n/g, "\n")
-    .split("\n")
-    .filter((l) => !l.startsWith("M  ISO"))
-    .join("\n");
-}
-
 function tagMolblockIsotopes(
   molblock: string,
   atomicNums: number[],
@@ -173,6 +96,14 @@ function tagMolblockIsotopes(
   return lines.join("\n");
 }
 
+function stripMolblockIsotopes(molblock: string): string {
+  return molblock
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .filter((l) => !l.startsWith("M  ISO"))
+    .join("\n");
+}
+
 /**
  * Copy with isotopes ``Z×10+hyb`` so MinimalLib ``AtomCompare: Isotopes``
  * matches Python element+hybridization MCS.
@@ -193,7 +124,10 @@ export function tagHybridizationIsotopes(
   return tagged;
 }
 
-/** Keep in sync with ``xpict::align_opts::minimallib_align_details``. */
+/**
+ * MinimalLib ``generate_aligned_coords`` details with MCS ``referenceSmarts``.
+ * Keep in sync with ``xpict::align_opts::minimallib_align_details``.
+ */
 export function minimallibAlignDetails(referenceSmarts: string): string {
   return JSON.stringify({
     useCoordGen: false,
@@ -207,6 +141,16 @@ export function minimallibAlignDetails(referenceSmarts: string): string {
 export function alignSucceeded(result: string): boolean {
   const t = result.trim();
   return t.length > 0 && t !== "{}";
+}
+
+/** Drop null / negative indices from a MinimalLib match atom list. */
+function matchAtomIndices(raw: unknown): number[] {
+  if (!Array.isArray(raw)) return [];
+  const out: number[] = [];
+  for (const x of raw) {
+    if (typeof x === "number" && Number.isInteger(x) && x >= 0) out.push(x);
+  }
+  return out;
 }
 
 export type MoleculeIn = {
@@ -363,24 +307,20 @@ function ensureCoords(mol: RdkitMol): void {
   // Molfile / cached templates already carry coords — leave the frame alone.
 }
 
-/** FMCS → ordered (templateIdx, molIdx) atom pairs (bonds used only to find MCS). */
-function mcsAtomPairs(
+/**
+ * FMCS on hybridization-tagged copies → isotope SMARTS when both tagged mols
+ * match it with enough non-null atom indices.
+ */
+function mcsIsotopeSmarts(
   rdkit: RdkitModule,
-  mol: RdkitMol,
-  template: RdkitMol
-): Array<{ tmplIdx: number; molIdx: number }> | null {
-  const taggedA = tagHybridizationIsotopes(rdkit, template);
-  const taggedB = tagHybridizationIsotopes(rdkit, mol);
-  if (!taggedA || !taggedB) {
-    taggedA?.delete();
-    taggedB?.delete();
-    return null;
-  }
+  taggedMol: RdkitMol,
+  taggedTemplate: RdkitMol
+): string | null {
   let qmol: RdkitMol | null = null;
   try {
     const list = new rdkit.MolList();
-    list.append(taggedA);
-    list.append(taggedB);
+    list.append(taggedTemplate);
+    list.append(taggedMol);
     const raw = rdkit.get_mcs_as_json(list, MCS_DETAILS_JSON);
     let parsed: { numAtoms?: number; canceled?: boolean; smarts?: string };
     try {
@@ -395,27 +335,24 @@ function mcsAtomPairs(
     ) {
       return null;
     }
-    const bonded = smartsForAlign(parsed.smarts);
-    qmol = rdkit.get_qmol(bonded);
+    qmol = rdkit.get_qmol(parsed.smarts);
     if (!qmol || !qmol.is_valid()) {
       qmol?.delete();
       return null;
     }
-    const tmplHit = JSON.parse(template.get_substruct_match(qmol)) as {
-      atoms?: number[];
+    const tmplHit = JSON.parse(taggedTemplate.get_substruct_match(qmol)) as {
+      atoms?: unknown;
     };
-    const molHit = JSON.parse(mol.get_substruct_match(qmol)) as {
-      atoms?: number[];
+    const molHit = JSON.parse(taggedMol.get_substruct_match(qmol)) as {
+      atoms?: unknown;
     };
-    const ta = tmplHit.atoms ?? [];
-    const ma = molHit.atoms ?? [];
+    const ta = matchAtomIndices(tmplHit.atoms);
+    const ma = matchAtomIndices(molHit.atoms);
     if (ta.length < MIN_MCS_ATOMS || ta.length !== ma.length) {
       return null;
     }
-    return ta.map((tmplIdx, i) => ({ tmplIdx, molIdx: ma[i]! }));
+    return parsed.smarts;
   } finally {
-    taggedA.delete();
-    taggedB.delete();
     qmol?.delete();
   }
 }
@@ -427,8 +364,9 @@ export type LayoutResult = {
 };
 
 /**
- * Layout `source` (SMILES / molfile). When `template` is set, RDKit MCS finds
- * atom pairs; MinimalLib aligns with atom-only isotope SMARTS (no MCS bonds).
+ * Layout `source` (SMILES / molfile). When `template` is set, RDKit MCS-aligns
+ * onto that pose via MinimalLib ``generate_aligned_coords`` + isotope MCS
+ * ``referenceSmarts`` on hybridization-tagged copies.
  */
 export async function layoutWithRdkit(
   source: string,
@@ -437,40 +375,26 @@ export async function layoutWithRdkit(
   const rdkit = await ensureRdkit();
   const mol = getMol(rdkit, source);
   let templateMol: RdkitMol | null = null;
-  let molTagged: RdkitMol | null = null;
-  let tmplTagged: RdkitMol | null = null;
+  let taggedMol: RdkitMol | null = null;
+  let taggedTemplate: RdkitMol | null = null;
   try {
     if (opts.template) {
       templateMol = getMol(rdkit, opts.template);
       ensureCoords(templateMol);
 
-      const pairs = mcsAtomPairs(rdkit, mol, templateMol);
+      taggedTemplate = tagHybridizationIsotopes(rdkit, templateMol);
+      taggedMol = tagHybridizationIsotopes(rdkit, mol);
       let aligned = "";
-      if (pairs) {
-        const molIso = new Map(
-          pairs.map((p, i) => [p.molIdx, ALIGN_ISO_BASE + i] as const)
-        );
-        const tmplIso = new Map(
-          pairs.map((p, i) => [p.tmplIdx, ALIGN_ISO_BASE + i] as const)
-        );
-        molTagged = rdkit.get_mol(
-          tagMolblockAtomIsotopes(mol.get_molblock(), molIso)
-        );
-        tmplTagged = rdkit.get_mol(
-          tagMolblockAtomIsotopes(templateMol.get_molblock(), tmplIso)
-        );
-        if (
-          molTagged?.is_valid() &&
-          tmplTagged?.is_valid()
-        ) {
-          const smarts = atomOnlyIsotopeSmarts(pairs.length);
-          aligned = molTagged.generate_aligned_coords(
-            tmplTagged,
+      if (taggedTemplate && taggedMol) {
+        const smarts = mcsIsotopeSmarts(rdkit, taggedMol, taggedTemplate);
+        if (smarts) {
+          aligned = taggedMol.generate_aligned_coords(
+            taggedTemplate,
             minimallibAlignDetails(smarts)
           );
         }
       }
-      if (!alignSucceeded(aligned) || !molTagged?.is_valid()) {
+      if (!alignSucceeded(aligned) || !taggedMol?.is_valid()) {
         // No usable MCS / match — free layout (do not pretend we aligned).
         ensureCoords(mol);
         return {
@@ -486,13 +410,13 @@ export async function layoutWithRdkit(
       let flipMaxY = -Infinity;
       for (const [, y] of tmplCoords) flipMaxY = Math.max(flipMaxY, y);
       return {
-        molecule: toMoleculeIn(molTagged, {
+        molecule: toMoleculeIn(taggedMol, {
           id: opts.id,
           scale: tmplScale,
           flipMaxY,
         }),
         molblock: sanitizeDummyMolblock(
-          stripMolblockIsotopes(molTagged.get_molblock())
+          stripMolblockIsotopes(taggedMol.get_molblock())
         ),
       };
     }
@@ -504,8 +428,8 @@ export async function layoutWithRdkit(
   } finally {
     mol.delete();
     templateMol?.delete();
-    molTagged?.delete();
-    tmplTagged?.delete();
+    taggedMol?.delete();
+    taggedTemplate?.delete();
   }
 }
 
