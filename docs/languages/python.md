@@ -34,8 +34,8 @@ svg = render({
 <div class="example-out" markdown>
 
 <figure markdown="span">
-![Ethanol shade](../assets/examples/ethanol_shade.svg)
-<figcaption>`shade` on ethanol</figcaption>
+![Ethanol with shading](../assets/examples/ethanol_shade.svg)
+<figcaption>Ethanol</figcaption>
 </figure>
 
 <figure markdown="span">
@@ -44,8 +44,8 @@ svg = render({
 </figure>
 
 <figure markdown="span">
-![Phenol shade](../assets/examples/phenol_shade.svg)
-<figcaption>Sparse oxygen shade</figcaption>
+![Phenol with atom shading](../assets/examples/phenol_shade.svg)
+<figcaption>Phenol</figcaption>
 </figure>
 
 </div>
