@@ -171,4 +171,20 @@ mod tests {
         assert!(out.atoms[1].label.is_none());
         assert_eq!(out.atoms[2].label.as_deref(), Some("R2"));
     }
+
+    #[test]
+    fn empty_and_underscore_edge_cases() {
+        assert!(cx_atom_labels("").is_empty());
+        assert!(cx_atom_labels("CCO").is_empty());
+        assert!(cx_atom_labels("|$no close").is_empty());
+        let labels = cx_atom_labels("*C |$_;$|");
+        assert_eq!(labels[0].as_deref(), Some("_")); // strip_prefix empty → keep
+        let labels2 = cx_atom_labels("*C |$_R;$|");
+        assert_eq!(labels2[0].as_deref(), Some("R"));
+        assert_eq!(smiles_base(""), "");
+        assert_eq!(smiles_base("CCO"), "CCO");
+        assert!(cx_source(None, None).is_none());
+        assert_eq!(cx_source(None, Some("  ")), None);
+        assert_eq!(cx_source(Some("CX"), Some("S")), Some("CX"));
+    }
 }
