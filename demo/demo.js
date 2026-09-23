@@ -1,6 +1,6 @@
 /**
- * GitHub Pages demo — two SMILES, query aligned to template, editable options.
- * Redraws on any input change (no Draw button).
+ * GitHub Pages demo — two SMILES, query aligned to template, sparse shade.
+ * Redraws on any input change (no Draw button). Atom/bond marks are not shown.
  */
 import { xpict } from "./pkg/index.js";
 
@@ -30,27 +30,6 @@ function parseFloatList(raw) {
   return vals;
 }
 
-function parseIndexList(raw) {
-  const text = raw.trim();
-  if (!text) return undefined;
-  const vals = text.split(/[\s,]+/).filter(Boolean).map((s) => Number(s));
-  if (vals.some((n) => !Number.isInteger(n) || n < 0)) {
-    throw new Error("mark_atoms must be non-negative integers");
-  }
-  return vals;
-}
-
-function parseBondPairs(raw) {
-  const text = raw.trim();
-  if (!text) return undefined;
-  const pairs = text.split(/[\s,]+/).filter(Boolean).map((tok) => {
-    const m = tok.match(/^(\d+)[-:](\d+)$/);
-    if (!m) throw new Error(`bad bond mark "${tok}" (use begin-end)`);
-    return [Number(m[1]), Number(m[2])];
-  });
-  return pairs;
-}
-
 function parseStarLabels(raw) {
   const text = raw.trim();
   if (!text) return undefined;
@@ -68,8 +47,6 @@ function readOptions() {
     color2: $("color2").value,
     star_labels1: parseStarLabels($("star_labels1").value),
     star_labels2: parseStarLabels($("star_labels2").value),
-    mark_atoms: parseIndexList($("mark_atoms").value),
-    mark_bonds: parseBondPairs($("mark_bonds").value),
     atom_shade: parseFloatList($("atom_shade").value),
     bond_shade: parseFloatList($("bond_shade").value),
   };
@@ -120,8 +97,6 @@ async function draw() {
     const queryOpts = {
       color: opts.color2,
       ...(opts.star_labels2 ? { star_labels: opts.star_labels2 } : {}),
-      ...(opts.mark_atoms ? { mark_atoms: opts.mark_atoms } : {}),
-      ...(opts.mark_bonds ? { mark_bonds: opts.mark_bonds } : {}),
       ...(opts.atom_shade ? { atom_shade: opts.atom_shade } : {}),
       ...(opts.bond_shade ? { bond_shade: opts.bond_shade } : {}),
       ...(opts.bold_labels ? { bold_labels: true } : {}),
