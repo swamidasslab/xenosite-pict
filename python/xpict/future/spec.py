@@ -186,15 +186,19 @@ class AnnotationSpec(StrictModel):
 
 
 class ShadeSpec(StrictModel):
-    """Continuous per-atom / per-bond scores for colormap shading."""
+    """Continuous per-atom / per-bond scores for colormap shading.
+
+    Scores are interpreted on a fixed ``[vmin, vmax]`` window (default
+    ``0``…``1``). They are **not** auto-scaled to the data range.
+    """
 
     atoms: list[float] | None = Field(
         default=None, description="Per-atom scores (same length as atom count)"
     )
     bonds: list[float] | None = Field(default=None, description="Per-bond scores")
     colormap: str = Field(default="xenosite", description="Named colormap")
-    vmin: float | None = None
-    vmax: float | None = None
+    vmin: float = Field(default=0.0, description="Shade window low (default 0)")
+    vmax: float = Field(default=1.0, description="Shade window high (default 1)")
 
 
 class RingAttachmentSpec(StrictModel):

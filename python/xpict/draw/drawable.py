@@ -235,13 +235,9 @@ class ShadeDrawable(Drawable):
         if not atom_zs and not bond_zs:
             return None
 
-        samples: list[float] = []
-        if atom_zs:
-            samples.extend(atom_zs)
-        if bond_zs:
-            samples.extend(bond_zs)
-        vmin = self.spec.vmin if self.spec.vmin is not None else min(samples)
-        vmax = self.spec.vmax if self.spec.vmax is not None else max(samples)
+        # Fixed window by default — never auto-scale to the data range.
+        vmin = float(self.spec.vmin)
+        vmax = float(self.spec.vmax)
         # xenopict ``diverging_cmap``: map [-1,1]→[0,1] so negatives aren't clipped
         # to the white end of a sequential LUT.
         diverging = vmin < 0.0 < vmax

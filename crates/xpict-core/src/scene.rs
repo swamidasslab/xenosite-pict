@@ -212,6 +212,12 @@ pub struct MoleculeIn {
     /// Per-bond shade scores (same order as [`Self::bonds`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bond_shade: Option<Vec<f64>>,
+    /// Shade colormap window low (default ``0``). Not inferred from data.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shade_vmin: Option<f64>,
+    /// Shade colormap window high (default ``1``). Not inferred from data.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shade_vmax: Option<f64>,
     /// Atom indices to circle (publication marks).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mark_atoms: Vec<i32>,
