@@ -49,7 +49,14 @@ jobs:
         run: |
           VER="${GITHUB_REF_NAME#py/v}"
           echo "Publishing version $VER"
-          bash scripts/check_version_policy.sh --patch-only "$VER"
+          # X.Y.0 allowed so product Python can ship via py/v* (and catch-up
+          # after release). Patches (Z≥1) stay patch-only. Lockstep X.Y always.
+          Z="${VER##*.}"
+          if [[ "$Z" == "0" ]]; then
+            bash scripts/check_version_policy.sh "$VER"
+          else
+            bash scripts/check_version_policy.sh --patch-only "$VER"
+          fi
           python3 - <<PY
           from pathlib import Path
           import re

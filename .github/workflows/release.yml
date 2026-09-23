@@ -1,11 +1,11 @@
 # All-or-none product release (major/minor, or coordinated same version).
 #
 # Triggers:
-#   - tag release/v*  (e.g. release/v0.2.0) → publish core, rust, js
+#   - tag release/v*  (e.g. release/v0.2.0) → publish core, rust, js, then
+#     dispatch pypi.yml (Trusted Publishing: pypi.yml + env pypi)
 #   - workflow_dispatch → version + optional dry_run
 #
-# Python → separate pypi.yml (Trusted Publishing: pypi.yml + env pypi).
-# Language-only tags (js/v*, py/v*, …) cannot ship X.Y.0 — see .github/PUBLISH.md.
+# Language-only tags (js/v*, py/v*, …) — see .github/PUBLISH.md.
 
 name: release
 
