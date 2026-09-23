@@ -47,7 +47,19 @@ void ensure_2d(RDKit::ROMol &mol) {
   }
 }
 
-/** FMCS (BondCompareAny) → referencePattern for Depictor matching. */
+/** FMCS: element + hybridization atoms, any-bond (parity with Python ``_mcs_params``). */
+bool mcs_atom_compare_elements_hybridization(
+    const RDKit::MCSAtomCompareParameters &, const RDKit::ROMol &mol1,
+    unsigned int idx1, const RDKit::ROMol &mol2, unsigned int idx2,
+    void *) {
+  const RDKit::Atom *a1 = mol1.getAtomWithIdx(idx1);
+  const RDKit::Atom *a2 = mol2.getAtomWithIdx(idx2);
+  if (a1->getAtomicNum() != a2->getAtomicNum()) {
+    return false;
+  }
+  return a1->getHybridization() == a2->getHybridization();
+}
+
 std::unique_ptr<RDKit::ROMol> mcs_pattern(const RDKit::ROMol &mol,
                                           const RDKit::ROMol &tmpl) {
   std::vector<RDKit::ROMOL_SPTR> mols{
@@ -56,7 +68,7 @@ std::unique_ptr<RDKit::ROMol> mcs_pattern(const RDKit::ROMol &mol,
   };
   RDKit::MCSParameters params;
   params.Timeout = 2;
-  params.setMCSAtomTyperFromEnum(RDKit::AtomCompareElements);
+  params.AtomTyper = mcs_atom_compare_elements_hybridization;
   params.setMCSBondTyperFromEnum(RDKit::BondCompareAny);
   RDKit::MCSResult mcs = RDKit::findMCS(mols, &params);
   if (mcs.NumAtoms < kMinMcsAtoms || mcs.SmartsString.empty()) {
@@ -69,19 +81,28 @@ std::unique_ptr<RDKit::ROMol> mcs_pattern(const RDKit::ROMol &mol,
   }
 }
 
-void align_to_template(RDKit::ROMol &mol, const RDKit::ROMol &tmpl) {
+/// Returns true when Depictor constrained the pose onto the template.
+bool align_to_template(RDKit::ROMol &mol, const RDKit::ROMol &tmpl) {
   auto pattern = mcs_pattern(mol, tmpl);
+  if (!pattern) {
+    // No element+hybridization MCS — free layout (parity with Python/JS).
+    ensure_2d(mol);
+    return false;
+  }
   RDDepict::ConstrainedDepictionParams p;
   p.allowRGroups = true;
-  p.acceptFailure = true;
+  p.acceptFailure = false;
   try {
-    RDDepict::generateDepictionMatching2DStructure(mol, tmpl, -1, pattern.get(),
-                                                    p);
+    auto match = RDDepict::generateDepictionMatching2DStructure(
+        mol, tmpl, -1, pattern.get(), p);
+    if (match.empty()) {
+      ensure_2d(mol);
+      return false;
+    }
+    return true;
   } catch (...) {
     ensure_2d(mol);
-  }
-  if (mol.getNumConformers() == 0) {
-    ensure_2d(mol);
+    return false;
   }
 }
 
@@ -112,6 +133,7 @@ LayoutOut extract(RDKit::ROMol &mol) {
 
   LayoutOut out;
   out.molblock = RDKit::MolToMolBlock(mol);
+  out.matched_template = false;
   const auto &conf = mol.getConformer();
   const unsigned n = mol.getNumAtoms();
   out.atoms.reserve(n);
@@ -153,17 +175,20 @@ LayoutOut prepare_layout(rust::Str molblock, rust::Str template_molblock) {
   auto mol = parse_molblock(mb);
   try_kekulize(*mol);
 
+  bool matched = false;
   if (!tmpl_mb.empty()) {
     auto tmpl = parse_molblock(tmpl_mb);
     if (tmpl->getNumConformers() == 0) {
       RDDepict::compute2DCoords(*tmpl);
     }
-    align_to_template(*mol, *tmpl);
+    matched = align_to_template(*mol, *tmpl);
   } else {
     ensure_2d(*mol);
   }
 
-  return extract(*mol);
+  LayoutOut out = extract(*mol);
+  out.matched_template = matched;
+  return out;
 }
 
 } // namespace xpict_depict

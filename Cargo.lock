@@ -921,7 +921,7 @@ dependencies = [
 
 [[package]]
 name = "xpict"
-version = "0.1.4"
+version = "0.2.0"
 dependencies = [
  "cxx",
  "cxx-build",
@@ -933,7 +933,7 @@ dependencies = [
 
 [[package]]
 name = "xpict-core"
-version = "0.1.4"
+version = "0.2.0"
 dependencies = [
  "elkrs",
  "i_overlay",
@@ -944,7 +944,7 @@ dependencies = [
 
 [[package]]
 name = "xpict-py"
-version = "0.1.4"
+version = "0.2.0"
 dependencies = [
  "pyo3",
  "serde_json",
@@ -953,7 +953,7 @@ dependencies = [
 
 [[package]]
 name = "xpict-wasm"
-version = "0.1.4"
+version = "0.2.0"
 dependencies = [
  "serde_json",
  "wasm-bindgen",

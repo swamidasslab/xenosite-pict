@@ -1,5 +1,5 @@
 /**
- * Align smoke: RDKit MCS + generate_aligned_coords (BondCompare Any + sat filter).
+ * Align smoke: RDKit MCS (element + hybridization; BondCompare Any).
  * Symmetric cores may embed many ways — assert overlay hits, not fixed indices.
  * Run: `npx tsx src/align.smoke.ts`
  */
@@ -61,7 +61,7 @@ function coordsKey(r: Rendered): string {
   assertHits(await xpict.render(ethyl, { align_to: pentyl }), pR, 8, "ethyl→pentyl");
 }
 
-// Phenol ↔ benzoquinone (BondCompare Any + sat filter; O anchors).
+// Phenol ↔ benzoquinone (O/SP2 anchors substituent).
 {
   const phenol = xpict.mol("c1ccc(O)cc1");
   const quinone = xpict.mol("O=C1C=CC(=O)C=C1");
@@ -71,7 +71,15 @@ function coordsKey(r: Rendered): string {
   assertHits(await xpict.render(phenol, { align_to: quinone }), qR, 6, "phenol→quinone");
 }
 
-// Aliphatic cyclohexane ether must NOT snap onto benzoquinone.
+// Aniline ↔ quinone imine (N/SP2 anchors; N≠O so not benzoquinone).
+{
+  const aniline = xpict.mol("Nc1ccccc1");
+  const imine = xpict.mol("O=C1C=CC(=N)C=C1");
+  const aR = await xpict.render(aniline);
+  assertHits(await xpict.render(imine, { align_to: aniline }), aR, 6, "imine→aniline");
+}
+
+// Aliphatic cyclohexane ether must NOT snap onto benzoquinone (SP3≠SP2).
 {
   const quinone = xpict.mol("O=C1C=CC(=O)C=C1");
   const qR = await xpict.render(quinone);

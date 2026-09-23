@@ -138,6 +138,67 @@ fn align_mcs_phenol_quinone() {
     assert_mcs_overlay(&q_on_ph, &ph, 6, "quinone→phenol");
 }
 
+#[test]
+fn align_mcs_aniline_quinone_imine() {
+    let mut aniline = mol("Nc1ccccc1").unwrap();
+    let a = aniline.render(MolRenderOptions::default()).unwrap();
+    let mut imine = mol("O=C1C=CC(=N)C=C1").unwrap();
+    let im_on_a = imine
+        .render(MolRenderOptions {
+            align_to: Some(a.frame().to_string()),
+            ..Default::default()
+        })
+        .unwrap();
+    assert_mcs_overlay(&im_on_a, &a, 6, "imine→aniline");
+}
+
+#[test]
+fn align_mcs_rejects_aliphatic_vs_quinone() {
+    let mut quinone = mol("O=C1C=CC(=O)C=C1").unwrap();
+    let q = quinone.render(MolRenderOptions::default()).unwrap();
+    let mut chain = mol("C1CCCCC1CCOCCCCCC").unwrap();
+    let free = chain.render(MolRenderOptions::default()).unwrap();
+    let mut chain2 = mol("C1CCCCC1CCOCCCCCC").unwrap();
+    let aligned = chain2
+        .render(MolRenderOptions {
+            align_to: Some(q.frame().to_string()),
+            ..Default::default()
+        })
+        .unwrap();
+    // No element+hyb MCS → free layout (coords unchanged vs unconstrained).
+    let free_key: Vec<_> = free
+        .molecule
+        .atoms
+        .iter()
+        .map(|a| (a.index, (a.x * 1e4).round() as i64, (a.y * 1e4).round() as i64))
+        .collect();
+    let aligned_key: Vec<_> = aligned
+        .molecule
+        .atoms
+        .iter()
+        .map(|a| (a.index, (a.x * 1e4).round() as i64, (a.y * 1e4).round() as i64))
+        .collect();
+    assert_eq!(
+        free_key, aligned_key,
+        "aliphatic→quinone should not template-align"
+    );
+    let hits = aligned
+        .molecule
+        .atoms
+        .iter()
+        .filter(|a| {
+            q.molecule
+                .atoms
+                .iter()
+                .any(|b| near(a.x, a.y, b.x, b.y, 0.2))
+        })
+        .count();
+    assert!(
+        hits < 4,
+        "aliphatic→quinone should not MCS-overlay (hits={hits})"
+    );
+}
+
 /// Asymmetric para-halo pair — F coincides under any valid embedding.
 #[test]
 fn align_asymmetric_para_halo() {

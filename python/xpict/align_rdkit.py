@@ -17,37 +17,27 @@ _PLACE_CAP = 8
 _ORDER_CAP = 24
 
 
-def _matched_has_unsaturated(mol, atom_match: tuple[int, ...], pattern) -> bool:
-    """True if any matched bond is aromatic or order ≥ 1.5."""
-    for bond in pattern.GetBonds():
-        a = atom_match[bond.GetBeginAtomIdx()]
-        b = atom_match[bond.GetEndAtomIdx()]
-        mb = mol.GetBondBetweenAtoms(int(a), int(b))
-        if mb is None:
-            continue
-        if mb.GetIsAromatic() or mb.GetBondTypeAsDouble() >= 1.5:
-            return True
-    return False
+def _mcs_params():
+    """FMCS: element + hybridization atoms; any-bond (aromatic ↔ kekulé / quinone).
 
-
-def _mcs_saturation_compatible(mol_a, mol_b, pattern) -> bool:
-    """Reject saturated-aliphatic ↔ unsaturated MCS (e.g. cyclohexane ↔ quinone).
-
-    ``BondCompare.CompareAny`` still finds aromatic ↔ kekulé / quinone; this
-    filter drops matches where one side's mapped bonds are all single/non-aromatic
-    and the other's are not. Keep in sync with JS ``mcsSaturationCompatible``.
+    Hybridization separates aliphatic rings from quinones without a post-filter.
+    Parity with JS MinimalLib (isotope-encoded Z×10+hyb + ``AtomCompare: Isotopes``).
     """
-    matches_a = mol_a.GetSubstructMatches(pattern)
-    matches_b = mol_b.GetSubstructMatches(pattern)
-    if not matches_a or not matches_b:
-        return False
-    for ma in matches_a:
-        ua = _matched_has_unsaturated(mol_a, ma, pattern)
-        for mb in matches_b:
-            ub = _matched_has_unsaturated(mol_b, mb, pattern)
-            if ua == ub:
-                return True
-    return False
+    from rdkit.Chem import rdFMCS
+
+    class _ElemHyb(rdFMCS.MCSAtomCompare):
+        def __call__(self, _params, mol1, idx1, mol2, idx2) -> bool:  # noqa: ANN001
+            a1 = mol1.GetAtomWithIdx(idx1)
+            a2 = mol2.GetAtomWithIdx(idx2)
+            if a1.GetAtomicNum() != a2.GetAtomicNum():
+                return False
+            return a1.GetHybridization() == a2.GetHybridization()
+
+    params = rdFMCS.MCSParameters()
+    params.Timeout = 2
+    params.AtomTyper = _ElemHyb()
+    params.BondTyper = rdFMCS.BondCompare.CompareAny
+    return params
 
 
 def _substruct_orders(mol, pattern) -> list[tuple[int, ...]]:
@@ -86,15 +76,7 @@ def _fmcs_mapping(ref: MoleculeLayout, other: MoleculeLayout) -> dict[int, int] 
     rd_to_ref = {rd: lay for lay, rd in ref_to_rd.items()}
     rd_to_other = {rd: lay for lay, rd in other_to_rd.items()}
     try:
-        # BondCompare.CompareAny: aromatic ↔ kekulé / quinone (parity with
-        # Rust/JS MCS_DETAILS_JSON BondCompare Any). Saturation filter rejects
-        # aliphatic rings matching quinone / aromatic templates.
-        mcs = rdFMCS.FindMCS(
-            [ref_mol, other_mol],
-            timeout=2,
-            atomCompare=rdFMCS.AtomCompare.CompareElements,
-            bondCompare=rdFMCS.BondCompare.CompareAny,
-        )
+        mcs = rdFMCS.FindMCS([ref_mol, other_mol], _mcs_params())
     except Exception:
         return None
     if getattr(mcs, "canceled", False) or mcs.numAtoms < _MIN_MAP:
@@ -104,8 +86,6 @@ def _fmcs_mapping(ref: MoleculeLayout, other: MoleculeLayout) -> dict[int, int] 
     except Exception:
         pattern = None
     if pattern is None:
-        return None
-    if not _mcs_saturation_compatible(ref_mol, other_mol, pattern):
         return None
     ref_orders = _substruct_orders(ref_mol, pattern)
     other_orders = _substruct_orders(other_mol, pattern)
@@ -256,8 +236,8 @@ def _bonds_after_depict(mol, bonds: list[BondLayout], to_rd: dict[int, int], smi
 class RdkitAligner(RigidAligner):
     """Template depiction via RDKit ``GenerateDepictionMatching2DStructure``.
 
-    MCS uses ``BondCompare.CompareAny`` (parity with Rust/JS ``align_opts``)
-    plus a saturation filter so aliphatic rings do not match quinones.
+    MCS: element + hybridization atoms, ``BondCompare.CompareAny`` (parity with
+    Rust/JS ``align_opts``). No element-only MCS fallback.
     The reference layout / pose mol is never modified.
     """
 
@@ -265,8 +245,6 @@ class RdkitAligner(RigidAligner):
     supports_template = True
 
     def map_atoms(self, ref: MoleculeLayout, other: MoleculeLayout) -> dict[int, int] | None:
-        # FMCS + saturation filter only. Do not fall back to element-only MCS:
-        # that remaps cyclohexane onto quinone and rigid-fallback warps layout.
         return _fmcs_mapping(ref, other)
 
     def depict_on_template(
@@ -297,12 +275,7 @@ class RdkitAligner(RigidAligner):
         ]
 
         try:
-            mcs = rdFMCS.FindMCS(
-                [ref_pose, other_mol],
-                timeout=2,
-                atomCompare=rdFMCS.AtomCompare.CompareElements,
-                bondCompare=rdFMCS.BondCompare.CompareAny,
-            )
+            mcs = rdFMCS.FindMCS([ref_pose, other_mol], _mcs_params())
         except Exception:
             return None
         if getattr(mcs, "canceled", False) or mcs.numAtoms < _MIN_MAP:
@@ -312,8 +285,6 @@ class RdkitAligner(RigidAligner):
         except Exception:
             pattern = None
         if pattern is None:
-            return None
-        if not _mcs_saturation_compatible(ref_pose, other_mol, pattern):
             return None
 
         params = rdDepictor.ConstrainedDepictionParams()
