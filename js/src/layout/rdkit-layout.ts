@@ -1,8 +1,9 @@
 /**
  * RDKit layout + template align → {@link MoleculeIn} (SVG / SCALE space).
  *
- * Alignment uses MinimalLib `generate_aligned_coords` (same idea as Python
- * `align_rdkit`). Callers go through `api.ts`; this module stays internal.
+ * Alignment uses MinimalLib `generate_aligned_coords` with an FMCS
+ * `referenceSmarts` (`BondCompare: Any` so aromatic ↔ kekulé / quinone).
+ * Protocol mirrors Rust ``xpict::align_opts`` — do not reimplement Kabsch here.
  */
 
 import { ensureRdkit, type RdkitMol, type RdkitModule } from "../rdkit-loader.js";
@@ -10,6 +11,34 @@ import { elementSymbol } from "../elements.js";
 
 /** Bond length target in drawing units (matches Rust `SCALE` / Python). */
 export const SCALE = 20;
+
+/**
+ * Keep in sync with ``xpict::align_opts::MCS_DETAILS_JSON``.
+ * Element atoms; any-bond so aromatic rings match aliphatic / quinone.
+ */
+export const MCS_DETAILS_JSON = JSON.stringify({
+  AtomCompare: "Elements",
+  BondCompare: "Any",
+  Timeout: 2,
+});
+
+const MIN_MCS_ATOMS = 3;
+
+/** Keep in sync with ``xpict::align_opts::minimallib_align_details``. */
+export function minimallibAlignDetails(referenceSmarts: string): string {
+  return JSON.stringify({
+    useCoordGen: false,
+    referenceSmarts,
+    allowRGroups: true,
+    acceptFailure: false,
+  });
+}
+
+/** Keep in sync with ``xpict::align_opts::align_succeeded``. */
+export function alignSucceeded(result: string): boolean {
+  const t = result.trim();
+  return t.length > 0 && t !== "{}";
+}
 
 export type MoleculeIn = {
   id?: string;
@@ -59,12 +88,6 @@ type RdkitMolJson = {
     bonds: RdkitBondJson[];
   }>;
 };
-
-const ALIGN_OPTS = JSON.stringify({
-  useCoordGen: false,
-  allowOptionalAttachments: true,
-  acceptFailure: true,
-});
 
 function elementFromZ(z: number | undefined): string {
   if (z === undefined) return "C";
@@ -185,6 +208,32 @@ function ensureCoords(mol: RdkitMol): void {
   // Molfile / cached templates already carry coords — leave the frame alone.
 }
 
+/** FMCS SMARTS for MinimalLib (same JSON as Rust ``MCS_DETAILS_JSON``). */
+function mcsReferenceSmarts(
+  rdkit: RdkitModule,
+  a: RdkitMol,
+  b: RdkitMol
+): string | null {
+  const list = new rdkit.MolList();
+  list.append(a);
+  list.append(b);
+  const raw = rdkit.get_mcs_as_json(list, MCS_DETAILS_JSON);
+  let parsed: { numAtoms?: number; canceled?: boolean; smarts?: string };
+  try {
+    parsed = JSON.parse(raw) as typeof parsed;
+  } catch {
+    return null;
+  }
+  if (
+    parsed.canceled ||
+    !parsed.smarts ||
+    (parsed.numAtoms ?? 0) < MIN_MCS_ATOMS
+  ) {
+    return null;
+  }
+  return parsed.smarts;
+}
+
 export type LayoutResult = {
   molecule: MoleculeIn;
   /** Coord-bearing molblock of the laid-out mol — pack into Rendered for align_to. */
@@ -192,8 +241,8 @@ export type LayoutResult = {
 };
 
 /**
- * Layout `source` (SMILES / molfile). When `template` is set, RDKit aligns
- * onto that frame via `generate_aligned_coords`.
+ * Layout `source` (SMILES / molfile). When `template` is set, RDKit MCS-aligns
+ * onto that pose via `generate_aligned_coords` + `referenceSmarts`.
  */
 export async function layoutWithRdkit(
   source: string,
@@ -206,14 +255,24 @@ export async function layoutWithRdkit(
     if (opts.template) {
       templateMol = getMol(rdkit, opts.template);
       ensureCoords(templateMol);
-      const aligned = mol.generate_aligned_coords(templateMol, ALIGN_OPTS);
-      if (!aligned) {
+
+      const smarts = mcsReferenceSmarts(rdkit, mol, templateMol);
+      let aligned = "";
+      if (smarts) {
+        aligned = mol.generate_aligned_coords(
+          templateMol,
+          minimallibAlignDetails(smarts)
+        );
+      }
+      if (!alignSucceeded(aligned)) {
+        // No usable MCS / match — free layout (do not pretend we aligned).
         ensureCoords(mol);
         return {
           molecule: toMoleculeIn(mol, { id: opts.id }),
           molblock: sanitizeDummyMolblock(mol.get_molblock()),
         };
       }
+
       const tmplJson = JSON.parse(templateMol.get_json()) as RdkitMolJson;
       const tmplBonds = tmplJson.molecules[0]?.bonds ?? [];
       const tmplCoords = parseCoords(templateMol);

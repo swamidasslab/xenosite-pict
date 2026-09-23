@@ -4,17 +4,22 @@
 #include <GraphMol/Bond.h>
 #include <GraphMol/Conformer.h>
 #include <GraphMol/Depictor/RDDepictor.h>
+#include <GraphMol/FMCS/FMCS.h>
 #include <GraphMol/FileParsers/FileParsers.h>
 #include <GraphMol/FileParsers/MolFileStereochem.h>
 #include <GraphMol/GraphMol.h>
 #include <GraphMol/MolOps.h>
+#include <GraphMol/SmilesParse/SmilesParse.h>
 
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace xpict_depict {
 namespace {
+
+constexpr unsigned kMinMcsAtoms = 3;
 
 std::unique_ptr<RDKit::RWMol> parse_molblock(const std::string &mb) {
   RDKit::RWMol *raw = nullptr;
@@ -42,10 +47,40 @@ void ensure_2d(RDKit::ROMol &mol) {
   }
 }
 
-void align_to_template(RDKit::ROMol &mol, const RDKit::ROMol &tmpl) {
+/** FMCS (BondCompareAny) → referencePattern for Depictor matching. */
+std::unique_ptr<RDKit::ROMol> mcs_pattern(const RDKit::ROMol &mol,
+                                          const RDKit::ROMol &tmpl) {
+  std::vector<RDKit::ROMOL_SPTR> mols{
+      RDKit::ROMOL_SPTR(new RDKit::ROMol(mol)),
+      RDKit::ROMOL_SPTR(new RDKit::ROMol(tmpl)),
+  };
+  RDKit::MCSParameters params;
+  params.Timeout = 2;
+  params.setMCSAtomTyperFromEnum(RDKit::AtomCompareElements);
+  params.setMCSBondTyperFromEnum(RDKit::BondCompareAny);
+  RDKit::MCSResult mcs = RDKit::findMCS(mols, &params);
+  if (mcs.NumAtoms < kMinMcsAtoms || mcs.SmartsString.empty()) {
+    return nullptr;
+  }
   try {
-    RDDepict::generateDepictionMatching2DStructure(mol, tmpl);
+    return std::unique_ptr<RDKit::ROMol>(RDKit::SmartsToMol(mcs.SmartsString));
   } catch (...) {
+    return nullptr;
+  }
+}
+
+void align_to_template(RDKit::ROMol &mol, const RDKit::ROMol &tmpl) {
+  auto pattern = mcs_pattern(mol, tmpl);
+  RDDepict::ConstrainedDepictionParams p;
+  p.allowRGroups = true;
+  p.acceptFailure = true;
+  try {
+    RDDepict::generateDepictionMatching2DStructure(mol, tmpl, -1, pattern.get(),
+                                                    p);
+  } catch (...) {
+    ensure_2d(mol);
+  }
+  if (mol.getNumConformers() == 0) {
     ensure_2d(mol);
   }
 }

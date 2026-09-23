@@ -30,12 +30,16 @@
 
 #![allow(clippy::module_name_repetitions)]
 
+mod align_opts;
 mod cxsmiles;
 mod depict_spec;
 mod ffi;
 mod layout;
 mod svg;
 
+pub use align_opts::{
+    align_succeeded, minimallib_align_details, MCS_DETAILS_JSON, MIN_MCS_ATOMS,
+};
 pub use cxsmiles::{cx_atom_labels, smiles_base};
 pub use depict_spec::{depict, DepictSpec, MolNode, MolSpec, ShadeSpec};
 

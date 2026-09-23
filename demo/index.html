@@ -32,7 +32,8 @@
       <h1>Align two molecules</h1>
       <p class="lede">
         JavaScript demo — enter SMILES for a template and a query. The query
-        is laid out with RDKit against the template, then painted to SVG.
+        is MCS-aligned onto the template pose (aromatic rings match kekulé /
+        quinone forms), then painted to SVG.
       </p>
     </header>
 
@@ -47,7 +48,7 @@
               name="smiles1"
               type="text"
               spellcheck="false"
-              value="*C1CCCCC1"
+              value="c1ccc(O)cc1"
               required
             />
           </label>
@@ -58,7 +59,7 @@
               name="smiles2"
               type="text"
               spellcheck="false"
-              value="*c1ccccc1"
+              value="O=C1C=CC(=O)C=C1"
               required
             />
           </label>
@@ -78,7 +79,7 @@
               type="text"
               spellcheck="false"
               placeholder="e.g. * or R or R1"
-              value="*"
+              value=""
             />
           </label>
           <label>
@@ -89,7 +90,7 @@
               type="text"
               spellcheck="false"
               placeholder="e.g. * or R1,R2"
-              value="R1"
+              value=""
             />
           </label>
         </fieldset>
@@ -113,7 +114,7 @@
                 type="text"
                 spellcheck="false"
                 placeholder="e.g. 0 or 0,1,2"
-                value="0"
+                value=""
               />
             </label>
             <label class="wide">
@@ -124,7 +125,7 @@
                 type="text"
                 spellcheck="false"
                 placeholder="e.g. 0-1,1-2"
-                value="0-1"
+                value=""
               />
             </label>
             <label class="wide">
@@ -135,7 +136,7 @@
                 type="text"
                 spellcheck="false"
                 placeholder="e.g. 0.8,0,0,0,0,0,0"
-                value="0.95,0.4,0.55,0.7,0.85,0.6,0.3"
+                value=""
               />
             </label>
             <label class="wide">
@@ -146,7 +147,7 @@
                 type="text"
                 spellcheck="false"
                 placeholder="e.g. 0.5,0,0,…"
-                value="0.6,0.2,0.35,0.5,0.7,0.4"
+                value=""
               />
             </label>
           </div>

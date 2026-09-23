@@ -53,7 +53,14 @@ def _fmcs_mapping(ref: MoleculeLayout, other: MoleculeLayout) -> dict[int, int] 
     rd_to_ref = {rd: lay for lay, rd in ref_to_rd.items()}
     rd_to_other = {rd: lay for lay, rd in other_to_rd.items()}
     try:
-        mcs = rdFMCS.FindMCS([ref_mol, other_mol], timeout=2)
+        # BondCompare.CompareAny: aromatic ↔ kekulé / quinone (parity with
+        # Rust/JS MCS_DETAILS_JSON BondCompare Any).
+        mcs = rdFMCS.FindMCS(
+            [ref_mol, other_mol],
+            timeout=2,
+            atomCompare=rdFMCS.AtomCompare.CompareElements,
+            bondCompare=rdFMCS.BondCompare.CompareAny,
+        )
     except Exception:
         return None
     if getattr(mcs, "canceled", False) or mcs.numAtoms < _MIN_MAP:
