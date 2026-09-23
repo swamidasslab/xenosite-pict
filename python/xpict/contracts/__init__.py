@@ -32,6 +32,7 @@ from xpict.contracts.scene import (
 
 __all__ = [
     "AlignOpts",
+    "AlignToSpec",
     "AtomLayout",
     "BondLayout",
     "CirclePrim",
