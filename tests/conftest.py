@@ -1,8 +1,8 @@
-"""Pytest configuration — layout requires RDKit (see ``tests.helpers``)."""
+"""Pytest configuration — layout requires RDKit (see ``helpers``)."""
 
 from __future__ import annotations
 
-# Re-export for fixtures / `from conftest import layout_backend` call sites.
-from tests.helpers import layout_backend
+# Re-export for call sites that import from conftest.
+from helpers import layout_backend
 
 __all__ = ["layout_backend"]
