@@ -17,7 +17,12 @@ def _texts(svg: str) -> list[str]:
     return re.findall(r'data-text="([^"]*)"', svg)
 
 
+def _require_rdkit() -> None:
+    pytest.importorskip("rdkit")
+
+
 def test_gallery_markush_braced_cx_subscript():
+    _require_rdkit()
     svg = render(
         {"type": "mol", "cxsmiles": "*c1ccccc1Cl |$R_{1};;;;;$|"},
         backend="rdkit",
@@ -27,6 +32,7 @@ def test_gallery_markush_braced_cx_subscript():
 
 
 def test_gallery_rgroups_json_markup():
+    _require_rdkit()
     svg = render(
         {"type": "mol", "smiles": "*c1ccc(O)cc1", "rgroups": ["$R_1$"]},
         backend="rdkit",
@@ -36,6 +42,7 @@ def test_gallery_rgroups_json_markup():
 
 
 def test_sparse_shade_paints_few_disks():
+    _require_rdkit()
     doc = {
         "type": "mol",
         "smiles": "c1ccccc1O",
