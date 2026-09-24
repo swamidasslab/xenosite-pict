@@ -140,7 +140,7 @@ def test_live_reaction_scheme_mol_and_edge_children():
     doc = DepictSpec.model_validate(
         {
             "type": "reaction_scheme",
-            "layout": {"direction": "RIGHT"},
+            "layout": {"direction": "right"},
             "children": [
                 {"type": "text", "id": "adh", "text": "ADH"},
                 {"type": "mol", "id": "a", "smiles": "CCO", "label": "adh"},
@@ -170,6 +170,6 @@ def test_live_reaction_scheme_mol_and_edge_children():
         LabelPlacement(id="rt", pos="below"),
     ]
     assert doc.root.layout is not None
-    assert doc.root.layout.direction == "RIGHT"
+    assert doc.root.layout.direction == "right"
     assert [m.id for m in doc.mols()] == ["a", "b"]
     assert doc.mols()[0].label == "adh"

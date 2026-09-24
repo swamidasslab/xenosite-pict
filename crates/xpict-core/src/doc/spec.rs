@@ -772,141 +772,59 @@ impl Node {
 }
 
 // ---------------------------------------------------------------------------
-// Layout — reaction_scheme defaults to ELK layered
+// Layout — reaction_scheme (backend-agnostic)
 // ---------------------------------------------------------------------------
 
-/// Flow direction for ELK layered layout (`elk.direction`).
+/// Flow axis for scheme layout.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[serde(rename_all = "snake_case")]
 #[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
 #[cfg_attr(feature = "codegen", ts(export))]
-pub enum ElkDirection {
+pub enum LayoutDirection {
     #[default]
-    #[serde(rename = "RIGHT")]
     Right,
-    #[serde(rename = "LEFT")]
     Left,
-    #[serde(rename = "UP")]
     Up,
-    #[serde(rename = "DOWN")]
     Down,
 }
 
-impl ElkDirection {
-    pub fn as_elk(self) -> &'static str {
-        match self {
-            ElkDirection::Right => "RIGHT",
-            ElkDirection::Left => "LEFT",
-            ElkDirection::Up => "UP",
-            ElkDirection::Down => "DOWN",
-        }
-    }
-}
-
-/// Edge routing style (`elk.edgeRouting`).
+/// How edge shafts are drawn between nodes.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 #[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
 #[cfg_attr(feature = "codegen", ts(export))]
-pub enum ElkEdgeRouting {
-    #[serde(rename = "ORTHOGONAL")]
+pub enum EdgeRouting {
     Orthogonal,
     #[default]
-    #[serde(rename = "POLYLINE")]
     Polyline,
-    #[serde(rename = "SPLINES")]
     Splines,
 }
 
-impl ElkEdgeRouting {
-    pub fn as_elk(self) -> &'static str {
-        match self {
-            ElkEdgeRouting::Orthogonal => "ORTHOGONAL",
-            ElkEdgeRouting::Polyline => "POLYLINE",
-            ElkEdgeRouting::Splines => "SPLINES",
-        }
-    }
-}
-
-/// Layout for [`DepictSpec::ReactionScheme`] — **ELK layered by default**.
+/// Layout for [`DepictSpec::ReactionScheme`].
 ///
-/// First-class fields cover the knobs we actually tune for pathways; everything
-/// else passes through [`Self::elk_options`] as stringy ELK keys (same as
-/// future `diagram.elk_options`).
-///
-/// # Defaults (reaction)
-///
-/// | Key | Value | Role |
-/// | --- | --- | --- |
-/// | `elk.algorithm` | `layered` | Sugiyama layers for pathways |
-/// | `elk.direction` | `RIGHT` | Left→right flow |
-/// | `elk.edgeRouting` | `POLYLINE` | Bent shafts for overlay arrows |
-/// | `elk.spacing.nodeNode` | `56` | Within-layer gap (arrow room) |
-/// | `elk.layered.spacing.nodeNodeBetweenLayers` | `80` | Between reactant/product layers |
-/// | `elk.layered.spacing.edgeNodeBetweenLayers` | `28` | Inter-layer edge clearance |
-/// | `elk.spacing.edgeEdge` | `20` | Parallel edge gap |
-/// | `elk.layered.crossingMinimization.strategy` | `LAYER_SWEEP` | Crossing reduction |
-/// | `elk.layered.nodePlacement.strategy` | `NETWORK_SIMPLEX` | Y placement |
-/// | `elk.layered.crossingMinimization.forceNodeModelOrder` | `false` | Let branches spread |
-///
-/// Merge order: reaction defaults → `elk_options` map → first-class
-/// `direction` / `edge_routing` (caller wins).
+/// Backend-agnostic knobs — hosts map these onto ELK, Dagre, or another engine.
+/// Defaults when omitted: [`LayoutDirection::Right`], [`EdgeRouting::Polyline`].
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
 #[cfg_attr(feature = "codegen", ts(export))]
 pub struct LayoutOpts {
-    /// Flow axis (`RIGHT` / `LEFT` / `UP` / `DOWN`).
+    /// Flow axis (`right` / `left` / `up` / `down`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
-    pub direction: Option<ElkDirection>,
-    /// Shaft routing (`POLYLINE` / `ORTHOGONAL` / `SPLINES`).
+    pub direction: Option<LayoutDirection>,
+    /// Shaft style (`polyline` / `orthogonal` / `splines`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
-    pub edge_routing: Option<ElkEdgeRouting>,
-    /// Extra ELK layout options (string values), e.g. spacing overrides.
-    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
-    pub elk_options: std::collections::HashMap<String, String>,
-}
-
-/// Reaction-scheme ELK defaults (mirrors `python/xpict/diagram/elk.py`).
-pub fn reaction_elk_defaults() -> std::collections::BTreeMap<String, String> {
-    let mut m = std::collections::BTreeMap::new();
-    m.insert("elk.algorithm".into(), "layered".into());
-    m.insert("elk.direction".into(), "RIGHT".into());
-    m.insert("elk.edgeRouting".into(), "POLYLINE".into());
-    m.insert("elk.spacing.nodeNode".into(), "56".into());
-    m.insert("elk.spacing.edgeEdge".into(), "20".into());
-    m.insert("elk.spacing.edgeNode".into(), "20".into());
-    m.insert("elk.layered.spacing.nodeNodeBetweenLayers".into(), "80".into());
-    m.insert("elk.layered.spacing.edgeNodeBetweenLayers".into(), "28".into());
-    m.insert(
-        "elk.layered.crossingMinimization.strategy".into(),
-        "LAYER_SWEEP".into(),
-    );
-    m.insert(
-        "elk.layered.nodePlacement.strategy".into(),
-        "NETWORK_SIMPLEX".into(),
-    );
-    m.insert(
-        "elk.layered.crossingMinimization.forceNodeModelOrder".into(),
-        "false".into(),
-    );
-    m
+    pub edge_routing: Option<EdgeRouting>,
 }
 
 impl LayoutOpts {
-    /// Resolved ELK `layoutOptions` map for a reaction scheme.
-    pub fn resolve_elk(&self) -> std::collections::BTreeMap<String, String> {
-        let mut out = reaction_elk_defaults();
-        for (k, v) in &self.elk_options {
-            out.insert(k.clone(), v.clone());
-        }
-        if let Some(d) = self.direction {
-            out.insert("elk.direction".into(), d.as_elk().into());
-        }
-        if let Some(r) = self.edge_routing {
-            out.insert("elk.edgeRouting".into(), r.as_elk().into());
-        }
-        out
+    pub fn direction_or_default(&self) -> LayoutDirection {
+        self.direction.unwrap_or_default()
+    }
+
+    pub fn edge_routing_or_default(&self) -> EdgeRouting {
+        self.edge_routing.unwrap_or_default()
     }
 }
 
@@ -980,8 +898,6 @@ pub enum DepictSpec {
         scale: Option<f64>,
     },
     /// Reaction / pathway scheme: mixed **node** children (`mol` | `edge` | `text`).
-    ///
-    /// Layout defaults to **ELK layered** ([`LayoutOpts`] / [`reaction_elk_defaults`]).
     ReactionScheme {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[cfg_attr(feature = "codegen", ts(optional))]
@@ -989,7 +905,7 @@ pub enum DepictSpec {
         /// Child **nodes** — mols, edges, and text (any order).
         #[serde(default)]
         children: Vec<Node>,
-        /// ELK layout (defaults applied when omitted).
+        /// Scheme layout (direction, edge routing); backend maps these.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[cfg_attr(feature = "codegen", ts(optional))]
         layout: Option<LayoutOpts>,
@@ -1007,16 +923,6 @@ pub enum DepictSpec {
 }
 
 impl DepictSpec {
-    /// ELK layout options when this is a reaction scheme (defaults if omitted).
-    pub fn resolve_elk_options(&self) -> Option<std::collections::BTreeMap<String, String>> {
-        match self {
-            DepictSpec::ReactionScheme { layout, .. } => {
-                Some(layout.clone().unwrap_or_default().resolve_elk())
-            }
-            _ => None,
-        }
-    }
-
     /// Flatten to mol nodes in document order (skips edge / text children).
     pub fn mols(&self) -> Vec<MolNode> {
         match self {

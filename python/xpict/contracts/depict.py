@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Literal, Any
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel
 
@@ -197,17 +197,16 @@ class GroupNode(StrictModel):
     scale: float | None = None
 
 
-ElkDirection = Literal['RIGHT', 'LEFT', 'UP', 'DOWN']
+LayoutDirection = Literal['right', 'left', 'up', 'down']
 
 
-ElkEdgeRouting = Literal['ORTHOGONAL', 'POLYLINE', 'SPLINES']
+EdgeRouting = Literal['orthogonal', 'polyline', 'splines']
 
 
 class LayoutOpts(StrictModel):
-    """Layout for [`DepictSpec::ReactionScheme`] — **ELK layered by default**."""
-    direction: Annotated[ElkDirection | None, Field(description='Flow axis (`RIGHT` / `LEFT` / `UP` / `DOWN`).')] = None
-    edge_routing: Annotated[ElkEdgeRouting | None, Field(description='Shaft routing (`POLYLINE` / `ORTHOGONAL` / `SPLINES`).')] = None
-    elk_options: Annotated[dict[str, Any] | None, Field(description='Extra ELK layout options (string values), e.g. spacing overrides.')] = None
+    """Layout for [`DepictSpec::ReactionScheme`]."""
+    direction: Annotated[LayoutDirection | None, Field(description='Flow axis (`right` / `left` / `up` / `down`).')] = None
+    edge_routing: Annotated[EdgeRouting | None, Field(description='Shaft style (`polyline` / `orthogonal` / `splines`).')] = None
 
 
 class ReactionSchemeNode(StrictModel):
@@ -216,7 +215,7 @@ class ReactionSchemeNode(StrictModel):
     children: list[Node] = Field(default_factory=list, description='Child **nodes** — mols, edges, and text (any order).')
     color: str | None = None
     id: str | None = None
-    layout: Annotated[LayoutOpts | None, Field(description='ELK layout (defaults applied when omitted).')] = None
+    layout: Annotated[LayoutOpts | None, Field(description='Scheme layout (direction, edge routing); backend maps these.')] = None
     opts: Annotated[Opts | None, Field(description='Scheme-level cascade bag for child mol inheritance.')] = None
     scale: float | None = None
 

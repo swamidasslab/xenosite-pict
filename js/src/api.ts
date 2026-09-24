@@ -145,8 +145,8 @@ export type {
   LabelItem,
   LabelLanes,
   Label,
-  ElkDirection,
-  ElkEdgeRouting,
+  LayoutDirection,
+  EdgeRouting,
   LayoutOpts,
   Node,
 } from "./generated/depict-abi.js";
@@ -168,7 +168,7 @@ export type GroupNode = Omit<
   align?: boolean;
 };
 
-/** Reaction scheme — mol | edge | text children; ELK layout by default. */
+/** Reaction scheme — mol | edge | text children; layout via LayoutOpts. */
 export type ReactionSchemeNode = Extract<
   GeneratedDepictSpec,
   { type: "reaction_scheme" }

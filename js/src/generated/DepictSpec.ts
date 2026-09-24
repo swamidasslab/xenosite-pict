@@ -31,7 +31,7 @@ opts?: Opts, color?: string, scale?: number, } | { "type": "reaction_scheme", id
  */
 children: Array<Node>, 
 /**
- * ELK layout (defaults applied when omitted).
+ * Scheme layout (direction, edge routing); backend maps these.
  */
 layout?: LayoutOpts, 
 /**

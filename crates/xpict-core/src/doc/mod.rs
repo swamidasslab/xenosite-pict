@@ -1250,50 +1250,37 @@ mod tests {
     }
 
     #[test]
-    fn reaction_scheme_elk_defaults_and_overrides() {
+    fn reaction_scheme_layout_defaults_and_overrides() {
         let bare: DepictSpec = serde_json::from_str(
             r#"{"type":"reaction_scheme","children":[{"type":"mol","id":"a","smiles":"C"}]}"#,
         )
         .unwrap();
-        let opts = bare.resolve_elk_options().unwrap();
-        assert_eq!(opts.get("elk.algorithm").map(String::as_str), Some("layered"));
-        assert_eq!(opts.get("elk.direction").map(String::as_str), Some("RIGHT"));
-        assert_eq!(
-            opts.get("elk.edgeRouting").map(String::as_str),
-            Some("POLYLINE")
-        );
-        assert!(
-            opts.get("elk.layered.spacing.nodeNodeBetweenLayers")
-                .unwrap()
-                .parse::<f64>()
-                .unwrap()
-                >= 80.0
-        );
+        let layout = match &bare {
+            DepictSpec::ReactionScheme { layout, .. } => layout.clone().unwrap_or_default(),
+            _ => panic!("expected reaction_scheme"),
+        };
+        assert_eq!(layout.direction_or_default(), LayoutDirection::Right);
+        assert_eq!(layout.edge_routing_or_default(), EdgeRouting::Polyline);
 
         let custom: DepictSpec = serde_json::from_str(
             r#"{
               "type": "reaction_scheme",
               "layout": {
-                "direction": "DOWN",
-                "edge_routing": "ORTHOGONAL",
-                "elk_options": {
-                  "elk.spacing.nodeNode": "72",
-                  "elk.layered.spacing.nodeNodeBetweenLayers": "100"
-                }
+                "direction": "down",
+                "edge_routing": "orthogonal"
               },
               "children": [{"type":"mol","id":"a","smiles":"C"}]
             }"#,
         )
         .unwrap();
-        let o = custom.resolve_elk_options().unwrap();
-        assert_eq!(o.get("elk.direction").map(String::as_str), Some("DOWN"));
-        assert_eq!(o.get("elk.edgeRouting").map(String::as_str), Some("ORTHOGONAL"));
-        assert_eq!(o.get("elk.spacing.nodeNode").map(String::as_str), Some("72"));
-        assert_eq!(
-            o.get("elk.layered.spacing.nodeNodeBetweenLayers")
-                .map(String::as_str),
-            Some("100")
-        );
+        let layout = match &custom {
+            DepictSpec::ReactionScheme {
+                layout: Some(l), ..
+            } => l,
+            _ => panic!("expected layout"),
+        };
+        assert_eq!(layout.direction, Some(LayoutDirection::Down));
+        assert_eq!(layout.edge_routing, Some(EdgeRouting::Orthogonal));
     }
 
     #[test]

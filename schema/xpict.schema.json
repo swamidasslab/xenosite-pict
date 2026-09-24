@@ -178,7 +178,7 @@
       }
     },
     {
-      "description": "Reaction / pathway scheme: mixed **node** children (`mol` | `edge` | `text`).\n\nLayout defaults to **ELK layered** ([`LayoutOpts`] / [`reaction_elk_defaults`]).",
+      "description": "Reaction / pathway scheme: mixed **node** children (`mol` | `edge` | `text`).",
       "type": "object",
       "required": [
         "type"
@@ -205,7 +205,7 @@
           ]
         },
         "layout": {
-          "description": "ELK layout (defaults applied when omitted).",
+          "description": "Scheme layout (direction, edge routing); backend maps these.",
           "anyOf": [
             {
               "$ref": "#/definitions/LayoutOpts"
@@ -430,23 +430,13 @@
         "edge"
       ]
     },
-    "ElkDirection": {
-      "description": "Flow direction for ELK layered layout (`elk.direction`).",
+    "EdgeRouting": {
+      "description": "How edge shafts are drawn between nodes.",
       "type": "string",
       "enum": [
-        "RIGHT",
-        "LEFT",
-        "UP",
-        "DOWN"
-      ]
-    },
-    "ElkEdgeRouting": {
-      "description": "Edge routing style (`elk.edgeRouting`).",
-      "type": "string",
-      "enum": [
-        "ORTHOGONAL",
-        "POLYLINE",
-        "SPLINES"
+        "orthogonal",
+        "polyline",
+        "splines"
       ]
     },
     "ForTypesPatch": {
@@ -585,15 +575,25 @@
         "right"
       ]
     },
+    "LayoutDirection": {
+      "description": "Flow axis for scheme layout.",
+      "type": "string",
+      "enum": [
+        "right",
+        "left",
+        "up",
+        "down"
+      ]
+    },
     "LayoutOpts": {
-      "description": "Layout for [`DepictSpec::ReactionScheme`] — **ELK layered by default**.\n\nFirst-class fields cover the knobs we actually tune for pathways; everything else passes through [`Self::elk_options`] as stringy ELK keys (same as future `diagram.elk_options`).\n\n# Defaults (reaction)\n\n| Key | Value | Role | | --- | --- | --- | | `elk.algorithm` | `layered` | Sugiyama layers for pathways | | `elk.direction` | `RIGHT` | Left→right flow | | `elk.edgeRouting` | `POLYLINE` | Bent shafts for overlay arrows | | `elk.spacing.nodeNode` | `56` | Within-layer gap (arrow room) | | `elk.layered.spacing.nodeNodeBetweenLayers` | `80` | Between reactant/product layers | | `elk.layered.spacing.edgeNodeBetweenLayers` | `28` | Inter-layer edge clearance | | `elk.spacing.edgeEdge` | `20` | Parallel edge gap | | `elk.layered.crossingMinimization.strategy` | `LAYER_SWEEP` | Crossing reduction | | `elk.layered.nodePlacement.strategy` | `NETWORK_SIMPLEX` | Y placement | | `elk.layered.crossingMinimization.forceNodeModelOrder` | `false` | Let branches spread |\n\nMerge order: reaction defaults → `elk_options` map → first-class `direction` / `edge_routing` (caller wins).",
+      "description": "Layout for [`DepictSpec::ReactionScheme`].\n\nBackend-agnostic knobs — hosts map these onto ELK, Dagre, or another engine. Defaults when omitted: [`LayoutDirection::Right`], [`EdgeRouting::Polyline`].",
       "type": "object",
       "properties": {
         "direction": {
-          "description": "Flow axis (`RIGHT` / `LEFT` / `UP` / `DOWN`).",
+          "description": "Flow axis (`right` / `left` / `up` / `down`).",
           "anyOf": [
             {
-              "$ref": "#/definitions/ElkDirection"
+              "$ref": "#/definitions/LayoutDirection"
             },
             {
               "type": "null"
@@ -601,22 +601,15 @@
           ]
         },
         "edge_routing": {
-          "description": "Shaft routing (`POLYLINE` / `ORTHOGONAL` / `SPLINES`).",
+          "description": "Shaft style (`polyline` / `orthogonal` / `splines`).",
           "anyOf": [
             {
-              "$ref": "#/definitions/ElkEdgeRouting"
+              "$ref": "#/definitions/EdgeRouting"
             },
             {
               "type": "null"
             }
           ]
-        },
-        "elk_options": {
-          "description": "Extra ELK layout options (string values), e.g. spacing overrides.",
-          "type": "object",
-          "additionalProperties": {
-            "type": "string"
-          }
         }
       }
     },
