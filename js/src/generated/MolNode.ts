@@ -19,6 +19,9 @@ shade?: ShadeSpec, star_labels?: Array<string | null>,
 align_to?: AlignTo, 
 /**
  * Caption: [`Label`] (string id, list, or `{id, pos?}` — text-node refs).
+ *
+ * `pos` on a placement chooses caption side (`above`/`below`/`left`/`right`);
+ * hosts measure the resolved text and fold that into node size for layout.
  */
 label?: Label, color?: string, scale?: number, weight?: number, halo?: boolean, 
 /**

@@ -25,6 +25,9 @@ source: string,
 target: string, 
 /**
  * Label chrome: id / list / `{id, pos?}` / `{above,below,left,right}`.
+ *
+ * Hosts should measure each placement’s text (or mol viewport) and pass
+ * those boxes to the layout engine with the placement `pos` (edge side).
  */
 label?: Label, 
 /**

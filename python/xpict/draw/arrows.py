@@ -326,6 +326,10 @@ def edge_primitives(
 
     if edge.label:
         mx, my, px, py = _label_point(pts)
+        pos = (getattr(edge, "label_pos", None) or "above").lower()
+        # Flip the default "above" offset for below / right.
+        if pos in {"below", "right"}:
+            px, py = -px, -py
         out.append(
             TextPrim(
                 x=mx + px * 10.0,

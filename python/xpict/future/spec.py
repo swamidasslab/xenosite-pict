@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import (
     BaseModel,
@@ -408,6 +408,10 @@ class EdgeSpec(StrictModel):
     source: str
     target: str
     label: str | None = None
+    label_pos: Literal["above", "below", "left", "right"] = Field(
+        default="above",
+        description="Which side of the shaft for ``label`` (layout + paint)",
+    )
     role: str | None = Field(
         default=None,
         description="Optional semantic role (e.g. enzyme, inhibits) — not drawn by default",
@@ -416,6 +420,10 @@ class EdgeSpec(StrictModel):
     color: str | None = Field(default=None, description="Stroke/fill color for the arrow")
     stroke_width: float | None = Field(default=None, description="Shaft stroke width")
     dashed: bool = Field(default=False, description="Dashed shaft (e.g. hypothetical step)")
+    edge_routing: Literal["orthogonal", "polyline", "splines"] | None = Field(
+        default=None,
+        description="Optional per-edge routing override of diagram defaults",
+    )
 
 
 class DiagramSpec(StrictModel):

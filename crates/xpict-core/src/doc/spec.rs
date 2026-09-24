@@ -443,6 +443,9 @@ pub struct MolNode {
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub align_to: Option<AlignTo>,
     /// Caption: [`Label`] (string id, list, or `{id, pos?}` — text-node refs).
+    ///
+    /// `pos` on a placement chooses caption side (`above`/`below`/`left`/`right`);
+    /// hosts measure the resolved text and fold that into node size for layout.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub label: Option<Label>,
@@ -705,6 +708,9 @@ pub struct EdgeNode {
     /// Id of the target mol node.
     pub target: String,
     /// Label chrome: id / list / `{id, pos?}` / `{above,below,left,right}`.
+    ///
+    /// Hosts should measure each placement’s text (or mol viewport) and pass
+    /// those boxes to the layout engine with the placement `pos` (edge side).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub label: Option<Label>,

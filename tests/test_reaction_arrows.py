@@ -236,7 +236,7 @@ def test_reaction_elk_defaults_wider_spacing():
             ],
             "diagram": {
                 "kind": "reaction",
-                "edges": [{"source": "A", "target": "B"}],
+                "edges": [{"source": "A", "target": "B", "label": "ADH", "label_pos": "below"}],
             },
         }
     )
@@ -247,6 +247,16 @@ def test_reaction_elk_defaults_wider_spacing():
     assert opts["elk.edgeRouting"] == "POLYLINE"
     assert float(opts["elk.spacing.nodeNode"]) >= 56
     assert float(opts["elk.layered.spacing.nodeNodeBetweenLayers"]) >= 80
+    # Measured text boxes go to ELK with placement side.
+    labs = graph["edges"][0]["labels"]
+    assert len(labs) == 1
+    assert labs[0]["text"] == "ADH"
+    assert labs[0]["width"] > 8
+    assert labs[0]["height"] > 6
+    assert (
+        labs[0]["layoutOptions"]["elk.layered.edgeLabels.sideSelection"]
+        == "ALWAYS_DOWN"
+    )
 
 
 def test_diagram_overlays_skips_missing_ids():
@@ -307,6 +317,8 @@ def test_branched_reaction_uses_elk_routes():
             ],
             "diagram": {
                 "kind": "reaction",
+                # Orthogonal routes produce bend points; default polyline may be straight.
+                "elk_options": {"elk.edgeRouting": "ORTHOGONAL"},
                 "edges": [
                     {"source": "A", "target": "B", "label": "ADH"},
                     {"source": "B", "target": "C", "label": "ALDH"},

@@ -473,13 +473,20 @@ def mol_to_molecule_spec(node: MolNode) -> MoleculeSpec:
 
 def _arrow_to_edge(arrow: ArrowNode, source: str, target: str) -> EdgeSpec:
     label = arrow.label
+    label_pos: str = "above"
     if label is None and arrow.layout.above:
         first = arrow.layout.above[0]
         label = first if isinstance(first, str) else None
+        label_pos = "above"
+    elif label is None and arrow.layout.below:
+        first = arrow.layout.below[0]
+        label = first if isinstance(first, str) else None
+        label_pos = "below"
     return EdgeSpec(
         source=source,
         target=target,
         label=label,
+        label_pos=label_pos,  # type: ignore[arg-type]
         role=arrow.role,
         arrow=arrow.arrow,
         color=arrow.color,

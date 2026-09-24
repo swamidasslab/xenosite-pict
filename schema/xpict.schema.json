@@ -392,7 +392,7 @@
           ]
         },
         "label": {
-          "description": "Label chrome: id / list / `{id, pos?}` / `{above,below,left,right}`.",
+          "description": "Label chrome: id / list / `{id, pos?}` / `{above,below,left,right}`.\n\nHosts should measure each placement’s text (or mol viewport) and pass those boxes to the layout engine with the placement `pos` (edge side).",
           "anyOf": [
             {
               "$ref": "#/definitions/Label"
@@ -664,7 +664,7 @@
           ]
         },
         "label": {
-          "description": "Caption: [`Label`] (string id, list, or `{id, pos?}` — text-node refs).",
+          "description": "Caption: [`Label`] (string id, list, or `{id, pos?}` — text-node refs).\n\n`pos` on a placement chooses caption side (`above`/`below`/`left`/`right`); hosts measure the resolved text and fold that into node size for layout.",
           "anyOf": [
             {
               "$ref": "#/definitions/Label"

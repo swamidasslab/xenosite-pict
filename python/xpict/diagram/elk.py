@@ -16,7 +16,12 @@ from xpict.contracts.layout import MoleculeLayout
 from xpict.future.spec import DiagramKind, LegacyPictSpec, MoleculeSpec
 from xpict.draw.metrics import shared_coord_scale
 from xpict.draw.scene_builder import viewport_size
+from xpict.draw.text_metrics import measure_text
 from xpict.warnings import PictBackendWarning
+
+# Match ``arrows.edge_primitives`` edge-label font so ELK reserves the right box.
+_EDGE_LABEL_FONT_PX = 11.0
+_EDGE_LABEL_PAD = 4.0
 
 
 def _flat(spec: LegacyPictSpec | object) -> LegacyPictSpec:
@@ -29,6 +34,46 @@ def _flat(spec: LegacyPictSpec | object) -> LegacyPictSpec:
 
 _GAP = 24.0
 _REACTION_GAP = 56.0  # room for arrow shafts + edge labels between molecules
+
+
+def _label_size(text: str, *, font_px: float = _EDGE_LABEL_FONT_PX) -> tuple[float, float]:
+    """Measured width/height for a layout-engine label box."""
+    m = measure_text(text, font_px)
+    w = max(m.advance, m.ink.width if m.ink is not None else 0.0) + _EDGE_LABEL_PAD
+    h = m.typo.height + _EDGE_LABEL_PAD
+    return w, h
+
+
+def _elk_edge_label_side(pos: str | None) -> str:
+    """Map above/below/left/right → ELK layered ``sideSelection``."""
+    p = (pos or "above").lower()
+    if p in {"below", "right"}:
+        return "ALWAYS_DOWN"
+    return "ALWAYS_UP"
+
+
+def _elk_edge_labels(edge: Any, edge_id: str) -> list[dict[str, Any]]:
+    """Build ELK edge ``labels`` with measured boxes + placement."""
+    text = getattr(edge, "label", None)
+    if not text or not str(text).strip():
+        return []
+    raw = str(text).strip()
+    w, h = _label_size(raw)
+    pos = getattr(edge, "label_pos", None) or "above"
+    return [
+        {
+            "id": f"{edge_id}_lab",
+            "text": raw,
+            "width": w,
+            "height": h,
+            "layoutOptions": {
+                "elk.edgeLabels.placement": "CENTER",
+                "elk.layered.edgeLabels.sideSelection": _elk_edge_label_side(
+                    pos if isinstance(pos, str) else getattr(pos, "value", "above")
+                ),
+            },
+        }
+    ]
 
 
 def _viewport_sizes(
@@ -123,15 +168,26 @@ def elk_graph(layouts: Sequence[MoleculeLayout], spec: LegacyPictSpec | object) 
     for i, L in enumerate(layouts):
         w, h = sizes[i]
         nodes.append({"id": L.id or f"m{i}", "width": w, "height": h})
-    edges = [
-        {
-            "id": f"e{i}",
+    edges = []
+    for i, e in enumerate(spec.diagram.edges):
+        eid = f"e{i}"
+        entry: dict[str, Any] = {
+            "id": eid,
             "sources": [e.source],
             "targets": [e.target],
-            # Labels reserved for our SVG overlay; ELK still spaces for routes.
         }
-        for i, e in enumerate(spec.diagram.edges)
-    ]
+        labels = _elk_edge_labels(e, eid)
+        if labels:
+            entry["labels"] = labels
+        # Per-edge routing override when set (host may also map EdgeNode.edge_routing).
+        routing = getattr(e, "edge_routing", None)
+        if routing is not None:
+            entry["layoutOptions"] = {
+                "elk.edgeRouting": str(
+                    routing.value if hasattr(routing, "value") else routing
+                ).upper()
+            }
+        edges.append(entry)
     return {
         "id": "root",
         "layoutOptions": {
