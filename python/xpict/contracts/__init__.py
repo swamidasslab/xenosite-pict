@@ -10,6 +10,9 @@ from xpict.contracts.depict import (
     AlignToSpec,
     EdgeNode,
     GroupNode,
+    Label,
+    LabelLanes,
+    LabelPlacement,
     LayoutOpts,
     MolNode,
     ReactionSchemeNode,
@@ -58,7 +61,7 @@ class DepictSpec(_DepictSpec):
             return [root]
         if isinstance(root, ReactionSchemeNode):
             return [c for c in root.children if isinstance(c, MolNode)]
-        return list(root.children)  # group: mol-only
+        return [c for c in root.children if isinstance(c, MolNode)]
 
 
 __all__ = [
@@ -78,6 +81,9 @@ __all__ = [
     "EdgePlan",
     "EdgeResult",
     "GroupNode",
+    "Label",
+    "LabelLanes",
+    "LabelPlacement",
     "Layer",
     "LayoutOpts",
     "MolNode",

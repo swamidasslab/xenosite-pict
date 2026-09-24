@@ -68,19 +68,21 @@ pub fn validate_edges(spec: &DepictSpec) -> Result<(), String> {
 
     for m in spec.mols() {
         if let Some(ref lab) = m.label {
-            let id = lab.trim();
-            if id.is_empty() {
-                return Err("mol label ref must be non-empty".into());
-            }
-            match spec.node_by_id(id) {
-                Some(Node::Text(_)) => {}
-                Some(Node::Mol(_)) => {
-                    return Err(format!("mol label {id} must ref a text node, not a mol"));
+            for (id, _pos) in lab.placements() {
+                let id = id.trim();
+                if id.is_empty() {
+                    return Err("mol label ref must be non-empty".into());
                 }
-                Some(Node::Edge(_)) => {
-                    return Err(format!("mol label {id} must ref a text node, not an edge"));
+                match spec.node_by_id(id) {
+                    Some(Node::Text(_)) => {}
+                    Some(Node::Mol(_)) => {
+                        return Err(format!("mol label {id} must ref a text node, not a mol"));
+                    }
+                    Some(Node::Edge(_)) => {
+                        return Err(format!("mol label {id} must ref a text node, not an edge"));
+                    }
+                    None => return Err(format!("mol label unknown text id {id}")),
                 }
-                None => return Err(format!("mol label unknown text id {id}")),
             }
         }
     }
@@ -92,14 +94,18 @@ pub fn validate_edges(spec: &DepictSpec) -> Result<(), String> {
         if !mol_set.contains(e.target.as_str()) {
             return Err(format!("edge target unknown id {}", e.target));
         }
-        for (lane, refs) in e.label_lanes() {
-            for id in refs {
+        if let Some(ref lab) = e.label {
+            for (id, pos) in lab.placements() {
+                let id = id.trim();
+                if id.is_empty() {
+                    return Err("edge label ref must be non-empty".into());
+                }
                 match spec.node_by_id(id) {
                     Some(Node::Text(_)) | Some(Node::Mol(_)) => {}
                     Some(Node::Edge(_)) => {
-                        return Err(format!("edge {lane} id {id} cannot ref an edge"));
+                        return Err(format!("edge label ({pos:?}) id {id} cannot ref an edge"));
                     }
-                    None => return Err(format!("edge {lane} unknown id {id}")),
+                    None => return Err(format!("edge label ({pos:?}) unknown id {id}")),
                 }
             }
         }
@@ -1084,9 +1090,11 @@ mod tests {
                   "type": "edge",
                   "source": "a",
                   "target": "b",
-                  "above": ["adh"],
-                  "below": ["rt"],
-                  "left": ["nabh4"],
+                  "label": {
+                    "above": ["adh"],
+                    "below": ["rt"],
+                    "left": ["nabh4"]
+                  },
                   "arrow": "forward"
                 },
                 {"type": "text", "id": "rt", "text": "rt"},
@@ -1096,8 +1104,10 @@ mod tests {
                   "type": "edge",
                   "source": "b",
                   "target": "c",
-                  "above": ["aldh"],
-                  "right": ["nad"],
+                  "label": [
+                    "aldh",
+                    {"id": "nad", "pos": "right"}
+                  ],
                   "arrow": "equilibrium",
                   "color": "#064",
                   "dashed": true
@@ -1116,16 +1126,31 @@ mod tests {
         assert_eq!(edges.len(), 2);
         assert_eq!(edges[0].source, "a");
         assert_eq!(edges[0].target, "b");
-        assert_eq!(edges[0].above, vec!["adh"]);
-        assert_eq!(edges[0].below, vec!["rt"]);
-        assert_eq!(edges[0].left, vec!["nabh4"]);
-        assert!(edges[0].right.is_empty());
+        let e0 = edges[0].label.as_ref().unwrap().placements();
+        assert_eq!(
+            e0,
+            vec![
+                ("adh".into(), crate::doc::LabelPos::Above),
+                ("rt".into(), crate::doc::LabelPos::Below),
+                ("nabh4".into(), crate::doc::LabelPos::Left),
+            ]
+        );
         assert_eq!(edges[0].arrow, EdgeArrow::Forward);
         assert_eq!(edges[1].arrow, EdgeArrow::Equilibrium);
-        assert_eq!(edges[1].right, vec!["nad"]);
+        let e1 = edges[1].label.as_ref().unwrap().placements();
+        assert_eq!(
+            e1,
+            vec![
+                ("aldh".into(), crate::doc::LabelPos::Above),
+                ("nad".into(), crate::doc::LabelPos::Right),
+            ]
+        );
         assert_eq!(edges[1].color.as_deref(), Some("#064"));
         assert!(edges[1].dashed);
-        assert_eq!(spec.mols()[0].label.as_deref(), Some("adh"));
+        assert_eq!(
+            spec.mols()[0].label.as_ref().unwrap().placements(),
+            vec![("adh".into(), crate::doc::LabelPos::Above)]
+        );
         validate_edges(&spec).unwrap();
 
         let chrome = spec.resolve_mol_chrome(0);
@@ -1147,7 +1172,48 @@ mod tests {
         .unwrap();
         assert_eq!(spec.mols().len(), 1);
         assert_eq!(spec.texts().len(), 1);
-        assert_eq!(spec.mols()[0].label.as_deref(), Some("cap"));
+        assert_eq!(
+            spec.mols()[0].label.as_ref().unwrap().placements(),
+            vec![("cap".into(), LabelPos::Above)]
+        );
+        validate_edges(&spec).unwrap();
+    }
+
+    #[test]
+    fn edge_label_string_list_and_placed_json() {
+        let spec: DepictSpec = serde_json::from_str(
+            r#"{
+              "type": "reaction_scheme",
+              "children": [
+                {"type": "text", "id": "adh", "text": "ADH"},
+                {"type": "text", "id": "rt", "text": "rt"},
+                {"type": "mol", "id": "a", "smiles": "C"},
+                {"type": "mol", "id": "b", "smiles": "CC"},
+                {
+                  "type": "edge",
+                  "source": "a",
+                  "target": "b",
+                  "label": "adh"
+                },
+                {
+                  "type": "edge",
+                  "source": "b",
+                  "target": "a",
+                  "label": {"id": "rt", "pos": "below"}
+                }
+              ]
+            }"#,
+        )
+        .unwrap();
+        let edges = spec.edges();
+        assert_eq!(
+            edges[0].label.as_ref().unwrap().placements(),
+            vec![("adh".into(), LabelPos::Above)]
+        );
+        assert_eq!(
+            edges[1].label.as_ref().unwrap().placements(),
+            vec![("rt".into(), LabelPos::Below)]
+        );
         validate_edges(&spec).unwrap();
     }
 

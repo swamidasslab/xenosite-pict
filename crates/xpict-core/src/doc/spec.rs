@@ -442,10 +442,10 @@ pub struct MolNode {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub align_to: Option<AlignTo>,
-    /// Caption: id of a [`TextNode`] in the same container (not inline text).
+    /// Caption: [`Label`] (string id, list, or `{id, pos?}` — text-node refs).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
-    pub label: Option<String>,
+    pub label: Option<Label>,
     // --- local leaf opts (same keys as MolOpts; merge last) ---
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
@@ -561,10 +561,137 @@ pub struct TextNode {
     pub opts: Option<Opts>,
 }
 
+/// Side of an edge shaft (or mol caption) for a label placement.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
+pub enum LabelPos {
+    #[default]
+    Above,
+    Below,
+    Left,
+    Right,
+}
+
+/// Placed label: `{ "id": "adh", "pos": "below" }` (`pos` optional → above).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
+pub struct LabelPlacement {
+    /// Id of a [`TextNode`] or (on edges) [`MolNode`].
+    pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub pos: Option<LabelPos>,
+}
+
+impl LabelPlacement {
+    pub fn pos_or_default(&self) -> LabelPos {
+        self.pos.unwrap_or(LabelPos::Above)
+    }
+}
+
+/// One entry in a label list: bare id or `{ id, pos? }`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
+pub enum LabelItem {
+    Id(String),
+    Placed(LabelPlacement),
+}
+
+impl LabelItem {
+    pub fn id(&self) -> &str {
+        match self {
+            LabelItem::Id(s) => s.as_str(),
+            LabelItem::Placed(p) => p.id.as_str(),
+        }
+    }
+
+    pub fn pos(&self) -> LabelPos {
+        match self {
+            LabelItem::Id(_) => LabelPos::Above,
+            LabelItem::Placed(p) => p.pos_or_default(),
+        }
+    }
+}
+
+/// Lane bag: `{ "above": [...], "below": [...], "left": [...], "right": [...] }`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
+pub struct LabelLanes {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub above: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub below: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub left: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub right: Vec<String>,
+}
+
+/// Unified label: string id, list, placed object, or lane object.
+///
+/// ```json
+/// "label": "adh"
+/// "label": ["adh", {"id": "rt", "pos": "below"}]
+/// "label": { "id": "adh", "pos": "left" }
+/// "label": { "above": ["adh"], "below": ["rt"], "left": ["nabh4"] }
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
+pub enum Label {
+    /// Bare node id (default position: above).
+    Id(String),
+    /// Ordered list of ids / placements.
+    Items(Vec<LabelItem>),
+    /// Single placement with optional `pos`.
+    Placed(LabelPlacement),
+    /// Explicit above / below / left / right id lists.
+    Lanes(LabelLanes),
+}
+
+impl Label {
+    /// Flatten to `(id, pos)` pairs in document order.
+    pub fn placements(&self) -> Vec<(String, LabelPos)> {
+        match self {
+            Label::Id(id) => vec![(id.clone(), LabelPos::Above)],
+            Label::Items(items) => items
+                .iter()
+                .map(|it| (it.id().to_string(), it.pos()))
+                .collect(),
+            Label::Placed(p) => vec![(p.id.clone(), p.pos_or_default())],
+            Label::Lanes(lanes) => {
+                let mut out = Vec::new();
+                for id in &lanes.above {
+                    out.push((id.clone(), LabelPos::Above));
+                }
+                for id in &lanes.below {
+                    out.push((id.clone(), LabelPos::Below));
+                }
+                for id in &lanes.left {
+                    out.push((id.clone(), LabelPos::Left));
+                }
+                for id in &lanes.right {
+                    out.push((id.clone(), LabelPos::Right));
+                }
+                out
+            }
+        }
+    }
+}
+
 /// Edge **node** — a reaction / network link between mol ids.
 ///
-/// Label chrome references sibling [`TextNode`] / [`MolNode`] ids via
-/// [`Self::above`] / [`Self::below`] / [`Self::left`] / [`Self::right`].
+/// Label chrome refs sibling text/mol nodes via [`Self::label`] (string, list,
+/// placed object, or lane object — see [`Label`]).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
 #[cfg_attr(feature = "codegen", ts(export))]
@@ -577,18 +704,10 @@ pub struct EdgeNode {
     pub source: String,
     /// Id of the target mol node.
     pub target: String,
-    /// Node ids drawn above the shaft (text and/or mol).
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub above: Vec<String>,
-    /// Node ids drawn below the shaft (text and/or mol).
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub below: Vec<String>,
-    /// Node ids drawn to the left of the shaft (text and/or mol).
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub left: Vec<String>,
-    /// Node ids drawn to the right of the shaft (text and/or mol).
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub right: Vec<String>,
+    /// Label chrome: id / list / `{id, pos?}` / `{above,below,left,right}`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub label: Option<Label>,
     /// Optional semantic role (e.g. enzyme) — not drawn by default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
@@ -603,18 +722,6 @@ pub struct EdgeNode {
     pub stroke_width: Option<f64>,
     #[serde(default)]
     pub dashed: bool,
-}
-
-impl EdgeNode {
-    /// All label-lane id refs: above, below, left, right.
-    pub fn label_lanes(&self) -> [(&str, &[String]); 4] {
-        [
-            ("above", self.above.as_slice()),
-            ("below", self.below.as_slice()),
-            ("left", self.left.as_slice()),
-            ("right", self.right.as_slice()),
-        ]
-    }
 }
 
 /// Document **node**: mol, edge, or text.
@@ -831,10 +938,10 @@ pub enum DepictSpec {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[cfg_attr(feature = "codegen", ts(optional))]
         align_to: Option<AlignTo>,
-        /// Caption: id of a text node (mol roots rarely use this).
+        /// Caption: [`Label`] (string id / list / `{id, pos?}` — text-node refs).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[cfg_attr(feature = "codegen", ts(optional))]
-        label: Option<String>,
+        label: Option<Label>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[cfg_attr(feature = "codegen", ts(optional))]
         color: Option<String>,

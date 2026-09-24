@@ -29,6 +29,29 @@ class AlignToSpec(StrictModel):
 AlignTo = str | AlignToSpec
 
 
+LabelPos = Literal['above', 'below', 'left', 'right']
+
+
+class LabelPlacement(StrictModel):
+    """Placed label: `{ "id": "adh", "pos": "below" }` (`pos` optional → above)."""
+    id: Annotated[str, Field(description='Id of a [`TextNode`] or (on edges) [`MolNode`].')]
+    pos: LabelPos | None = None
+
+
+LabelItem = str | LabelPlacement
+
+
+class LabelLanes(StrictModel):
+    """Lane bag: `{ "above": [...], "below": [...], "left": [...], "right": [...] }`."""
+    above: list[str] = Field(default_factory=list)
+    below: list[str] = Field(default_factory=list)
+    left: list[str] = Field(default_factory=list)
+    right: list[str] = Field(default_factory=list)
+
+
+Label = str | list[LabelItem] | LabelPlacement | LabelLanes
+
+
 class ShadeStyle(StrictModel):
     """Cascading shade window / LUT (not per-atom scores)."""
     colormap: str | None = None
@@ -119,7 +142,7 @@ class MolNode(StrictModel):
     cxsmiles: str | None = None
     halo: bool | None = None
     id: str | None = None
-    label: Annotated[str | None, Field(description='Caption: id of a [`TextNode`] in the same container (not inline text).')] = None
+    label: Annotated[Label | None, Field(description='Caption: [`Label`] (string id, list, or `{id, pos?}` — text-node refs).')] = None
     molfile: str | None = None
     opts: Annotated[Opts | None, Field(description='Cascade patches for this node (list or singleton).')] = None
     scale: float | None = None
@@ -140,13 +163,10 @@ class EdgeNode(StrictModel):
     type: Literal['edge'] = 'edge'
     source: Annotated[str, Field(description='Id of the source mol node.')]
     target: Annotated[str, Field(description='Id of the target mol node.')]
-    above: list[str] = Field(default_factory=list, description='Node ids drawn above the shaft (text and/or mol).')
     arrow: EdgeArrow = 'forward'
-    below: list[str] = Field(default_factory=list, description='Node ids drawn below the shaft (text and/or mol).')
     color: str | None = None
     dashed: bool = False
-    left: list[str] = Field(default_factory=list, description='Node ids drawn to the left of the shaft (text and/or mol).')
-    right: list[str] = Field(default_factory=list, description='Node ids drawn to the right of the shaft (text and/or mol).')
+    label: Annotated[Label | None, Field(description='Label chrome: id / list / `{id, pos?}` / `{above,below,left,right}`.')] = None
     role: Annotated[str | None, Field(description='Optional semantic role (e.g. enzyme) — not drawn by default.')] = None
     stroke_width: float | None = None
 

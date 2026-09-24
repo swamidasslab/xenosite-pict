@@ -44,10 +44,14 @@
           ]
         },
         "label": {
-          "description": "Caption: id of a text node (mol roots rarely use this).",
-          "type": [
-            "string",
-            "null"
+          "description": "Caption: [`Label`] (string id / list / `{id, pos?}` — text-node refs).",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Label"
+            },
+            {
+              "type": "null"
+            }
           ]
         },
         "molfile": {
@@ -350,7 +354,7 @@
       ]
     },
     "EdgeNode": {
-      "description": "Edge **node** — a reaction / network link between mol ids.\n\nLabel chrome references sibling [`TextNode`] / [`MolNode`] ids via [`Self::above`] / [`Self::below`] / [`Self::left`] / [`Self::right`].",
+      "description": "Edge **node** — a reaction / network link between mol ids.\n\nLabel chrome refs sibling text/mol nodes via [`Self::label`] (string, list, placed object, or lane object — see [`Label`]).",
       "type": "object",
       "required": [
         "source",
@@ -358,13 +362,6 @@
         "type"
       ],
       "properties": {
-        "above": {
-          "description": "Node ids drawn above the shaft (text and/or mol).",
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
         "arrow": {
           "default": "forward",
           "allOf": [
@@ -372,13 +369,6 @@
               "$ref": "#/definitions/EdgeArrow"
             }
           ]
-        },
-        "below": {
-          "description": "Node ids drawn below the shaft (text and/or mol).",
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
         },
         "color": {
           "type": [
@@ -390,19 +380,16 @@
           "default": false,
           "type": "boolean"
         },
-        "left": {
-          "description": "Node ids drawn to the left of the shaft (text and/or mol).",
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "right": {
-          "description": "Node ids drawn to the right of the shaft (text and/or mol).",
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
+        "label": {
+          "description": "Label chrome: id / list / `{id, pos?}` / `{above,below,left,right}`.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Label"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "role": {
           "description": "Optional semantic role (e.g. enzyme) — not drawn by default.",
@@ -490,6 +477,114 @@
         }
       }
     },
+    "Label": {
+      "description": "Unified label: string id, list, placed object, or lane object.\n\n```json \"label\": \"adh\" \"label\": [\"adh\", {\"id\": \"rt\", \"pos\": \"below\"}] \"label\": { \"id\": \"adh\", \"pos\": \"left\" } \"label\": { \"above\": [\"adh\"], \"below\": [\"rt\"], \"left\": [\"nabh4\"] } ```",
+      "anyOf": [
+        {
+          "description": "Bare node id (default position: above).",
+          "type": "string"
+        },
+        {
+          "description": "Ordered list of ids / placements.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/LabelItem"
+          }
+        },
+        {
+          "description": "Single placement with optional `pos`.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/LabelPlacement"
+            }
+          ]
+        },
+        {
+          "description": "Explicit above / below / left / right id lists.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/LabelLanes"
+            }
+          ]
+        }
+      ]
+    },
+    "LabelItem": {
+      "description": "One entry in a label list: bare id or `{ id, pos? }`.",
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#/definitions/LabelPlacement"
+        }
+      ]
+    },
+    "LabelLanes": {
+      "description": "Lane bag: `{ \"above\": [...], \"below\": [...], \"left\": [...], \"right\": [...] }`.",
+      "type": "object",
+      "properties": {
+        "above": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "below": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "left": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "right": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "LabelPlacement": {
+      "description": "Placed label: `{ \"id\": \"adh\", \"pos\": \"below\" }` (`pos` optional → above).",
+      "type": "object",
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "id": {
+          "description": "Id of a [`TextNode`] or (on edges) [`MolNode`].",
+          "type": "string"
+        },
+        "pos": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/LabelPos"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "LabelPos": {
+      "description": "Side of an edge shaft (or mol caption) for a label placement.",
+      "type": "string",
+      "enum": [
+        "above",
+        "below",
+        "left",
+        "right"
+      ]
+    },
     "LayoutOpts": {
       "description": "Layout for [`DepictSpec::ReactionScheme`] — **ELK layered by default**.\n\nFirst-class fields cover the knobs we actually tune for pathways; everything else passes through [`Self::elk_options`] as stringy ELK keys (same as future `diagram.elk_options`).\n\n# Defaults (reaction)\n\n| Key | Value | Role | | --- | --- | --- | | `elk.algorithm` | `layered` | Sugiyama layers for pathways | | `elk.direction` | `RIGHT` | Left→right flow | | `elk.edgeRouting` | `ORTHOGONAL` | Bent shafts for overlay arrows | | `elk.spacing.nodeNode` | `56` | Within-layer gap (arrow room) | | `elk.layered.spacing.nodeNodeBetweenLayers` | `80` | Between reactant/product layers | | `elk.layered.spacing.edgeNodeBetweenLayers` | `28` | Inter-layer edge clearance | | `elk.spacing.edgeEdge` | `20` | Parallel edge gap | | `elk.layered.crossingMinimization.strategy` | `LAYER_SWEEP` | Crossing reduction | | `elk.layered.nodePlacement.strategy` | `NETWORK_SIMPLEX` | Y placement | | `elk.layered.crossingMinimization.forceNodeModelOrder` | `false` | Let branches spread |\n\nMerge order: reaction defaults → `elk_options` map → first-class `direction` / `edge_routing` (caller wins).",
       "type": "object",
@@ -565,10 +660,14 @@
           ]
         },
         "label": {
-          "description": "Caption: id of a [`TextNode`] in the same container (not inline text).",
-          "type": [
-            "string",
-            "null"
+          "description": "Caption: [`Label`] (string id, list, or `{id, pos?}` — text-node refs).",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Label"
+            },
+            {
+              "type": "null"
+            }
           ]
         },
         "molfile": {

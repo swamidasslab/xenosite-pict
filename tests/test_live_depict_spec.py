@@ -148,18 +148,27 @@ def test_live_reaction_scheme_mol_and_edge_children():
                     "type": "edge",
                     "source": "a",
                     "target": "b",
-                    "above": ["adh"],
+                    "label": [
+                        "adh",
+                        {"id": "rt", "pos": "below"},
+                    ],
                     "arrow": "forward",
                 },
+                {"type": "text", "id": "rt", "text": "rt"},
                 {"type": "mol", "id": "b", "smiles": "CC=O"},
             ],
         }
     )
     assert isinstance(doc.root, ReactionSchemeNode)
-    assert len(doc.root.children) == 4
+    assert len(doc.root.children) == 5
     assert isinstance(doc.root.children[0], TextNode)
     assert isinstance(doc.root.children[2], EdgeNode)
-    assert doc.root.children[2].above == ["adh"]
+    from xpict.contracts.depict import LabelPlacement
+
+    assert doc.root.children[2].label == [
+        "adh",
+        LabelPlacement(id="rt", pos="below"),
+    ]
     assert doc.root.layout is not None
     assert doc.root.layout.direction == "RIGHT"
     assert [m.id for m in doc.mols()] == ["a", "b"]

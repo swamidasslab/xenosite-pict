@@ -44,6 +44,7 @@ if [[ -d "$BINDINGS" ]]; then
     ShadeSpec ShadeStyle AlignToSpec AlignTo MolNodeKind MolNode \
     CommonOpts MolOpts NodeType ForTypesPatch TypedOptsPatch OptsPatch Opts \
     EdgeArrow EdgeNodeKind EdgeNode TextNodeKind TextNode \
+    LabelPos LabelPlacement LabelItem LabelLanes Label \
     ElkDirection ElkEdgeRouting LayoutOpts Node DepictSpec
 
   echo "wrote $OUT_TS/*.ts"
