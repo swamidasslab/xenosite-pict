@@ -35,20 +35,73 @@ pub fn assign_mol_ids(mols: &[MolNode]) -> Result<Vec<String>, String> {
     Ok(out)
 }
 
-/// Ensure every edge `source` / `target` names a mol id in this document.
+/// Ensure edge endpoints and label refs resolve to the right node kinds.
 pub fn validate_edges(spec: &DepictSpec) -> Result<(), String> {
-    let edges = spec.edges();
-    if edges.is_empty() {
-        return Ok(());
+    // Groups must not contain edge children.
+    if matches!(spec, DepictSpec::Group { .. }) {
+        for (i, n) in spec.nodes().iter().enumerate() {
+            if n.as_edge().is_some() {
+                return Err(format!("group children[{i}] cannot be an edge"));
+            }
+        }
     }
-    let ids = assign_mol_ids(&spec.mols())?;
-    let known: std::collections::HashSet<&str> = ids.iter().map(String::as_str).collect();
-    for e in edges {
-        if !known.contains(e.source.as_str()) {
+
+    let mol_ids = assign_mol_ids(&spec.mols())?;
+    let mol_set: std::collections::HashSet<&str> =
+        mol_ids.iter().map(String::as_str).collect();
+
+    // Collect labelable ids (mol + text).
+    let mut labelable = mol_set.clone();
+    for t in spec.texts() {
+        let Some(id) = t
+            .id
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        else {
+            continue;
+        };
+        if !labelable.insert(id) {
+            return Err(format!("duplicate node id {id}"));
+        }
+    }
+
+    for m in spec.mols() {
+        if let Some(ref lab) = m.label {
+            let id = lab.trim();
+            if id.is_empty() {
+                return Err("mol label ref must be non-empty".into());
+            }
+            match spec.node_by_id(id) {
+                Some(Node::Text(_)) => {}
+                Some(Node::Mol(_)) => {
+                    return Err(format!("mol label {id} must ref a text node, not a mol"));
+                }
+                Some(Node::Edge(_)) => {
+                    return Err(format!("mol label {id} must ref a text node, not an edge"));
+                }
+                None => return Err(format!("mol label unknown text id {id}")),
+            }
+        }
+    }
+
+    for e in spec.edges() {
+        if !mol_set.contains(e.source.as_str()) {
             return Err(format!("edge source unknown id {}", e.source));
         }
-        if !known.contains(e.target.as_str()) {
+        if !mol_set.contains(e.target.as_str()) {
             return Err(format!("edge target unknown id {}", e.target));
+        }
+        for (lane, refs) in [("above", e.above.as_slice()), ("below", e.below.as_slice())] {
+            for id in refs {
+                match spec.node_by_id(id) {
+                    Some(Node::Text(_)) | Some(Node::Mol(_)) => {}
+                    Some(Node::Edge(_)) => {
+                        return Err(format!("edge {lane} id {id} cannot ref an edge"));
+                    }
+                    None => return Err(format!("edge {lane} unknown id {id}")),
+                }
+            }
         }
     }
     Ok(())
@@ -347,14 +400,14 @@ mod tests {
             id: None,
             align: false,
             children: vec![
-                MolNode {
+                Node::Mol(MolNode {
                     smiles: Some("CCO".into()),
                     ..Default::default()
-                },
-                MolNode {
+                }),
+                Node::Mol(MolNode {
                     smiles: Some("CCCO".into()),
                     ..Default::default()
-                },
+                }),
             ],
                     opts: None,
             color: None,
@@ -376,12 +429,12 @@ mod tests {
             id: None,
             align: true,
             children: vec![
-                MolNode {
+                Node::Mol(MolNode {
                     id: Some("ref".into()),
                     smiles: Some("c1ccccc1".into()),
                     ..Default::default()
-                },
-                MolNode {
+                }),
+                Node::Mol(MolNode {
                     smiles: Some("Cc1ccccc1".into()),
                     align_to: Some(AlignTo::Spec(AlignToSpec {
                         ref_id: "ref".into(),
@@ -389,7 +442,7 @@ mod tests {
                         min_atoms: None,
                     })),
                     ..Default::default()
-                },
+                }),
             ],
             opts: None,
             color: None,
@@ -414,6 +467,7 @@ mod tests {
     #[test]
     fn render_doc_stitches_edge_result() {
         let spec = DepictSpec::Mol {
+            label: None,
             smiles: Some("CCO".into()),
             cxsmiles: None,
             molfile: None,
@@ -451,6 +505,7 @@ mod tests {
     #[test]
     fn render_doc_applies_cx_when_no_star_labels() {
         let spec = DepictSpec::Mol {
+            label: None,
             smiles: None,
             cxsmiles: Some("*C |$R1;$|".into()),
             molfile: None,
@@ -585,16 +640,16 @@ mod tests {
             id: None,
             align: true,
             children: vec![
-                MolNode {
+                Node::Mol(MolNode {
                     id: Some("a".into()),
                     smiles: Some("C".into()),
                     ..Default::default()
-                },
-                MolNode {
+                }),
+                Node::Mol(MolNode {
                     smiles: Some("CC".into()),
                     align_to: Some(AlignTo::Ref("missing".into())),
                     ..Default::default()
-                },
+                }),
             ],
                     opts: None,
             color: None,
@@ -606,17 +661,17 @@ mod tests {
             id: None,
             align: true,
             children: vec![
-                MolNode {
+                Node::Mol(MolNode {
                     id: Some("a".into()),
                     smiles: Some("C".into()),
                     ..Default::default()
-                },
-                MolNode {
+                }),
+                Node::Mol(MolNode {
                     id: Some("b".into()),
                     smiles: Some("CC".into()),
                     align_to: Some(AlignTo::Ref("b".into())),
                     ..Default::default()
-                },
+                }),
             ],
                     opts: None,
             color: None,
@@ -631,22 +686,22 @@ mod tests {
             id: None,
             align: true,
             children: vec![
-                MolNode {
+                Node::Mol(MolNode {
                     id: Some("left".into()),
                     smiles: Some("C".into()),
                     ..Default::default()
-                },
-                MolNode {
+                }),
+                Node::Mol(MolNode {
                     id: Some("mid".into()),
                     smiles: Some("CC".into()),
                     ..Default::default()
-                },
-                MolNode {
+                }),
+                Node::Mol(MolNode {
                     id: Some("q".into()),
                     smiles: Some("CCC".into()),
                     align_to: Some(AlignTo::Ref("mid".into())),
                     ..Default::default()
-                },
+                }),
             ],
                     opts: None,
             color: None,
@@ -722,6 +777,7 @@ mod tests {
     #[test]
     fn render_doc_star_labels_shade_scale_weight() {
         let spec = DepictSpec::Mol {
+            label: None,
             smiles: Some("*C".into()),
             cxsmiles: None,
             molfile: None,
@@ -767,6 +823,7 @@ mod tests {
     #[test]
     fn render_doc_errors_on_missing_or_failed_edge_row() {
         let spec = DepictSpec::Mol {
+            label: None,
             smiles: Some("C".into()),
             cxsmiles: None,
             molfile: None,
@@ -1020,12 +1077,14 @@ mod tests {
               "type": "reaction_scheme",
               "opts": [{"color": "#111"}, {"type": "mol", "weight": 1.2}],
               "children": [
-                {"type": "mol", "id": "a", "smiles": "CCO"},
+                {"type": "text", "id": "adh", "text": "ADH"},
+                {"type": "text", "id": "aldh", "text": "ALDH"},
+                {"type": "mol", "id": "a", "smiles": "CCO", "label": "adh"},
                 {
                   "type": "edge",
                   "source": "a",
                   "target": "b",
-                  "label": "ADH",
+                  "above": ["adh"],
                   "arrow": "forward"
                 },
                 {"type": "mol", "id": "b", "smiles": "CC=O"},
@@ -1033,7 +1092,7 @@ mod tests {
                   "type": "edge",
                   "source": "b",
                   "target": "c",
-                  "label": "ALDH",
+                  "above": ["aldh"],
                   "arrow": "equilibrium",
                   "color": "#064",
                   "dashed": true
@@ -1045,21 +1104,41 @@ mod tests {
         .unwrap();
 
         assert_eq!(spec.mols().len(), 3);
-        assert_eq!(spec.nodes().len(), 5);
+        assert_eq!(spec.texts().len(), 2);
+        assert_eq!(spec.nodes().len(), 7);
         let edges = spec.edges();
         assert_eq!(edges.len(), 2);
         assert_eq!(edges[0].source, "a");
         assert_eq!(edges[0].target, "b");
-        assert_eq!(edges[0].label.as_deref(), Some("ADH"));
+        assert_eq!(edges[0].above, vec!["adh"]);
         assert_eq!(edges[0].arrow, EdgeArrow::Forward);
         assert_eq!(edges[1].arrow, EdgeArrow::Equilibrium);
         assert_eq!(edges[1].color.as_deref(), Some("#064"));
         assert!(edges[1].dashed);
+        assert_eq!(spec.mols()[0].label.as_deref(), Some("adh"));
         validate_edges(&spec).unwrap();
 
         let chrome = spec.resolve_mol_chrome(0);
         assert_eq!(chrome.color.as_deref(), Some("#111"));
         assert_eq!(chrome.weight, Some(1.2));
+    }
+
+    #[test]
+    fn group_mol_label_refs_text_node() {
+        let spec: DepictSpec = serde_json::from_str(
+            r#"{
+              "type": "group",
+              "children": [
+                {"type": "text", "id": "cap", "text": "ethanol"},
+                {"type": "mol", "id": "a", "smiles": "CCO", "label": "cap"}
+              ]
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(spec.mols().len(), 1);
+        assert_eq!(spec.texts().len(), 1);
+        assert_eq!(spec.mols()[0].label.as_deref(), Some("cap"));
+        validate_edges(&spec).unwrap();
     }
 
     #[test]
@@ -1077,6 +1156,68 @@ mod tests {
         let err = validate_edges(&spec).unwrap_err();
         assert!(err.contains("unknown id missing"));
         assert!(plan_edge(&spec).unwrap_err().contains("unknown id"));
+    }
+
+    #[test]
+    fn mol_label_unknown_text_id_errors() {
+        let spec: DepictSpec = serde_json::from_str(
+            r#"{
+              "type": "group",
+              "children": [
+                {"type": "mol", "id": "a", "smiles": "C", "label": "nope"}
+              ]
+            }"#,
+        )
+        .unwrap();
+        let err = validate_edges(&spec).unwrap_err();
+        assert!(err.contains("unknown text id nope"));
+    }
+
+    #[test]
+    fn reaction_scheme_elk_defaults_and_overrides() {
+        let bare: DepictSpec = serde_json::from_str(
+            r#"{"type":"reaction_scheme","children":[{"type":"mol","id":"a","smiles":"C"}]}"#,
+        )
+        .unwrap();
+        let opts = bare.resolve_elk_options().unwrap();
+        assert_eq!(opts.get("elk.algorithm").map(String::as_str), Some("layered"));
+        assert_eq!(opts.get("elk.direction").map(String::as_str), Some("RIGHT"));
+        assert_eq!(
+            opts.get("elk.edgeRouting").map(String::as_str),
+            Some("ORTHOGONAL")
+        );
+        assert!(
+            opts.get("elk.layered.spacing.nodeNodeBetweenLayers")
+                .unwrap()
+                .parse::<f64>()
+                .unwrap()
+                >= 80.0
+        );
+
+        let custom: DepictSpec = serde_json::from_str(
+            r#"{
+              "type": "reaction_scheme",
+              "layout": {
+                "direction": "DOWN",
+                "edge_routing": "POLYLINE",
+                "elk_options": {
+                  "elk.spacing.nodeNode": "72",
+                  "elk.layered.spacing.nodeNodeBetweenLayers": "100"
+                }
+              },
+              "children": [{"type":"mol","id":"a","smiles":"C"}]
+            }"#,
+        )
+        .unwrap();
+        let o = custom.resolve_elk_options().unwrap();
+        assert_eq!(o.get("elk.direction").map(String::as_str), Some("DOWN"));
+        assert_eq!(o.get("elk.edgeRouting").map(String::as_str), Some("POLYLINE"));
+        assert_eq!(o.get("elk.spacing.nodeNode").map(String::as_str), Some("72"));
+        assert_eq!(
+            o.get("elk.layered.spacing.nodeNodeBetweenLayers")
+                .map(String::as_str),
+            Some("100")
+        );
     }
 
     #[test]

@@ -139,6 +139,10 @@ export type {
   Opts,
   EdgeArrow,
   EdgeNode,
+  TextNode,
+  ElkDirection,
+  ElkEdgeRouting,
+  LayoutOpts,
   Node,
 } from "./generated/depict-abi.js";
 
@@ -148,7 +152,7 @@ import type {
 } from "./generated/depict-abi.js";
 
 /**
- * Group — ``children`` of mol nodes only (today).
+ * Group — ``children`` of mol | text (no edges).
  * ``align`` defaults to false on the wire (`#[serde(default)]`); optional here
  * so callers may omit it (ts-rs cannot mark non-Option defaults optional).
  */
@@ -159,7 +163,7 @@ export type GroupNode = Omit<
   align?: boolean;
 };
 
-/** Reaction scheme — mixed mol | edge children. */
+/** Reaction scheme — mol | edge | text children; ELK layout by default. */
 export type ReactionSchemeNode = Extract<
   GeneratedDepictSpec,
   { type: "reaction_scheme" }
@@ -414,13 +418,13 @@ async function depict(spec: DepictSpec): Promise<Rendered[]> {
   ) as DocPaint[];
 
   const byId = new Map<string, MolNode>();
-  const nodes =
+  const molNodes: MolNode[] =
     spec.type === "mol"
       ? [spec]
-      : spec.type === "group"
-        ? (spec.children ?? [])
-        : [];
-  for (const [i, n] of nodes.entries()) {
+      : (spec.children ?? []).filter(
+          (n): n is MolNode => n.type === "mol"
+        );
+  for (const [i, n] of molNodes.entries()) {
     byId.set(n.id?.trim() || `m_${i}`, n);
   }
 

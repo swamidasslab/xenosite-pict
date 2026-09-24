@@ -15,7 +15,11 @@ shade?: ShadeSpec, star_labels?: Array<string | null>,
 /**
  * Template id string, or `{ "ref", "atom_map"?, "min_atoms"? }`.
  */
-align_to?: AlignTo, color?: string, scale?: number, weight?: number, halo?: boolean, 
+align_to?: AlignTo, 
+/**
+ * Caption: id of a [`TextNode`] in the same container (not inline text).
+ */
+label?: string, color?: string, scale?: number, weight?: number, halo?: boolean, 
 /**
  * Cascade patches for this node (list or singleton).
  */

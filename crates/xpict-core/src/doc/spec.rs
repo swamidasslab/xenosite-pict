@@ -179,6 +179,8 @@ pub enum NodeType {
     ReactionScheme,
     /// Edge / reaction link node (`"type": "edge"`).
     Edge,
+    /// Text caption / chrome node (`"type": "text"`).
+    Text,
 }
 
 impl NodeType {
@@ -188,6 +190,7 @@ impl NodeType {
             NodeType::Group => "group",
             NodeType::ReactionScheme => "reaction_scheme",
             NodeType::Edge => "edge",
+            NodeType::Text => "text",
         }
     }
 }
@@ -270,7 +273,7 @@ impl MolOpts {
     }
 }
 
-/// Discriminated opts patch: `{ "type": "mol"|"group"|"reaction_scheme"|"edge", …opts }`.
+/// Discriminated opts patch: `{ "type": "mol"|"group"|"reaction_scheme"|"edge"|"text", …opts }`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 #[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
@@ -289,6 +292,10 @@ pub enum TypedOptsPatch {
         opts: CommonOpts,
     },
     Edge {
+        #[serde(flatten)]
+        opts: CommonOpts,
+    },
+    Text {
         #[serde(flatten)]
         opts: CommonOpts,
     },
@@ -330,6 +337,7 @@ impl OptsPatch {
                 target == NodeType::ReactionScheme
             }
             OptsPatch::Typed(TypedOptsPatch::Edge { .. }) => target == NodeType::Edge,
+            OptsPatch::Typed(TypedOptsPatch::Text { .. }) => target == NodeType::Text,
             OptsPatch::ForTypes(p) => p.for_types.contains(&target),
             OptsPatch::Universal(_) => true,
         }
@@ -341,6 +349,7 @@ impl OptsPatch {
             OptsPatch::Typed(TypedOptsPatch::Group { .. }) => {}
             OptsPatch::Typed(TypedOptsPatch::ReactionScheme { .. }) => {}
             OptsPatch::Typed(TypedOptsPatch::Edge { .. }) => {}
+            OptsPatch::Typed(TypedOptsPatch::Text { .. }) => {}
             OptsPatch::ForTypes(p) => out.merge_common(&p.opts),
             OptsPatch::Universal(c) => out.merge_common(c),
         }
@@ -433,6 +442,10 @@ pub struct MolNode {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub align_to: Option<AlignTo>,
+    /// Caption: id of a [`TextNode`] in the same container (not inline text).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub label: Option<String>,
     // --- local leaf opts (same keys as MolOpts; merge last) ---
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
@@ -509,9 +522,49 @@ pub enum EdgeNodeKind {
     Edge,
 }
 
+/// Discriminator for text nodes (`"type": "text"`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
+pub enum TextNodeKind {
+    #[default]
+    Text,
+}
+
+/// Text **node** — caption / chrome referenced by mols and edges via id.
+///
+/// ```json
+/// { "type": "text", "id": "adh", "text": "ADH" }
+/// ```
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
+pub struct TextNode {
+    #[serde(rename = "type")]
+    #[cfg_attr(feature = "codegen", ts(rename = "type"))]
+    pub type_: TextNodeKind,
+    /// Stable id — required when other nodes [`MolNode::label`] / edge lanes ref it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub id: Option<String>,
+    /// Display text (markup-capable later).
+    pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub color: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub scale: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub opts: Option<Opts>,
+}
+
 /// Edge **node** — a reaction / network link between mol ids.
 ///
-/// Lives in container `children` alongside [`MolNode`] (see [`Node`]).
+/// Label chrome references sibling [`TextNode`] / [`MolNode`] ids via
+/// [`Self::above`] / [`Self::below`] (not inline strings).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
 #[cfg_attr(feature = "codegen", ts(export))]
@@ -524,9 +577,12 @@ pub struct EdgeNode {
     pub source: String,
     /// Id of the target mol node.
     pub target: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "codegen", ts(optional))]
-    pub label: Option<String>,
+    /// Node ids drawn above the shaft (text and/or mol).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub above: Vec<String>,
+    /// Node ids drawn below the shaft (text and/or mol).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub below: Vec<String>,
     /// Optional semantic role (e.g. enzyme) — not drawn by default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
@@ -543,10 +599,11 @@ pub struct EdgeNode {
     pub dashed: bool,
 }
 
-/// Document **node** in a reaction scheme: mol or edge.
+/// Document **node**: mol, edge, or text.
 ///
-/// Untagged so each variant keeps its own `"type"` field ([`MolNode`] /
-/// [`EdgeNode`]). Group containers stay mol-only ([`Vec<MolNode>`]).
+/// Untagged so each variant keeps its own `"type"` field.
+/// - [`DepictSpec::Group`]: mol | text (no edges).
+/// - [`DepictSpec::ReactionScheme`]: mol | edge | text.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 #[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
@@ -554,21 +611,177 @@ pub struct EdgeNode {
 pub enum Node {
     Mol(MolNode),
     Edge(EdgeNode),
+    Text(TextNode),
 }
 
 impl Node {
     pub fn as_mol(&self) -> Option<&MolNode> {
         match self {
             Node::Mol(m) => Some(m),
-            Node::Edge(_) => None,
+            _ => None,
         }
     }
 
     pub fn as_edge(&self) -> Option<&EdgeNode> {
         match self {
             Node::Edge(e) => Some(e),
-            Node::Mol(_) => None,
+            _ => None,
         }
+    }
+
+    pub fn as_text(&self) -> Option<&TextNode> {
+        match self {
+            Node::Text(t) => Some(t),
+            _ => None,
+        }
+    }
+
+    /// Stable id when present (mol / text); edges have no id.
+    pub fn id(&self) -> Option<&str> {
+        match self {
+            Node::Mol(m) => m.id.as_deref().map(str::trim).filter(|s| !s.is_empty()),
+            Node::Text(t) => t.id.as_deref().map(str::trim).filter(|s| !s.is_empty()),
+            Node::Edge(_) => None,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Layout — reaction_scheme defaults to ELK layered
+// ---------------------------------------------------------------------------
+
+/// Flow direction for ELK layered layout (`elk.direction`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
+pub enum ElkDirection {
+    #[default]
+    #[serde(rename = "RIGHT")]
+    Right,
+    #[serde(rename = "LEFT")]
+    Left,
+    #[serde(rename = "UP")]
+    Up,
+    #[serde(rename = "DOWN")]
+    Down,
+}
+
+impl ElkDirection {
+    pub fn as_elk(self) -> &'static str {
+        match self {
+            ElkDirection::Right => "RIGHT",
+            ElkDirection::Left => "LEFT",
+            ElkDirection::Up => "UP",
+            ElkDirection::Down => "DOWN",
+        }
+    }
+}
+
+/// Edge routing style (`elk.edgeRouting`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
+pub enum ElkEdgeRouting {
+    #[default]
+    #[serde(rename = "ORTHOGONAL")]
+    Orthogonal,
+    #[serde(rename = "POLYLINE")]
+    Polyline,
+    #[serde(rename = "SPLINES")]
+    Splines,
+}
+
+impl ElkEdgeRouting {
+    pub fn as_elk(self) -> &'static str {
+        match self {
+            ElkEdgeRouting::Orthogonal => "ORTHOGONAL",
+            ElkEdgeRouting::Polyline => "POLYLINE",
+            ElkEdgeRouting::Splines => "SPLINES",
+        }
+    }
+}
+
+/// Layout for [`DepictSpec::ReactionScheme`] — **ELK layered by default**.
+///
+/// First-class fields cover the knobs we actually tune for pathways; everything
+/// else passes through [`Self::elk_options`] as stringy ELK keys (same as
+/// future `diagram.elk_options`).
+///
+/// # Defaults (reaction)
+///
+/// | Key | Value | Role |
+/// | --- | --- | --- |
+/// | `elk.algorithm` | `layered` | Sugiyama layers for pathways |
+/// | `elk.direction` | `RIGHT` | Left→right flow |
+/// | `elk.edgeRouting` | `ORTHOGONAL` | Bent shafts for overlay arrows |
+/// | `elk.spacing.nodeNode` | `56` | Within-layer gap (arrow room) |
+/// | `elk.layered.spacing.nodeNodeBetweenLayers` | `80` | Between reactant/product layers |
+/// | `elk.layered.spacing.edgeNodeBetweenLayers` | `28` | Inter-layer edge clearance |
+/// | `elk.spacing.edgeEdge` | `20` | Parallel edge gap |
+/// | `elk.layered.crossingMinimization.strategy` | `LAYER_SWEEP` | Crossing reduction |
+/// | `elk.layered.nodePlacement.strategy` | `NETWORK_SIMPLEX` | Y placement |
+/// | `elk.layered.crossingMinimization.forceNodeModelOrder` | `false` | Let branches spread |
+///
+/// Merge order: reaction defaults → `elk_options` map → first-class
+/// `direction` / `edge_routing` (caller wins).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
+pub struct LayoutOpts {
+    /// Flow axis (`RIGHT` / `LEFT` / `UP` / `DOWN`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub direction: Option<ElkDirection>,
+    /// Shaft routing (`ORTHOGONAL` / `POLYLINE` / `SPLINES`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub edge_routing: Option<ElkEdgeRouting>,
+    /// Extra ELK layout options (string values), e.g. spacing overrides.
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub elk_options: std::collections::HashMap<String, String>,
+}
+
+/// Reaction-scheme ELK defaults (mirrors `python/xpict/diagram/elk.py`).
+pub fn reaction_elk_defaults() -> std::collections::BTreeMap<String, String> {
+    let mut m = std::collections::BTreeMap::new();
+    m.insert("elk.algorithm".into(), "layered".into());
+    m.insert("elk.direction".into(), "RIGHT".into());
+    m.insert("elk.edgeRouting".into(), "ORTHOGONAL".into());
+    m.insert("elk.spacing.nodeNode".into(), "56".into());
+    m.insert("elk.spacing.edgeEdge".into(), "20".into());
+    m.insert("elk.spacing.edgeNode".into(), "20".into());
+    m.insert("elk.layered.spacing.nodeNodeBetweenLayers".into(), "80".into());
+    m.insert("elk.layered.spacing.edgeNodeBetweenLayers".into(), "28".into());
+    m.insert(
+        "elk.layered.crossingMinimization.strategy".into(),
+        "LAYER_SWEEP".into(),
+    );
+    m.insert(
+        "elk.layered.nodePlacement.strategy".into(),
+        "NETWORK_SIMPLEX".into(),
+    );
+    m.insert(
+        "elk.layered.crossingMinimization.forceNodeModelOrder".into(),
+        "false".into(),
+    );
+    m
+}
+
+impl LayoutOpts {
+    /// Resolved ELK `layoutOptions` map for a reaction scheme.
+    pub fn resolve_elk(&self) -> std::collections::BTreeMap<String, String> {
+        let mut out = reaction_elk_defaults();
+        for (k, v) in &self.elk_options {
+            out.insert(k.clone(), v.clone());
+        }
+        if let Some(d) = self.direction {
+            out.insert("elk.direction".into(), d.as_elk().into());
+        }
+        if let Some(r) = self.edge_routing {
+            out.insert("elk.edgeRouting".into(), r.as_elk().into());
+        }
+        out
     }
 }
 
@@ -600,6 +813,10 @@ pub enum DepictSpec {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[cfg_attr(feature = "codegen", ts(optional))]
         align_to: Option<AlignTo>,
+        /// Caption: id of a text node (mol roots rarely use this).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        label: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[cfg_attr(feature = "codegen", ts(optional))]
         color: Option<String>,
@@ -623,9 +840,9 @@ pub enum DepictSpec {
         /// When true, later children align onto the first (or each `align_to`).
         #[serde(default)]
         align: bool,
-        /// Child mols only (no edges).
+        /// Child **nodes** — mol | text (no edges).
         #[serde(default)]
-        children: Vec<MolNode>,
+        children: Vec<Node>,
         /// Group-level cascade bag (list container for child inheritance).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[cfg_attr(feature = "codegen", ts(optional))]
@@ -637,14 +854,20 @@ pub enum DepictSpec {
         #[cfg_attr(feature = "codegen", ts(optional))]
         scale: Option<f64>,
     },
-    /// Reaction / pathway scheme: mixed **node** children (`mol` | `edge`).
+    /// Reaction / pathway scheme: mixed **node** children (`mol` | `edge` | `text`).
+    ///
+    /// Layout defaults to **ELK layered** ([`LayoutOpts`] / [`reaction_elk_defaults`]).
     ReactionScheme {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[cfg_attr(feature = "codegen", ts(optional))]
         id: Option<String>,
-        /// Child **nodes** — mols and edges interleaved (or any order).
+        /// Child **nodes** — mols, edges, and text (any order).
         #[serde(default)]
         children: Vec<Node>,
+        /// ELK layout (defaults applied when omitted).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        layout: Option<LayoutOpts>,
         /// Scheme-level cascade bag for child mol inheritance.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[cfg_attr(feature = "codegen", ts(optional))]
@@ -659,7 +882,17 @@ pub enum DepictSpec {
 }
 
 impl DepictSpec {
-    /// Flatten to mol nodes in document order (skips edge children).
+    /// ELK layout options when this is a reaction scheme (defaults if omitted).
+    pub fn resolve_elk_options(&self) -> Option<std::collections::BTreeMap<String, String>> {
+        match self {
+            DepictSpec::ReactionScheme { layout, .. } => {
+                Some(layout.clone().unwrap_or_default().resolve_elk())
+            }
+            _ => None,
+        }
+    }
+
+    /// Flatten to mol nodes in document order (skips edge / text children).
     pub fn mols(&self) -> Vec<MolNode> {
         match self {
             DepictSpec::Mol {
@@ -670,6 +903,7 @@ impl DepictSpec {
                 shade,
                 star_labels,
                 align_to,
+                label,
                 color,
                 scale,
                 weight,
@@ -684,14 +918,15 @@ impl DepictSpec {
                 shade: shade.clone(),
                 star_labels: star_labels.clone(),
                 align_to: align_to.clone(),
+                label: label.clone(),
                 color: color.clone(),
                 scale: *scale,
                 weight: *weight,
                 halo: *halo,
                 opts: opts.clone(),
             }],
-            DepictSpec::Group { children, .. } => children.clone(),
-            DepictSpec::ReactionScheme { children, .. } => children
+            DepictSpec::Group { children, .. }
+            | DepictSpec::ReactionScheme { children, .. } => children
                 .iter()
                 .filter_map(Node::as_mol)
                 .cloned()
@@ -699,17 +934,28 @@ impl DepictSpec {
         }
     }
 
-    /// Child nodes of a reaction scheme (empty for mol / group roots).
+    /// Child nodes of a container (empty for a mol root).
     pub fn nodes(&self) -> &[Node] {
         match self {
-            DepictSpec::ReactionScheme { children, .. } => children.as_slice(),
-            _ => &[],
+            DepictSpec::Group { children, .. }
+            | DepictSpec::ReactionScheme { children, .. } => children.as_slice(),
+            DepictSpec::Mol { .. } => &[],
         }
     }
 
-    /// Edge nodes in document order (from reaction_scheme children).
+    /// Edge nodes in document order.
     pub fn edges(&self) -> Vec<&EdgeNode> {
         self.nodes().iter().filter_map(Node::as_edge).collect()
+    }
+
+    /// Text nodes in document order.
+    pub fn texts(&self) -> Vec<&TextNode> {
+        self.nodes().iter().filter_map(Node::as_text).collect()
+    }
+
+    /// Look up a mol or text node by id (for label / lane refs).
+    pub fn node_by_id(&self, id: &str) -> Option<&Node> {
+        self.nodes().iter().find(|n| n.id() == Some(id))
     }
 
     pub fn align_enabled(&self) -> bool {

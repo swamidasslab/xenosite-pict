@@ -5,7 +5,8 @@ import type { EdgeNodeKind } from "./EdgeNodeKind";
 /**
  * Edge **node** — a reaction / network link between mol ids.
  *
- * Lives in container `children` alongside [`MolNode`] (see [`Node`]).
+ * Label chrome references sibling [`TextNode`] / [`MolNode`] ids via
+ * [`Self::above`] / [`Self::below`] (not inline strings).
  */
 export type EdgeNode = { 
 /**
@@ -19,7 +20,15 @@ source: string,
 /**
  * Id of the target mol node.
  */
-target: string, label?: string, 
+target: string, 
+/**
+ * Node ids drawn above the shaft (text and/or mol).
+ */
+above: Array<string>, 
+/**
+ * Node ids drawn below the shaft (text and/or mol).
+ */
+below: Array<string>, 
 /**
  * Optional semantic role (e.g. enzyme) — not drawn by default.
  */

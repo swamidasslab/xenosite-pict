@@ -10,8 +10,10 @@ from xpict.contracts.depict import (
     AlignToSpec,
     EdgeNode,
     GroupNode,
+    LayoutOpts,
     MolNode,
     ReactionSchemeNode,
+    TextNode,
 )
 from xpict.contracts.depict import DepictSpec as _DepictSpec
 from xpict.contracts.edge import (
@@ -77,6 +79,7 @@ __all__ = [
     "EdgeResult",
     "GroupNode",
     "Layer",
+    "LayoutOpts",
     "MolNode",
     "MolSpec",
     "MolTemplate",
@@ -86,6 +89,7 @@ __all__ = [
     "Primitive",
     "ReactionSchemeNode",
     "Scene",
+    "TextNode",
     "TextPrim",
     "Viewport",
 ]

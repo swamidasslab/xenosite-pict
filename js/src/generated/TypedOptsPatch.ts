@@ -2,6 +2,6 @@
 import type { ShadeStyle } from "./ShadeStyle";
 
 /**
- * Discriminated opts patch: `{ "type": "mol"|"group"|"reaction_scheme"|"edge", …opts }`.
+ * Discriminated opts patch: `{ "type": "mol"|"group"|"reaction_scheme"|"edge"|"text", …opts }`.
  */
-export type TypedOptsPatch = { "type": "mol", color?: string, scale?: number, weight?: number, halo?: boolean, shade?: ShadeStyle, } | { "type": "group", color?: string, scale?: number, } | { "type": "reaction_scheme", color?: string, scale?: number, } | { "type": "edge", color?: string, scale?: number, };
+export type TypedOptsPatch = { "type": "mol", color?: string, scale?: number, weight?: number, halo?: boolean, shade?: ShadeStyle, } | { "type": "group", color?: string, scale?: number, } | { "type": "reaction_scheme", color?: string, scale?: number, } | { "type": "edge", color?: string, scale?: number, } | { "type": "text", color?: string, scale?: number, };

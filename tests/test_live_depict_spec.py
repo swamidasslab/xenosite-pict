@@ -134,19 +134,21 @@ def test_live_opts_list_container_parses():
 
 
 def test_live_reaction_scheme_mol_and_edge_children():
-    """reaction_scheme children are nodes: mol | edge (edges are not a sidecar list)."""
-    from xpict.contracts.depict import EdgeNode, ReactionSchemeNode
+    """reaction_scheme children are nodes: mol | edge | text; edges ref labels by id."""
+    from xpict.contracts.depict import EdgeNode, ReactionSchemeNode, TextNode
 
     doc = DepictSpec.model_validate(
         {
             "type": "reaction_scheme",
+            "layout": {"direction": "RIGHT"},
             "children": [
-                {"type": "mol", "id": "a", "smiles": "CCO"},
+                {"type": "text", "id": "adh", "text": "ADH"},
+                {"type": "mol", "id": "a", "smiles": "CCO", "label": "adh"},
                 {
                     "type": "edge",
                     "source": "a",
                     "target": "b",
-                    "label": "ADH",
+                    "above": ["adh"],
                     "arrow": "forward",
                 },
                 {"type": "mol", "id": "b", "smiles": "CC=O"},
@@ -154,7 +156,11 @@ def test_live_reaction_scheme_mol_and_edge_children():
         }
     )
     assert isinstance(doc.root, ReactionSchemeNode)
-    assert len(doc.root.children) == 3
-    assert isinstance(doc.root.children[1], EdgeNode)
-    assert doc.root.children[1].label == "ADH"
+    assert len(doc.root.children) == 4
+    assert isinstance(doc.root.children[0], TextNode)
+    assert isinstance(doc.root.children[2], EdgeNode)
+    assert doc.root.children[2].above == ["adh"]
+    assert doc.root.layout is not None
+    assert doc.root.layout.direction == "RIGHT"
     assert [m.id for m in doc.mols()] == ["a", "b"]
+    assert doc.mols()[0].label == "adh"

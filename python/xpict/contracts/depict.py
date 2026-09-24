@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Any
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel
 
@@ -67,10 +67,17 @@ class EdgeOptsPatch(StrictModel):
     scale: float | None = None
 
 
-TypedOptsPatch = Annotated[MolOptsPatch | GroupOptsPatch | ReactionSchemeOptsPatch | EdgeOptsPatch, Field(discriminator='type')]
+class TextOptsPatch(StrictModel):
+    """Universal cascading keys (any node kind)."""
+    type: Literal['text'] = 'text'
+    color: str | None = None
+    scale: float | None = None
 
 
-NodeType = Literal['mol', 'group', 'reaction_scheme', 'edge']
+TypedOptsPatch = Annotated[MolOptsPatch | GroupOptsPatch | ReactionSchemeOptsPatch | EdgeOptsPatch | TextOptsPatch, Field(discriminator='type')]
+
+
+NodeType = Literal['mol', 'group', 'reaction_scheme', 'edge', 'text']
 
 
 class ForTypesPatch(StrictModel):
@@ -112,6 +119,7 @@ class MolNode(StrictModel):
     cxsmiles: str | None = None
     halo: bool | None = None
     id: str | None = None
+    label: Annotated[str | None, Field(description='Caption: id of a [`TextNode`] in the same container (not inline text).')] = None
     molfile: str | None = None
     opts: Annotated[Opts | None, Field(description='Cascade patches for this node (list or singleton).')] = None
     scale: float | None = None
@@ -119,16 +127,6 @@ class MolNode(StrictModel):
     smiles: str | None = None
     star_labels: list[str | None] | None = None
     weight: float | None = None
-
-
-class GroupNode(StrictModel):
-    type: Literal['group'] = 'group'
-    align: bool = Field(default=False, description='When true, later children align onto the first (or each `align_to`).')
-    children: list[MolNode] = Field(default_factory=list, description='Child mols only (no edges).')
-    color: str | None = None
-    id: str | None = None
-    opts: Annotated[Opts | None, Field(description='Group-level cascade bag (list container for child inheritance).')] = None
-    scale: float | None = None
 
 
 EdgeArrow = Literal['forward', 'equilibrium', 'open', 'line']
@@ -142,23 +140,61 @@ class EdgeNode(StrictModel):
     type: Literal['edge'] = 'edge'
     source: Annotated[str, Field(description='Id of the source mol node.')]
     target: Annotated[str, Field(description='Id of the target mol node.')]
+    above: list[str] = Field(default_factory=list, description='Node ids drawn above the shaft (text and/or mol).')
     arrow: EdgeArrow = 'forward'
+    below: list[str] = Field(default_factory=list, description='Node ids drawn below the shaft (text and/or mol).')
     color: str | None = None
     dashed: bool = False
-    label: str | None = None
     role: Annotated[str | None, Field(description='Optional semantic role (e.g. enzyme) — not drawn by default.')] = None
     stroke_width: float | None = None
 
 
-Node = MolNode | EdgeNode
+TextNodeKind = Literal['text']
+
+
+class TextNode(StrictModel):
+    """Text **node** — caption / chrome referenced by mols and edges via id."""
+    type: Literal['text'] = 'text'
+    text: Annotated[str, Field(description='Display text (markup-capable later).')]
+    color: str | None = None
+    id: Annotated[str | None, Field(description='Stable id — required when other nodes [`MolNode::label`] / edge lanes ref it.')] = None
+    opts: Opts | None = None
+    scale: float | None = None
+
+
+Node = MolNode | EdgeNode | TextNode
+
+
+class GroupNode(StrictModel):
+    type: Literal['group'] = 'group'
+    align: bool = Field(default=False, description='When true, later children align onto the first (or each `align_to`).')
+    children: list[Node] = Field(default_factory=list, description='Child **nodes** — mol | text (no edges).')
+    color: str | None = None
+    id: str | None = None
+    opts: Annotated[Opts | None, Field(description='Group-level cascade bag (list container for child inheritance).')] = None
+    scale: float | None = None
+
+
+ElkDirection = Literal['RIGHT', 'LEFT', 'UP', 'DOWN']
+
+
+ElkEdgeRouting = Literal['ORTHOGONAL', 'POLYLINE', 'SPLINES']
+
+
+class LayoutOpts(StrictModel):
+    """Layout for [`DepictSpec::ReactionScheme`] — **ELK layered by default**."""
+    direction: Annotated[ElkDirection | None, Field(description='Flow axis (`RIGHT` / `LEFT` / `UP` / `DOWN`).')] = None
+    edge_routing: Annotated[ElkEdgeRouting | None, Field(description='Shaft routing (`ORTHOGONAL` / `POLYLINE` / `SPLINES`).')] = None
+    elk_options: Annotated[dict[str, Any] | None, Field(description='Extra ELK layout options (string values), e.g. spacing overrides.')] = None
 
 
 class ReactionSchemeNode(StrictModel):
-    """Reaction / pathway scheme: mixed **node** children (`mol` | `edge`)."""
+    """Reaction / pathway scheme: mixed **node** children (`mol` | `edge` | `text`)."""
     type: Literal['reaction_scheme'] = 'reaction_scheme'
-    children: list[Node] = Field(default_factory=list, description='Child **nodes** — mols and edges interleaved (or any order).')
+    children: list[Node] = Field(default_factory=list, description='Child **nodes** — mols, edges, and text (any order).')
     color: str | None = None
     id: str | None = None
+    layout: Annotated[LayoutOpts | None, Field(description='ELK layout (defaults applied when omitted).')] = None
     opts: Annotated[Opts | None, Field(description='Scheme-level cascade bag for child mol inheritance.')] = None
     scale: float | None = None
 

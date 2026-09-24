@@ -43,6 +43,13 @@
             "null"
           ]
         },
+        "label": {
+          "description": "Caption: id of a text node (mol roots rarely use this).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "molfile": {
           "type": [
             "string",
@@ -121,11 +128,11 @@
           "type": "boolean"
         },
         "children": {
-          "description": "Child mols only (no edges).",
+          "description": "Child **nodes** — mol | text (no edges).",
           "default": [],
           "type": "array",
           "items": {
-            "$ref": "#/definitions/MolNode"
+            "$ref": "#/definitions/Node"
           }
         },
         "color": {
@@ -167,14 +174,14 @@
       }
     },
     {
-      "description": "Reaction / pathway scheme: mixed **node** children (`mol` | `edge`).",
+      "description": "Reaction / pathway scheme: mixed **node** children (`mol` | `edge` | `text`).\n\nLayout defaults to **ELK layered** ([`LayoutOpts`] / [`reaction_elk_defaults`]).",
       "type": "object",
       "required": [
         "type"
       ],
       "properties": {
         "children": {
-          "description": "Child **nodes** — mols and edges interleaved (or any order).",
+          "description": "Child **nodes** — mols, edges, and text (any order).",
           "default": [],
           "type": "array",
           "items": {
@@ -191,6 +198,17 @@
           "type": [
             "string",
             "null"
+          ]
+        },
+        "layout": {
+          "description": "ELK layout (defaults applied when omitted).",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/LayoutOpts"
+            },
+            {
+              "type": "null"
+            }
           ]
         },
         "opts": {
@@ -332,7 +350,7 @@
       ]
     },
     "EdgeNode": {
-      "description": "Edge **node** — a reaction / network link between mol ids.\n\nLives in container `children` alongside [`MolNode`] (see [`Node`]).",
+      "description": "Edge **node** — a reaction / network link between mol ids.\n\nLabel chrome references sibling [`TextNode`] / [`MolNode`] ids via [`Self::above`] / [`Self::below`] (not inline strings).",
       "type": "object",
       "required": [
         "source",
@@ -340,6 +358,13 @@
         "type"
       ],
       "properties": {
+        "above": {
+          "description": "Node ids drawn above the shaft (text and/or mol).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "arrow": {
           "default": "forward",
           "allOf": [
@@ -347,6 +372,13 @@
               "$ref": "#/definitions/EdgeArrow"
             }
           ]
+        },
+        "below": {
+          "description": "Node ids drawn below the shaft (text and/or mol).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         },
         "color": {
           "type": [
@@ -357,12 +389,6 @@
         "dashed": {
           "default": false,
           "type": "boolean"
-        },
-        "label": {
-          "type": [
-            "string",
-            "null"
-          ]
         },
         "role": {
           "description": "Optional semantic role (e.g. enzyme) — not drawn by default.",
@@ -403,6 +429,25 @@
         "edge"
       ]
     },
+    "ElkDirection": {
+      "description": "Flow direction for ELK layered layout (`elk.direction`).",
+      "type": "string",
+      "enum": [
+        "RIGHT",
+        "LEFT",
+        "UP",
+        "DOWN"
+      ]
+    },
+    "ElkEdgeRouting": {
+      "description": "Edge routing style (`elk.edgeRouting`).",
+      "type": "string",
+      "enum": [
+        "ORTHOGONAL",
+        "POLYLINE",
+        "SPLINES"
+      ]
+    },
     "ForTypesPatch": {
       "description": "Multi-kind patch: `{ \"for_types\": [\"mol\",\"group\"], …common opts }`.\n\nOnly [`CommonOpts`] keys are allowed here (intersection of kind bags).",
       "type": "object",
@@ -428,6 +473,41 @@
             "null"
           ],
           "format": "double"
+        }
+      }
+    },
+    "LayoutOpts": {
+      "description": "Layout for [`DepictSpec::ReactionScheme`] — **ELK layered by default**.\n\nFirst-class fields cover the knobs we actually tune for pathways; everything else passes through [`Self::elk_options`] as stringy ELK keys (same as future `diagram.elk_options`).\n\n# Defaults (reaction)\n\n| Key | Value | Role | | --- | --- | --- | | `elk.algorithm` | `layered` | Sugiyama layers for pathways | | `elk.direction` | `RIGHT` | Left→right flow | | `elk.edgeRouting` | `ORTHOGONAL` | Bent shafts for overlay arrows | | `elk.spacing.nodeNode` | `56` | Within-layer gap (arrow room) | | `elk.layered.spacing.nodeNodeBetweenLayers` | `80` | Between reactant/product layers | | `elk.layered.spacing.edgeNodeBetweenLayers` | `28` | Inter-layer edge clearance | | `elk.spacing.edgeEdge` | `20` | Parallel edge gap | | `elk.layered.crossingMinimization.strategy` | `LAYER_SWEEP` | Crossing reduction | | `elk.layered.nodePlacement.strategy` | `NETWORK_SIMPLEX` | Y placement | | `elk.layered.crossingMinimization.forceNodeModelOrder` | `false` | Let branches spread |\n\nMerge order: reaction defaults → `elk_options` map → first-class `direction` / `edge_routing` (caller wins).",
+      "type": "object",
+      "properties": {
+        "direction": {
+          "description": "Flow axis (`RIGHT` / `LEFT` / `UP` / `DOWN`).",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ElkDirection"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "edge_routing": {
+          "description": "Shaft routing (`ORTHOGONAL` / `POLYLINE` / `SPLINES`).",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ElkEdgeRouting"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "elk_options": {
+          "description": "Extra ELK layout options (string values), e.g. spacing overrides.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
         }
       }
     },
@@ -465,6 +545,13 @@
           ]
         },
         "id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "label": {
+          "description": "Caption: id of a [`TextNode`] in the same container (not inline text).",
           "type": [
             "string",
             "null"
@@ -548,13 +635,16 @@
       ]
     },
     "Node": {
-      "description": "Document **node** in a reaction scheme: mol or edge.\n\nUntagged so each variant keeps its own `\"type\"` field ([`MolNode`] / [`EdgeNode`]). Group containers stay mol-only ([`Vec<MolNode>`]).",
+      "description": "Document **node**: mol, edge, or text.\n\nUntagged so each variant keeps its own `\"type\"` field. - [`DepictSpec::Group`]: mol | text (no edges). - [`DepictSpec::ReactionScheme`]: mol | edge | text.",
       "anyOf": [
         {
           "$ref": "#/definitions/MolNode"
         },
         {
           "$ref": "#/definitions/EdgeNode"
+        },
+        {
+          "$ref": "#/definitions/TextNode"
         }
       ]
     },
@@ -580,6 +670,13 @@
           "type": "string",
           "enum": [
             "edge"
+          ]
+        },
+        {
+          "description": "Text caption / chrome node (`\"type\": \"text\"`).",
+          "type": "string",
+          "enum": [
+            "text"
           ]
         }
       ]
@@ -695,8 +792,62 @@
         }
       }
     },
+    "TextNode": {
+      "description": "Text **node** — caption / chrome referenced by mols and edges via id.\n\n```json { \"type\": \"text\", \"id\": \"adh\", \"text\": \"ADH\" } ```",
+      "type": "object",
+      "required": [
+        "text",
+        "type"
+      ],
+      "properties": {
+        "color": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "description": "Stable id — required when other nodes [`MolNode::label`] / edge lanes ref it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "opts": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Opts"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "scale": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "text": {
+          "description": "Display text (markup-capable later).",
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/definitions/TextNodeKind"
+        }
+      }
+    },
+    "TextNodeKind": {
+      "description": "Discriminator for text nodes (`\"type\": \"text\"`).",
+      "type": "string",
+      "enum": [
+        "text"
+      ]
+    },
     "TypedOptsPatch": {
-      "description": "Discriminated opts patch: `{ \"type\": \"mol\"|\"group\"|\"reaction_scheme\"|\"edge\", …opts }`.",
+      "description": "Discriminated opts patch: `{ \"type\": \"mol\"|\"group\"|\"reaction_scheme\"|\"edge\"|\"text\", …opts }`.",
       "oneOf": [
         {
           "description": "Mol cascading paint opts — what a mol leaf consumes from the cascade.\n\n[`MolNode`] carries the same fields at the top level (local leaf opts) plus non-cascading identity keys.",
@@ -829,6 +980,34 @@
               "type": "string",
               "enum": [
                 "edge"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Universal cascading keys (any node kind).",
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "color": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "scale": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "format": "double"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "text"
               ]
             }
           }
