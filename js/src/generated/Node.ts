@@ -4,7 +4,6 @@ import type { MolNode } from "./MolNode";
 import type { TextNode } from "./TextNode";
 
 /**
- * Document **node**: mol, edge, or text.
  *
  * Untagged so each variant keeps its own `"type"` field.
  * - [`DepictSpec::Group`]: mol | text (no edges).
