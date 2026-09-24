@@ -1284,6 +1284,43 @@ mod tests {
     }
 
     #[test]
+    fn edge_routing_overrides_scheme_layout() {
+        let spec: DepictSpec = serde_json::from_str(
+            r#"{
+              "type": "reaction_scheme",
+              "layout": { "edge_routing": "polyline" },
+              "children": [
+                {"type": "mol", "id": "a", "smiles": "C"},
+                {"type": "mol", "id": "b", "smiles": "CC"},
+                {
+                  "type": "edge",
+                  "source": "a",
+                  "target": "b",
+                  "edge_routing": "orthogonal"
+                },
+                {
+                  "type": "edge",
+                  "source": "b",
+                  "target": "a"
+                }
+              ]
+            }"#,
+        )
+        .unwrap();
+        let layout = match &spec {
+            DepictSpec::ReactionScheme {
+                layout: Some(l), ..
+            } => l.clone(),
+            _ => LayoutOpts::default(),
+        };
+        let edges = spec.edges();
+        assert_eq!(edges[0].edge_routing, Some(EdgeRouting::Orthogonal));
+        assert_eq!(edges[0].edge_routing_or(&layout), EdgeRouting::Orthogonal);
+        assert_eq!(edges[1].edge_routing, None);
+        assert_eq!(edges[1].edge_routing_or(&layout), EdgeRouting::Polyline);
+    }
+
+    #[test]
     fn cascade_reaction_scheme_typed_patch_does_not_paint_mol() {
         let spec: DepictSpec = serde_json::from_str(
             r##"{

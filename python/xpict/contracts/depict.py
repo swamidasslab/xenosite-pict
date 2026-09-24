@@ -155,6 +155,9 @@ class MolNode(StrictModel):
 EdgeArrow = Literal['forward', 'equilibrium', 'open', 'line']
 
 
+EdgeRouting = Literal['orthogonal', 'polyline', 'splines']
+
+
 EdgeNodeKind = Literal['edge']
 
 
@@ -166,6 +169,7 @@ class EdgeNode(StrictModel):
     arrow: EdgeArrow = 'forward'
     color: str | None = None
     dashed: bool = False
+    edge_routing: Annotated[EdgeRouting | None, Field(description='Per-edge override of scheme [`LayoutOpts::edge_routing`].')] = None
     label: Annotated[Label | None, Field(description='Label chrome: id / list / `{id, pos?}` / `{above,below,left,right}`.')] = None
     role: Annotated[str | None, Field(description='Optional semantic role (e.g. enzyme) — not drawn by default.')] = None
     stroke_width: float | None = None
@@ -198,9 +202,6 @@ class GroupNode(StrictModel):
 
 
 LayoutDirection = Literal['right', 'left', 'up', 'down']
-
-
-EdgeRouting = Literal['orthogonal', 'polyline', 'splines']
 
 
 class LayoutOpts(StrictModel):

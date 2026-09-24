@@ -708,6 +708,10 @@ pub struct EdgeNode {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub label: Option<Label>,
+    /// Per-edge override of scheme [`LayoutOpts::edge_routing`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub edge_routing: Option<EdgeRouting>,
     /// Optional semantic role (e.g. enzyme) — not drawn by default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
@@ -724,7 +728,13 @@ pub struct EdgeNode {
     pub dashed: bool,
 }
 
-/// Document **node**: mol, edge, or text.
+impl EdgeNode {
+    /// Effective shaft routing: edge override, else scheme layout default.
+    pub fn edge_routing_or(&self, scheme: &LayoutOpts) -> EdgeRouting {
+        self.edge_routing
+            .unwrap_or_else(|| scheme.edge_routing_or_default())
+    }
+}
 ///
 /// Untagged so each variant keeps its own `"type"` field.
 /// - [`DepictSpec::Group`]: mol | text (no edges).
@@ -804,6 +814,7 @@ pub enum EdgeRouting {
 ///
 /// Backend-agnostic knobs — hosts map these onto ELK, Dagre, or another engine.
 /// Defaults when omitted: [`LayoutDirection::Right`], [`EdgeRouting::Polyline`].
+/// Individual [`EdgeNode`]s may override [`Self::edge_routing`].
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
 #[cfg_attr(feature = "codegen", ts(export))]

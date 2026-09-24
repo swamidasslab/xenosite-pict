@@ -380,6 +380,17 @@
           "default": false,
           "type": "boolean"
         },
+        "edge_routing": {
+          "description": "Per-edge override of scheme [`LayoutOpts::edge_routing`].",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/EdgeRouting"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "label": {
           "description": "Label chrome: id / list / `{id, pos?}` / `{above,below,left,right}`.",
           "anyOf": [
@@ -586,7 +597,7 @@
       ]
     },
     "LayoutOpts": {
-      "description": "Layout for [`DepictSpec::ReactionScheme`].\n\nBackend-agnostic knobs — hosts map these onto ELK, Dagre, or another engine. Defaults when omitted: [`LayoutDirection::Right`], [`EdgeRouting::Polyline`].",
+      "description": "Layout for [`DepictSpec::ReactionScheme`].\n\nBackend-agnostic knobs — hosts map these onto ELK, Dagre, or another engine. Defaults when omitted: [`LayoutDirection::Right`], [`EdgeRouting::Polyline`]. Individual [`EdgeNode`]s may override [`Self::edge_routing`].",
       "type": "object",
       "properties": {
         "direction": {
@@ -741,7 +752,7 @@
       ]
     },
     "Node": {
-      "description": "Document **node**: mol, edge, or text.\n\nUntagged so each variant keeps its own `\"type\"` field. - [`DepictSpec::Group`]: mol | text (no edges). - [`DepictSpec::ReactionScheme`]: mol | edge | text.",
+      "description": "Untagged so each variant keeps its own `\"type\"` field. - [`DepictSpec::Group`]: mol | text (no edges). - [`DepictSpec::ReactionScheme`]: mol | edge | text.",
       "anyOf": [
         {
           "$ref": "#/definitions/MolNode"

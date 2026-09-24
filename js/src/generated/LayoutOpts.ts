@@ -7,6 +7,7 @@ import type { LayoutDirection } from "./LayoutDirection";
  *
  * Backend-agnostic knobs — hosts map these onto ELK, Dagre, or another engine.
  * Defaults when omitted: [`LayoutDirection::Right`], [`EdgeRouting::Polyline`].
+ * Individual [`EdgeNode`]s may override [`Self::edge_routing`].
  */
 export type LayoutOpts = { 
 /**
