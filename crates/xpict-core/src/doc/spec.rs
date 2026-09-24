@@ -169,12 +169,16 @@ impl AlignTo {
 
 /// Document node kinds opts may target (matches wire `"type"` discriminants).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 #[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
 #[cfg_attr(feature = "codegen", ts(export))]
 pub enum NodeType {
     Mol,
     Group,
+    /// Multi-mol scheme with edge nodes in `children` (`"type": "reaction_scheme"`).
+    ReactionScheme,
+    /// Edge / reaction link node (`"type": "edge"`).
+    Edge,
 }
 
 impl NodeType {
@@ -182,6 +186,8 @@ impl NodeType {
         match self {
             NodeType::Mol => "mol",
             NodeType::Group => "group",
+            NodeType::ReactionScheme => "reaction_scheme",
+            NodeType::Edge => "edge",
         }
     }
 }
@@ -264,9 +270,9 @@ impl MolOpts {
     }
 }
 
-/// Discriminated opts patch: `{ "type": "mol"|"group", …opts }`.
+/// Discriminated opts patch: `{ "type": "mol"|"group"|"reaction_scheme"|"edge", …opts }`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "lowercase")]
+#[serde(tag = "type", rename_all = "snake_case")]
 #[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
 #[cfg_attr(feature = "codegen", ts(export))]
 pub enum TypedOptsPatch {
@@ -275,6 +281,14 @@ pub enum TypedOptsPatch {
         opts: MolOpts,
     },
     Group {
+        #[serde(flatten)]
+        opts: CommonOpts,
+    },
+    ReactionScheme {
+        #[serde(flatten)]
+        opts: CommonOpts,
+    },
+    Edge {
         #[serde(flatten)]
         opts: CommonOpts,
     },
@@ -312,6 +326,10 @@ impl OptsPatch {
         match self {
             OptsPatch::Typed(TypedOptsPatch::Mol { .. }) => target == NodeType::Mol,
             OptsPatch::Typed(TypedOptsPatch::Group { .. }) => target == NodeType::Group,
+            OptsPatch::Typed(TypedOptsPatch::ReactionScheme { .. }) => {
+                target == NodeType::ReactionScheme
+            }
+            OptsPatch::Typed(TypedOptsPatch::Edge { .. }) => target == NodeType::Edge,
             OptsPatch::ForTypes(p) => p.for_types.contains(&target),
             OptsPatch::Universal(_) => true,
         }
@@ -321,6 +339,8 @@ impl OptsPatch {
         match self {
             OptsPatch::Typed(TypedOptsPatch::Mol { opts }) => out.merge_from(opts),
             OptsPatch::Typed(TypedOptsPatch::Group { .. }) => {}
+            OptsPatch::Typed(TypedOptsPatch::ReactionScheme { .. }) => {}
+            OptsPatch::Typed(TypedOptsPatch::Edge { .. }) => {}
             OptsPatch::ForTypes(p) => out.merge_common(&p.opts),
             OptsPatch::Universal(c) => out.merge_common(c),
         }
@@ -458,9 +478,103 @@ impl MolNode {
     }
 }
 
-/// Declarative document (`mol` or `group` root).
+// ---------------------------------------------------------------------------
+// Edges / nodes — reaction links are edge nodes in `children`
+// ---------------------------------------------------------------------------
+
+/// Arrow head / shaft style for diagram edges.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
+pub enum EdgeArrow {
+    /// Single →
+    #[default]
+    Forward,
+    /// ⇌ stacked half-arrows
+    Equilibrium,
+    /// ⇒ hollow head (retrosynthetic-style)
+    Open,
+    /// Connector without arrowhead
+    Line,
+}
+
+/// Discriminator for edge nodes (`"type": "edge"`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
+pub enum EdgeNodeKind {
+    #[default]
+    Edge,
+}
+
+/// Edge **node** — a reaction / network link between mol ids.
+///
+/// Lives in container `children` alongside [`MolNode`] (see [`Node`]).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
+pub struct EdgeNode {
+    /// Wire discriminant — required so untagged [`Node`] does not absorb edges as mols.
+    #[serde(rename = "type")]
+    #[cfg_attr(feature = "codegen", ts(rename = "type"))]
+    pub type_: EdgeNodeKind,
+    /// Id of the source mol node.
+    pub source: String,
+    /// Id of the target mol node.
+    pub target: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub label: Option<String>,
+    /// Optional semantic role (e.g. enzyme) — not drawn by default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub role: Option<String>,
+    #[serde(default)]
+    pub arrow: EdgeArrow,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub color: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub stroke_width: Option<f64>,
+    #[serde(default)]
+    pub dashed: bool,
+}
+
+/// Document **node** in a reaction scheme: mol or edge.
+///
+/// Untagged so each variant keeps its own `"type"` field ([`MolNode`] /
+/// [`EdgeNode`]). Group containers stay mol-only ([`Vec<MolNode>`]).
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "lowercase")]
+#[serde(untagged)]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
+pub enum Node {
+    Mol(MolNode),
+    Edge(EdgeNode),
+}
+
+impl Node {
+    pub fn as_mol(&self) -> Option<&MolNode> {
+        match self {
+            Node::Mol(m) => Some(m),
+            Node::Edge(_) => None,
+        }
+    }
+
+    pub fn as_edge(&self) -> Option<&EdgeNode> {
+        match self {
+            Node::Edge(e) => Some(e),
+            Node::Mol(_) => None,
+        }
+    }
+}
+
+/// Declarative document (`mol`, `group`, or `reaction_scheme` root).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
 #[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
 #[cfg_attr(feature = "codegen", ts(export))]
 pub enum DepictSpec {
@@ -509,6 +623,7 @@ pub enum DepictSpec {
         /// When true, later children align onto the first (or each `align_to`).
         #[serde(default)]
         align: bool,
+        /// Child mols only (no edges).
         #[serde(default)]
         children: Vec<MolNode>,
         /// Group-level cascade bag (list container for child inheritance).
@@ -522,10 +637,29 @@ pub enum DepictSpec {
         #[cfg_attr(feature = "codegen", ts(optional))]
         scale: Option<f64>,
     },
+    /// Reaction / pathway scheme: mixed **node** children (`mol` | `edge`).
+    ReactionScheme {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        id: Option<String>,
+        /// Child **nodes** — mols and edges interleaved (or any order).
+        #[serde(default)]
+        children: Vec<Node>,
+        /// Scheme-level cascade bag for child mol inheritance.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        opts: Option<Opts>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        color: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        scale: Option<f64>,
+    },
 }
 
 impl DepictSpec {
-    /// Flatten to mol nodes in document order.
+    /// Flatten to mol nodes in document order (skips edge children).
     pub fn mols(&self) -> Vec<MolNode> {
         match self {
             DepictSpec::Mol {
@@ -557,37 +691,70 @@ impl DepictSpec {
                 opts: opts.clone(),
             }],
             DepictSpec::Group { children, .. } => children.clone(),
+            DepictSpec::ReactionScheme { children, .. } => children
+                .iter()
+                .filter_map(Node::as_mol)
+                .cloned()
+                .collect(),
         }
+    }
+
+    /// Child nodes of a reaction scheme (empty for mol / group roots).
+    pub fn nodes(&self) -> &[Node] {
+        match self {
+            DepictSpec::ReactionScheme { children, .. } => children.as_slice(),
+            _ => &[],
+        }
+    }
+
+    /// Edge nodes in document order (from reaction_scheme children).
+    pub fn edges(&self) -> Vec<&EdgeNode> {
+        self.nodes().iter().filter_map(Node::as_edge).collect()
     }
 
     pub fn align_enabled(&self) -> bool {
         matches!(self, DepictSpec::Group { align: true, .. })
     }
 
+    /// Container-level opts bag (`group` or `reaction_scheme`).
+    pub fn container_opts(&self) -> Option<&Opts> {
+        match self {
+            DepictSpec::Group { opts, .. } | DepictSpec::ReactionScheme { opts, .. } => {
+                opts.as_ref()
+            }
+            DepictSpec::Mol { .. } => None,
+        }
+    }
+
     /// Group-level opts bag (if this is a group).
+    #[inline]
     pub fn group_opts(&self) -> Option<&Opts> {
         match self {
             DepictSpec::Group { opts, .. } => opts.as_ref(),
-            DepictSpec::Mol { .. } => None,
+            _ => None,
         }
     }
 
     /// Resolve cascading mol opts for child index `i` (0 for a mol root).
     ///
-    /// Order: group `opts` list → group flat common → node `opts` list →
+    /// Order: container `opts` list → container flat common → node `opts` list →
     /// node local flat fields (incl. legacy shade window).
     pub fn resolve_mol_chrome(&self, i: usize) -> MolOpts {
         let mols = self.mols();
         let node = mols.get(i).expect("mol index");
         let mut o = MolOpts::default();
-        if let Some(bag) = self.group_opts() {
+        if let Some(bag) = self.container_opts() {
             bag.apply_to_mol(&mut o);
         }
-        if let DepictSpec::Group { color, scale, .. } = self {
-            o.merge_common(&CommonOpts {
-                color: color.clone(),
-                scale: *scale,
-            });
+        match self {
+            DepictSpec::Group { color, scale, .. }
+            | DepictSpec::ReactionScheme { color, scale, .. } => {
+                o.merge_common(&CommonOpts {
+                    color: color.clone(),
+                    scale: *scale,
+                });
+            }
+            DepictSpec::Mol { .. } => {}
         }
         if let Some(ref bag) = node.opts {
             bag.apply_to_mol(&mut o);

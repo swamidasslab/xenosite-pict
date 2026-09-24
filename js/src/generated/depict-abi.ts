@@ -13,4 +13,8 @@ export type { ForTypesPatch } from "./ForTypesPatch.js";
 export type { TypedOptsPatch } from "./TypedOptsPatch.js";
 export type { OptsPatch } from "./OptsPatch.js";
 export type { Opts } from "./Opts.js";
+export type { EdgeArrow } from "./EdgeArrow.js";
+export type { EdgeNodeKind } from "./EdgeNodeKind.js";
+export type { EdgeNode } from "./EdgeNode.js";
+export type { Node } from "./Node.js";
 export type { DepictSpec } from "./DepictSpec.js";

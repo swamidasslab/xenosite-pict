@@ -137,6 +137,9 @@ export type {
   TypedOptsPatch,
   OptsPatch,
   Opts,
+  EdgeArrow,
+  EdgeNode,
+  Node,
 } from "./generated/depict-abi.js";
 
 import type {
@@ -156,10 +159,17 @@ export type GroupNode = Omit<
   align?: boolean;
 };
 
+/** Reaction scheme — mixed mol | edge children. */
+export type ReactionSchemeNode = Extract<
+  GeneratedDepictSpec,
+  { type: "reaction_scheme" }
+>;
+
 /** Declarative document (nested subset of PictSpec; still expanding). */
 export type DepictSpec =
   | Extract<GeneratedDepictSpec, { type: "mol" }>
-  | GroupNode;
+  | GroupNode
+  | ReactionSchemeNode;
 
 /** Alias of {@link MolNode}. */
 export type MolSpec = MolNode;

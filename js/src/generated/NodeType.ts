@@ -3,4 +3,4 @@
 /**
  * Document node kinds opts may target (matches wire `"type"` discriminants).
  */
-export type NodeType = "mol" | "group";
+export type NodeType = "mol" | "group" | "reaction_scheme" | "edge";

@@ -37,9 +37,10 @@ pub use colormap::{colormap_rgb, sample_colormap, XENOSITE};
 pub use cxsmiles::{apply_cx_by_index, cx_atom_labels, cx_source, smiles_base};
 pub use depict::depict_molecule;
 pub use doc::{
-    apply_star_labels, assign_mol_ids, plan_edge, render_doc, resolve_mol_opts, AlignTo,
-    AlignToSpec, CommonOpts, DepictSpec, DocPaint, ForTypesPatch, MolNode, MolNodeKind, MolOpts,
-    NodeType, Opts, OptsPatch, ShadeSpec, ShadeStyle, TypedOptsPatch,
+    apply_star_labels, assign_mol_ids, plan_edge, render_doc, resolve_mol_opts, validate_edges,
+    AlignTo, AlignToSpec, CommonOpts, DepictSpec, DocPaint, EdgeArrow, EdgeNode, EdgeNodeKind,
+    ForTypesPatch, MolNode, MolNodeKind, MolOpts, Node, NodeType, Opts, OptsPatch, ShadeSpec,
+    ShadeStyle, TypedOptsPatch,
 };
 pub use edge::{
     AlignOpts, CoordGenMoleculeResult, CoordMethod, EdgePlan, EdgeResult, EdgeTask,

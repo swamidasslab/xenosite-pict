@@ -35,6 +35,25 @@ pub fn assign_mol_ids(mols: &[MolNode]) -> Result<Vec<String>, String> {
     Ok(out)
 }
 
+/// Ensure every edge `source` / `target` names a mol id in this document.
+pub fn validate_edges(spec: &DepictSpec) -> Result<(), String> {
+    let edges = spec.edges();
+    if edges.is_empty() {
+        return Ok(());
+    }
+    let ids = assign_mol_ids(&spec.mols())?;
+    let known: std::collections::HashSet<&str> = ids.iter().map(String::as_str).collect();
+    for e in edges {
+        if !known.contains(e.source.as_str()) {
+            return Err(format!("edge source unknown id {}", e.source));
+        }
+        if !known.contains(e.target.as_str()) {
+            return Err(format!("edge target unknown id {}", e.target));
+        }
+    }
+    Ok(())
+}
+
 /// Pass 1: build an [`EdgePlan`] for every mol that needs host coord gen.
 ///
 /// - No align: each mol is its own free-layout root.
@@ -42,6 +61,7 @@ pub fn assign_mol_ids(mols: &[MolNode]) -> Result<Vec<String>, String> {
 ///
 /// Returns `None` only when the document has no molecules.
 pub fn plan_edge(spec: &DepictSpec) -> Result<Option<EdgePlan>, String> {
+    validate_edges(spec)?;
     let mols = spec.mols();
     if mols.is_empty() {
         return Ok(None);
@@ -991,5 +1011,88 @@ mod tests {
         let painted = render_doc(&spec, &edge).unwrap();
         assert_eq!(painted[0].molecule.color.as_deref(), Some("#abcdef"));
         assert!((painted[0].molecule.weight - 1.5).abs() < 1e-12);
+    }
+
+    #[test]
+    fn reaction_scheme_nodes_and_edges_json() {
+        let spec: DepictSpec = serde_json::from_str(
+            r##"{
+              "type": "reaction_scheme",
+              "opts": [{"color": "#111"}, {"type": "mol", "weight": 1.2}],
+              "children": [
+                {"type": "mol", "id": "a", "smiles": "CCO"},
+                {
+                  "type": "edge",
+                  "source": "a",
+                  "target": "b",
+                  "label": "ADH",
+                  "arrow": "forward"
+                },
+                {"type": "mol", "id": "b", "smiles": "CC=O"},
+                {
+                  "type": "edge",
+                  "source": "b",
+                  "target": "c",
+                  "label": "ALDH",
+                  "arrow": "equilibrium",
+                  "color": "#064",
+                  "dashed": true
+                },
+                {"type": "mol", "id": "c", "smiles": "CC(=O)O"}
+              ]
+            }"##,
+        )
+        .unwrap();
+
+        assert_eq!(spec.mols().len(), 3);
+        assert_eq!(spec.nodes().len(), 5);
+        let edges = spec.edges();
+        assert_eq!(edges.len(), 2);
+        assert_eq!(edges[0].source, "a");
+        assert_eq!(edges[0].target, "b");
+        assert_eq!(edges[0].label.as_deref(), Some("ADH"));
+        assert_eq!(edges[0].arrow, EdgeArrow::Forward);
+        assert_eq!(edges[1].arrow, EdgeArrow::Equilibrium);
+        assert_eq!(edges[1].color.as_deref(), Some("#064"));
+        assert!(edges[1].dashed);
+        validate_edges(&spec).unwrap();
+
+        let chrome = spec.resolve_mol_chrome(0);
+        assert_eq!(chrome.color.as_deref(), Some("#111"));
+        assert_eq!(chrome.weight, Some(1.2));
+    }
+
+    #[test]
+    fn reaction_scheme_edge_unknown_id_errors() {
+        let spec: DepictSpec = serde_json::from_str(
+            r#"{
+              "type": "reaction_scheme",
+              "children": [
+                {"type": "mol", "id": "a", "smiles": "C"},
+                {"type": "edge", "source": "a", "target": "missing"}
+              ]
+            }"#,
+        )
+        .unwrap();
+        let err = validate_edges(&spec).unwrap_err();
+        assert!(err.contains("unknown id missing"));
+        assert!(plan_edge(&spec).unwrap_err().contains("unknown id"));
+    }
+
+    #[test]
+    fn cascade_reaction_scheme_typed_patch_does_not_paint_mol() {
+        let spec: DepictSpec = serde_json::from_str(
+            r##"{
+              "type": "reaction_scheme",
+              "opts": [
+                {"type": "reaction_scheme", "color": "#ff0000"},
+                {"type": "mol", "color": "#00ff00"}
+              ],
+              "children": [{"type": "mol", "id": "n", "smiles": "C"}]
+            }"##,
+        )
+        .unwrap();
+        let chrome = spec.resolve_mol_chrome(0);
+        assert_eq!(chrome.color.as_deref(), Some("#00ff00"));
     }
 }

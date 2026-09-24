@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "DepictSpec",
-  "description": "Declarative document (`mol` or `group` root).",
+  "description": "Declarative document (`mol`, `group`, or `reaction_scheme` root).",
   "oneOf": [
     {
       "type": "object",
@@ -121,6 +121,7 @@
           "type": "boolean"
         },
         "children": {
+          "description": "Child mols only (no edges).",
           "default": [],
           "type": "array",
           "items": {
@@ -161,6 +162,59 @@
           "type": "string",
           "enum": [
             "group"
+          ]
+        }
+      }
+    },
+    {
+      "description": "Reaction / pathway scheme: mixed **node** children (`mol` | `edge`).",
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "children": {
+          "description": "Child **nodes** — mols and edges interleaved (or any order).",
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Node"
+          }
+        },
+        "color": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "opts": {
+          "description": "Scheme-level cascade bag for child mol inheritance.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Opts"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "scale": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "reaction_scheme"
           ]
         }
       }
@@ -243,6 +297,111 @@
           "format": "double"
         }
       }
+    },
+    "EdgeArrow": {
+      "description": "Arrow head / shaft style for diagram edges.",
+      "oneOf": [
+        {
+          "description": "Single →",
+          "type": "string",
+          "enum": [
+            "forward"
+          ]
+        },
+        {
+          "description": "⇌ stacked half-arrows",
+          "type": "string",
+          "enum": [
+            "equilibrium"
+          ]
+        },
+        {
+          "description": "⇒ hollow head (retrosynthetic-style)",
+          "type": "string",
+          "enum": [
+            "open"
+          ]
+        },
+        {
+          "description": "Connector without arrowhead",
+          "type": "string",
+          "enum": [
+            "line"
+          ]
+        }
+      ]
+    },
+    "EdgeNode": {
+      "description": "Edge **node** — a reaction / network link between mol ids.\n\nLives in container `children` alongside [`MolNode`] (see [`Node`]).",
+      "type": "object",
+      "required": [
+        "source",
+        "target",
+        "type"
+      ],
+      "properties": {
+        "arrow": {
+          "default": "forward",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EdgeArrow"
+            }
+          ]
+        },
+        "color": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "dashed": {
+          "default": false,
+          "type": "boolean"
+        },
+        "label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "role": {
+          "description": "Optional semantic role (e.g. enzyme) — not drawn by default.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source": {
+          "description": "Id of the source mol node.",
+          "type": "string"
+        },
+        "stroke_width": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "target": {
+          "description": "Id of the target mol node.",
+          "type": "string"
+        },
+        "type": {
+          "description": "Wire discriminant — required so untagged [`Node`] does not absorb edges as mols.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EdgeNodeKind"
+            }
+          ]
+        }
+      }
+    },
+    "EdgeNodeKind": {
+      "description": "Discriminator for edge nodes (`\"type\": \"edge\"`).",
+      "type": "string",
+      "enum": [
+        "edge"
+      ]
     },
     "ForTypesPatch": {
       "description": "Multi-kind patch: `{ \"for_types\": [\"mol\",\"group\"], …common opts }`.\n\nOnly [`CommonOpts`] keys are allowed here (intersection of kind bags).",
@@ -388,12 +547,41 @@
         "mol"
       ]
     },
+    "Node": {
+      "description": "Document **node** in a reaction scheme: mol or edge.\n\nUntagged so each variant keeps its own `\"type\"` field ([`MolNode`] / [`EdgeNode`]). Group containers stay mol-only ([`Vec<MolNode>`]).",
+      "anyOf": [
+        {
+          "$ref": "#/definitions/MolNode"
+        },
+        {
+          "$ref": "#/definitions/EdgeNode"
+        }
+      ]
+    },
     "NodeType": {
       "description": "Document node kinds opts may target (matches wire `\"type\"` discriminants).",
-      "type": "string",
-      "enum": [
-        "mol",
-        "group"
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "mol",
+            "group"
+          ]
+        },
+        {
+          "description": "Multi-mol scheme with edge nodes in `children` (`\"type\": \"reaction_scheme\"`).",
+          "type": "string",
+          "enum": [
+            "reaction_scheme"
+          ]
+        },
+        {
+          "description": "Edge / reaction link node (`\"type\": \"edge\"`).",
+          "type": "string",
+          "enum": [
+            "edge"
+          ]
+        }
       ]
     },
     "Opts": {
@@ -508,7 +696,7 @@
       }
     },
     "TypedOptsPatch": {
-      "description": "Discriminated opts patch: `{ \"type\": \"mol\"|\"group\", …opts }`.",
+      "description": "Discriminated opts patch: `{ \"type\": \"mol\"|\"group\"|\"reaction_scheme\"|\"edge\", …opts }`.",
       "oneOf": [
         {
           "description": "Mol cascading paint opts — what a mol leaf consumes from the cascade.\n\n[`MolNode`] carries the same fields at the top level (local leaf opts) plus non-cascading identity keys.",
@@ -585,6 +773,62 @@
               "type": "string",
               "enum": [
                 "group"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Universal cascading keys (any node kind).",
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "color": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "scale": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "format": "double"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "reaction_scheme"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Universal cascading keys (any node kind).",
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "color": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "scale": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "format": "double"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "edge"
               ]
             }
           }

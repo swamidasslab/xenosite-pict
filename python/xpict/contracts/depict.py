@@ -53,10 +53,24 @@ class GroupOptsPatch(StrictModel):
     scale: float | None = None
 
 
-TypedOptsPatch = Annotated[MolOptsPatch | GroupOptsPatch, Field(discriminator='type')]
+class ReactionSchemeOptsPatch(StrictModel):
+    """Universal cascading keys (any node kind)."""
+    type: Literal['reaction_scheme'] = 'reaction_scheme'
+    color: str | None = None
+    scale: float | None = None
 
 
-NodeType = Literal['mol', 'group']
+class EdgeOptsPatch(StrictModel):
+    """Universal cascading keys (any node kind)."""
+    type: Literal['edge'] = 'edge'
+    color: str | None = None
+    scale: float | None = None
+
+
+TypedOptsPatch = Annotated[MolOptsPatch | GroupOptsPatch | ReactionSchemeOptsPatch | EdgeOptsPatch, Field(discriminator='type')]
+
+
+NodeType = Literal['mol', 'group', 'reaction_scheme', 'edge']
 
 
 class ForTypesPatch(StrictModel):
@@ -110,17 +124,49 @@ class MolNode(StrictModel):
 class GroupNode(StrictModel):
     type: Literal['group'] = 'group'
     align: bool = Field(default=False, description='When true, later children align onto the first (or each `align_to`).')
-    children: list[MolNode] = Field(default_factory=list)
+    children: list[MolNode] = Field(default_factory=list, description='Child mols only (no edges).')
     color: str | None = None
     id: str | None = None
     opts: Annotated[Opts | None, Field(description='Group-level cascade bag (list container for child inheritance).')] = None
     scale: float | None = None
 
 
-DepictSpecRoot = Annotated[MolNode | GroupNode, Field(discriminator='type')]
+EdgeArrow = Literal['forward', 'equilibrium', 'open', 'line']
+
+
+EdgeNodeKind = Literal['edge']
+
+
+class EdgeNode(StrictModel):
+    """Edge **node** — a reaction / network link between mol ids."""
+    type: Literal['edge'] = 'edge'
+    source: Annotated[str, Field(description='Id of the source mol node.')]
+    target: Annotated[str, Field(description='Id of the target mol node.')]
+    arrow: EdgeArrow = 'forward'
+    color: str | None = None
+    dashed: bool = False
+    label: str | None = None
+    role: Annotated[str | None, Field(description='Optional semantic role (e.g. enzyme) — not drawn by default.')] = None
+    stroke_width: float | None = None
+
+
+Node = MolNode | EdgeNode
+
+
+class ReactionSchemeNode(StrictModel):
+    """Reaction / pathway scheme: mixed **node** children (`mol` | `edge`)."""
+    type: Literal['reaction_scheme'] = 'reaction_scheme'
+    children: list[Node] = Field(default_factory=list, description='Child **nodes** — mols and edges interleaved (or any order).')
+    color: str | None = None
+    id: str | None = None
+    opts: Annotated[Opts | None, Field(description='Scheme-level cascade bag for child mol inheritance.')] = None
+    scale: float | None = None
+
+
+DepictSpecRoot = Annotated[MolNode | GroupNode | ReactionSchemeNode, Field(discriminator='type')]
 
 class DepictSpec(RootModel[DepictSpecRoot]):
-    """Declarative document (`mol` or `group` root)."""
+    """Declarative document (`mol`, `group`, or `reaction_scheme` root)."""
 
     def model_dump(self, *args, **kwargs):
         kwargs.setdefault('exclude_none', True)

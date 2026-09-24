@@ -43,7 +43,7 @@ if [[ -d "$BINDINGS" ]]; then
   write_barrel "$OUT_TS/depict-abi.ts" \
     ShadeSpec ShadeStyle AlignToSpec AlignTo MolNodeKind MolNode \
     CommonOpts MolOpts NodeType ForTypesPatch TypedOptsPatch OptsPatch Opts \
-    DepictSpec
+    EdgeArrow EdgeNodeKind EdgeNode Node DepictSpec
 
   echo "wrote $OUT_TS/*.ts"
 else

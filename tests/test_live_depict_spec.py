@@ -131,3 +131,30 @@ def test_live_opts_list_container_parses():
     child_opts = doc.mols()[0].opts
     assert isinstance(child_opts, MolOptsPatch)
     assert child_opts.color == "#0b6e4f"
+
+
+def test_live_reaction_scheme_mol_and_edge_children():
+    """reaction_scheme children are nodes: mol | edge (edges are not a sidecar list)."""
+    from xpict.contracts.depict import EdgeNode, ReactionSchemeNode
+
+    doc = DepictSpec.model_validate(
+        {
+            "type": "reaction_scheme",
+            "children": [
+                {"type": "mol", "id": "a", "smiles": "CCO"},
+                {
+                    "type": "edge",
+                    "source": "a",
+                    "target": "b",
+                    "label": "ADH",
+                    "arrow": "forward",
+                },
+                {"type": "mol", "id": "b", "smiles": "CC=O"},
+            ],
+        }
+    )
+    assert isinstance(doc.root, ReactionSchemeNode)
+    assert len(doc.root.children) == 3
+    assert isinstance(doc.root.children[1], EdgeNode)
+    assert doc.root.children[1].label == "ADH"
+    assert [m.id for m in doc.mols()] == ["a", "b"]
