@@ -586,7 +586,7 @@
       ]
     },
     "LayoutOpts": {
-      "description": "Layout for [`DepictSpec::ReactionScheme`] — **ELK layered by default**.\n\nFirst-class fields cover the knobs we actually tune for pathways; everything else passes through [`Self::elk_options`] as stringy ELK keys (same as future `diagram.elk_options`).\n\n# Defaults (reaction)\n\n| Key | Value | Role | | --- | --- | --- | | `elk.algorithm` | `layered` | Sugiyama layers for pathways | | `elk.direction` | `RIGHT` | Left→right flow | | `elk.edgeRouting` | `ORTHOGONAL` | Bent shafts for overlay arrows | | `elk.spacing.nodeNode` | `56` | Within-layer gap (arrow room) | | `elk.layered.spacing.nodeNodeBetweenLayers` | `80` | Between reactant/product layers | | `elk.layered.spacing.edgeNodeBetweenLayers` | `28` | Inter-layer edge clearance | | `elk.spacing.edgeEdge` | `20` | Parallel edge gap | | `elk.layered.crossingMinimization.strategy` | `LAYER_SWEEP` | Crossing reduction | | `elk.layered.nodePlacement.strategy` | `NETWORK_SIMPLEX` | Y placement | | `elk.layered.crossingMinimization.forceNodeModelOrder` | `false` | Let branches spread |\n\nMerge order: reaction defaults → `elk_options` map → first-class `direction` / `edge_routing` (caller wins).",
+      "description": "Layout for [`DepictSpec::ReactionScheme`] — **ELK layered by default**.\n\nFirst-class fields cover the knobs we actually tune for pathways; everything else passes through [`Self::elk_options`] as stringy ELK keys (same as future `diagram.elk_options`).\n\n# Defaults (reaction)\n\n| Key | Value | Role | | --- | --- | --- | | `elk.algorithm` | `layered` | Sugiyama layers for pathways | | `elk.direction` | `RIGHT` | Left→right flow | | `elk.edgeRouting` | `POLYLINE` | Bent shafts for overlay arrows | | `elk.spacing.nodeNode` | `56` | Within-layer gap (arrow room) | | `elk.layered.spacing.nodeNodeBetweenLayers` | `80` | Between reactant/product layers | | `elk.layered.spacing.edgeNodeBetweenLayers` | `28` | Inter-layer edge clearance | | `elk.spacing.edgeEdge` | `20` | Parallel edge gap | | `elk.layered.crossingMinimization.strategy` | `LAYER_SWEEP` | Crossing reduction | | `elk.layered.nodePlacement.strategy` | `NETWORK_SIMPLEX` | Y placement | | `elk.layered.crossingMinimization.forceNodeModelOrder` | `false` | Let branches spread |\n\nMerge order: reaction defaults → `elk_options` map → first-class `direction` / `edge_routing` (caller wins).",
       "type": "object",
       "properties": {
         "direction": {
@@ -601,7 +601,7 @@
           ]
         },
         "edge_routing": {
-          "description": "Shaft routing (`ORTHOGONAL` / `POLYLINE` / `SPLINES`).",
+          "description": "Shaft routing (`POLYLINE` / `ORTHOGONAL` / `SPLINES`).",
           "anyOf": [
             {
               "$ref": "#/definitions/ElkEdgeRouting"

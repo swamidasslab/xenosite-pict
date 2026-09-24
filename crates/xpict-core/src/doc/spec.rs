@@ -808,9 +808,9 @@ impl ElkDirection {
 #[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
 #[cfg_attr(feature = "codegen", ts(export))]
 pub enum ElkEdgeRouting {
-    #[default]
     #[serde(rename = "ORTHOGONAL")]
     Orthogonal,
+    #[default]
     #[serde(rename = "POLYLINE")]
     Polyline,
     #[serde(rename = "SPLINES")]
@@ -839,7 +839,7 @@ impl ElkEdgeRouting {
 /// | --- | --- | --- |
 /// | `elk.algorithm` | `layered` | Sugiyama layers for pathways |
 /// | `elk.direction` | `RIGHT` | Left→right flow |
-/// | `elk.edgeRouting` | `ORTHOGONAL` | Bent shafts for overlay arrows |
+/// | `elk.edgeRouting` | `POLYLINE` | Bent shafts for overlay arrows |
 /// | `elk.spacing.nodeNode` | `56` | Within-layer gap (arrow room) |
 /// | `elk.layered.spacing.nodeNodeBetweenLayers` | `80` | Between reactant/product layers |
 /// | `elk.layered.spacing.edgeNodeBetweenLayers` | `28` | Inter-layer edge clearance |
@@ -858,7 +858,7 @@ pub struct LayoutOpts {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub direction: Option<ElkDirection>,
-    /// Shaft routing (`ORTHOGONAL` / `POLYLINE` / `SPLINES`).
+    /// Shaft routing (`POLYLINE` / `ORTHOGONAL` / `SPLINES`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub edge_routing: Option<ElkEdgeRouting>,
@@ -872,7 +872,7 @@ pub fn reaction_elk_defaults() -> std::collections::BTreeMap<String, String> {
     let mut m = std::collections::BTreeMap::new();
     m.insert("elk.algorithm".into(), "layered".into());
     m.insert("elk.direction".into(), "RIGHT".into());
-    m.insert("elk.edgeRouting".into(), "ORTHOGONAL".into());
+    m.insert("elk.edgeRouting".into(), "POLYLINE".into());
     m.insert("elk.spacing.nodeNode".into(), "56".into());
     m.insert("elk.spacing.edgeEdge".into(), "20".into());
     m.insert("elk.spacing.edgeNode".into(), "20".into());

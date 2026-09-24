@@ -15,7 +15,7 @@ import type { ElkEdgeRouting } from "./ElkEdgeRouting";
  * | --- | --- | --- |
  * | `elk.algorithm` | `layered` | Sugiyama layers for pathways |
  * | `elk.direction` | `RIGHT` | Left→right flow |
- * | `elk.edgeRouting` | `ORTHOGONAL` | Bent shafts for overlay arrows |
+ * | `elk.edgeRouting` | `POLYLINE` | Bent shafts for overlay arrows |
  * | `elk.spacing.nodeNode` | `56` | Within-layer gap (arrow room) |
  * | `elk.layered.spacing.nodeNodeBetweenLayers` | `80` | Between reactant/product layers |
  * | `elk.layered.spacing.edgeNodeBetweenLayers` | `28` | Inter-layer edge clearance |
@@ -33,7 +33,7 @@ export type LayoutOpts = {
  */
 direction?: ElkDirection, 
 /**
- * Shaft routing (`ORTHOGONAL` / `POLYLINE` / `SPLINES`).
+ * Shaft routing (`POLYLINE` / `ORTHOGONAL` / `SPLINES`).
  */
 edge_routing?: ElkEdgeRouting, 
 /**

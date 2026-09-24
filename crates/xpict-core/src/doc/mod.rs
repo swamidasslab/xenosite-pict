@@ -1260,7 +1260,7 @@ mod tests {
         assert_eq!(opts.get("elk.direction").map(String::as_str), Some("RIGHT"));
         assert_eq!(
             opts.get("elk.edgeRouting").map(String::as_str),
-            Some("ORTHOGONAL")
+            Some("POLYLINE")
         );
         assert!(
             opts.get("elk.layered.spacing.nodeNodeBetweenLayers")
@@ -1275,7 +1275,7 @@ mod tests {
               "type": "reaction_scheme",
               "layout": {
                 "direction": "DOWN",
-                "edge_routing": "POLYLINE",
+                "edge_routing": "ORTHOGONAL",
                 "elk_options": {
                   "elk.spacing.nodeNode": "72",
                   "elk.layered.spacing.nodeNodeBetweenLayers": "100"
@@ -1287,7 +1287,7 @@ mod tests {
         .unwrap();
         let o = custom.resolve_elk_options().unwrap();
         assert_eq!(o.get("elk.direction").map(String::as_str), Some("DOWN"));
-        assert_eq!(o.get("elk.edgeRouting").map(String::as_str), Some("POLYLINE"));
+        assert_eq!(o.get("elk.edgeRouting").map(String::as_str), Some("ORTHOGONAL"));
         assert_eq!(o.get("elk.spacing.nodeNode").map(String::as_str), Some("72"));
         assert_eq!(
             o.get("elk.layered.spacing.nodeNodeBetweenLayers")

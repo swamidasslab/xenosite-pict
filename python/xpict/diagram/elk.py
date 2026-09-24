@@ -93,7 +93,7 @@ def _reaction_defaults(spec: LegacyPictSpec) -> dict[str, str]:
     base = {
         "elk.algorithm": "layered",
         "elk.direction": "RIGHT",
-        "elk.edgeRouting": "ORTHOGONAL",
+        "elk.edgeRouting": "POLYLINE",
         "elk.spacing.nodeNode": "40",
         "elk.spacing.edgeEdge": "16",
         "elk.spacing.edgeNode": "20",

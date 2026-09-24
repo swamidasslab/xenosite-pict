@@ -244,7 +244,7 @@ def test_reaction_elk_defaults_wider_spacing():
     graph = elk_graph(layouts, doc)
     opts = graph["layoutOptions"]
     assert opts["elk.direction"] == "RIGHT"
-    assert opts["elk.edgeRouting"] == "ORTHOGONAL"
+    assert opts["elk.edgeRouting"] == "POLYLINE"
     assert float(opts["elk.spacing.nodeNode"]) >= 56
     assert float(opts["elk.layered.spacing.nodeNodeBetweenLayers"]) >= 80
 

@@ -206,7 +206,7 @@ ElkEdgeRouting = Literal['ORTHOGONAL', 'POLYLINE', 'SPLINES']
 class LayoutOpts(StrictModel):
     """Layout for [`DepictSpec::ReactionScheme`] — **ELK layered by default**."""
     direction: Annotated[ElkDirection | None, Field(description='Flow axis (`RIGHT` / `LEFT` / `UP` / `DOWN`).')] = None
-    edge_routing: Annotated[ElkEdgeRouting | None, Field(description='Shaft routing (`ORTHOGONAL` / `POLYLINE` / `SPLINES`).')] = None
+    edge_routing: Annotated[ElkEdgeRouting | None, Field(description='Shaft routing (`POLYLINE` / `ORTHOGONAL` / `SPLINES`).')] = None
     elk_options: Annotated[dict[str, Any] | None, Field(description='Extra ELK layout options (string values), e.g. spacing overrides.')] = None
 
 
