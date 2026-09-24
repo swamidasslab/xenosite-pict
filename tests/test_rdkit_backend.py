@@ -16,7 +16,7 @@ def test_rdkit_backend_registered():
 
 
 def test_rdkit_layouts_ethanol():
-    lay = Pict(backend="rdkit").layout({"molecules": [{"smiles": "CCO"}]}).molecules[0]
+    lay = Pict(backend="rdkit").layout({"molecules": [{"smiles": "CCO"}]})[0]
     assert lay.backend == "rdkit"
     assert len(lay.atoms) == 3
     assert len(lay.bonds) == 2

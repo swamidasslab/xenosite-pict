@@ -49,25 +49,27 @@ def test_grid_two_mols():
 
 def test_export_schemas(tmp_path: Path):
     written = export_schemas(tmp_path)
-    assert "xpict.schema.json" in written
-    data = json.loads(written["xpict.schema.json"].read_text())
-    # Live schema is nested DepictSpec (MolNode | GroupNode).
-    assert data.get("title") == "DepictSpec"
-    blob = json.dumps(data)
-    assert "cxsmiles" in blob
-    assert "MolNode" in blob
-    assert "GroupNode" in blob
-    assert "children" in blob
-    assert "star_labels" in blob
-    # Atom marks / document rgroups are off the public live surface for now.
-    assert "mark_atoms" not in blob
-    assert "rgroups" not in blob
-    # Full nested PictSpec is under schema/future/.
+    # Live schemas are Rust-owned (``make types``); this exporter only writes future.
+    assert "xpict.schema.json" not in written
     assert "future/xpict.schema.json" in written
     future = json.loads(written["future/xpict.schema.json"].read_text())
     future_blob = json.dumps(future)
     assert "MolNode" in future_blob
     assert "$defs" in future
+
+    # Committed live DepictSpec schema (schemars).
+    live_path = Path(__file__).resolve().parents[1] / "schema" / "xpict.schema.json"
+    data = json.loads(live_path.read_text())
+    assert data.get("title") == "DepictSpec"
+    blob = json.dumps(data)
+    assert "cxsmiles" in blob
+    assert "MolNode" in blob
+    assert '"group"' in blob
+    assert "children" in blob
+    assert "star_labels" in blob
+    # Atom marks / document rgroups are off the public live surface for now.
+    assert "mark_atoms" not in blob
+    assert "rgroups" not in blob
 
 
 def test_unsupported_option_warns():

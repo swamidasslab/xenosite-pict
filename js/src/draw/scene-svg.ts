@@ -4,68 +4,32 @@
  * Scene already holds absolute drawing units (Rust depict bakes stem-scaled
  * stroke widths). This layer only emits compact numbers (2 decimal places).
  *
+ * Types are generated from ``xpict-core`` (``make types`` / ts-rs).
  * Text primitives emit ``<text>`` for now (glyph outlining stays Python/Rust).
  */
 
-export type TextAnchor = "start" | "middle" | "end";
+import type {
+  Layer,
+  Primitive,
+  Scene,
+  Viewport,
+} from "../generated/scene-abi.js";
 
-export type ScenePrimitive =
-  | {
-      kind: "path";
-      d: string;
-      stroke?: string | null;
-      fill?: string | null;
-      stroke_width?: number;
-      opacity?: number;
-      stroke_dasharray?: string | null;
-      stroke_linecap?: string | null;
-      cls?: string | null;
-      /** Plain label string when this path is outlined glyph ink. */
-      data_text?: string | null;
-    }
-  | {
-      kind: "circle";
-      cx: number;
-      cy: number;
-      r: number;
-      fill?: string | null;
-      stroke?: string | null;
-      stroke_width?: number;
-      opacity?: number;
-      cls?: string | null;
-    }
-  | {
-      kind: "text";
-      x: number;
-      y: number;
-      text: string;
-      fill?: string;
-      font_size?: number;
-      anchor?: TextAnchor;
-      cls?: string | null;
-    };
+export type {
+  Layer,
+  LayerName,
+  Primitive,
+  Scene,
+  TextAnchor,
+  Viewport,
+} from "../generated/scene-abi.js";
 
-export type SceneLayer = {
-  name: string;
-  primitives: ScenePrimitive[];
-};
-
-export type SceneViewport = {
-  id?: string | null;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  layers: SceneLayer[];
-};
-
-export type Scene = {
-  width: number;
-  height: number;
-  viewports: SceneViewport[];
-  overlays?: ScenePrimitive[];
-  halo?: ScenePrimitive[];
-};
+/** @deprecated Prefer {@link Primitive}. */
+export type ScenePrimitive = Primitive;
+/** @deprecated Prefer {@link Layer}. */
+export type SceneLayer = Layer;
+/** @deprecated Prefer {@link Viewport}. */
+export type SceneViewport = Viewport;
 
 function esc(s: string): string {
   return s
@@ -96,7 +60,7 @@ function attr(name: string, value: string | number | null | undefined): string {
   return ` ${name}="${esc(v)}"`;
 }
 
-function renderPrimitive(p: ScenePrimitive): string {
+function renderPrimitive(p: Primitive): string {
   if (p.kind === "path") {
     return (
       `<path` +
@@ -135,17 +99,14 @@ function renderPrimitive(p: ScenePrimitive): string {
     attr("fill", p.fill ?? "#000") +
     attr("font-size", p.font_size ?? 12) +
     attr("font-family", "Liberation Sans, Arial, sans-serif") +
-    attr("text-anchor", p.anchor ?? "middle") +
+    attr("text-anchor", p.anchor) +
     attr("dominant-baseline", "alphabetic") +
     attr("class", p.cls) +
     `>${esc(p.text)}</text>`
   );
 }
 
-function renderViewportLayers(
-  vp: SceneViewport,
-  names: string[]
-): string {
+function renderViewportLayers(vp: Viewport, names: string[]): string {
   const want = new Set(names);
   const chunks: string[] = [];
   for (const layer of vp.layers) {

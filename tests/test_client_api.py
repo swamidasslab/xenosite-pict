@@ -103,8 +103,9 @@ def test_multi_query_leaves_template_frame():
 def test_document_render_still_works():
     svg = render({"type": "mol", "smiles": "CCO"})
     assert isinstance(svg, str) and "<svg" in svg
-    svg2 = depict({"type": "mol", "smiles": "CCO"})
-    assert "<svg" in svg2
+    rows = depict({"type": "mol", "smiles": "CCO"})
+    assert len(rows) == 1
+    assert "<svg" in to_svg(rows[0].scene)
 
 
 def test_color_option():

@@ -105,7 +105,7 @@ def test_diagram_arrows_do_not_opt_into_document_halo():
         }
     )
     pict = Pict(backend=layout_backend())
-    layouts = pict.layout(doc).molecules
+    layouts = pict.layout(doc)
     scene = build_scene(layouts, doc.molecules, doc)
     assert any(isinstance(p, PathPrim) and "head" in (p.cls or "") for p in scene.overlays)
     assert any(getattr(p, "cls", None) and "label" in (p.cls or "") for p in scene.overlays)
@@ -132,8 +132,8 @@ def test_molecule_caption_does_not_opt_into_document_halo():
         }
     )
     pict = Pict(backend=layout_backend())
-    bare_layout = pict.layout(bare).molecules[0]
-    titled_layout = pict.layout(titled).molecules[0]
+    bare_layout = pict.layout(bare)[0]
+    titled_layout = pict.layout(titled)[0]
     _, bare_halo = paint_molecule(bare_layout, bare.molecules[0], halo=True)
     vp, titled_halo = paint_molecule(titled_layout, titled.molecules[0], halo=True)
     assert any(
@@ -187,7 +187,7 @@ def test_reaction_scheme_svg_draws_overlays():
         }
     )
     pict = Pict(backend=layout_backend())
-    layouts = pict.layout(doc).molecules
+    layouts = pict.layout(doc)
     with warnings.catch_warnings(record=True):
         warnings.simplefilter("always")
         positions = layout_diagram(layouts, doc)
@@ -240,7 +240,7 @@ def test_reaction_elk_defaults_wider_spacing():
             },
         }
     )
-    layouts = Pict(backend=layout_backend()).layout(doc).molecules
+    layouts = Pict(backend=layout_backend()).layout(doc)
     graph = elk_graph(layouts, doc)
     opts = graph["layoutOptions"]
     assert opts["elk.direction"] == "RIGHT"
@@ -279,7 +279,7 @@ def test_reaction_row_fallback_centers(monkeypatch):
             },
         }
     )
-    layouts = Pict(backend=layout_backend()).layout(doc).molecules
+    layouts = Pict(backend=layout_backend()).layout(doc)
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         positions = layout_diagram(layouts, doc)
@@ -323,7 +323,7 @@ def test_branched_reaction_uses_elk_routes():
             },
         }
     )
-    layouts = Pict(backend=layout_backend()).layout(doc).molecules
+    layouts = Pict(backend=layout_backend()).layout(doc)
     place = layout_diagram_ex(layouts, doc)
     assert len(place.positions) == 5
     # Not a single horizontal line — branches occupy distinct Y bands.

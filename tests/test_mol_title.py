@@ -100,7 +100,7 @@ def test_pack_left_and_right_widen_frame():
 def test_label_pack_reserves_caption_band():
     backend = layout_backend()
     pict = Pict(backend=backend)
-    bare = pict.layout({"molecules": [{"smiles": "CCO"}]}).molecules[0]
+    bare = pict.layout({"molecules": [{"smiles": "CCO"}]})[0]
 
     mol = MoleculeSpec(smiles="CCO", label="ethanol")
     w1, h1 = viewport_size(bare, mol)

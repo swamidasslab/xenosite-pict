@@ -7,6 +7,11 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "codegen")]
+use schemars::JsonSchema;
+#[cfg(feature = "codegen")]
+use ts_rs::TS;
+
 use crate::cxsmiles::{apply_cx_by_index, cx_source};
 use crate::depict::depict_molecule;
 use crate::edge::{
@@ -17,12 +22,17 @@ use crate::scene::{MoleculeIn, Scene};
 
 /// Per-atom / per-bond colormap scores.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
 pub struct ShadeSpec {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
     pub atoms: Option<Vec<f64>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
     pub bonds: Option<Vec<f64>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
     pub colormap: Option<String>,
     #[serde(default = "default_shade_vmin")]
     pub vmin: f64,
@@ -51,21 +61,28 @@ impl Default for ShadeSpec {
 
 /// Object form of document ``align_to`` (template ref + EdgePlan-style opts).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
 pub struct AlignToSpec {
     /// Id of the template mol in this group.
     #[serde(rename = "ref")]
+    #[cfg_attr(feature = "codegen", ts(rename = "ref"))]
     pub ref_id: String,
     /// Pairs `(query, template)` vs the template; skips MCS when set.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
     pub atom_map: Option<Vec<(u32, u32)>>,
     /// Override [`crate::edge::MIN_MCS_ATOMS`] when set.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
     pub min_atoms: Option<u32>,
 }
 
 /// Document align target: id string or `{ "ref", "atom_map"?, "min_atoms"? }`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
 pub enum AlignTo {
     /// Shorthand for `{ "ref": "…" }`.
     Ref(String),
@@ -91,66 +108,97 @@ impl AlignTo {
     }
 }
 
+/// Discriminator for mol nodes (`"type": "mol"`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
+pub enum MolNodeKind {
+    #[default]
+    Mol,
+}
+
 /// Mol node — subset of future ``MolNode``.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
 pub struct MolNode {
-    #[serde(rename = "type", default = "mol_type")]
-    pub type_: String,
+    #[serde(rename = "type", default)]
+    pub type_: MolNodeKind,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
     pub smiles: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
     pub cxsmiles: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
     pub molfile: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
     pub id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
     pub color: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
     pub shade: Option<ShadeSpec>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
     pub star_labels: Option<Vec<Option<String>>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
     pub scale: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
     pub weight: Option<f64>,
     /// Template id string, or `{ "ref", "atom_map"?, "min_atoms"? }`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
     pub align_to: Option<AlignTo>,
-}
-
-fn mol_type() -> String {
-    "mol".into()
 }
 
 /// Declarative document (`mol` or `group` root).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
 pub enum DepictSpec {
     Mol {
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
         smiles: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
         cxsmiles: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
         molfile: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
         id: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
         color: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
         shade: Option<ShadeSpec>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
         star_labels: Option<Vec<Option<String>>>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
         scale: Option<f64>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
         weight: Option<f64>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
         align_to: Option<AlignTo>,
     },
     Group {
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
         id: Option<String>,
         /// When true, later children align onto the first (or each `align_to`).
         #[serde(default)]
@@ -176,7 +224,7 @@ impl DepictSpec {
                 weight,
                 align_to,
             } => vec![MolNode {
-                type_: "mol".into(),
+                type_: MolNodeKind::Mol,
                 smiles: smiles.clone(),
                 cxsmiles: cxsmiles.clone(),
                 molfile: molfile.clone(),

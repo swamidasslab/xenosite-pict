@@ -8,10 +8,6 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-from xpict.contracts.depict import DepictSpec
-from xpict.contracts.edge import EdgePlan, EdgeResult
-from xpict.contracts.layout import LayoutResult
-from xpict.contracts.scene import Scene
 from xpict.future.nodes import PictSpec
 
 _REPO_SCHEMA = Path(__file__).resolve().parents[2] / "schema"
@@ -293,30 +289,34 @@ def factor_node_common_allof(schema: dict[str, Any]) -> dict[str, Any]:
 
 
 def export_schemas(out_dir: Path | None = None, *, minify: bool = True) -> dict[str, Path]:
-    """Write live schemas under ``schema/`` and the full PictSpec under ``schema/future/``."""
+    """Write future PictSpec under ``schema/future/``; preserve Rust live schemas.
+
+    Live ``xpict`` / edge / scene schemas are owned by ``make types`` (schemars).
+    When those files already exist under ``out_dir`` (or the repo ``schema/``),
+    they are listed in the return map but not rewritten.
+    """
     target = out_dir or schema_dir()
     target.mkdir(parents=True, exist_ok=True)
     future_dir = (out_dir / "future") if out_dir is not None else _FUTURE_SCHEMA
     future_dir.mkdir(parents=True, exist_ok=True)
 
-    live = {
-        "xpict.schema.json": DepictSpec.model_json_schema(),
-        "layout.schema.json": LayoutResult.model_json_schema(),
-        "scene.schema.json": Scene.model_json_schema(),
-        "edge-plan.schema.json": EdgePlan.model_json_schema(),
-        "edge-result.schema.json": EdgeResult.model_json_schema(),
-    }
+    # Live schemas are owned by Rust (schemars via ``make types``).
+    # This export only (re)writes future PictSpec under ``schema/future/``.
+    live_rust = (
+        "xpict.schema.json",
+        "edge-plan.schema.json",
+        "edge-result.schema.json",
+        "scene.schema.json",
+    )
     future = {
         "xpict.schema.json": factor_node_common_allof(PictSpec.model_json_schema()),
     }
 
     written: dict[str, Path] = {}
-    for name, schema in live.items():
-        if minify:
-            schema = minify_json_schema(schema)
-        path = target / name
-        path.write_text(json.dumps(schema, indent=2) + "\n", encoding="utf-8")
-        written[name] = path
+    for rust_name in live_rust:
+        rust_path = target / rust_name
+        if rust_path.is_file():
+            written[rust_name] = rust_path
     for name, schema in future.items():
         if minify:
             schema = minify_json_schema(schema)
@@ -342,11 +342,6 @@ def main() -> None:
     print(json.dumps(mol, indent=2)[:600])
     assert "NodeCommon" in mini["$defs"]
     assert mol.get("allOf")
-    live = minify_json_schema(DepictSpec.model_json_schema())
-    print(
-        f"xpict.schema.json (live DepictSpec)  "
-        f"{len(json.dumps(live, indent=2).splitlines())} lines"
-    )
     for _, path in export_schemas().items():
         print(f"wrote {path}")
 

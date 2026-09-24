@@ -9,27 +9,35 @@ Pydantic under ``xpict.contracts`` — **strict subset** of future nested
 | --- | --- |
 | ``DepictSpec`` / ``MolNode`` | Declarative document: ``type: "mol"`` or ``type: "group"`` + ``children`` |
 | ``Scene`` (+ primitives) | Paint ABI (Rust / JS / Python serializers) |
-| ``MoleculeLayout`` / ``LayoutResult`` | Backend layout result |
+
+``MoleculeLayout`` remains **Python-internal** for the legacy ``Pict`` draw
+stack only — not a shipped contract. The old ``LayoutResult`` wrapper and
+``schema/layout.schema.json`` are removed.
+
+Live **EdgePlan / EdgeResult**, **Scene**, and **DepictSpec** are defined in Rust
+(``xpict-core``). TypeScript (ts-rs) and Pydantic (``make types`` →
+``scripts/generate_live_python.py``) are generated; JSON Schema is schemars.
+See [`docs/dev/typebridge.md`](dev/typebridge.md).
 
 Every document must also validate as ``xpict.future.PictSpec``.
 
 Committed JSON Schema:
 
-- ``schema/xpict.schema.json`` — ``DepictSpec``
-- ``schema/scene.schema.json`` — scene graph
-- ``schema/layout.schema.json`` — layout result
-- ``schema/edge-plan.schema.json`` / ``edge-result.schema.json`` — host
-  ``EdgePlan`` / ``EdgeResult`` (``coord_gen`` forest + flat molecule rows)
+- ``schema/xpict.schema.json`` — live ``DepictSpec`` from **Rust** (schemars)
+- ``schema/scene.schema.json`` — scene graph from **Rust** (schemars)
+- ``schema/edge-plan.schema.json`` / ``edge-result.schema.json`` — from **Rust**
+  (schemars)
 
 ## Single-molecule client
 
 ``mol`` / ``render`` / ``toSvg`` (JS, Python, Rust) — imperative one-mol API. Options:
 ``color``, ``atom_shade``, ``bond_shade``, ``star_labels``, ``weight``
 (default ``1`` = house; min ``2/3``), ``scale``, ``align_to``, ``atom_map``
-(``(query, template)`` pairs; requires ``align_to``; skips MCS), ``id``. The
-document path uses this layer internally where it
-exists. Prefer the document two-pass (``plan_edge`` /
-``process_edge_plan`` / ``render_doc``) for nested ``DepictSpec``.
+(``(query, template)`` pairs; requires ``align_to``; skips MCS), ``id``.
+
+**Live nested ``DepictSpec``** uses the document two-pass in all languages:
+``plan_edge`` → host ``process_edge_plan`` → ``render_doc`` (chrome in core).
+Prefer that path for nested documents.
 
 
 ## Future (design)

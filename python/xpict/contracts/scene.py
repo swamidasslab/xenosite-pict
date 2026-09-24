@@ -1,8 +1,9 @@
-"""Drawable scene graph contract (engine-neutral)."""
+# Auto-generated from Rust schemars (make types) — do not edit.
+"""Drawable scene graph — live ABI from xpict-core (schemars)."""
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -10,51 +11,58 @@ from pydantic import BaseModel, ConfigDict, Field
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    def model_dump(self, *args, **kwargs):
+        kwargs.setdefault("exclude_none", True)
+        return super().model_dump(*args, **kwargs)
 
-LayerName = Literal["shading", "halo", "bonds", "labels", "marks", "overlay"]
-
+    def model_dump_json(self, *args, **kwargs):
+        kwargs.setdefault("exclude_none", True)
+        return super().model_dump_json(*args, **kwargs)
 
 class PathPrim(StrictModel):
-    kind: Literal["path"] = "path"
+    kind: Literal['path'] = 'path'
     d: str
-    stroke: str | None = "#000"
-    fill: str | None = "none"
-    # Absolute drawing px (Rust depict bakes stem-scaled bond ink as STROKE_PX).
-    stroke_width: float = 1.5
-    opacity: float = 1.0
-    stroke_dasharray: str | None = None
-    stroke_linecap: Literal["butt", "round", "square"] | None = None
     cls: str | None = None
-    # Plain label string when this path is outlined glyph ink.
-    data_text: str | None = None
+    data_text: Annotated[str | None, Field(description='Plain label string for ``data-text`` (glyph paths only).')] = None
+    fill: str | None = None
+    opacity: float = 1.0
+    stroke: str | None = None
+    stroke_dasharray: str | None = None
+    stroke_linecap: str | None = None
+    stroke_width: float = 1.5
 
 
 class CirclePrim(StrictModel):
-    kind: Literal["circle"] = "circle"
+    kind: Literal['circle'] = 'circle'
     cx: float
     cy: float
     r: float
-    fill: str | None = None
-    stroke: str | None = None
-    # Absolute drawing px (same as PathPrim).
-    stroke_width: float = 1.0
-    opacity: float = 1.0
     cls: str | None = None
+    fill: str | None = None
+    opacity: float = 1.0
+    stroke: str | None = None
+    stroke_width: float = 1.5
+
+
+TextAnchor = Literal['start', 'middle', 'end']
 
 
 class TextPrim(StrictModel):
-    kind: Literal["text"] = "text"
+    """Logical text; serializers outline to glyph paths (Liberation) or emit `<text>` when the host prefers."""
+    kind: Literal['text'] = 'text'
+    text: str
     x: float
     y: float
-    text: str
-    fill: str = "#000"
-    font_size: float = 12.0
-    font_family: str = "Liberation Sans, Helvetica, Arial, sans-serif"
-    anchor: Literal["start", "middle", "end"] = "middle"
+    anchor: TextAnchor = 'middle'
     cls: str | None = None
+    fill: str = '#000'
+    font_size: float = 12.0
 
 
-Primitive = PathPrim | CirclePrim | TextPrim
+Primitive = Annotated[PathPrim | CirclePrim | TextPrim, Field(discriminator='kind')]
+
+
+LayerName = Literal['shading', 'halo', 'bonds', 'labels', 'marks', 'overlay']
 
 
 class Layer(StrictModel):
@@ -63,28 +71,19 @@ class Layer(StrictModel):
 
 
 class Viewport(StrictModel):
-    """A molecule viewport placed in a diagram (after ELK/grid)."""
-
+    """One molecule viewport in a diagram (after ELK/grid placement)."""
+    height: float
+    width: float
     id: str | None = None
+    layers: list[Layer] = Field(default_factory=list)
     x: float = 0.0
     y: float = 0.0
-    width: float
-    height: float
-    layers: list[Layer] = Field(default_factory=list)
 
 
 class Scene(StrictModel):
     """Full drawable document before SVG/HTML serialization."""
-
-    width: float
     height: float
     viewports: list[Viewport]
-    overlays: list[Primitive] = Field(
-        default_factory=list,
-        description="Document-space primitives (reaction/network arrows) drawn above viewports",
-    )
-    halo: list[Primitive] = Field(
-        default_factory=list,
-        description="Single document-space unioned knockout, under molecule ink",
-    )
-    meta: dict[str, Any] = Field(default_factory=dict)
+    width: float
+    halo: list[Primitive] = Field(default_factory=list, description='Single document-space unioned knockout under molecule ink.')
+    overlays: list[Primitive] = Field(default_factory=list, description='Document-space primitives (reaction arrows) above viewports.')

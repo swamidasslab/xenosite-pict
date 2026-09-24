@@ -10,18 +10,19 @@ Two first-class APIs (same paint as JS / Rust):
     rendered = render(benzene, {"color": "#0b6e4f"})
     svg = to_svg(rendered.scene)
 
-**Declarative document** — nested ``DepictSpec`` via ``depict`` / ``render(doc)``::
+**Declarative document** — nested ``DepictSpec`` via Rust two-pass ``depict``::
 
-    from xpict import depict
+    from xpict import depict, to_svg
 
-    svg = depict({"type": "mol", "smiles": "CCO"})
+    rows = depict({"type": "mol", "smiles": "CCO"})
+    svg = to_svg(rows[0].scene)
 """
 
 from __future__ import annotations
 
 from typing import Any, overload
 
-from xpict.api import Pict, render as depict
+from xpict.api import OutputFormat, Pict
 from xpict.client import (
     Mol,
     MolRenderOptions,
@@ -32,12 +33,18 @@ from xpict.client import (
     render as render_mol,
     to_svg,
 )
-from xpict.contracts.depict import DepictSpec, MolSpec
+from xpict.contracts import DepictSpec, MolSpec
 from xpict.contracts.scene import Scene
+from xpict.depict_spec import depict, depict_svg, is_live_depict_spec
 from xpict.warnings import PictBackendWarning
 
 # Lab / future nested document.
-from xpict.edge_plan import build_align_plan, process_edge_plan, validate_edge_plan
+from xpict.edge_plan import (
+    build_align_plan,
+    process_edge_plan,
+    process_edge_plan_with_frames,
+    validate_edge_plan,
+)
 from xpict.contracts.edge import EdgePlan, EdgeResult, MolTemplate
 from xpict.future import PictSpec
 from xpict.native_bridge import plan_edge, render_doc
@@ -61,9 +68,11 @@ __all__ = [
     "SvgBond",
     "build_align_plan",
     "depict",
+    "depict_svg",
     "mol",
     "plan_edge",
     "process_edge_plan",
+    "process_edge_plan_with_frames",
     "render",
     "render_doc",
     "to_svg",
@@ -82,15 +91,17 @@ def render(
     opts: None = None,
     *,
     backend: str | None = None,
-    format: str = "svg",
+    format: OutputFormat = "svg",
 ) -> str: ...
 
 
-def render(input: Any, opts: Any = None, *, backend: str | None = None, format: str = "svg") -> Any:
-    """Single-mol ``render(mol, opts)`` or document ``render(doc)`` / ``depict(doc)``.
+def render(
+    input: Any, opts: Any = None, *, backend: str | None = None, format: OutputFormat = "svg"
+) -> Any:
+    """Single-mol ``render(mol, opts)`` or document ``render(doc)``.
 
-    Dispatches on the first argument: ``Mol`` / SMILES string → single-molecule
-    client (parity with JS/Rust); nested ``DepictSpec`` dict → document SVG.
+    Live nested ``DepictSpec`` (``type: mol|group``) uses the Rust two-pass
+    (``depict`` → SVG). Legacy flat / future docs still go through ``Pict``.
     """
     if isinstance(input, (Mol, str)):
         return render_mol(input, opts)
@@ -99,4 +110,8 @@ def render(input: Any, opts: Any = None, *, backend: str | None = None, format: 
             "document render() does not take a second positional opts; "
             "use backend=/format= keywords, or mol()/render(mol, opts) for single-mol"
         )
-    return depict(input, backend=backend, format=format)  # type: ignore[call-arg]
+    if is_live_depict_spec(input):
+        if format != "svg":
+            raise ValueError("live DepictSpec render() only supports format='svg' today")
+        return depict_svg(input)
+    return Pict(backend=backend, format=format).render(input)

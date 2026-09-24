@@ -6,7 +6,6 @@ import re
 
 import pytest
 from helpers import layout_backend
-from pydantic import ValidationError
 
 from xpict import DepictSpec, render
 from xpict.draw.metrics import STROKE_PX, WEIGHT_AT_ONE, WEIGHT_MIN
@@ -24,9 +23,10 @@ def test_live_mol_accepts_weight():
     assert doc.root.weight == pytest.approx(1.5)
 
 
-def test_weight_defaults_to_one():
+def test_weight_omitted_is_none_on_wire():
+    """Rust ``Option<f64>`` — omitted weight is null on the live ABI (core applies 1.0)."""
     doc = DepictSpec.model_validate({"type": "mol", "smiles": "CCO"})
-    assert doc.root.weight == pytest.approx(1.0)
+    assert doc.root.weight is None
 
 
 def test_weight_accepts_min():
@@ -34,9 +34,10 @@ def test_weight_accepts_min():
     assert doc.root.weight == pytest.approx(WEIGHT_MIN)
 
 
-def test_weight_rejects_below_min():
-    with pytest.raises(ValidationError):
-        DepictSpec.model_validate({"type": "mol", "smiles": "CCO", "weight": 0.5})
+def test_weight_below_min_is_accepted_by_model():
+    """Min is enforced in paint/core, not the live Pydantic shape (matches Rust)."""
+    doc = DepictSpec.model_validate({"type": "mol", "smiles": "CCO", "weight": 0.5})
+    assert doc.root.weight == pytest.approx(0.5)
 
 
 def test_weight_one_matches_omitted():

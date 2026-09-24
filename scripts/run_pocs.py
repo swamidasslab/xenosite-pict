@@ -76,7 +76,7 @@ def poc_shade(out: Path, backend: str) -> Path:
     """POC B: marks + plot-dot shading on a real layout."""
     pict = Pict(backend=backend)
     base = {"id": "asa", "smiles": "CC(=O)Oc1ccccc1C(=O)O"}
-    layout = pict.layout({"molecules": [base]}).molecules[0]
+    layout = pict.layout({"molecules": [base]})[0]
     n = len(layout.atoms)
     shade = [0.1] * n
     for i, a in enumerate(layout.atoms):
@@ -137,7 +137,7 @@ def poc_elk(out: Path, backend: str) -> Path:
     }
     doc = PictSpec.model_validate(spec_dict)
     pict = Pict(backend=backend)
-    layouts = pict.layout(doc).molecules
+    layouts = pict.layout(doc)
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         positions = layout_diagram(layouts, doc)
@@ -197,7 +197,7 @@ def poc_pipeline(out: Path, backend: str) -> Path:
 
     # D3 — aspirin site-of-metabolism style shade + marks
     asa = {"id": "asa", "smiles": "CC(=O)Oc1ccccc1C(=O)O", "title": "aspirin SoM"}
-    layout = pict.layout({"molecules": [asa]}).molecules[0]
+    layout = pict.layout({"molecules": [asa]})[0]
     n = len(layout.atoms)
     shade = [0.05] * n
     for i, a in enumerate(layout.atoms):

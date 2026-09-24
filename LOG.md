@@ -1,5 +1,17 @@
 # Lab log
 
+## 2026-09-23 (codegen)
+
+- Spike rejected **typebridge** (wrong serde tag rename / broken untagged
+  AlignTo in Python). Pivoted to **schemars + ts-rs** for live EdgePlan
+  schema + JS types (``make types``). Removed defunct ``LayoutResult`` /
+  ``schema/layout.schema.json``. See ``docs/dev/typebridge.md``.
+
+## 2026-09-23 (later)
+
+- Plan: Rust-first **live** contracts via typebridge → generated TS + Pydantic;
+  **future** PictSpec stays Pydantic SoT. See ``docs/dev/typebridge.md``.
+
 ## 2026-09-23
 
 - Centralized document two-pass in ``xpict-core``: ``plan_edge`` → host

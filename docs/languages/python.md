@@ -49,20 +49,27 @@ aligned = render(mol("Cc1ccccc1"), {"align_to": benzene})  # or align_to=rendere
 
 ## Declarative document
 
-`depict(doc)` / `render(doc)` take nested JSON — `type: "mol"` or
-`type: "group"` + `children`:
+Live nested `DepictSpec` is **Rust-first two-pass** (same as JS / Rust):
+
+1. Core `plan_edge` → `EdgePlan`
+2. Host RDKit `process_edge_plan`
+3. Core `render_doc` → scenes (chrome applied in Rust)
+
+`depict(doc)` returns `list[Rendered]`; `render(doc)` is a SVG convenience wrapper.
 
 ```python
-from xpict import depict
+from xpict import depict, render, to_svg
 
-svg = depict({
+rows = depict({
     "type": "mol",
     "smiles": "CCO",
     "color": "#0b6e4f",
     "shade": {"atoms": [0.0, 0.2, 0.9], "vmin": 0.0, "vmax": 1.0},
 })
+svg = to_svg(rows[0].scene)
 
-svg = depict({
+# Or SVG directly:
+svg = render({
     "type": "group",
     "children": [
         {"type": "mol", "cxsmiles": "*c1ccccc1Cl |$R1;;;;;$|"},

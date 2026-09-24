@@ -122,7 +122,7 @@ def test_annotations_land_on_marks_layer():
             ]
         }
     )
-    layouts = pict.layout(spec).molecules
+    layouts = pict.layout(spec)
     scene = build_scene(layouts, spec.molecules, spec.to_legacy())
     marks = next(layer for layer in scene.viewports[0].layers if layer.name == "marks")
     assert any(getattr(p, "cls", None) and "annot" in (p.cls or "") for p in marks.primitives)

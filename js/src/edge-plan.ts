@@ -1,60 +1,55 @@
 /**
  * EdgePlan / EdgeResult — host callback ABI (coord_gen / align).
- * Keep in sync with ``xpict.contracts.edge`` / ``xpict_core::edge``.
+ *
+ * Types are generated from ``xpict-core`` (``make types`` / ts-rs).
+ * Keep runtime helpers here.
  */
 
-import {
-  layoutWithRdkit,
-  type LayoutMeta,
-  type MoleculeIn,
-} from "./layout/rdkit-layout.js";
+import { layoutWithRdkit } from "./layout/rdkit-layout.js";
 import { validateEdgePlanJson } from "./native.js";
+import type {
+  AlignOpts,
+  CoordGenMoleculeResult,
+  EdgePlan,
+  EdgeResult,
+  EdgeTask,
+  EdgeTaskResult,
+  MolTemplate,
+} from "./generated/edge.js";
+
+export type {
+  AlignOpts,
+  AtomIn,
+  BondIn,
+  CoordGenMoleculeResult,
+  CoordMethod,
+  EdgePlan,
+  EdgeResult,
+  EdgeTask,
+  EdgeTaskResult,
+  MoleculeIn as EdgeMoleculeIn,
+  MolTemplate,
+} from "./generated/edge.js";
+
+/** @deprecated Prefer {@link EdgeTask} (only variant today). */
+export type CoordGenTask = Extract<EdgeTask, { type: "coord_gen" }>;
+/** @deprecated Prefer {@link EdgeTaskResult}. */
+export type CoordGenTaskResult = Extract<
+  EdgeTaskResult,
+  { type: "coord_gen" }
+>;
 
 export const MIN_MCS_ATOMS = 3;
 
-export type AlignOpts = {
-  atom_map?: Array<[number, number]> | null;
-  min_atoms?: number | null;
-};
-
-export type MolTemplate = {
-  id: string;
-  smiles?: string | null;
-  cxsmiles?: string | null;
-  molfile?: string | null;
-  align?: AlignOpts | null;
-  template_for?: MolTemplate[];
-};
-
-export type CoordGenTask = {
-  type: "coord_gen";
-  roots: MolTemplate[];
-};
-
-export type EdgePlan = {
-  version: 1;
-  tasks: CoordGenTask[];
-};
-
-export type CoordGenMoleculeResult = {
-  id: string;
-  ok: boolean;
-  method: LayoutMeta["method"];
-  used_map?: Array<[number, number]> | null;
-  molecule?: MoleculeIn | null;
-  error?: string | null;
-};
-
-export type CoordGenTaskResult = {
-  type: "coord_gen";
-  ok: boolean;
-  molecules: CoordGenMoleculeResult[];
-};
-
-export type EdgeResult = {
-  version: 1;
-  results: CoordGenTaskResult[];
-};
+/** Host layout MoleculeIn → wire ABI (charge always present in Rust). */
+function asWireMolecule(
+  mol: import("./layout/rdkit-layout.js").MoleculeIn
+): NonNullable<CoordGenMoleculeResult["molecule"]> {
+  return {
+    ...mol,
+    atoms: mol.atoms.map((a) => ({ ...a, charge: a.charge ?? 0 })),
+  } as NonNullable<CoordGenMoleculeResult["molecule"]>;
+}
 
 function sourceOf(node: MolTemplate): string {
   for (const v of [node.smiles, node.cxsmiles, node.molfile]) {
@@ -75,6 +70,8 @@ export function buildAlignPlan(opts: {
   templateId?: string;
   queryId?: string;
 }): EdgePlan {
+  const childAlign: AlignOpts | undefined =
+    opts.atomMap != null ? { atom_map: opts.atomMap } : undefined;
   return {
     version: 1,
     tasks: [
@@ -84,12 +81,11 @@ export function buildAlignPlan(opts: {
           {
             id: opts.templateId ?? "m_0",
             smiles: opts.templateSource,
-            align: null,
             template_for: [
               {
                 id: opts.queryId ?? "m_1",
                 smiles: opts.querySource,
-                align: { atom_map: opts.atomMap ?? null },
+                ...(childAlign ? { align: childAlign } : {}),
                 template_for: [],
               },
             ],
@@ -135,7 +131,7 @@ export async function processEdgePlanWithFrames(
             id: node.id,
             ok: true,
             method: "free",
-            molecule: laid.molecule,
+            molecule: asWireMolecule(laid.molecule),
           });
           poses.set(node.id, laid.molblock);
         } else {
@@ -152,8 +148,8 @@ export async function processEdgePlanWithFrames(
               id: node.id,
               ok: true,
               method: laid.meta.method,
-              used_map: laid.meta.used_map ?? null,
-              molecule: laid.molecule,
+              used_map: laid.meta.used_map ?? undefined,
+              molecule: asWireMolecule(laid.molecule),
             });
             poses.set(node.id, laid.molblock);
           } else {
@@ -162,7 +158,7 @@ export async function processEdgePlanWithFrames(
               id: node.id,
               ok: true,
               method: "none",
-              molecule: free.molecule,
+              molecule: asWireMolecule(free.molecule),
               error: "align failed; fell back to unaligned coord gen",
             });
             poses.set(node.id, free.molblock);
@@ -175,11 +171,12 @@ export async function processEdgePlanWithFrames(
             id: node.id,
             ok: true,
             method: parentId != null ? "none" : "free",
-            molecule: free.molecule,
-            error:
-              parentId != null
-                ? `align/layout error (${e instanceof Error ? e.message : String(e)}); fell back to unaligned coord gen`
-                : null,
+            molecule: asWireMolecule(free.molecule),
+            ...(parentId != null
+              ? {
+                  error: `align/layout error (${e instanceof Error ? e.message : String(e)}); fell back to unaligned coord gen`,
+                }
+              : {}),
           });
           poses.set(node.id, free.molblock);
         } catch (e2) {
@@ -187,7 +184,6 @@ export async function processEdgePlanWithFrames(
             id: node.id,
             ok: false,
             method: "none",
-            molecule: null,
             error: e2 instanceof Error ? e2.message : String(e2),
           });
           return;

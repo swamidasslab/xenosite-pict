@@ -18,7 +18,7 @@ def _backend() -> str:
 
 
 def _layout(smiles: str):
-    return Pict(backend=_backend()).layout({"molecules": [{"smiles": smiles}]}).molecules[0]
+    return Pict(backend=_backend()).layout({"molecules": [{"smiles": smiles}]})[0]
 
 
 def _rmsd(ref, other, mapping: dict[int, int]) -> float:
@@ -81,7 +81,7 @@ def test_reflection_keeps_smiles_chirality():
     from rdkit.Geometry import Point3D
 
     smiles = "C[C@H](O)Cl"
-    original = Pict(backend=layout_backend()).layout({"molecules": [{"smiles": smiles}]}).molecules[0]
+    original = Pict(backend=layout_backend()).layout({"molecules": [{"smiles": smiles}]})[0]
     mirror = original.model_copy(
         update={"atoms": [a.model_copy(update={"y": -a.y}) for a in original.atoms]}
     )

@@ -183,8 +183,9 @@ make publish-dry-python
 
 **Ship / document now:** nested ``DepictSpec`` (``type: "mol"`` /
 ``type: "group"`` + ``children``) — strict subset of future PictSpec. Also
-``mol`` / ``render`` / ``toSvg`` for single-mol callers. Pydantic:
-``xpict.contracts.depict``; JSON Schema: ``schema/xpict.schema.json``.
+``mol`` / ``render`` / ``toSvg`` for single-mol callers. Live JSON Schema from
+Rust (``make types`` → ``schema/xpict.schema.json``); Python hand models in
+``xpict.contracts.depict``; JS types in ``js/src/generated``.
 
 **Not the publish surface yet:** full nested ``PictSpec`` under ``xpict.future`` /
 ``schema/future/``.

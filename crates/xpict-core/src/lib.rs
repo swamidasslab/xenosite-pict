@@ -38,7 +38,7 @@ pub use cxsmiles::{apply_cx_by_index, cx_atom_labels, cx_source, smiles_base};
 pub use depict::depict_molecule;
 pub use doc::{
     apply_star_labels, assign_mol_ids, plan_edge, render_doc, AlignTo, AlignToSpec, DepictSpec,
-    DocPaint, MolNode, ShadeSpec,
+    DocPaint, MolNode, MolNodeKind, ShadeSpec,
 };
 pub use edge::{
     AlignOpts, CoordGenMoleculeResult, CoordMethod, EdgePlan, EdgeResult, EdgeTask,

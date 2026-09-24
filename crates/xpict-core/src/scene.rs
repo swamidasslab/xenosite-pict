@@ -13,9 +13,16 @@
 
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "codegen")]
+use schemars::JsonSchema;
+#[cfg(feature = "codegen")]
+use ts_rs::TS;
+
 /// Horizontal text anchor (SVG `text-anchor`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
 pub enum TextAnchor {
     Start,
     Middle,
@@ -25,6 +32,8 @@ pub enum TextAnchor {
 /// Layer name inside a molecule viewport.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
 pub enum LayerName {
     Shading,
     Halo,
@@ -37,25 +46,33 @@ pub enum LayerName {
 /// One drawable primitive in SVG space (+Y down).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
 pub enum Primitive {
     Path {
         d: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
         stroke: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
         fill: Option<String>,
         #[serde(default = "default_stroke_width")]
         stroke_width: f64,
         #[serde(default = "default_opacity")]
         opacity: f64,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
         stroke_dasharray: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
         stroke_linecap: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none", rename = "cls")]
+        #[cfg_attr(feature = "codegen", ts(optional, rename = "cls"))]
         class: Option<String>,
         /// Plain label string for ``data-text`` (glyph paths only).
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
         data_text: Option<String>,
     },
     Circle {
@@ -63,14 +80,17 @@ pub enum Primitive {
         cy: f64,
         r: f64,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
         fill: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
         stroke: Option<String>,
         #[serde(default = "default_stroke_width")]
         stroke_width: f64,
         #[serde(default = "default_opacity")]
         opacity: f64,
         #[serde(default, skip_serializing_if = "Option::is_none", rename = "cls")]
+        #[cfg_attr(feature = "codegen", ts(optional, rename = "cls"))]
         class: Option<String>,
     },
     /// Logical text; serializers outline to glyph paths (Liberation) or emit
@@ -86,6 +106,7 @@ pub enum Primitive {
         #[serde(default = "default_anchor")]
         anchor: TextAnchor,
         #[serde(default, skip_serializing_if = "Option::is_none", rename = "cls")]
+        #[cfg_attr(feature = "codegen", ts(optional, rename = "cls"))]
         class: Option<String>,
     },
 }
@@ -107,6 +128,8 @@ fn default_anchor() -> TextAnchor {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
 pub struct Layer {
     pub name: LayerName,
     #[serde(default)]
@@ -115,8 +138,11 @@ pub struct Layer {
 
 /// One molecule viewport in a diagram (after ELK/grid placement).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
 pub struct Viewport {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
     pub id: Option<String>,
     #[serde(default)]
     pub x: f64,
@@ -133,6 +159,8 @@ pub struct Viewport {
 /// Python `contracts.scene.Scene` and JS consumers should mirror this shape
 /// (JSON round-trip is the ABI).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
 pub struct Scene {
     pub width: f64,
     pub height: f64,
@@ -150,16 +178,21 @@ pub struct Scene {
 /// Identity: pass ``element`` and/or atomic number ``z``. If only ``z`` is
 /// set, the symbol comes from [`crate::element_symbol`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
 pub struct AtomIn {
     pub index: i32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
     pub element: Option<String>,
     /// Atomic number (`0` = ``*``). Used when ``element`` is omitted.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
     pub z: Option<u32>,
     pub x: f64,
     pub y: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
     pub label: Option<String>,
     #[serde(default)]
     pub charge: i32,
@@ -182,15 +215,19 @@ impl AtomIn {
 
 /// Bond input (indices into [`AtomIn::index`]).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
 pub struct BondIn {
     pub index: i32,
     pub begin: i32,
     pub end: i32,
     pub order: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
     pub stereo: Option<String>,
     /// Unit normal toward ring interior (ring doubles); omit for centered.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
     pub interior: Option<(f64, f64)>,
 }
 
@@ -198,25 +235,33 @@ pub struct BondIn {
 ///
 /// MVP extras: optional per-atom / per-bond shade scores and mark indices.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
 pub struct MoleculeIn {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
     pub id: Option<String>,
     pub atoms: Vec<AtomIn>,
     pub bonds: Vec<BondIn>,
     /// Ink color for backbone bonds and atom labels (CSS). Default ``#111``.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
     pub color: Option<String>,
     /// Per-atom shade scores (same order as [`Self::atoms`]); omit if unshaded.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
     pub atom_shade: Option<Vec<f64>>,
     /// Per-bond shade scores (same order as [`Self::bonds`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
     pub bond_shade: Option<Vec<f64>>,
     /// Shade colormap window low (default ``0``). Not inferred from data.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
     pub shade_vmin: Option<f64>,
     /// Shade colormap window high (default ``1``). Not inferred from data.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
     pub shade_vmax: Option<f64>,
     /// Atom indices to circle (publication marks).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

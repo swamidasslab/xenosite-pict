@@ -111,7 +111,7 @@ def test_rendered_ring_doubles_sit_inside():
     from xpict.draw.rings import bond_interior_normals, find_sssr
 
     for smiles in ("c1ccccc1", "O=C1C=CC(=O)C=C1", "c1ccc2ccccc2c1"):
-        lay = Pict(backend=backend).layout({"molecules": [{"smiles": smiles}]}).molecules[0]
+        lay = Pict(backend=backend).layout({"molecules": [{"smiles": smiles}]})[0]
         coords, _, _ = normalize_coords(lay)
         rings = find_sssr(lay)
         cbi = {a.index: coords[i] for i, a in enumerate(lay.atoms)}

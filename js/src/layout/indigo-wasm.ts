@@ -5,11 +5,26 @@
  * Returns backend-agnostic coords only — SVG is drawn by ``draw/svg.ts``.
  */
 
-import type { MoleculeLayout, MoleculeSpec } from "../future/pict-types.js";
+/** Minimal input for the stub (structure fields only). */
+export type IndigoMoleculeIn = {
+  smiles?: string;
+  cxsmiles?: string;
+  esmiles?: string;
+  molfile?: string;
+};
+
+/** Backend-agnostic 2D layout (coords only). */
+export type IndigoMoleculeLayout = {
+  id?: string;
+  atoms: Array<{ index: number; element: string; x: number; y: number }>;
+  bonds: Array<{ index: number; begin: number; end: number }>;
+  backend: string;
+  warnings?: string[];
+};
 
 export async function layoutWithIndigoWasm(
-  mol: MoleculeSpec
-): Promise<MoleculeLayout> {
+  mol: IndigoMoleculeIn
+): Promise<IndigoMoleculeLayout> {
   const structure = mol.smiles ?? mol.cxsmiles ?? mol.esmiles ?? mol.molfile;
   if (!structure) {
     throw new Error("molecule needs smiles, cxsmiles, esmiles, or molfile");

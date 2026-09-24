@@ -25,9 +25,10 @@ def test_live_mol_accepts_scale():
     assert doc.root.scale == pytest.approx(1.5)
 
 
-def test_scale_defaults_to_one():
+def test_scale_omitted_is_none_on_wire():
+    """Rust ``Option<f64>`` — omitted scale is null on the live ABI (core applies 1.0)."""
     doc = DepictSpec.model_validate({"type": "mol", "smiles": "CCO"})
-    assert doc.root.scale == pytest.approx(1.0)
+    assert doc.root.scale is None
 
 
 def test_scale_one_matches_omitted():

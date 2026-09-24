@@ -1,120 +1,113 @@
-"""EdgePlan / EdgeResult — host callback ABI (coord_gen / align).
-
-Rust core builds the plan (ids + forest); language edges process it and return
-flat ``MoleculeIn`` results. No molblocks on this wire.
-"""
+# Auto-generated from Rust schemars (make types) — do not edit.
+"""EdgePlan / EdgeResult — live ABI from xpict-core (schemars)."""
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    def model_dump(self, *args, **kwargs):
+        kwargs.setdefault("exclude_none", True)
+        return super().model_dump(*args, **kwargs)
+
+    def model_dump_json(self, *args, **kwargs):
+        kwargs.setdefault("exclude_none", True)
+        return super().model_dump_json(*args, **kwargs)
 
 class AlignOpts(StrictModel):
-    """Align this mol onto its parent template (``MolTemplate.align``)."""
-
-    atom_map: list[tuple[int, int]] | None = Field(
-        default=None,
-        description=(
-            "Pairs (query_atom, template_atom). Omit → edge runs MCS. "
-            "Present → skip MCS and use this map."
-        ),
-    )
-    min_atoms: int | None = Field(
-        default=None,
-        ge=1,
-        description="Minimum mapped atoms (default 3 = MIN_MCS_ATOMS).",
-    )
+    """Align this mol onto its parent template."""
+    atom_map: Annotated[list[tuple[int, int]] | None, Field(description='Pairs `(query_atom, template_atom)`. `None` → edge runs MCS.')] = None
+    min_atoms: Annotated[int | None, Field(description='Override [`MIN_MCS_ATOMS`] when set.')] = None
 
 
 class MolTemplate(StrictModel):
     """One node in a coord_gen forest (root = free layout; children align to parent)."""
-
-    id: str = Field(description="Rust-assigned unique id; round-trips to the doc node")
-    smiles: str | None = None
+    id: Annotated[str, Field(description='Rust-assigned unique id; round-trips to the document node.')]
+    align: Annotated[AlignOpts | None, Field(description='Opts for aligning onto the parent; `None` on roots.')] = None
     cxsmiles: str | None = None
     molfile: str | None = None
-    align: AlignOpts | None = Field(
-        default=None,
-        description="Opts for aligning onto the parent; null on roots",
-    )
-    template_for: list[MolTemplate] = Field(
-        default_factory=list,
-        description="Children that use this node as their align template",
-    )
-
-    @model_validator(mode="after")
-    def _one_structure(self) -> MolTemplate:
-        n = sum(
-            1
-            for v in (self.smiles, self.cxsmiles, self.molfile)
-            if v is not None and str(v).strip()
-        )
-        if n != 1:
-            raise ValueError("MolTemplate needs exactly one of smiles/cxsmiles/molfile")
-        return self
+    smiles: str | None = None
+    template_for: list[MolTemplate] = Field(default_factory=list, description='Children that use this node as their align template.')
 
 
 class CoordGenTask(StrictModel):
-    type: Literal["coord_gen"] = "coord_gen"
-    roots: list[MolTemplate] = Field(
-        description="Independent align trees (each root laid out freely)",
-    )
+    type: Literal['coord_gen'] = 'coord_gen'
+    roots: list[MolTemplate] = Field(default_factory=list)
 
 
 EdgeTask = CoordGenTask
 
 
 class EdgePlan(StrictModel):
-    """Host callback request — today only ``coord_gen``; more task types later."""
+    """Host callback request."""
+    version: int
+    tasks: list[EdgeTask] = Field(default_factory=list)
 
-    version: Literal[1] = 1
-    tasks: list[CoordGenTask] = Field(default_factory=list)
+
+CoordMethod = Literal['free', 'atom_map', 'mcs', 'none']
+
+
+class AtomIn(StrictModel):
+    """Atom input for a molecule depict call (SVG-space coords from the caller)."""
+    index: int
+    x: float
+    y: float
+    charge: int = 0
+    element: str | None = None
+    label: str | None = None
+    z: Annotated[int | None, Field(description='Atomic number (`0` = ``*``). Used when ``element`` is omitted.')] = None
+
+
+class BondIn(StrictModel):
+    """Bond input (indices into [`AtomIn::index`])."""
+    begin: int
+    end: int
+    index: int
+    order: float
+    interior: Annotated[tuple[float, float] | None, Field(description='Unit normal toward ring interior (ring doubles); omit for centered.')] = None
+    stereo: str | None = None
+
+
+class MoleculeIn(StrictModel):
+    """One molecule ready to paint (coords already in SVG / ``SCALE`` space)."""
+    atoms: list[AtomIn]
+    bonds: list[BondIn]
+    atom_shade: Annotated[list[float] | None, Field(description='Per-atom shade scores (same order as [`Self::atoms`]); omit if unshaded.')] = None
+    bond_shade: Annotated[list[float] | None, Field(description='Per-bond shade scores (same order as [`Self::bonds`]).')] = None
+    color: Annotated[str | None, Field(description='Ink color for backbone bonds and atom labels (CSS). Default ``#111``.')] = None
+    id: str | None = None
+    mark_atoms: list[int] = Field(default_factory=list, description='Atom indices to circle (publication marks).')
+    mark_bonds: list[tuple[int, int]] = Field(default_factory=list, description='Bond endpoint index pairs to circle/stroke-mark.')
+    scale: Annotated[float | None, Field(description='Uniform diagram scale (font, stroke, pad, geometry). ``1.0`` = house size.')] = None
+    shade_vmax: Annotated[float | None, Field(description='Shade colormap window high (default ``1``). Not inferred from data.')] = None
+    shade_vmin: Annotated[float | None, Field(description='Shade colormap window low (default ``0``). Not inferred from data.')] = None
+    weight: Annotated[float | None, Field(description='Ink weight for backbone stroke and label glyph thicken. ``1.0`` = house; may go down to ~``2/3`` (Regular stem); typical thicken up to ~2.')] = None
 
 
 class CoordGenMoleculeResult(StrictModel):
+    """One flat molecule entry in a coord_gen result."""
     id: str
-    ok: bool = Field(
-        description=(
-            "True when usable coords were produced (aligned or free-layout fallback). "
-            "False only when even unaligned coord gen failed."
-        ),
-    )
-    method: Literal["free", "atom_map", "mcs", "none"] = Field(
-        description=(
-            "free = unconstrained; atom_map / mcs = aligned; "
-            "none = align requested but failed — automatic free-layout fallback"
-        ),
-    )
-    used_map: list[tuple[int, int]] | None = Field(
-        default=None,
-        description="(query, template) pairs when a map was applied",
-    )
-    molecule: dict[str, Any] | None = Field(
-        default=None,
-        description="MoleculeIn JSON (atoms/bonds/coords); present whenever ok is true",
-    )
-    error: str | None = Field(
-        default=None,
-        description="Note when method is none (fallback) or ok is false",
-    )
+    method: CoordMethod
+    ok: Annotated[bool, Field(description='True when usable coords were produced (aligned or free-layout fallback).')]
+    error: str | None = None
+    molecule: Annotated[MoleculeIn | None, Field(description='Present whenever ``ok`` is true.')] = None
+    used_map: list[tuple[int, int]] | None = None
 
 
 class CoordGenTaskResult(StrictModel):
-    type: Literal["coord_gen"] = "coord_gen"
-    ok: bool = Field(
-        description="True when every molecule entry has ok=true (coords for all ids)",
-    )
-    molecules: list[CoordGenMoleculeResult] = Field(
-        description="Flat list — align failures still appear with free-layout coords",
-    )
+    type: Literal['coord_gen'] = 'coord_gen'
+    molecules: list[CoordGenMoleculeResult]
+    ok: bool
+
+
+EdgeTaskResult = CoordGenTaskResult
 
 
 class EdgeResult(StrictModel):
-    version: Literal[1] = 1
-    results: list[CoordGenTaskResult] = Field(default_factory=list)
+    version: int
+    results: list[EdgeTaskResult] = Field(default_factory=list)

@@ -1,320 +1,329 @@
 {
-  "$defs": {
-    "AlignToSpec": {
-      "additionalProperties": false,
-      "description": "Object form of document ``align_to`` (template ref + align opts).",
-      "properties": {
-        "ref": {
-          "description": "Id of the template mol in this group",
-          "title": "Ref",
-          "type": "string"
-        },
-        "atom_map": {
-          "anyOf": [
-            {
-              "items": {
-                "maxItems": 2,
-                "minItems": 2,
-                "prefixItems": [
-                  {
-                    "type": "integer"
-                  },
-                  {
-                    "type": "integer"
-                  }
-                ],
-                "type": "array"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Pairs (query_atom, template_atom) vs the template. Skips MCS when set.",
-          "title": "Atom Map"
-        },
-        "min_atoms": {
-          "anyOf": [
-            {
-              "minimum": 1,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Override minimum mapped atoms before align is trusted",
-          "title": "Min Atoms"
-        }
-      },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DepictSpec",
+  "description": "Declarative document (`mol` or `group` root).",
+  "oneOf": [
+    {
+      "type": "object",
       "required": [
-        "ref"
+        "type"
       ],
-      "title": "AlignToSpec",
-      "type": "object"
-    },
-    "GroupNode": {
-      "additionalProperties": false,
-      "description": "Group \u2014 subset of future ``GroupNode`` (mol children only today).",
       "properties": {
-        "type": {
-          "const": "group",
-          "default": "group",
-          "title": "Type",
-          "type": "string"
-        },
-        "id": {
+        "align_to": {
           "anyOf": [
             {
-              "type": "string"
+              "$ref": "#/definitions/AlignTo"
             },
             {
               "type": "null"
             }
-          ],
-          "default": null,
-          "description": "Optional stable id",
-          "title": "Id"
-        },
-        "align": {
-          "default": false,
-          "description": "When true, later children align onto the first (or each child's align_to id). Builds an EdgePlan coord_gen forest.",
-          "title": "Align",
-          "type": "boolean"
-        },
-        "children": {
-          "description": "Owned mol nodes (discriminated by ``type``)",
-          "items": {
-            "$ref": "#/$defs/MolNode"
-          },
-          "title": "Children",
-          "type": "array"
-        }
-      },
-      "title": "GroupNode",
-      "type": "object"
-    },
-    "MolNode": {
-      "additionalProperties": false,
-      "description": "Molecule node \u2014 subset of future ``MolNode`` / ``MoleculeSpec``.",
-      "properties": {
-        "type": {
-          "const": "mol",
-          "default": "mol",
-          "title": "Type",
-          "type": "string"
-        },
-        "id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Optional stable id",
-          "title": "Id"
-        },
-        "smiles": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "SMILES string",
-          "title": "Smiles"
-        },
-        "cxsmiles": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "ChemAxon extended SMILES (CXSMILES)",
-          "title": "Cxsmiles"
-        },
-        "molfile": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "MDL molblock",
-          "title": "Molfile"
+          ]
         },
         "color": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cxsmiles": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "molfile": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "scale": {
+          "type": [
+            "number",
+            "null"
           ],
-          "default": null,
-          "description": "Ink color for backbone bonds and atom labels (CSS)",
-          "title": "Color"
+          "format": "double"
         },
         "shade": {
           "anyOf": [
             {
-              "$ref": "#/$defs/ShadeSpec"
+              "$ref": "#/definitions/ShadeSpec"
             },
             {
               "type": "null"
             }
-          ],
-          "default": null,
-          "description": "Per-atom / per-bond colormap scores"
+          ]
+        },
+        "smiles": {
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "star_labels": {
-          "anyOf": [
-            {
-              "items": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
+          "type": [
+            "array",
+            "null"
           ],
-          "default": null,
-          "description": "Labels for ``*`` atoms in layout encounter order (``null`` / empty \u2192 bare *; chem markup OK). Wins over CXSMILES aliases when both are present.",
-          "title": "Star Labels"
+          "items": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
         },
-        "scale": {
-          "default": 1.0,
-          "description": "Uniform diagram scale (font, stroke, geometry). 1.0 = house size.",
-          "exclusiveMinimum": 0,
-          "title": "Scale",
-          "type": "number"
+        "type": {
+          "type": "string",
+          "enum": [
+            "mol"
+          ]
         },
         "weight": {
-          "default": 1.0,
-          "description": "Ink weight relative to house size (1.0). May go down to 2/3 (Regular stem); typical thicken up to ~2.",
-          "minimum": 0.6666666666666666,
-          "title": "Weight",
-          "type": "number"
-        },
-        "align_to": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "$ref": "#/$defs/AlignToSpec"
-            },
-            {
-              "type": "null"
-            }
+          "type": [
+            "number",
+            "null"
           ],
-          "default": null,
-          "description": "Align template: id string, or object ``{ref, atom_map?, min_atoms?}``. When omitted and the group has align=true, defaults to the first child.",
-          "title": "Align To"
+          "format": "double"
         }
-      },
-      "title": "MolNode",
-      "type": "object"
+      }
     },
-    "ShadeSpec": {
-      "additionalProperties": false,
-      "description": "Continuous per-atom / per-bond scores for colormap shading.\n\nScores are interpreted on a fixed ``[vmin, vmax]`` window (default\n``0``\u2026``1``). They are **not** auto-scaled to the data range.",
+    {
+      "type": "object",
+      "required": [
+        "type"
+      ],
       "properties": {
-        "atoms": {
-          "anyOf": [
-            {
-              "items": {
-                "type": "number"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Per-atom scores (same length as atom count)",
-          "title": "Atoms"
+        "align": {
+          "description": "When true, later children align onto the first (or each `align_to`).",
+          "default": false,
+          "type": "boolean"
         },
-        "bonds": {
-          "anyOf": [
-            {
-              "items": {
-                "type": "number"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Per-bond scores",
-          "title": "Bonds"
+        "children": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/MolNode"
+          }
         },
-        "colormap": {
-          "default": "xenosite",
-          "description": "Named colormap",
-          "title": "Colormap",
+        "id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "group"
+          ]
+        }
+      }
+    }
+  ],
+  "definitions": {
+    "AlignTo": {
+      "description": "Document align target: id string or `{ \"ref\", \"atom_map\"?, \"min_atoms\"? }`.",
+      "anyOf": [
+        {
+          "description": "Shorthand for `{ \"ref\": \"…\" }`.",
           "type": "string"
         },
-        "vmin": {
-          "default": 0.0,
-          "description": "Shade window low (default 0)",
-          "title": "Vmin",
-          "type": "number"
+        {
+          "$ref": "#/definitions/AlignToSpec"
+        }
+      ]
+    },
+    "AlignToSpec": {
+      "description": "Object form of document ``align_to`` (template ref + EdgePlan-style opts).",
+      "type": "object",
+      "required": [
+        "ref"
+      ],
+      "properties": {
+        "atom_map": {
+          "description": "Pairs `(query, template)` vs the template; skips MCS when set.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "array",
+            "items": [
+              {
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0.0
+              },
+              {
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0.0
+              }
+            ],
+            "maxItems": 2,
+            "minItems": 2
+          }
+        },
+        "min_atoms": {
+          "description": "Override [`crate::edge::MIN_MCS_ATOMS`] when set.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "ref": {
+          "description": "Id of the template mol in this group.",
+          "type": "string"
+        }
+      }
+    },
+    "MolNode": {
+      "description": "Mol node — subset of future ``MolNode``.",
+      "type": "object",
+      "properties": {
+        "align_to": {
+          "description": "Template id string, or `{ \"ref\", \"atom_map\"?, \"min_atoms\"? }`.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AlignTo"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "color": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cxsmiles": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "molfile": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "scale": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "shade": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ShadeSpec"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "smiles": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "star_labels": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": {
+          "default": "mol",
+          "allOf": [
+            {
+              "$ref": "#/definitions/MolNodeKind"
+            }
+          ]
+        },
+        "weight": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        }
+      }
+    },
+    "MolNodeKind": {
+      "description": "Discriminator for mol nodes (`\"type\": \"mol\"`).",
+      "type": "string",
+      "enum": [
+        "mol"
+      ]
+    },
+    "ShadeSpec": {
+      "description": "Per-atom / per-bond colormap scores.",
+      "type": "object",
+      "properties": {
+        "atoms": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "bonds": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "colormap": {
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "vmax": {
           "default": 1.0,
-          "description": "Shade window high (default 1)",
-          "title": "Vmax",
-          "type": "number"
+          "type": "number",
+          "format": "double"
+        },
+        "vmin": {
+          "default": 0.0,
+          "type": "number",
+          "format": "double"
         }
-      },
-      "title": "ShadeSpec",
-      "type": "object"
+      }
     }
-  },
-  "description": "Declarative document (strict subset of future PictSpec).",
-  "discriminator": {
-    "mapping": {
-      "group": "#/$defs/GroupNode",
-      "mol": "#/$defs/MolNode"
-    },
-    "propertyName": "type"
-  },
-  "oneOf": [
-    {
-      "$ref": "#/$defs/MolNode"
-    },
-    {
-      "$ref": "#/$defs/GroupNode"
-    }
-  ],
-  "title": "DepictSpec"
+  }
 }
