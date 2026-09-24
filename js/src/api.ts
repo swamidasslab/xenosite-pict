@@ -129,6 +129,14 @@ export type {
   AlignToSpec,
   MolNode,
   ShadeSpec,
+  ShadeStyle,
+  CommonOpts,
+  MolOpts,
+  NodeType,
+  ForTypesPatch,
+  TypedOptsPatch,
+  OptsPatch,
+  Opts,
 } from "./generated/depict-abi.js";
 
 import type {

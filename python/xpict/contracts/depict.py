@@ -29,8 +29,57 @@ class AlignToSpec(StrictModel):
 AlignTo = str | AlignToSpec
 
 
+class ShadeStyle(StrictModel):
+    """Cascading shade window / LUT (not per-atom scores)."""
+    colormap: str | None = None
+    vmax: float | None = None
+    vmin: float | None = None
+
+
+class MolOptsPatch(StrictModel):
+    """Mol cascading paint opts — what a mol leaf consumes from the cascade."""
+    type: Literal['mol'] = 'mol'
+    color: str | None = None
+    halo: bool | None = None
+    scale: float | None = None
+    shade: ShadeStyle | None = None
+    weight: float | None = None
+
+
+class GroupOptsPatch(StrictModel):
+    """Universal cascading keys (any node kind)."""
+    type: Literal['group'] = 'group'
+    color: str | None = None
+    scale: float | None = None
+
+
+TypedOptsPatch = Annotated[MolOptsPatch | GroupOptsPatch, Field(discriminator='type')]
+
+
+NodeType = Literal['mol', 'group']
+
+
+class ForTypesPatch(StrictModel):
+    """Multi-kind patch: `{ "for_types": ["mol","group"], …common opts }`."""
+    for_types: list[NodeType]
+    color: str | None = None
+    scale: float | None = None
+
+
+class CommonOpts(StrictModel):
+    """Universal cascading keys (any node kind)."""
+    color: str | None = None
+    scale: float | None = None
+
+
+OptsPatch = TypedOptsPatch | ForTypesPatch | CommonOpts
+
+
+Opts = OptsPatch | list[OptsPatch]
+
+
 class ShadeSpec(StrictModel):
-    """Per-atom / per-bond colormap scores."""
+    """Per-atom / per-bond colormap scores (+ legacy window fields on the mol)."""
     atoms: list[float] | None = None
     bonds: list[float] | None = None
     colormap: str | None = None
@@ -42,15 +91,17 @@ MolNodeKind = Literal['mol']
 
 
 class MolNode(StrictModel):
-    """Mol node — subset of future ``MolNode``."""
+    """Mol node — [`MolOpts`] fields + non-cascading identity / scores / align."""
     type: Literal['mol'] = 'mol'
     align_to: Annotated[AlignTo | None, Field(description='Template id string, or `{ "ref", "atom_map"?, "min_atoms"? }`.')] = None
     color: str | None = None
     cxsmiles: str | None = None
+    halo: bool | None = None
     id: str | None = None
     molfile: str | None = None
+    opts: Annotated[Opts | None, Field(description='Cascade patches for this node (list or singleton).')] = None
     scale: float | None = None
-    shade: ShadeSpec | None = None
+    shade: Annotated[ShadeSpec | None, Field(description='Shade **scores** (+ legacy window); window also cascades via [`Opts`].')] = None
     smiles: str | None = None
     star_labels: list[str | None] | None = None
     weight: float | None = None
@@ -60,7 +111,10 @@ class GroupNode(StrictModel):
     type: Literal['group'] = 'group'
     align: bool = Field(default=False, description='When true, later children align onto the first (or each `align_to`).')
     children: list[MolNode] = Field(default_factory=list)
+    color: str | None = None
     id: str | None = None
+    opts: Annotated[Opts | None, Field(description='Group-level cascade bag (list container for child inheritance).')] = None
+    scale: float | None = None
 
 
 DepictSpecRoot = Annotated[MolNode | GroupNode, Field(discriminator='type')]

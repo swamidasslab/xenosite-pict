@@ -31,6 +31,12 @@
             "null"
           ]
         },
+        "halo": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
         "id": {
           "type": [
             "string",
@@ -41,6 +47,16 @@
           "type": [
             "string",
             "null"
+          ]
+        },
+        "opts": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Opts"
+            },
+            {
+              "type": "null"
+            }
           ]
         },
         "scale": {
@@ -111,11 +127,35 @@
             "$ref": "#/definitions/MolNode"
           }
         },
+        "color": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "id": {
           "type": [
             "string",
             "null"
           ]
+        },
+        "opts": {
+          "description": "Group-level cascade bag (list container for child inheritance).",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Opts"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "scale": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
         },
         "type": {
           "type": "string",
@@ -185,8 +225,55 @@
         }
       }
     },
+    "CommonOpts": {
+      "description": "Universal cascading keys (any node kind).",
+      "type": "object",
+      "properties": {
+        "color": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "scale": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        }
+      }
+    },
+    "ForTypesPatch": {
+      "description": "Multi-kind patch: `{ \"for_types\": [\"mol\",\"group\"], …common opts }`.\n\nOnly [`CommonOpts`] keys are allowed here (intersection of kind bags).",
+      "type": "object",
+      "required": [
+        "for_types"
+      ],
+      "properties": {
+        "color": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "for_types": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/NodeType"
+          }
+        },
+        "scale": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        }
+      }
+    },
     "MolNode": {
-      "description": "Mol node — subset of future ``MolNode``.",
+      "description": "Mol node — [`MolOpts`] fields + non-cascading identity / scores / align.",
       "type": "object",
       "properties": {
         "align_to": {
@@ -212,6 +299,12 @@
             "null"
           ]
         },
+        "halo": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
         "id": {
           "type": [
             "string",
@@ -224,6 +317,17 @@
             "null"
           ]
         },
+        "opts": {
+          "description": "Cascade patches for this node (list or singleton).",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Opts"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "scale": {
           "type": [
             "number",
@@ -232,6 +336,7 @@
           "format": "double"
         },
         "shade": {
+          "description": "Shade **scores** (+ legacy window); window also cascades via [`Opts`].",
           "anyOf": [
             {
               "$ref": "#/definitions/ShadeSpec"
@@ -283,8 +388,59 @@
         "mol"
       ]
     },
+    "NodeType": {
+      "description": "Document node kinds opts may target (matches wire `\"type\"` discriminants).",
+      "type": "string",
+      "enum": [
+        "mol",
+        "group"
+      ]
+    },
+    "Opts": {
+      "description": "Cascade bag: singleton patch or list of patches.",
+      "anyOf": [
+        {
+          "$ref": "#/definitions/OptsPatch"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/OptsPatch"
+          }
+        }
+      ]
+    },
+    "OptsPatch": {
+      "description": "One cascade rule. Untagged order: typed → for_types → universal.",
+      "anyOf": [
+        {
+          "description": "`{ \"type\": \"mol\", \"weight\": 1.2 }` — discriminated kind.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/TypedOptsPatch"
+            }
+          ]
+        },
+        {
+          "description": "`{ \"for_types\": [\"mol\",\"group\"], \"color\": \"#111\" }`.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ForTypesPatch"
+            }
+          ]
+        },
+        {
+          "description": "`{ \"color\": \"#111\" }` — applies to every kind.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/CommonOpts"
+            }
+          ]
+        }
+      ]
+    },
     "ShadeSpec": {
-      "description": "Per-atom / per-bond colormap scores.",
+      "description": "Per-atom / per-bond colormap scores (+ legacy window fields on the mol).\n\nPrefer putting `colormap` / `vmin` / `vmax` in cascading [`MolOpts::shade`]; values here still apply as local leaf overrides for compat.",
       "type": "object",
       "properties": {
         "atoms": {
@@ -324,6 +480,116 @@
           "format": "double"
         }
       }
+    },
+    "ShadeStyle": {
+      "description": "Cascading shade window / LUT (not per-atom scores).",
+      "type": "object",
+      "properties": {
+        "colormap": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "vmax": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "vmin": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        }
+      }
+    },
+    "TypedOptsPatch": {
+      "description": "Discriminated opts patch: `{ \"type\": \"mol\"|\"group\", …opts }`.",
+      "oneOf": [
+        {
+          "description": "Mol cascading paint opts — what a mol leaf consumes from the cascade.\n\n[`MolNode`] carries the same fields at the top level (local leaf opts) plus non-cascading identity keys.",
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "color": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "halo": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "scale": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "format": "double"
+            },
+            "shade": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/ShadeStyle"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "mol"
+              ]
+            },
+            "weight": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "format": "double"
+            }
+          }
+        },
+        {
+          "description": "Universal cascading keys (any node kind).",
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "color": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "scale": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "format": "double"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "group"
+              ]
+            }
+          }
+        }
+      ]
     }
   }
 }

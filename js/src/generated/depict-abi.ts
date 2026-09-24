@@ -1,8 +1,16 @@
 // Auto-generated barrel — do not edit (make types).
 
 export type { ShadeSpec } from "./ShadeSpec.js";
+export type { ShadeStyle } from "./ShadeStyle.js";
 export type { AlignToSpec } from "./AlignToSpec.js";
 export type { AlignTo } from "./AlignTo.js";
 export type { MolNodeKind } from "./MolNodeKind.js";
 export type { MolNode } from "./MolNode.js";
+export type { CommonOpts } from "./CommonOpts.js";
+export type { MolOpts } from "./MolOpts.js";
+export type { NodeType } from "./NodeType.js";
+export type { ForTypesPatch } from "./ForTypesPatch.js";
+export type { TypedOptsPatch } from "./TypedOptsPatch.js";
+export type { OptsPatch } from "./OptsPatch.js";
+export type { Opts } from "./Opts.js";
 export type { DepictSpec } from "./DepictSpec.js";

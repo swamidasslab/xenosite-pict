@@ -97,3 +97,37 @@ def test_live_align_to_string_or_object():
     assert kids[2].align_to == "ref"
     future = PictSpec.model_validate(doc.model_dump(mode="json"))
     assert future.root.type == "group"  # type: ignore[union-attr]
+
+
+def test_live_opts_list_container_parses():
+    """Group/mol ``opts`` accept singleton or list of typed / for_types / universal patches."""
+    from xpict.contracts.depict import ForTypesPatch, GroupNode, MolOptsPatch
+
+    doc = DepictSpec.model_validate(
+        {
+            "type": "group",
+            "opts": [
+                {"color": "#111", "scale": 1.0},
+                {"type": "mol", "weight": 1.25, "halo": True},
+                {"for_types": ["mol", "group"], "scale": 1.5},
+            ],
+            "children": [
+                {
+                    "type": "mol",
+                    "smiles": "CCO",
+                    "opts": {"type": "mol", "color": "#0b6e4f"},
+                }
+            ],
+        }
+    )
+    assert isinstance(doc.root, GroupNode)
+    assert isinstance(doc.root.opts, list)
+    assert len(doc.root.opts) == 3
+    assert doc.root.opts[0].color == "#111"
+    assert isinstance(doc.root.opts[1], MolOptsPatch)
+    assert doc.root.opts[1].weight == 1.25
+    assert isinstance(doc.root.opts[2], ForTypesPatch)
+    assert doc.root.opts[2].for_types == ["mol", "group"]
+    child_opts = doc.mols()[0].opts
+    assert isinstance(child_opts, MolOptsPatch)
+    assert child_opts.color == "#0b6e4f"

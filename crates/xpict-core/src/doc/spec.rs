@@ -1,0 +1,598 @@
+//! Live document wire types — **collocated** so opts + nodes stay aligned.
+//!
+//! # Cascade model
+//!
+//! - [`Opts`] is a **list** (or singleton) of [`OptsPatch`] rules.
+//! - Patches are discriminated by document node `type` (`TypedOptsPatch`) or
+//!   multi-select via reserved meta key `for_types` ([`ForTypesPatch`]).
+//!   Omitting both = universal (applies to every kind).
+//! - Meta keys (`type`, `for_types`) are selectors — not paint options.
+//! - Resolve: walk ancestors → node; apply matching patches in order; child
+//!   wins; nested objects (`shade`) deep-merge.
+//! - [`MolNode`] / [`DepictSpec`] **extend** paint opts with non-cascading
+//!   identity keys (`smiles`, `id`, `align_to`, shade **scores**, …). Local
+//!   flat `color` / `weight` / `scale` / `halo` are the leaf’s own opts
+//!   (same fields as [`MolOpts`]) and merge last.
+
+use serde::{Deserialize, Serialize};
+
+#[cfg(feature = "codegen")]
+use schemars::JsonSchema;
+#[cfg(feature = "codegen")]
+use ts_rs::TS;
+
+use crate::edge::AlignOpts;
+
+// ---------------------------------------------------------------------------
+// Shade: scores (non-cascading, on mol) vs style window (cascading, in opts)
+// ---------------------------------------------------------------------------
+
+/// Cascading shade window / LUT (not per-atom scores).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
+pub struct ShadeStyle {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub colormap: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub vmin: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub vmax: Option<f64>,
+}
+
+impl ShadeStyle {
+    pub fn merge_from(&mut self, other: &ShadeStyle) {
+        if other.colormap.is_some() {
+            self.colormap = other.colormap.clone();
+        }
+        if other.vmin.is_some() {
+            self.vmin = other.vmin;
+        }
+        if other.vmax.is_some() {
+            self.vmax = other.vmax;
+        }
+    }
+}
+
+/// Per-atom / per-bond colormap scores (+ legacy window fields on the mol).
+///
+/// Prefer putting `colormap` / `vmin` / `vmax` in cascading [`MolOpts::shade`];
+/// values here still apply as local leaf overrides for compat.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
+pub struct ShadeSpec {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub atoms: Option<Vec<f64>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub bonds: Option<Vec<f64>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub colormap: Option<String>,
+    #[serde(default = "default_shade_vmin")]
+    pub vmin: f64,
+    #[serde(default = "default_shade_vmax")]
+    pub vmax: f64,
+}
+
+fn default_shade_vmin() -> f64 {
+    0.0
+}
+fn default_shade_vmax() -> f64 {
+    1.0
+}
+
+impl Default for ShadeSpec {
+    fn default() -> Self {
+        Self {
+            atoms: None,
+            bonds: None,
+            colormap: None,
+            vmin: 0.0,
+            vmax: 1.0,
+        }
+    }
+}
+
+impl ShadeSpec {
+    /// Hoist legacy window fields into a cascading [`ShadeStyle`].
+    pub fn style(&self) -> ShadeStyle {
+        ShadeStyle {
+            colormap: self.colormap.clone(),
+            vmin: Some(self.vmin),
+            vmax: Some(self.vmax),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Align (non-cascading topology)
+// ---------------------------------------------------------------------------
+
+/// Object form of document ``align_to`` (template ref + EdgePlan-style opts).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
+pub struct AlignToSpec {
+    /// Id of the template mol in this group.
+    #[serde(rename = "ref")]
+    #[cfg_attr(feature = "codegen", ts(rename = "ref"))]
+    pub ref_id: String,
+    /// Pairs `(query, template)` vs the template; skips MCS when set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub atom_map: Option<Vec<(u32, u32)>>,
+    /// Override [`crate::edge::MIN_MCS_ATOMS`] when set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub min_atoms: Option<u32>,
+}
+
+/// Document align target: id string or `{ "ref", "atom_map"?, "min_atoms"? }`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
+pub enum AlignTo {
+    /// Shorthand for `{ "ref": "…" }`.
+    Ref(String),
+    Spec(AlignToSpec),
+}
+
+impl AlignTo {
+    pub fn ref_id(&self) -> &str {
+        match self {
+            AlignTo::Ref(s) => s.as_str(),
+            AlignTo::Spec(s) => s.ref_id.as_str(),
+        }
+    }
+
+    pub fn align_opts(&self) -> AlignOpts {
+        match self {
+            AlignTo::Ref(_) => AlignOpts::default(),
+            AlignTo::Spec(s) => AlignOpts {
+                atom_map: s.atom_map.clone(),
+                min_atoms: s.min_atoms,
+            },
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Cascading opts — list of patches; `type` / `for_types` are meta selectors
+// ---------------------------------------------------------------------------
+
+/// Document node kinds opts may target (matches wire `"type"` discriminants).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
+pub enum NodeType {
+    Mol,
+    Group,
+}
+
+impl NodeType {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            NodeType::Mol => "mol",
+            NodeType::Group => "group",
+        }
+    }
+}
+
+/// Universal cascading keys (any node kind).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
+pub struct CommonOpts {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub color: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub scale: Option<f64>,
+}
+
+impl CommonOpts {
+    pub fn merge_from(&mut self, other: &CommonOpts) {
+        if other.color.is_some() {
+            self.color = other.color.clone();
+        }
+        if other.scale.is_some() {
+            self.scale = other.scale;
+        }
+    }
+}
+
+/// Mol cascading paint opts — what a mol leaf consumes from the cascade.
+///
+/// [`MolNode`] carries the same fields at the top level (local leaf opts) plus
+/// non-cascading identity keys.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
+pub struct MolOpts {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub color: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub scale: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub weight: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub halo: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub shade: Option<ShadeStyle>,
+}
+
+impl MolOpts {
+    pub fn merge_from(&mut self, other: &MolOpts) {
+        if other.color.is_some() {
+            self.color = other.color.clone();
+        }
+        if other.scale.is_some() {
+            self.scale = other.scale;
+        }
+        if other.weight.is_some() {
+            self.weight = other.weight;
+        }
+        if other.halo.is_some() {
+            self.halo = other.halo;
+        }
+        if let Some(ref s) = other.shade {
+            self.shade.get_or_insert_with(ShadeStyle::default).merge_from(s);
+        }
+    }
+
+    pub fn merge_common(&mut self, common: &CommonOpts) {
+        if common.color.is_some() {
+            self.color = common.color.clone();
+        }
+        if common.scale.is_some() {
+            self.scale = common.scale;
+        }
+    }
+}
+
+/// Discriminated opts patch: `{ "type": "mol"|"group", …opts }`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
+pub enum TypedOptsPatch {
+    Mol {
+        #[serde(flatten)]
+        opts: MolOpts,
+    },
+    Group {
+        #[serde(flatten)]
+        opts: CommonOpts,
+    },
+}
+
+/// Multi-kind patch: `{ "for_types": ["mol","group"], …common opts }`.
+///
+/// Only [`CommonOpts`] keys are allowed here (intersection of kind bags).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
+pub struct ForTypesPatch {
+    pub for_types: Vec<NodeType>,
+    #[serde(flatten)]
+    pub opts: CommonOpts,
+}
+
+/// One cascade rule. Untagged order: typed → for_types → universal.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
+pub enum OptsPatch {
+    /// `{ "type": "mol", "weight": 1.2 }` — discriminated kind.
+    Typed(TypedOptsPatch),
+    /// `{ "for_types": ["mol","group"], "color": "#111" }`.
+    ForTypes(ForTypesPatch),
+    /// `{ "color": "#111" }` — applies to every kind.
+    Universal(CommonOpts),
+}
+
+impl OptsPatch {
+    /// Whether this patch applies when resolving for `target`.
+    pub fn applies_to(&self, target: NodeType) -> bool {
+        match self {
+            OptsPatch::Typed(TypedOptsPatch::Mol { .. }) => target == NodeType::Mol,
+            OptsPatch::Typed(TypedOptsPatch::Group { .. }) => target == NodeType::Group,
+            OptsPatch::ForTypes(p) => p.for_types.contains(&target),
+            OptsPatch::Universal(_) => true,
+        }
+    }
+
+    pub fn apply_to_mol(&self, out: &mut MolOpts) {
+        match self {
+            OptsPatch::Typed(TypedOptsPatch::Mol { opts }) => out.merge_from(opts),
+            OptsPatch::Typed(TypedOptsPatch::Group { .. }) => {}
+            OptsPatch::ForTypes(p) => out.merge_common(&p.opts),
+            OptsPatch::Universal(c) => out.merge_common(c),
+        }
+    }
+}
+
+/// Cascade bag: singleton patch or list of patches.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
+pub enum Opts {
+    One(OptsPatch),
+    Many(Vec<OptsPatch>),
+}
+
+impl Opts {
+    pub fn patches(&self) -> Vec<&OptsPatch> {
+        match self {
+            Opts::One(p) => vec![p],
+            Opts::Many(ps) => ps.iter().collect(),
+        }
+    }
+
+    pub fn apply_to_mol(&self, out: &mut MolOpts) {
+        for p in self.patches() {
+            if p.applies_to(NodeType::Mol) {
+                p.apply_to_mol(out);
+            }
+        }
+    }
+}
+
+/// Apply a chain of opts bags (ancestor → … → leaf) for a mol.
+pub fn resolve_mol_opts<'a, I>(bags: I) -> MolOpts
+where
+    I: IntoIterator<Item = Option<&'a Opts>>,
+{
+    let mut out = MolOpts::default();
+    for bag in bags {
+        if let Some(opts) = bag {
+            opts.apply_to_mol(&mut out);
+        }
+    }
+    out
+}
+
+// ---------------------------------------------------------------------------
+// Nodes — extend opts with non-cascading identity / topology keys
+// ---------------------------------------------------------------------------
+
+/// Discriminator for mol nodes (`"type": "mol"`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
+pub enum MolNodeKind {
+    #[default]
+    Mol,
+}
+
+/// Mol node — [`MolOpts`] fields + non-cascading identity / scores / align.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
+pub struct MolNode {
+    #[serde(rename = "type", default)]
+    pub type_: MolNodeKind,
+    // --- non-cascading identity / topology ---
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub smiles: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub cxsmiles: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub molfile: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub id: Option<String>,
+    /// Shade **scores** (+ legacy window); window also cascades via [`Opts`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub shade: Option<ShadeSpec>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub star_labels: Option<Vec<Option<String>>>,
+    /// Template id string, or `{ "ref", "atom_map"?, "min_atoms"? }`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub align_to: Option<AlignTo>,
+    // --- local leaf opts (same keys as MolOpts; merge last) ---
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub color: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub scale: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub weight: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub halo: Option<bool>,
+    /// Cascade patches for this node (list or singleton).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub opts: Option<Opts>,
+}
+
+impl MolNode {
+    /// Local leaf opts from flat fields (+ legacy shade window).
+    pub fn local_opts(&self) -> MolOpts {
+        let mut o = MolOpts {
+            color: self.color.clone(),
+            scale: self.scale,
+            weight: self.weight,
+            halo: self.halo,
+            shade: None,
+        };
+        if let Some(ref shade) = self.shade {
+            o.shade = Some(shade.style());
+        }
+        o
+    }
+
+    pub fn structure(&self) -> Result<&str, String> {
+        for s in [&self.molfile, &self.cxsmiles, &self.smiles] {
+            if let Some(t) = s.as_ref().filter(|x| !x.trim().is_empty()) {
+                return Ok(t.as_str());
+            }
+        }
+        Err("mol node needs smiles, cxsmiles, or molfile".into())
+    }
+}
+
+/// Declarative document (`mol` or `group` root).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
+pub enum DepictSpec {
+    Mol {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        smiles: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        cxsmiles: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        molfile: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        shade: Option<ShadeSpec>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        star_labels: Option<Vec<Option<String>>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        align_to: Option<AlignTo>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        color: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        scale: Option<f64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        weight: Option<f64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        halo: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        opts: Option<Opts>,
+    },
+    Group {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        id: Option<String>,
+        /// When true, later children align onto the first (or each `align_to`).
+        #[serde(default)]
+        align: bool,
+        #[serde(default)]
+        children: Vec<MolNode>,
+        /// Group-level cascade bag (list container for child inheritance).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        opts: Option<Opts>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        color: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        scale: Option<f64>,
+    },
+}
+
+impl DepictSpec {
+    /// Flatten to mol nodes in document order.
+    pub fn mols(&self) -> Vec<MolNode> {
+        match self {
+            DepictSpec::Mol {
+                smiles,
+                cxsmiles,
+                molfile,
+                id,
+                shade,
+                star_labels,
+                align_to,
+                color,
+                scale,
+                weight,
+                halo,
+                opts,
+            } => vec![MolNode {
+                type_: MolNodeKind::Mol,
+                smiles: smiles.clone(),
+                cxsmiles: cxsmiles.clone(),
+                molfile: molfile.clone(),
+                id: id.clone(),
+                shade: shade.clone(),
+                star_labels: star_labels.clone(),
+                align_to: align_to.clone(),
+                color: color.clone(),
+                scale: *scale,
+                weight: *weight,
+                halo: *halo,
+                opts: opts.clone(),
+            }],
+            DepictSpec::Group { children, .. } => children.clone(),
+        }
+    }
+
+    pub fn align_enabled(&self) -> bool {
+        matches!(self, DepictSpec::Group { align: true, .. })
+    }
+
+    /// Group-level opts bag (if this is a group).
+    pub fn group_opts(&self) -> Option<&Opts> {
+        match self {
+            DepictSpec::Group { opts, .. } => opts.as_ref(),
+            DepictSpec::Mol { .. } => None,
+        }
+    }
+
+    /// Resolve cascading mol opts for child index `i` (0 for a mol root).
+    ///
+    /// Order: group `opts` list → group flat common → node `opts` list →
+    /// node local flat fields (incl. legacy shade window).
+    pub fn resolve_mol_chrome(&self, i: usize) -> MolOpts {
+        let mols = self.mols();
+        let node = mols.get(i).expect("mol index");
+        let mut o = MolOpts::default();
+        if let Some(bag) = self.group_opts() {
+            bag.apply_to_mol(&mut o);
+        }
+        if let DepictSpec::Group { color, scale, .. } = self {
+            o.merge_common(&CommonOpts {
+                color: color.clone(),
+                scale: *scale,
+            });
+        }
+        if let Some(ref bag) = node.opts {
+            bag.apply_to_mol(&mut o);
+        }
+        o.merge_from(&node.local_opts());
+        o
+    }
+}
