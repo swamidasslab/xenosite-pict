@@ -552,8 +552,8 @@ def flatten_to_legacy(node: Node) -> LegacyPictSpec:
                                 else:
                                     edges.append(
                                         EdgeSpec(
-                                            source=prev_id,
-                                            target=mid,
+                                            sources=[prev_id],
+                                            targets=[mid],
                                             arrow=EdgeArrow.forward,
                                         )
                                     )
