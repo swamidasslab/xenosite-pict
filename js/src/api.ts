@@ -145,6 +145,7 @@ export type {
   LabelItem,
   LabelLanes,
   Label,
+  MolIds,
   LayoutDirection,
   EdgeRouting,
   LayoutOpts,

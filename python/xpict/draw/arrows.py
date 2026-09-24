@@ -353,8 +353,11 @@ def diagram_overlays(
     by_id = {vp.id: vp for vp in viewports if vp.id}
     prims: list[Primitive] = []
     for i, edge in enumerate(edges):
-        src = by_id.get(edge.source)
-        tgt = by_id.get(edge.target)
+        # Multi reactant/product: primary shaft uses first endpoints; route from ELK
+        # may already span the hyperedge. Additional endpoints share the same overlay
+        # until multi-shaft paint lands.
+        src = by_id.get(edge.sources[0]) if edge.sources else None
+        tgt = by_id.get(edge.targets[0]) if edge.targets else None
         if src is None or tgt is None:
             continue
         route = None

@@ -691,10 +691,46 @@ impl Label {
     }
 }
 
+/// One or more mol ids (reactants / products).
+///
+/// Wire: `"a"` or `["a", "b"]` — reactions may have multiple reactants and products.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
+pub enum MolIds {
+    One(String),
+    Many(Vec<String>),
+}
+
+impl MolIds {
+    pub fn as_slice(&self) -> &[String] {
+        match self {
+            MolIds::One(s) => std::slice::from_ref(s),
+            MolIds::Many(v) => v.as_slice(),
+        }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &str> {
+        self.as_slice().iter().map(String::as_str)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        match self {
+            MolIds::One(s) => s.trim().is_empty(),
+            MolIds::Many(v) => v.is_empty() || v.iter().all(|s| s.trim().is_empty()),
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.as_slice().len()
+    }
+}
+
 /// Edge **node** — a reaction / network link between mol ids.
 ///
-/// Label chrome refs sibling text/mol nodes via [`Self::label`] (string, list,
-/// placed object, or lane object — see [`Label`]).
+/// [`Self::sources`] / [`Self::targets`] are one or many mol ids (A+B → C+D).
+/// Label chrome refs sibling text/mol nodes via [`Self::label`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
 #[cfg_attr(feature = "codegen", ts(export))]
@@ -703,10 +739,12 @@ pub struct EdgeNode {
     #[serde(rename = "type")]
     #[cfg_attr(feature = "codegen", ts(rename = "type"))]
     pub type_: EdgeNodeKind,
-    /// Id of the source mol node.
-    pub source: String,
-    /// Id of the target mol node.
-    pub target: String,
+    /// Reactant mol id(s) — `"a"` or `["a","b"]` (alias: `source`).
+    #[serde(alias = "source")]
+    pub sources: MolIds,
+    /// Product mol id(s) — `"c"` or `["c","d"]` (alias: `target`).
+    #[serde(alias = "target")]
+    pub targets: MolIds,
     /// Label chrome: id / list / `{id, pos?}` / `{above,below,left,right}`.
     ///
     /// Hosts should measure each placement’s text (or mol viewport) and pass
@@ -741,6 +779,8 @@ impl EdgeNode {
             .unwrap_or_else(|| scheme.edge_routing_or_default())
     }
 }
+
+/// Document **node**: mol, edge, or text.
 ///
 /// Untagged so each variant keeps its own `"type"` field.
 /// - [`DepictSpec::Group`]: mol | text (no edges).

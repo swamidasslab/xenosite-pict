@@ -3,9 +3,9 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Any
 
-from pydantic import BaseModel, ConfigDict, Field, RootModel
+from pydantic import BaseModel, ConfigDict, Field, RootModel, model_validator
 
 
 class StrictModel(BaseModel):
@@ -158,14 +158,17 @@ EdgeArrow = Literal['forward', 'equilibrium', 'open', 'line']
 EdgeRouting = Literal['orthogonal', 'polyline', 'splines']
 
 
+MolIds = str | list[str]
+
+
 EdgeNodeKind = Literal['edge']
 
 
 class EdgeNode(StrictModel):
     """Edge **node** — a reaction / network link between mol ids."""
     type: Literal['edge'] = 'edge'
-    source: Annotated[str, Field(description='Id of the source mol node.')]
-    target: Annotated[str, Field(description='Id of the target mol node.')]
+    sources: Annotated[MolIds, Field(description='Reactant mol id(s) — `"a"` or `["a","b"]` (alias: `source`).')]
+    targets: Annotated[MolIds, Field(description='Product mol id(s) — `"c"` or `["c","d"]` (alias: `target`).')]
     arrow: EdgeArrow = 'forward'
     color: str | None = None
     dashed: bool = False
@@ -173,6 +176,21 @@ class EdgeNode(StrictModel):
     label: Annotated[Label | None, Field(description='Label chrome: id / list / `{id, pos?}` / `{above,below,left,right}`.')] = None
     role: Annotated[str | None, Field(description='Optional semantic role (e.g. enzyme) — not drawn by default.')] = None
     stroke_width: float | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_endpoints(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        out = dict(data)
+        if "sources" not in out and "source" in out:
+            out["sources"] = out.pop("source")
+        if "targets" not in out and "target" in out:
+            out["targets"] = out.pop("target")
+        out.pop("source", None)
+        out.pop("target", None)
+        return out
+
 
 
 TextNodeKind = Literal['text']

@@ -483,8 +483,8 @@ def _arrow_to_edge(arrow: ArrowNode, source: str, target: str) -> EdgeSpec:
         label = first if isinstance(first, str) else None
         label_pos = "below"
     return EdgeSpec(
-        source=source,
-        target=target,
+        sources=[source],
+        targets=[target],
         label=label,
         label_pos=label_pos,  # type: ignore[arg-type]
         role=arrow.role,

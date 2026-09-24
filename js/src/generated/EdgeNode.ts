@@ -3,12 +3,13 @@ import type { EdgeArrow } from "./EdgeArrow";
 import type { EdgeNodeKind } from "./EdgeNodeKind";
 import type { EdgeRouting } from "./EdgeRouting";
 import type { Label } from "./Label";
+import type { MolIds } from "./MolIds";
 
 /**
  * Edge **node** — a reaction / network link between mol ids.
  *
- * Label chrome refs sibling text/mol nodes via [`Self::label`] (string, list,
- * placed object, or lane object — see [`Label`]).
+ * [`Self::sources`] / [`Self::targets`] are one or many mol ids (A+B → C+D).
+ * Label chrome refs sibling text/mol nodes via [`Self::label`].
  */
 export type EdgeNode = { 
 /**
@@ -16,13 +17,13 @@ export type EdgeNode = {
  */
 type: EdgeNodeKind, 
 /**
- * Id of the source mol node.
+ * Reactant mol id(s) — `"a"` or `["a","b"]` (alias: `source`).
  */
-source: string, 
+sources: MolIds, 
 /**
- * Id of the target mol node.
+ * Product mol id(s) — `"c"` or `["c","d"]` (alias: `target`).
  */
-target: string, 
+targets: MolIds, 
 /**
  * Label chrome: id / list / `{id, pos?}` / `{above,below,left,right}`.
  *

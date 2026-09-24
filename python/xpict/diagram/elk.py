@@ -173,8 +173,8 @@ def elk_graph(layouts: Sequence[MoleculeLayout], spec: LegacyPictSpec | object) 
         eid = f"e{i}"
         entry: dict[str, Any] = {
             "id": eid,
-            "sources": [e.source],
-            "targets": [e.target],
+            "sources": list(e.sources),
+            "targets": list(e.targets),
         }
         labels = _elk_edge_labels(e, eid)
         if labels:

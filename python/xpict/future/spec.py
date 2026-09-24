@@ -403,10 +403,13 @@ class EdgeArrow(StrEnum):
 
 
 class EdgeSpec(StrictModel):
-    """Edge between molecule nodes in a network / reaction diagram."""
+    """Edge between molecule nodes — one or many reactants / products.
 
-    source: str
-    target: str
+    Accepts singular ``source`` / ``target`` or lists ``sources`` / ``targets``.
+    """
+
+    sources: Annotated[list[str], Field(min_length=1, description="Reactant mol id(s)")]
+    targets: Annotated[list[str], Field(min_length=1, description="Product mol id(s)")]
     label: str | None = None
     label_pos: Literal["above", "below", "left", "right"] = Field(
         default="above",
@@ -424,6 +427,34 @@ class EdgeSpec(StrictModel):
         default=None,
         description="Optional per-edge routing override of diagram defaults",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_endpoints(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        out = dict(data)
+        if "sources" not in out and "source" in out:
+            out["sources"] = out.pop("source")
+        if "targets" not in out and "target" in out:
+            out["targets"] = out.pop("target")
+        out.pop("source", None)
+        out.pop("target", None)
+        for key in ("sources", "targets"):
+            val = out.get(key)
+            if isinstance(val, str):
+                out[key] = [val]
+        return out
+
+    @property
+    def source(self) -> str:
+        """First reactant id (compat for single-endpoint callers)."""
+        return self.sources[0]
+
+    @property
+    def target(self) -> str:
+        """First product id (compat for single-endpoint callers)."""
+        return self.targets[0]
 
 
 class DiagramSpec(StrictModel):

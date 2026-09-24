@@ -341,6 +341,31 @@ class Emitter:
             self.blocks[i] = "\n".join(out)
             return
 
+    def _patch_edge_node_aliases(self) -> None:
+        """Accept singular ``source`` / ``target`` as aliases for MolIds fields."""
+        for i, block in enumerate(self.blocks):
+            if not block.startswith("class EdgeNode("):
+                continue
+            if "_coerce_endpoints" in block:
+                return
+            # Insert validator before class ends (after fields).
+            patch = '''
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_endpoints(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        out = dict(data)
+        if "sources" not in out and "source" in out:
+            out["sources"] = out.pop("source")
+        if "targets" not in out and "target" in out:
+            out["targets"] = out.pop("target")
+        out.pop("source", None)
+        out.pop("target", None)
+        return out'''
+            self.blocks[i] = block.rstrip() + "\n" + patch + "\n"
+            return
+
     def emit_object(self, name: str, node: dict[str, Any]) -> None:
         if name in self.emitted:
             return
@@ -388,6 +413,8 @@ class Emitter:
         self.blocks.append(
             f"class {name}(StrictModel):{doc}" + ("\n".join(fields) if fields else "    pass")
         )
+        if name == "EdgeNode":
+            self._patch_edge_node_aliases()
 
     def _field(
         self, pschema: dict[str, Any], *, required: bool
@@ -475,6 +502,8 @@ class Emitter:
         pydantic_imports = ["BaseModel", "ConfigDict", "Field"]
         if "RootModel" in body:
             pydantic_imports.append("RootModel")
+        if "model_validator" in body:
+            pydantic_imports.append("model_validator")
         return (
             "# Auto-generated from Rust schemars (make types) — do not edit.\n"
             f'"""{self.module_doc}"""\n\n'

@@ -88,11 +88,29 @@ pub fn validate_edges(spec: &DepictSpec) -> Result<(), String> {
     }
 
     for e in spec.edges() {
-        if !mol_set.contains(e.source.as_str()) {
-            return Err(format!("edge source unknown id {}", e.source));
+        if e.sources.is_empty() {
+            return Err("edge sources must be non-empty".into());
         }
-        if !mol_set.contains(e.target.as_str()) {
-            return Err(format!("edge target unknown id {}", e.target));
+        if e.targets.is_empty() {
+            return Err("edge targets must be non-empty".into());
+        }
+        for id in e.sources.iter() {
+            let id = id.trim();
+            if id.is_empty() {
+                return Err("edge source id must be non-empty".into());
+            }
+            if !mol_set.contains(id) {
+                return Err(format!("edge source unknown id {id}"));
+            }
+        }
+        for id in e.targets.iter() {
+            let id = id.trim();
+            if id.is_empty() {
+                return Err("edge target id must be non-empty".into());
+            }
+            if !mol_set.contains(id) {
+                return Err(format!("edge target unknown id {id}"));
+            }
         }
         if let Some(ref lab) = e.label {
             for (id, pos) in lab.placements() {
@@ -1124,8 +1142,8 @@ mod tests {
         assert_eq!(spec.nodes().len(), 10);
         let edges = spec.edges();
         assert_eq!(edges.len(), 2);
-        assert_eq!(edges[0].source, "a");
-        assert_eq!(edges[0].target, "b");
+        assert_eq!(edges[0].sources.as_slice(), &["a".to_string()]);
+        assert_eq!(edges[0].targets.as_slice(), &["b".to_string()]);
         let e0 = edges[0].label.as_ref().unwrap().placements();
         assert_eq!(
             e0,
@@ -1318,6 +1336,38 @@ mod tests {
         assert_eq!(edges[0].edge_routing_or(&layout), EdgeRouting::Orthogonal);
         assert_eq!(edges[1].edge_routing, None);
         assert_eq!(edges[1].edge_routing_or(&layout), EdgeRouting::Polyline);
+    }
+
+    #[test]
+    fn edge_multi_reactants_and_products() {
+        let spec: DepictSpec = serde_json::from_str(
+            r#"{
+              "type": "reaction_scheme",
+              "children": [
+                {"type": "mol", "id": "a", "smiles": "C"},
+                {"type": "mol", "id": "b", "smiles": "O"},
+                {"type": "mol", "id": "c", "smiles": "CO"},
+                {"type": "mol", "id": "d", "smiles": "O=O"},
+                {
+                  "type": "edge",
+                  "sources": ["a", "b"],
+                  "targets": ["c", "d"],
+                  "arrow": "forward"
+                }
+              ]
+            }"#,
+        )
+        .unwrap();
+        let e = &spec.edges()[0];
+        assert_eq!(
+            e.sources.as_slice(),
+            &["a".to_string(), "b".to_string()]
+        );
+        assert_eq!(
+            e.targets.as_slice(),
+            &["c".to_string(), "d".to_string()]
+        );
+        validate_edges(&spec).unwrap();
     }
 
     #[test]

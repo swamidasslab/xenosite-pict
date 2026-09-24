@@ -23,6 +23,7 @@ export type { LabelPlacement } from "./LabelPlacement.js";
 export type { LabelItem } from "./LabelItem.js";
 export type { LabelLanes } from "./LabelLanes.js";
 export type { Label } from "./Label.js";
+export type { MolIds } from "./MolIds.js";
 export type { LayoutDirection } from "./LayoutDirection.js";
 export type { EdgeRouting } from "./EdgeRouting.js";
 export type { LayoutOpts } from "./LayoutOpts.js";

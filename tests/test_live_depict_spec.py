@@ -173,3 +173,42 @@ def test_live_reaction_scheme_mol_and_edge_children():
     assert doc.root.layout.direction == "right"
     assert [m.id for m in doc.mols()] == ["a", "b"]
     assert doc.mols()[0].label == "adh"
+
+
+def test_live_edge_multi_reactants_products():
+    doc = DepictSpec.model_validate(
+        {
+            "type": "reaction_scheme",
+            "children": [
+                {"type": "mol", "id": "a", "smiles": "C"},
+                {"type": "mol", "id": "b", "smiles": "O"},
+                {"type": "mol", "id": "c", "smiles": "CO"},
+                {"type": "mol", "id": "d", "smiles": "O=O"},
+                {
+                    "type": "edge",
+                    "sources": ["a", "b"],
+                    "targets": ["c", "d"],
+                    "arrow": "forward",
+                },
+            ],
+        }
+    )
+    from xpict.contracts.depict import EdgeNode
+
+    edge = next(c for c in doc.root.children if isinstance(c, EdgeNode))
+    assert edge.sources == ["a", "b"]
+    assert edge.targets == ["c", "d"]
+    # Singular aliases still parse.
+    one = DepictSpec.model_validate(
+        {
+            "type": "reaction_scheme",
+            "children": [
+                {"type": "mol", "id": "a", "smiles": "C"},
+                {"type": "mol", "id": "b", "smiles": "CC"},
+                {"type": "edge", "source": "a", "target": "b"},
+            ],
+        }
+    )
+    e2 = next(c for c in one.root.children if isinstance(c, EdgeNode))
+    assert e2.sources == "a"
+    assert e2.targets == "b"
