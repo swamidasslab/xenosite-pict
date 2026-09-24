@@ -350,7 +350,7 @@
       ]
     },
     "EdgeNode": {
-      "description": "Edge **node** — a reaction / network link between mol ids.\n\nLabel chrome references sibling [`TextNode`] / [`MolNode`] ids via [`Self::above`] / [`Self::below`] (not inline strings).",
+      "description": "Edge **node** — a reaction / network link between mol ids.\n\nLabel chrome references sibling [`TextNode`] / [`MolNode`] ids via [`Self::above`] / [`Self::below`] / [`Self::left`] / [`Self::right`].",
       "type": "object",
       "required": [
         "source",
@@ -389,6 +389,20 @@
         "dashed": {
           "default": false,
           "type": "boolean"
+        },
+        "left": {
+          "description": "Node ids drawn to the left of the shaft (text and/or mol).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "right": {
+          "description": "Node ids drawn to the right of the shaft (text and/or mol).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         },
         "role": {
           "description": "Optional semantic role (e.g. enzyme) — not drawn by default.",

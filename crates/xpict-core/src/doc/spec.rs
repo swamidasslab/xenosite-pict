@@ -564,7 +564,7 @@ pub struct TextNode {
 /// Edge **node** — a reaction / network link between mol ids.
 ///
 /// Label chrome references sibling [`TextNode`] / [`MolNode`] ids via
-/// [`Self::above`] / [`Self::below`] (not inline strings).
+/// [`Self::above`] / [`Self::below`] / [`Self::left`] / [`Self::right`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
 #[cfg_attr(feature = "codegen", ts(export))]
@@ -583,6 +583,12 @@ pub struct EdgeNode {
     /// Node ids drawn below the shaft (text and/or mol).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub below: Vec<String>,
+    /// Node ids drawn to the left of the shaft (text and/or mol).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub left: Vec<String>,
+    /// Node ids drawn to the right of the shaft (text and/or mol).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub right: Vec<String>,
     /// Optional semantic role (e.g. enzyme) — not drawn by default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
@@ -597,6 +603,18 @@ pub struct EdgeNode {
     pub stroke_width: Option<f64>,
     #[serde(default)]
     pub dashed: bool,
+}
+
+impl EdgeNode {
+    /// All label-lane id refs: above, below, left, right.
+    pub fn label_lanes(&self) -> [(&str, &[String]); 4] {
+        [
+            ("above", self.above.as_slice()),
+            ("below", self.below.as_slice()),
+            ("left", self.left.as_slice()),
+            ("right", self.right.as_slice()),
+        ]
+    }
 }
 
 /// Document **node**: mol, edge, or text.

@@ -92,7 +92,7 @@ pub fn validate_edges(spec: &DepictSpec) -> Result<(), String> {
         if !mol_set.contains(e.target.as_str()) {
             return Err(format!("edge target unknown id {}", e.target));
         }
-        for (lane, refs) in [("above", e.above.as_slice()), ("below", e.below.as_slice())] {
+        for (lane, refs) in e.label_lanes() {
             for id in refs {
                 match spec.node_by_id(id) {
                     Some(Node::Text(_)) | Some(Node::Mol(_)) => {}
@@ -1085,34 +1085,44 @@ mod tests {
                   "source": "a",
                   "target": "b",
                   "above": ["adh"],
+                  "below": ["rt"],
+                  "left": ["nabh4"],
                   "arrow": "forward"
                 },
+                {"type": "text", "id": "rt", "text": "rt"},
+                {"type": "mol", "id": "nabh4", "smiles": "[BH4-]", "scale": 0.4},
                 {"type": "mol", "id": "b", "smiles": "CC=O"},
                 {
                   "type": "edge",
                   "source": "b",
                   "target": "c",
                   "above": ["aldh"],
+                  "right": ["nad"],
                   "arrow": "equilibrium",
                   "color": "#064",
                   "dashed": true
                 },
+                {"type": "text", "id": "nad", "text": "NAD+"},
                 {"type": "mol", "id": "c", "smiles": "CC(=O)O"}
               ]
             }"##,
         )
         .unwrap();
 
-        assert_eq!(spec.mols().len(), 3);
-        assert_eq!(spec.texts().len(), 2);
-        assert_eq!(spec.nodes().len(), 7);
+        assert_eq!(spec.mols().len(), 4);
+        assert_eq!(spec.texts().len(), 4);
+        assert_eq!(spec.nodes().len(), 10);
         let edges = spec.edges();
         assert_eq!(edges.len(), 2);
         assert_eq!(edges[0].source, "a");
         assert_eq!(edges[0].target, "b");
         assert_eq!(edges[0].above, vec!["adh"]);
+        assert_eq!(edges[0].below, vec!["rt"]);
+        assert_eq!(edges[0].left, vec!["nabh4"]);
+        assert!(edges[0].right.is_empty());
         assert_eq!(edges[0].arrow, EdgeArrow::Forward);
         assert_eq!(edges[1].arrow, EdgeArrow::Equilibrium);
+        assert_eq!(edges[1].right, vec!["nad"]);
         assert_eq!(edges[1].color.as_deref(), Some("#064"));
         assert!(edges[1].dashed);
         assert_eq!(spec.mols()[0].label.as_deref(), Some("adh"));

@@ -145,6 +145,8 @@ class EdgeNode(StrictModel):
     below: list[str] = Field(default_factory=list, description='Node ids drawn below the shaft (text and/or mol).')
     color: str | None = None
     dashed: bool = False
+    left: list[str] = Field(default_factory=list, description='Node ids drawn to the left of the shaft (text and/or mol).')
+    right: list[str] = Field(default_factory=list, description='Node ids drawn to the right of the shaft (text and/or mol).')
     role: Annotated[str | None, Field(description='Optional semantic role (e.g. enzyme) — not drawn by default.')] = None
     stroke_width: float | None = None
 
