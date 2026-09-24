@@ -35,6 +35,17 @@ def test_charge_label_in_svg():
     svg = render({"molecules": [{"smiles": "[NH4+]"}]}, backend=layout_backend())
     assert "N" in svg
     assert "+" in svg or "⁺" in svg or "＋" in svg
+    # Regression: label already carried ``+``; do not paint NH₄²⁺.
+    assert "²⁺" not in svg
+
+
+def test_display_text_does_not_double_append_charge():
+    from xpict.contracts.layout import AtomLayout
+    from xpict.draw.drawable import display_text
+
+    assert display_text(AtomLayout(index=0, element="N", x=0, y=0, charge=1, label="NH4+")) == "NH4+"
+    assert display_text(AtomLayout(index=0, element="N", x=0, y=0, charge=1, label="NH4")) == "NH4+"
+    assert display_text(AtomLayout(index=0, element="O", x=0, y=0, charge=-1, label="OH−")) == "OH−"
 
 
 def test_radical_dot_in_svg():
