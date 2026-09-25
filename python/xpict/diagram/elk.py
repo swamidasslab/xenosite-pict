@@ -139,6 +139,8 @@ def _reaction_defaults(spec: LegacyPictSpec) -> dict[str, str]:
         "elk.algorithm": "layered",
         "elk.direction": "RIGHT",
         "elk.edgeRouting": "POLYLINE",
+        # Keep shafts simple: only bend where the edge actually turns.
+        "elk.layered.unnecessaryBendpoints": "false",
         "elk.spacing.nodeNode": "40",
         "elk.spacing.edgeEdge": "16",
         "elk.spacing.edgeNode": "20",
