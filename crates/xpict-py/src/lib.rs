@@ -207,6 +207,18 @@ fn shaft_path_d(pts_json: &str, routing: Option<&str>) -> PyResult<String> {
     Ok(xpict_core::shaft_path_d(&pts, r))
 }
 
+/// Filleted polyline path ``d`` (quadratic corners). ``radius`` defaults to ``TURN_RADIUS``.
+#[pyfunction]
+#[pyo3(signature = (pts_json, radius=None))]
+fn filleted_path_d(pts_json: &str, radius: Option<f64>) -> PyResult<String> {
+    let pts: Vec<(f64, f64)> = serde_json::from_str(pts_json)
+        .map_err(|e| PyRuntimeError::new_err(format!("pts JSON: {e}")))?;
+    Ok(xpict_core::filleted_path_d(
+        &pts,
+        radius.unwrap_or(xpict_core::TURN_RADIUS),
+    ))
+}
+
 /// Build edge overlay primitives JSON from an edge paint request.
 ///
 /// Request keys: ``pts``, ``arrow``, ``routing?``, ``color?``, ``stroke_width?``,
@@ -650,6 +662,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(scheme_elk_options, m)?)?;
     m.add_function(wrap_pyfunction!(simplify_route, m)?)?;
     m.add_function(wrap_pyfunction!(shaft_path_d, m)?)?;
+    m.add_function(wrap_pyfunction!(filleted_path_d, m)?)?;
     m.add_function(wrap_pyfunction!(edge_overlay_primitives, m)?)?;
     m.add_function(wrap_pyfunction!(face_metrics, m)?)?;
     m.add_function(wrap_pyfunction!(glyph_metrics, m)?)?;

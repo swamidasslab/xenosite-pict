@@ -57,6 +57,7 @@ def test_scene_to_html_embeds_data_uri_img_xenosite_style():
     assert '<img class="xpict"' in html
     assert 'class="xpict-mol"' in html
     assert "max-width: 100%" in html
+    assert "max-height: 100%" in html
     assert "height: auto" in html
     body = html.split("<main", 1)[1]
     assert "<svg" not in body

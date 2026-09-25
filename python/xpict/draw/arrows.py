@@ -1,17 +1,13 @@
-"""Reaction / network edge arrows in document space (between viewports).
-
-Route simplify, orthogonal-vs-fillet shafts, and overlay paint live in
-``xpict-core`` (Rust). This module is a thin host wrapper.
-"""
+"""Reaction / network edge arrows — thin host over ``xpict-core::arrows``."""
 
 from __future__ import annotations
 
 import json
 from collections.abc import Sequence
 
-from xpict.contracts.scene import PathPrim, Primitive, TextPrim, Viewport
-from xpict.future.spec import EdgeArrow, EdgeSpec
 from xpict import _native as _rust
+from xpict.contracts.scene import PathPrim, Primitive, TextPrim, Viewport
+from xpict.future.spec import EdgeSpec
 
 _GAP = 6.0
 
@@ -50,10 +46,11 @@ def simplify_route(
     *,
     kink_px: float | None = None,
 ) -> list[tuple[float, float]]:
-    """Drop near-duplicates and flatten kinks (Rust ``simplify_route``)."""
-    raw = _rust.simplify_route(json.dumps([[float(x), float(y)] for x, y in pts]), kink_px)
-    out = json.loads(raw)
-    return [(float(x), float(y)) for x, y in out]
+    """Drop near-duplicates and flatten kinks (Rust)."""
+    raw = _rust.simplify_route(
+        json.dumps([[float(x), float(y)] for x, y in pts]), kink_px
+    )
+    return [(float(x), float(y)) for x, y in json.loads(raw)]
 
 
 def filleted_path_d(
@@ -61,14 +58,11 @@ def filleted_path_d(
     *,
     radius: float | None = None,
 ) -> str:
-    """Polyline with quadratic fillets — prefer ``shaft_path_d`` for routing-aware paint."""
-    # Keep a thin helper for unit tests; radius default comes from Rust TURN_RADIUS.
-    routing = None  # force fillet path via diagonal check when radius set
-    if radius is not None and radius <= 0:
-        return _rust.shaft_path_d(json.dumps([[float(x), float(y)] for x, y in pts]), "orthogonal")
-    # Temporary: use shaft with polyline so diagonal corners fillet.
-    return _rust.shaft_path_d(
-        json.dumps([[float(x), float(y)] for x, y in pts]), "polyline"
+    """Polyline with quadratic fillets (Rust)."""
+    return str(
+        _rust.filleted_path_d(
+            json.dumps([[float(x), float(y)] for x, y in pts]), radius
+        )
     )
 
 
@@ -84,16 +78,10 @@ def resolve_route(
     return [(x1, y1), (x2, y2)]
 
 
-def _routing_name(routing: object | None) -> str | None:
-    if routing is None:
+def _name(val: object | None) -> str | None:
+    if val is None:
         return None
-    raw = getattr(routing, "value", routing)
-    return str(raw).lower()
-
-
-def _arrow_name(arrow: EdgeArrow | str) -> str:
-    raw = getattr(arrow, "value", arrow)
-    return str(raw).lower()
+    return str(getattr(val, "value", val)).lower()
 
 
 def _from_native_prims(raw: list[dict]) -> list[Primitive]:
@@ -137,10 +125,10 @@ def edge_primitives(
 ) -> list[Primitive]:
     """Build document-space primitives for one diagram edge (Rust paint)."""
     pts = resolve_route(src, tgt, route)
-    routing = _routing_name(getattr(edge, "edge_routing", None) or scheme_routing)
+    routing = _name(getattr(edge, "edge_routing", None) or scheme_routing)
     payload = {
         "pts": [[float(x), float(y)] for x, y in pts],
-        "arrow": _arrow_name(edge.arrow),
+        "arrow": _name(edge.arrow) or "forward",
         "routing": routing,
         "color": edge.color,
         "stroke_width": edge.stroke_width,
@@ -149,8 +137,9 @@ def edge_primitives(
         "label_pos": getattr(edge, "label_pos", None),
         "index": index,
     }
-    raw = json.loads(_rust.edge_overlay_primitives(json.dumps(payload)))
-    return _from_native_prims(raw)
+    return _from_native_prims(
+        json.loads(_rust.edge_overlay_primitives(json.dumps(payload)))
+    )
 
 
 def diagram_overlays(

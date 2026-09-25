@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from xpict.contracts.layout import MoleculeLayout
-from xpict.contracts.scene import Primitive, Scene, Viewport
+from xpict.contracts.scene import PathPrim, Primitive, Scene, TextPrim, Viewport
 from xpict.future.spec import LegacyPictSpec, MoleculeSpec
 from xpict.draw.arrows import diagram_overlays
 from xpict.draw.drawable import (
@@ -18,6 +18,7 @@ from xpict.draw.drawn import Halo
 from xpict.draw.markush import apply_rgroup_texts
 from xpict.draw.metrics import shared_coord_scale
 from xpict.draw.mol_title import pack_label
+from xpict.draw.paths import path_coords
 
 
 def _flat(spec: LegacyPictSpec | object) -> LegacyPictSpec:
@@ -139,14 +140,25 @@ def build_scene(
         scheme_routing=getattr(spec.diagram, "edge_routing", None),
     )
 
+    # Expand canvas for overlay ink (heads, labels) beyond route endpoints.
+    for prim in overlays:
+        if isinstance(prim, TextPrim):
+            max_r = max(max_r, float(prim.x) + 12.0)
+            max_b = max(max_b, float(prim.y) + 12.0)
+        elif isinstance(prim, PathPrim) and prim.d:
+            for x, y in path_coords(prim.d):
+                max_r = max(max_r, x + 8.0)
+                max_b = max(max_b, y + 8.0)
+
     halo_prims: list[Primitive] = []
     if spec.halo and doc_halo:
         prim = doc_halo.to_prim(cls="halo")
         if prim is not None:
             halo_prims = [prim]
 
-    width = spec.width or max(max_r, diagram_width or 0.0)
-    height = spec.height or max(max_b, diagram_height or 0.0)
+    # Total size is the max of preferred size, viewport extents, and ELK diagram.
+    width = max(float(spec.width or 0.0), max_r, float(diagram_width or 0.0))
+    height = max(float(spec.height or 0.0), max_b, float(diagram_height or 0.0))
     return Scene(
         width=width,
         height=height,
