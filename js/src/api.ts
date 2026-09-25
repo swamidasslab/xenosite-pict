@@ -148,6 +148,7 @@ export type {
   MolIds,
   LayoutDirection,
   EdgeRouting,
+  LayoutAlgorithm,
   LayoutOpts,
   Node,
 } from "./generated/depict-abi.js";

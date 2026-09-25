@@ -159,7 +159,17 @@ def _reaction_defaults(spec: LegacyPictSpec) -> dict[str, str]:
                 "elk.layered.crossingMinimization.forceNodeModelOrder": "false",
             }
         )
-    # Generic packing knobs (backend-agnostic names on DiagramSpec).
+    # Backend-agnostic layout knobs on DiagramSpec.
+    alg = getattr(spec.diagram, "algorithm", None)
+    if alg is not None:
+        base["elk.algorithm"] = str(
+            alg.value if hasattr(alg, "value") else alg
+        ).lower()
+    routing = getattr(spec.diagram, "edge_routing", None)
+    if routing is not None:
+        base["elk.edgeRouting"] = str(
+            routing.value if hasattr(routing, "value") else routing
+        ).upper()
     if spec.diagram.node_spacing is not None:
         base["elk.spacing.nodeNode"] = str(spec.diagram.node_spacing)
     if spec.diagram.layer_spacing is not None:

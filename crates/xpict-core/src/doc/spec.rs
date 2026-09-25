@@ -856,10 +856,30 @@ pub enum EdgeRouting {
     Splines,
 }
 
+/// Placement algorithm for scheme layout.
+///
+/// Hosts map these onto ELK (or another engine):
+/// - [`Self::Layered`] — Sugiyama / layered (default; best for reactions)
+/// - [`Self::Radial`] — hub-and-spoke / concentric rings (star-like nets)
+/// - [`Self::Force`] — force-directed (undirected / cyclic networks)
+/// - [`Self::Stress`] — stress majorization (compact network alternative)
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
+pub enum LayoutAlgorithm {
+    #[default]
+    Layered,
+    Radial,
+    Force,
+    Stress,
+}
+
 /// Layout for [`DepictSpec::ReactionScheme`].
 ///
 /// Backend-agnostic knobs — hosts map these onto ELK, Dagre, or another engine.
-/// Defaults when omitted: [`LayoutDirection::Right`], [`EdgeRouting::Polyline`].
+/// Defaults when omitted: [`LayoutDirection::Right`], [`EdgeRouting::Polyline`],
+/// [`LayoutAlgorithm::Layered`].
 /// Individual [`EdgeNode`]s may override [`Self::edge_routing`].
 ///
 /// Spacing (px, document space) controls packing tightness:
@@ -869,6 +889,10 @@ pub enum EdgeRouting {
 #[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
 #[cfg_attr(feature = "codegen", ts(export))]
 pub struct LayoutOpts {
+    /// Placement algorithm (`layered` / `radial` / `force` / `stress`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub algorithm: Option<LayoutAlgorithm>,
     /// Flow axis (`right` / `left` / `up` / `down`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
@@ -888,6 +912,10 @@ pub struct LayoutOpts {
 }
 
 impl LayoutOpts {
+    pub fn algorithm_or_default(&self) -> LayoutAlgorithm {
+        self.algorithm.unwrap_or_default()
+    }
+
     pub fn direction_or_default(&self) -> LayoutDirection {
         self.direction.unwrap_or_default()
     }

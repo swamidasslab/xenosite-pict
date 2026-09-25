@@ -26,6 +26,7 @@ export type { Label } from "./Label.js";
 export type { MolIds } from "./MolIds.js";
 export type { LayoutDirection } from "./LayoutDirection.js";
 export type { EdgeRouting } from "./EdgeRouting.js";
+export type { LayoutAlgorithm } from "./LayoutAlgorithm.js";
 export type { LayoutOpts } from "./LayoutOpts.js";
 export type { Node } from "./Node.js";
 export type { DepictSpec } from "./DepictSpec.js";

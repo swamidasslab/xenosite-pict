@@ -12,7 +12,7 @@ from xpict import Pict, render
 from xpict.future.nodes import PictSpec
 from xpict.contracts.scene import PathPrim, Viewport
 from xpict.future.spec import EdgeArrow, EdgeSpec
-from xpict.diagram.elk import elk_graph, layout_diagram
+from xpict.diagram.elk import elk_graph, layout_diagram, layout_diagram_ex
 from xpict.draw.arrows import (
     diagram_overlays,
     edge_anchors,
@@ -411,6 +411,44 @@ def test_branched_reaction_uses_elk_routes():
     assert "pict-overlays" in svg
     assert "ADH" in svg and "CYP" in svg and "side" in svg
     assert "stroke-dasharray" in svg
+
+
+def test_diagram_algorithm_maps_to_elk():
+    """algorithm: radial / force / stress select non-layered ELK engines."""
+    base_mols = [
+        {"id": "A", "smiles": "CCO"},
+        {"id": "B", "smiles": "CC=O"},
+        {"id": "C", "smiles": "CC(=O)O"},
+        {"id": "D", "smiles": "c1ccccc1"},
+        {"id": "E", "smiles": "c1ccccc1O"},
+    ]
+    edges = [
+        {"source": "A", "target": "B"},
+        {"source": "B", "target": "C"},
+        {"source": "A", "target": "D"},
+        {"source": "D", "target": "E"},
+        {"source": "B", "target": "E"},
+    ]
+    pict = Pict(backend=layout_backend())
+    for alg in ("radial", "force", "stress"):
+        doc = PictSpec.model_validate(
+            {
+                "molecules": base_mols,
+                "diagram": {
+                    "kind": "network",
+                    "algorithm": alg,
+                    "edges": edges,
+                },
+            }
+        )
+        graph = elk_graph(pict.layout(doc), doc)
+        assert graph["layoutOptions"]["elk.algorithm"] == alg
+        place = layout_diagram_ex(pict.layout(doc), doc)
+        assert len(place.positions) == 5
+        # Non-layered layouts spread in 2D (not a single row).
+        ys = {round(y, 0) for _x, y in place.positions}
+        xs = {round(x, 0) for x, _y in place.positions}
+        assert len(ys) >= 2 or len(xs) >= 2
 
 
 def test_simplify_route_snaps_micro_kink_to_straight():

@@ -38,6 +38,7 @@ export type {
   MolIds,
   LayoutDirection,
   EdgeRouting,
+  LayoutAlgorithm,
   LayoutOpts,
   Node,
   SvgAtom,

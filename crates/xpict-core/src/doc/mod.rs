@@ -1279,13 +1279,15 @@ mod tests {
         };
         assert_eq!(layout.direction_or_default(), LayoutDirection::Right);
         assert_eq!(layout.edge_routing_or_default(), EdgeRouting::Polyline);
+        assert_eq!(layout.algorithm_or_default(), LayoutAlgorithm::Layered);
 
         let custom: DepictSpec = serde_json::from_str(
             r#"{
               "type": "reaction_scheme",
               "layout": {
                 "direction": "down",
-                "edge_routing": "orthogonal"
+                "edge_routing": "orthogonal",
+                "algorithm": "force"
               },
               "children": [{"type":"mol","id":"a","smiles":"C"}]
             }"#,
@@ -1299,6 +1301,7 @@ mod tests {
         };
         assert_eq!(layout.direction, Some(LayoutDirection::Down));
         assert_eq!(layout.edge_routing, Some(EdgeRouting::Orthogonal));
+        assert_eq!(layout.algorithm, Some(LayoutAlgorithm::Force));
     }
 
     #[test]

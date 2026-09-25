@@ -594,6 +594,16 @@
         "right"
       ]
     },
+    "LayoutAlgorithm": {
+      "description": "Placement algorithm for scheme layout.\n\nHosts map these onto ELK (or another engine): - [`Self::Layered`] — Sugiyama / layered (default; best for reactions) - [`Self::Radial`] — hub-and-spoke / concentric rings (star-like nets) - [`Self::Force`] — force-directed (undirected / cyclic networks) - [`Self::Stress`] — stress majorization (compact network alternative)",
+      "type": "string",
+      "enum": [
+        "layered",
+        "radial",
+        "force",
+        "stress"
+      ]
+    },
     "LayoutDirection": {
       "description": "Flow axis for scheme layout.",
       "type": "string",
@@ -605,9 +615,20 @@
       ]
     },
     "LayoutOpts": {
-      "description": "Layout for [`DepictSpec::ReactionScheme`].\n\nBackend-agnostic knobs — hosts map these onto ELK, Dagre, or another engine. Defaults when omitted: [`LayoutDirection::Right`], [`EdgeRouting::Polyline`]. Individual [`EdgeNode`]s may override [`Self::edge_routing`].\n\nSpacing (px, document space) controls packing tightness: - [`Self::node_spacing`] — gap between nodes in the same layer (default ~56) - [`Self::layer_spacing`] — gap between reactant/product layers (default ~20)",
+      "description": "Layout for [`DepictSpec::ReactionScheme`].\n\nBackend-agnostic knobs — hosts map these onto ELK, Dagre, or another engine. Defaults when omitted: [`LayoutDirection::Right`], [`EdgeRouting::Polyline`], [`LayoutAlgorithm::Layered`]. Individual [`EdgeNode`]s may override [`Self::edge_routing`].\n\nSpacing (px, document space) controls packing tightness: - [`Self::node_spacing`] — gap between nodes in the same layer (default ~20) - [`Self::layer_spacing`] — gap between reactant/product layers (default ~20)",
       "type": "object",
       "properties": {
+        "algorithm": {
+          "description": "Placement algorithm (`layered` / `radial` / `force` / `stress`).",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/LayoutAlgorithm"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "direction": {
           "description": "Flow axis (`right` / `left` / `up` / `down`).",
           "anyOf": [

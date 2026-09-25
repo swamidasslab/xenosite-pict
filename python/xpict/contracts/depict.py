@@ -219,11 +219,15 @@ class GroupNode(StrictModel):
     scale: float | None = None
 
 
+LayoutAlgorithm = Literal['layered', 'radial', 'force', 'stress']
+
+
 LayoutDirection = Literal['right', 'left', 'up', 'down']
 
 
 class LayoutOpts(StrictModel):
     """Layout for [`DepictSpec::ReactionScheme`]."""
+    algorithm: Annotated[LayoutAlgorithm | None, Field(description='Placement algorithm (`layered` / `radial` / `force` / `stress`).')] = None
     direction: Annotated[LayoutDirection | None, Field(description='Flow axis (`right` / `left` / `up` / `down`).')] = None
     edge_routing: Annotated[EdgeRouting | None, Field(description='Shaft style (`polyline` / `orthogonal` / `splines`).')] = None
     layer_spacing: Annotated[float | None, Field(description='Between-layer gap along the flow axis (px). Smaller → tighter pack.')] = None

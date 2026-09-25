@@ -463,6 +463,16 @@ class DiagramSpec(StrictModel):
     kind: DiagramKind = DiagramKind.single
     columns: int | None = Field(default=None, description="Grid columns when kind=grid")
     edges: list[EdgeSpec] = Field(default_factory=list)
+    algorithm: Literal["layered", "radial", "force", "stress"] | None = Field(
+        default=None,
+        description=(
+            "Placement algorithm: layered (default), radial, force, or stress"
+        ),
+    )
+    edge_routing: Literal["orthogonal", "polyline", "splines"] | None = Field(
+        default=None,
+        description="Default shaft routing (`polyline` / `orthogonal` / `splines`)",
+    )
     node_spacing: float | None = Field(
         default=None,
         description="Within-layer node gap (px); overrides reaction/network defaults",

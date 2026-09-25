@@ -64,6 +64,17 @@ class LayoutSpec(StrictModel):
         default=None,
         description="Between-layer gap along flow (px); smaller packs tighter",
     )
+    algorithm: Literal["layered", "radial", "force", "stress"] | None = Field(
+        default=None,
+        description=(
+            "Placement algorithm: layered (default reactions), radial (hub/spoke), "
+            "force / stress (undirected networks)"
+        ),
+    )
+    edge_routing: Literal["orthogonal", "polyline", "splines"] | None = Field(
+        default=None,
+        description="Default shaft routing for scheme edges",
+    )
     attach: Literal["below", "above", "left", "right"] | None = Field(
         default=None,
         description="Where a nested child attaches relative to its parent",
@@ -396,6 +407,8 @@ def lift_legacy(data: dict[str, Any]) -> dict[str, Any]:
         "height": root.get("height"),
         "columns": diagram.get("columns"),
         "align": bool(diagram.get("align", False)),
+        "algorithm": diagram.get("algorithm"),
+        "edge_routing": diagram.get("edge_routing"),
         "node_spacing": diagram.get("node_spacing"),
         "layer_spacing": diagram.get("layer_spacing"),
         "elk_options": dict(diagram.get("elk_options") or {}),
@@ -609,6 +622,8 @@ def flatten_to_legacy(node: Node) -> LegacyPictSpec:
             kind=kind,
             columns=columns,
             edges=edges,
+            algorithm=root_layout.algorithm,
+            edge_routing=root_layout.edge_routing,
             node_spacing=root_layout.node_spacing,
             layer_spacing=root_layout.layer_spacing
             if root_layout.layer_spacing is not None

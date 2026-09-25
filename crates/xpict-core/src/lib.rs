@@ -40,7 +40,8 @@ pub use doc::{
     apply_star_labels, assign_mol_ids, plan_edge, render_doc,
     resolve_mol_opts, validate_edges, AlignTo, AlignToSpec, CommonOpts, DepictSpec, DocPaint,
     EdgeArrow, EdgeNode, EdgeNodeKind, EdgeRouting, ForTypesPatch, Label, LabelItem, LabelLanes,
-    LabelPlacement, LabelPos, LayoutDirection, LayoutOpts, MolIds, MolNode, MolNodeKind, MolOpts,
+    LabelPlacement, LabelPos, LayoutAlgorithm, LayoutDirection, LayoutOpts, MolIds, MolNode,
+    MolNodeKind, MolOpts,
     Node, NodeType, Opts, OptsPatch, ShadeSpec, ShadeStyle, TextNode, TextNodeKind, TypedOptsPatch,
 };
 pub use edge::{
