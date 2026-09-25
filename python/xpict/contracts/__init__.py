@@ -6,7 +6,18 @@ Full nested ``PictSpec`` / shorthand / diagram chrome lives under
 
 from __future__ import annotations
 
-from xpict.contracts.depict import AlignToSpec, GroupNode, MolNode
+from xpict.contracts.depict import (
+    AlignToSpec,
+    EdgeNode,
+    GroupNode,
+    Label,
+    LabelLanes,
+    LabelPlacement,
+    LayoutOpts,
+    MolNode,
+    ReactionSchemeNode,
+    TextNode,
+)
 from xpict.contracts.depict import DepictSpec as _DepictSpec
 from xpict.contracts.edge import (
     AlignOpts,
@@ -44,11 +55,13 @@ class DepictSpec(_DepictSpec):
     """Live document root — generated wire model + host ``mols()`` helper."""
 
     def mols(self) -> list[MolNode]:
-        """Flatten mol root or group children (mirrors Rust ``DepictSpec::mols``)."""
+        """Flatten mol nodes in document order (skips edge children)."""
         root = self.root
         if isinstance(root, MolNode):
             return [root]
-        return list(root.children)
+        if isinstance(root, ReactionSchemeNode):
+            return [c for c in root.children if isinstance(c, MolNode)]
+        return [c for c in root.children if isinstance(c, MolNode)]
 
 
 __all__ = [
@@ -64,10 +77,15 @@ __all__ = [
     "CoordGenTaskResult",
     "CoordMethod",
     "DepictSpec",
+    "EdgeNode",
     "EdgePlan",
     "EdgeResult",
     "GroupNode",
+    "Label",
+    "LabelLanes",
+    "LabelPlacement",
     "Layer",
+    "LayoutOpts",
     "MolNode",
     "MolSpec",
     "MolTemplate",
@@ -75,7 +93,9 @@ __all__ = [
     "MoleculeLayout",
     "PathPrim",
     "Primitive",
+    "ReactionSchemeNode",
     "Scene",
+    "TextNode",
     "TextPrim",
     "Viewport",
 ]

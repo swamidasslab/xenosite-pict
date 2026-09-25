@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "DepictSpec",
-  "description": "Declarative document (`mol` or `group` root).",
+  "description": "Declarative document (`mol`, `group`, or `reaction_scheme` root).",
   "oneOf": [
     {
       "type": "object",
@@ -31,16 +31,43 @@
             "null"
           ]
         },
+        "halo": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
         "id": {
           "type": [
             "string",
             "null"
           ]
         },
+        "label": {
+          "description": "Caption: [`Label`] (string id / list / `{id, pos?}` — text-node refs).",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Label"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "molfile": {
           "type": [
             "string",
             "null"
+          ]
+        },
+        "opts": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Opts"
+            },
+            {
+              "type": "null"
+            }
           ]
         },
         "scale": {
@@ -105,11 +132,18 @@
           "type": "boolean"
         },
         "children": {
+          "description": "Child **nodes** — mol | text (no edges).",
           "default": [],
           "type": "array",
           "items": {
-            "$ref": "#/definitions/MolNode"
+            "$ref": "#/definitions/Node"
           }
+        },
+        "color": {
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "id": {
           "type": [
@@ -117,10 +151,92 @@
             "null"
           ]
         },
+        "opts": {
+          "description": "Group-level cascade bag (list container for child inheritance).",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Opts"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "scale": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
         "type": {
           "type": "string",
           "enum": [
             "group"
+          ]
+        }
+      }
+    },
+    {
+      "description": "Reaction / pathway scheme: mixed **node** children (`mol` | `edge` | `text`).",
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "children": {
+          "description": "Child **nodes** — mols, edges, and text (any order).",
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Node"
+          }
+        },
+        "color": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "layout": {
+          "description": "Scheme layout (direction, edge routing); backend maps these.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/LayoutOpts"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "opts": {
+          "description": "Scheme-level cascade bag for child mol inheritance.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Opts"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "scale": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "reaction_scheme"
           ]
         }
       }
@@ -185,8 +301,390 @@
         }
       }
     },
+    "CommonOpts": {
+      "description": "Universal cascading keys (any node kind).",
+      "type": "object",
+      "properties": {
+        "color": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "scale": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        }
+      }
+    },
+    "EdgeArrow": {
+      "description": "Arrow head / shaft style for diagram edges.",
+      "oneOf": [
+        {
+          "description": "Single →",
+          "type": "string",
+          "enum": [
+            "forward"
+          ]
+        },
+        {
+          "description": "⇌ stacked half-arrows",
+          "type": "string",
+          "enum": [
+            "equilibrium"
+          ]
+        },
+        {
+          "description": "⇒ hollow head (retrosynthetic-style)",
+          "type": "string",
+          "enum": [
+            "open"
+          ]
+        },
+        {
+          "description": "Connector without arrowhead",
+          "type": "string",
+          "enum": [
+            "line"
+          ]
+        }
+      ]
+    },
+    "EdgeNode": {
+      "description": "Edge **node** — a reaction / network link between mol ids.\n\n[`Self::sources`] / [`Self::targets`] are one or many mol ids (A+B → C+D). Label chrome refs sibling text/mol nodes via [`Self::label`].",
+      "type": "object",
+      "required": [
+        "sources",
+        "targets",
+        "type"
+      ],
+      "properties": {
+        "arrow": {
+          "default": "forward",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EdgeArrow"
+            }
+          ]
+        },
+        "color": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "dashed": {
+          "default": false,
+          "type": "boolean"
+        },
+        "edge_routing": {
+          "description": "Per-edge override of scheme [`LayoutOpts::edge_routing`].",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/EdgeRouting"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "label": {
+          "description": "Label chrome: id / list / `{id, pos?}` / `{above,below,left,right}`.\n\nHosts should measure each placement’s text (or mol viewport) and pass those boxes to the layout engine with the placement `pos` (edge side).",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Label"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "role": {
+          "description": "Optional semantic role (e.g. enzyme) — not drawn by default.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sources": {
+          "description": "Reactant mol id(s) — `\"a\"` or `[\"a\",\"b\"]` (alias: `source`).",
+          "allOf": [
+            {
+              "$ref": "#/definitions/MolIds"
+            }
+          ]
+        },
+        "stroke_width": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "targets": {
+          "description": "Product mol id(s) — `\"c\"` or `[\"c\",\"d\"]` (alias: `target`).",
+          "allOf": [
+            {
+              "$ref": "#/definitions/MolIds"
+            }
+          ]
+        },
+        "type": {
+          "description": "Wire discriminant — required so untagged [`Node`] does not absorb edges as mols.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EdgeNodeKind"
+            }
+          ]
+        }
+      }
+    },
+    "EdgeNodeKind": {
+      "description": "Discriminator for edge nodes (`\"type\": \"edge\"`).",
+      "type": "string",
+      "enum": [
+        "edge"
+      ]
+    },
+    "EdgeRouting": {
+      "description": "How edge shafts are drawn between nodes.",
+      "type": "string",
+      "enum": [
+        "orthogonal",
+        "polyline",
+        "splines"
+      ]
+    },
+    "ForTypesPatch": {
+      "description": "Multi-kind patch: `{ \"for_types\": [\"mol\",\"group\"], …common opts }`.\n\nOnly [`CommonOpts`] keys are allowed here (intersection of kind bags).",
+      "type": "object",
+      "required": [
+        "for_types"
+      ],
+      "properties": {
+        "color": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "for_types": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/NodeType"
+          }
+        },
+        "scale": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        }
+      }
+    },
+    "Label": {
+      "description": "Unified label: string id, list, placed object, or lane object.\n\n```json \"label\": \"adh\" \"label\": [\"adh\", {\"id\": \"rt\", \"pos\": \"below\"}] \"label\": { \"id\": \"adh\", \"pos\": \"left\" } \"label\": { \"above\": [\"adh\"], \"below\": [\"rt\"], \"left\": [\"nabh4\"] } ```",
+      "anyOf": [
+        {
+          "description": "Bare node id (default position: above).",
+          "type": "string"
+        },
+        {
+          "description": "Ordered list of ids / placements.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/LabelItem"
+          }
+        },
+        {
+          "description": "Single placement with optional `pos`.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/LabelPlacement"
+            }
+          ]
+        },
+        {
+          "description": "Explicit above / below / left / right id lists.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/LabelLanes"
+            }
+          ]
+        }
+      ]
+    },
+    "LabelItem": {
+      "description": "One entry in a label list: bare id or `{ id, pos? }`.",
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#/definitions/LabelPlacement"
+        }
+      ]
+    },
+    "LabelLanes": {
+      "description": "Lane bag: `{ \"above\": [...], \"below\": [...], \"left\": [...], \"right\": [...] }`.",
+      "type": "object",
+      "properties": {
+        "above": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "below": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "left": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "right": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "LabelPlacement": {
+      "description": "Placed label: `{ \"id\": \"adh\", \"pos\": \"below\" }` (`pos` optional → above).",
+      "type": "object",
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "id": {
+          "description": "Id of a [`TextNode`] or (on edges) [`MolNode`].",
+          "type": "string"
+        },
+        "pos": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/LabelPos"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "LabelPos": {
+      "description": "Side of an edge shaft (or mol caption) for a label placement.",
+      "type": "string",
+      "enum": [
+        "above",
+        "below",
+        "left",
+        "right"
+      ]
+    },
+    "LayoutAlgorithm": {
+      "description": "Placement algorithm for scheme layout.\n\nHosts map these onto ELK (or another engine): - [`Self::Layered`] — Sugiyama / layered (default; best for reactions) - [`Self::Radial`] — hub-and-spoke / concentric rings (star-like nets) - [`Self::Force`] — force-directed (undirected / cyclic networks) - [`Self::Stress`] — stress majorization (compact network alternative)",
+      "type": "string",
+      "enum": [
+        "layered",
+        "radial",
+        "force",
+        "stress"
+      ]
+    },
+    "LayoutDirection": {
+      "description": "Flow axis for scheme layout.",
+      "type": "string",
+      "enum": [
+        "right",
+        "left",
+        "up",
+        "down"
+      ]
+    },
+    "LayoutOpts": {
+      "description": "Layout for [`DepictSpec::ReactionScheme`].\n\nBackend-agnostic knobs — hosts map these onto ELK, Dagre, or another engine. Defaults when omitted: [`LayoutDirection::Right`], [`EdgeRouting::Polyline`], [`LayoutAlgorithm::Layered`]. Individual [`EdgeNode`]s may override [`Self::edge_routing`].\n\nSpacing (px, document space) controls packing tightness: - [`Self::node_spacing`] — gap between nodes in the same layer (default ~20) - [`Self::layer_spacing`] — gap between reactant/product layers (default ~0)",
+      "type": "object",
+      "properties": {
+        "algorithm": {
+          "description": "Placement algorithm (`layered` / `radial` / `force` / `stress`).",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/LayoutAlgorithm"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "direction": {
+          "description": "Flow axis (`right` / `left` / `up` / `down`).",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/LayoutDirection"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "edge_routing": {
+          "description": "Shaft style (`polyline` / `orthogonal` / `splines`).",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/EdgeRouting"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "layer_spacing": {
+          "description": "Between-layer gap along the flow axis (px). Smaller → tighter pack.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "node_spacing": {
+          "description": "Within-layer node gap (px). Smaller → tighter pack.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        }
+      }
+    },
+    "MolIds": {
+      "description": "One or more mol ids (reactants / products).\n\nWire: `\"a\"` or `[\"a\", \"b\"]` — reactions may have multiple reactants and products.",
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ]
+    },
     "MolNode": {
-      "description": "Mol node — subset of future ``MolNode``.",
+      "description": "Mol node — [`MolOpts`] fields + non-cascading identity / scores / align.",
       "type": "object",
       "properties": {
         "align_to": {
@@ -212,16 +710,44 @@
             "null"
           ]
         },
+        "halo": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
         "id": {
           "type": [
             "string",
             "null"
           ]
         },
+        "label": {
+          "description": "Caption: [`Label`] (string id, list, or `{id, pos?}` — text-node refs).\n\n`pos` on a placement chooses caption side (`above`/`below`/`left`/`right`); hosts measure the resolved text and fold that into node size for layout.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Label"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "molfile": {
           "type": [
             "string",
             "null"
+          ]
+        },
+        "opts": {
+          "description": "Cascade patches for this node (list or singleton).",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Opts"
+            },
+            {
+              "type": "null"
+            }
           ]
         },
         "scale": {
@@ -232,6 +758,7 @@
           "format": "double"
         },
         "shade": {
+          "description": "Shade **scores** (+ legacy window); window also cascades via [`Opts`].",
           "anyOf": [
             {
               "$ref": "#/definitions/ShadeSpec"
@@ -283,8 +810,98 @@
         "mol"
       ]
     },
+    "Node": {
+      "description": "Document **node**: mol, edge, or text.\n\nUntagged so each variant keeps its own `\"type\"` field. - [`DepictSpec::Group`]: mol | text (no edges). - [`DepictSpec::ReactionScheme`]: mol | edge | text.",
+      "anyOf": [
+        {
+          "$ref": "#/definitions/MolNode"
+        },
+        {
+          "$ref": "#/definitions/EdgeNode"
+        },
+        {
+          "$ref": "#/definitions/TextNode"
+        }
+      ]
+    },
+    "NodeType": {
+      "description": "Document node kinds opts may target (matches wire `\"type\"` discriminants).",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "mol",
+            "group"
+          ]
+        },
+        {
+          "description": "Multi-mol scheme with edge nodes in `children` (`\"type\": \"reaction_scheme\"`).",
+          "type": "string",
+          "enum": [
+            "reaction_scheme"
+          ]
+        },
+        {
+          "description": "Edge / reaction link node (`\"type\": \"edge\"`).",
+          "type": "string",
+          "enum": [
+            "edge"
+          ]
+        },
+        {
+          "description": "Text caption / chrome node (`\"type\": \"text\"`).",
+          "type": "string",
+          "enum": [
+            "text"
+          ]
+        }
+      ]
+    },
+    "Opts": {
+      "description": "Cascade bag: singleton patch or list of patches.",
+      "anyOf": [
+        {
+          "$ref": "#/definitions/OptsPatch"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/OptsPatch"
+          }
+        }
+      ]
+    },
+    "OptsPatch": {
+      "description": "One cascade rule. Untagged order: typed → for_types → universal.",
+      "anyOf": [
+        {
+          "description": "`{ \"type\": \"mol\", \"weight\": 1.2 }` — discriminated kind.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/TypedOptsPatch"
+            }
+          ]
+        },
+        {
+          "description": "`{ \"for_types\": [\"mol\",\"group\"], \"color\": \"#111\" }`.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ForTypesPatch"
+            }
+          ]
+        },
+        {
+          "description": "`{ \"color\": \"#111\" }` — applies to every kind.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/CommonOpts"
+            }
+          ]
+        }
+      ]
+    },
     "ShadeSpec": {
-      "description": "Per-atom / per-bond colormap scores.",
+      "description": "Per-atom / per-bond colormap scores (+ legacy window fields on the mol).\n\nPrefer putting `colormap` / `vmin` / `vmax` in cascading [`MolOpts::shade`]; values here still apply as local leaf overrides for compat.",
       "type": "object",
       "properties": {
         "atoms": {
@@ -324,6 +941,254 @@
           "format": "double"
         }
       }
+    },
+    "ShadeStyle": {
+      "description": "Cascading shade window / LUT (not per-atom scores).",
+      "type": "object",
+      "properties": {
+        "colormap": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "vmax": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "vmin": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        }
+      }
+    },
+    "TextNode": {
+      "description": "Text **node** — caption / chrome referenced by mols and edges via id.\n\n```json { \"type\": \"text\", \"id\": \"adh\", \"text\": \"ADH\" } ```",
+      "type": "object",
+      "required": [
+        "text",
+        "type"
+      ],
+      "properties": {
+        "color": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "description": "Stable id — required when other nodes [`MolNode::label`] / edge lanes ref it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "opts": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Opts"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "scale": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "text": {
+          "description": "Display text (markup-capable later).",
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/definitions/TextNodeKind"
+        }
+      }
+    },
+    "TextNodeKind": {
+      "description": "Discriminator for text nodes (`\"type\": \"text\"`).",
+      "type": "string",
+      "enum": [
+        "text"
+      ]
+    },
+    "TypedOptsPatch": {
+      "description": "Discriminated opts patch: `{ \"type\": \"mol\"|\"group\"|\"reaction_scheme\"|\"edge\"|\"text\", …opts }`.",
+      "oneOf": [
+        {
+          "description": "Mol cascading paint opts — what a mol leaf consumes from the cascade.\n\n[`MolNode`] carries the same fields at the top level (local leaf opts) plus non-cascading identity keys.",
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "color": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "halo": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "scale": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "format": "double"
+            },
+            "shade": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/ShadeStyle"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "mol"
+              ]
+            },
+            "weight": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "format": "double"
+            }
+          }
+        },
+        {
+          "description": "Universal cascading keys (any node kind).",
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "color": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "scale": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "format": "double"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "group"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Universal cascading keys (any node kind).",
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "color": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "scale": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "format": "double"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "reaction_scheme"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Universal cascading keys (any node kind).",
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "color": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "scale": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "format": "double"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "edge"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Universal cascading keys (any node kind).",
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "color": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "scale": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "format": "double"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "text"
+              ]
+            }
+          }
+        }
+      ]
     }
   }
 }

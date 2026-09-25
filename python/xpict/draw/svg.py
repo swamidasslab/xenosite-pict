@@ -207,7 +207,7 @@ def scene_to_svg(scene: Scene) -> str:
             "height": h,
             "viewBox": f"0 0 {w} {h}",
             "class": "xpict",
-            "style": "background:transparent",
+            "style": "background:transparent;max-width:100%;max-height:100%",
         },
     )
     # Shade under the document halo; ink above it.
@@ -251,6 +251,7 @@ def scene_to_html(scene: Scene, *, title: str | None = None) -> str:
   .xpict-mol img.xpict {{
     display: block;
     max-width: 100%;
+    max-height: 100%;
     height: auto;
   }}
   .xpict-row {{

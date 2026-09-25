@@ -97,3 +97,118 @@ def test_live_align_to_string_or_object():
     assert kids[2].align_to == "ref"
     future = PictSpec.model_validate(doc.model_dump(mode="json"))
     assert future.root.type == "group"  # type: ignore[union-attr]
+
+
+def test_live_opts_list_container_parses():
+    """Group/mol ``opts`` accept singleton or list of typed / for_types / universal patches."""
+    from xpict.contracts.depict import ForTypesPatch, GroupNode, MolOptsPatch
+
+    doc = DepictSpec.model_validate(
+        {
+            "type": "group",
+            "opts": [
+                {"color": "#111", "scale": 1.0},
+                {"type": "mol", "weight": 1.25, "halo": True},
+                {"for_types": ["mol", "group"], "scale": 1.5},
+            ],
+            "children": [
+                {
+                    "type": "mol",
+                    "smiles": "CCO",
+                    "opts": {"type": "mol", "color": "#0b6e4f"},
+                }
+            ],
+        }
+    )
+    assert isinstance(doc.root, GroupNode)
+    assert isinstance(doc.root.opts, list)
+    assert len(doc.root.opts) == 3
+    assert doc.root.opts[0].color == "#111"
+    assert isinstance(doc.root.opts[1], MolOptsPatch)
+    assert doc.root.opts[1].weight == 1.25
+    assert isinstance(doc.root.opts[2], ForTypesPatch)
+    assert doc.root.opts[2].for_types == ["mol", "group"]
+    child_opts = doc.mols()[0].opts
+    assert isinstance(child_opts, MolOptsPatch)
+    assert child_opts.color == "#0b6e4f"
+
+
+def test_live_reaction_scheme_mol_and_edge_children():
+    """reaction_scheme children are nodes: mol | edge | text; edges ref labels by id."""
+    from xpict.contracts.depict import EdgeNode, ReactionSchemeNode, TextNode
+
+    doc = DepictSpec.model_validate(
+        {
+            "type": "reaction_scheme",
+            "layout": {"direction": "right"},
+            "children": [
+                {"type": "text", "id": "adh", "text": "ADH"},
+                {"type": "mol", "id": "a", "smiles": "CCO", "label": "adh"},
+                {
+                    "type": "edge",
+                    "source": "a",
+                    "target": "b",
+                    "label": [
+                        "adh",
+                        {"id": "rt", "pos": "below"},
+                    ],
+                    "arrow": "forward",
+                },
+                {"type": "text", "id": "rt", "text": "rt"},
+                {"type": "mol", "id": "b", "smiles": "CC=O"},
+            ],
+        }
+    )
+    assert isinstance(doc.root, ReactionSchemeNode)
+    assert len(doc.root.children) == 5
+    assert isinstance(doc.root.children[0], TextNode)
+    assert isinstance(doc.root.children[2], EdgeNode)
+    from xpict.contracts.depict import LabelPlacement
+
+    assert doc.root.children[2].label == [
+        "adh",
+        LabelPlacement(id="rt", pos="below"),
+    ]
+    assert doc.root.layout is not None
+    assert doc.root.layout.direction == "right"
+    assert [m.id for m in doc.mols()] == ["a", "b"]
+    assert doc.mols()[0].label == "adh"
+
+
+def test_live_edge_multi_reactants_products():
+    doc = DepictSpec.model_validate(
+        {
+            "type": "reaction_scheme",
+            "children": [
+                {"type": "mol", "id": "a", "smiles": "C"},
+                {"type": "mol", "id": "b", "smiles": "O"},
+                {"type": "mol", "id": "c", "smiles": "CO"},
+                {"type": "mol", "id": "d", "smiles": "O=O"},
+                {
+                    "type": "edge",
+                    "sources": ["a", "b"],
+                    "targets": ["c", "d"],
+                    "arrow": "forward",
+                },
+            ],
+        }
+    )
+    from xpict.contracts.depict import EdgeNode
+
+    edge = next(c for c in doc.root.children if isinstance(c, EdgeNode))
+    assert edge.sources == ["a", "b"]
+    assert edge.targets == ["c", "d"]
+    # Singular aliases still parse.
+    one = DepictSpec.model_validate(
+        {
+            "type": "reaction_scheme",
+            "children": [
+                {"type": "mol", "id": "a", "smiles": "C"},
+                {"type": "mol", "id": "b", "smiles": "CC"},
+                {"type": "edge", "source": "a", "target": "b"},
+            ],
+        }
+    )
+    e2 = next(c for c in one.root.children if isinstance(c, EdgeNode))
+    assert e2.sources == "a"
+    assert e2.targets == "b"

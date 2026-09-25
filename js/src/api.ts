@@ -129,6 +129,28 @@ export type {
   AlignToSpec,
   MolNode,
   ShadeSpec,
+  ShadeStyle,
+  CommonOpts,
+  MolOpts,
+  NodeType,
+  ForTypesPatch,
+  TypedOptsPatch,
+  OptsPatch,
+  Opts,
+  EdgeArrow,
+  EdgeNode,
+  TextNode,
+  LabelPos,
+  LabelPlacement,
+  LabelItem,
+  LabelLanes,
+  Label,
+  MolIds,
+  LayoutDirection,
+  EdgeRouting,
+  LayoutAlgorithm,
+  LayoutOpts,
+  Node,
 } from "./generated/depict-abi.js";
 
 import type {
@@ -137,7 +159,7 @@ import type {
 } from "./generated/depict-abi.js";
 
 /**
- * Group — ``children`` of mol nodes only (today).
+ * Group — ``children`` of mol | text (no edges).
  * ``align`` defaults to false on the wire (`#[serde(default)]`); optional here
  * so callers may omit it (ts-rs cannot mark non-Option defaults optional).
  */
@@ -148,10 +170,17 @@ export type GroupNode = Omit<
   align?: boolean;
 };
 
+/** Reaction scheme — mol | edge | text children; layout via LayoutOpts. */
+export type ReactionSchemeNode = Extract<
+  GeneratedDepictSpec,
+  { type: "reaction_scheme" }
+>;
+
 /** Declarative document (nested subset of PictSpec; still expanding). */
 export type DepictSpec =
   | Extract<GeneratedDepictSpec, { type: "mol" }>
-  | GroupNode;
+  | GroupNode
+  | ReactionSchemeNode;
 
 /** Alias of {@link MolNode}. */
 export type MolSpec = MolNode;
@@ -396,13 +425,13 @@ async function depict(spec: DepictSpec): Promise<Rendered[]> {
   ) as DocPaint[];
 
   const byId = new Map<string, MolNode>();
-  const nodes =
+  const molNodes: MolNode[] =
     spec.type === "mol"
       ? [spec]
-      : spec.type === "group"
-        ? (spec.children ?? [])
-        : [];
-  for (const [i, n] of nodes.entries()) {
+      : (spec.children ?? []).filter(
+          (n): n is MolNode => n.type === "mol"
+        );
+  for (const [i, n] of molNodes.entries()) {
     byId.set(n.id?.trim() || `m_${i}`, n);
   }
 

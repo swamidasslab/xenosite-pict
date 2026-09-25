@@ -205,6 +205,7 @@ pub fn scene_to_svg(scene: &Scene) -> String {
     format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
          <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{w}\" height=\"{h}\" \
-         viewBox=\"0 0 {w} {h}\" class=\"xpict\" style=\"background:transparent\">{parts}</svg>"
+         viewBox=\"0 0 {w} {h}\" class=\"xpict\" \
+         style=\"background:transparent;max-width:100%;max-height:100%\">{parts}</svg>"
     )
 }

@@ -164,6 +164,155 @@ fn elk_layout_json(graph_json: &str) -> PyResult<String> {
     xpict_core::elk_layout_json(graph_json).map_err(PyRuntimeError::new_err)
 }
 
+/// Map scheme layout opts → ELK layoutOptions JSON object.
+///
+/// ``kind`` is ``"reaction"`` or ``"network"``. ``opts_json`` is a
+/// [`LayoutOpts`] object (may be ``{}``).
+#[pyfunction]
+#[pyo3(signature = (kind, opts_json="{}"))]
+fn scheme_elk_options(kind: &str, opts_json: &str) -> PyResult<String> {
+    let opts: xpict_core::LayoutOpts = serde_json::from_str(opts_json)
+        .map_err(|e| PyRuntimeError::new_err(format!("LayoutOpts JSON: {e}")))?;
+    let dk = match kind {
+        "reaction" => xpict_core::ElkDiagramKind::Reaction,
+        _ => xpict_core::ElkDiagramKind::Network,
+    };
+    let map = xpict_core::scheme_layout_options(dk, &opts);
+    serde_json::to_string(&map)
+        .map_err(|e| PyRuntimeError::new_err(format!("options JSON: {e}")))
+}
+
+/// Viewport-boundary anchors: ``src``/``tgt`` are ``[x,y,w,h]``.
+#[pyfunction]
+#[pyo3(signature = (src, tgt, pad=None))]
+fn edge_anchors(
+    src: (f64, f64, f64, f64),
+    tgt: (f64, f64, f64, f64),
+    pad: Option<f64>,
+) -> ((f64, f64), (f64, f64)) {
+    xpict_core::edge_anchors(src, tgt, pad.unwrap_or(xpict_core::ANCHOR_GAP))
+}
+
+/// Simplify a route polyline JSON ``[[x,y],…]`` → same shape (kink snap).
+#[pyfunction]
+#[pyo3(signature = (pts_json, kink_px=None))]
+fn simplify_route(pts_json: &str, kink_px: Option<f64>) -> PyResult<String> {
+    let pts: Vec<(f64, f64)> = serde_json::from_str(pts_json)
+        .map_err(|e| PyRuntimeError::new_err(format!("pts JSON: {e}")))?;
+    let out = xpict_core::simplify_route(&pts, kink_px.unwrap_or(xpict_core::KINK_PX));
+    serde_json::to_string(&out).map_err(|e| PyRuntimeError::new_err(format!("{e}")))
+}
+
+/// SVG path ``d`` for a shaft. ``routing`` is ``orthogonal`` / ``polyline`` / ``splines`` / None.
+#[pyfunction]
+#[pyo3(signature = (pts_json, routing=None))]
+fn shaft_path_d(pts_json: &str, routing: Option<&str>) -> PyResult<String> {
+    let pts: Vec<(f64, f64)> = serde_json::from_str(pts_json)
+        .map_err(|e| PyRuntimeError::new_err(format!("pts JSON: {e}")))?;
+    let r = match routing {
+        Some("orthogonal") => Some(xpict_core::EdgeRouting::Orthogonal),
+        Some("polyline") => Some(xpict_core::EdgeRouting::Polyline),
+        Some("splines") => Some(xpict_core::EdgeRouting::Splines),
+        _ => None,
+    };
+    Ok(xpict_core::shaft_path_d(&pts, r))
+}
+
+/// Filleted polyline path ``d`` (quadratic corners). ``radius`` defaults to ``TURN_RADIUS``.
+#[pyfunction]
+#[pyo3(signature = (pts_json, radius=None))]
+fn filleted_path_d(pts_json: &str, radius: Option<f64>) -> PyResult<String> {
+    let pts: Vec<(f64, f64)> = serde_json::from_str(pts_json)
+        .map_err(|e| PyRuntimeError::new_err(format!("pts JSON: {e}")))?;
+    Ok(xpict_core::filleted_path_d(
+        &pts,
+        radius.unwrap_or(xpict_core::TURN_RADIUS),
+    ))
+}
+
+/// Build edge overlay primitives JSON from an edge paint request.
+///
+/// Request keys: ``pts``, ``arrow``, ``routing?``, ``color?``, ``stroke_width?``,
+/// ``dashed?``, ``label?``, ``label_pos?``, ``index?``.
+#[pyfunction]
+fn edge_overlay_primitives(edge_json: &str) -> PyResult<String> {
+    #[derive(serde::Deserialize)]
+    struct In {
+        pts: Vec<(f64, f64)>,
+        #[serde(default)]
+        arrow: xpict_core::EdgeArrow,
+        #[serde(default)]
+        routing: Option<xpict_core::EdgeRouting>,
+        #[serde(default)]
+        color: Option<String>,
+        #[serde(default)]
+        stroke_width: Option<f64>,
+        #[serde(default)]
+        dashed: bool,
+        #[serde(default)]
+        label: Option<String>,
+        #[serde(default)]
+        label_pos: Option<String>,
+        #[serde(default)]
+        index: usize,
+    }
+    let raw: In = serde_json::from_str(edge_json)
+        .map_err(|e| PyRuntimeError::new_err(format!("edge JSON: {e}")))?;
+    let edge = xpict_core::EdgePaintIn {
+        pts: raw.pts,
+        arrow: raw.arrow,
+        routing: raw.routing,
+        color: raw.color,
+        stroke_width: raw.stroke_width,
+        dashed: raw.dashed,
+        label: raw.label,
+        label_pos: raw.label_pos,
+        index: raw.index,
+    };
+    let prims = xpict_core::arrow_edge_primitives(&edge);
+    // Serialize as a list of tagged dicts for Python PathPrim/TextPrim rebuild.
+    let mut out = Vec::with_capacity(prims.len());
+    for p in prims {
+        match p {
+            xpict_core::EdgePrim::Path {
+                d,
+                stroke,
+                fill,
+                stroke_width,
+                stroke_dasharray,
+                class,
+            } => out.push(serde_json::json!({
+                "kind": "path",
+                "d": d,
+                "stroke": stroke,
+                "fill": fill,
+                "stroke_width": stroke_width,
+                "stroke_dasharray": stroke_dasharray,
+                "cls": class,
+            })),
+            xpict_core::EdgePrim::Text {
+                x,
+                y,
+                text,
+                fill,
+                font_size,
+                anchor,
+                class,
+            } => out.push(serde_json::json!({
+                "kind": "text",
+                "x": x,
+                "y": y,
+                "text": text,
+                "fill": fill,
+                "font_size": font_size,
+                "anchor": anchor,
+                "cls": class,
+            })),
+        }
+    }
+    serde_json::to_string(&out).map_err(|e| PyRuntimeError::new_err(format!("{e}")))
+}
+
 fn parse_face_style(style: &str) -> xpict_core::font::FaceStyle {
     match style {
         "bold" => xpict_core::font::FaceStyle::Bold,
@@ -521,6 +670,12 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(capsule_halo_path_d, m)?)?;
     m.add_function(wrap_pyfunction!(disk_halo_path_d, m)?)?;
     m.add_function(wrap_pyfunction!(elk_layout_json, m)?)?;
+    m.add_function(wrap_pyfunction!(scheme_elk_options, m)?)?;
+    m.add_function(wrap_pyfunction!(edge_anchors, m)?)?;
+    m.add_function(wrap_pyfunction!(simplify_route, m)?)?;
+    m.add_function(wrap_pyfunction!(shaft_path_d, m)?)?;
+    m.add_function(wrap_pyfunction!(filleted_path_d, m)?)?;
+    m.add_function(wrap_pyfunction!(edge_overlay_primitives, m)?)?;
     m.add_function(wrap_pyfunction!(face_metrics, m)?)?;
     m.add_function(wrap_pyfunction!(glyph_metrics, m)?)?;
     m.add_function(wrap_pyfunction!(outline_run_em, m)?)?;
@@ -537,6 +692,10 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("SHADE_FRAC", metrics::SHADE_FRAC)?;
     m.add("HAS_ELK", true)?;
     m.add("HAS_GEOM", true)?;
+    m.add("KINK_PX", xpict_core::KINK_PX)?;
+    m.add("TURN_RADIUS", xpict_core::TURN_RADIUS)?;
+    m.add("DEFAULT_NODE_SPACING", xpict_core::LayoutOpts::DEFAULT_NODE_SPACING)?;
+    m.add("DEFAULT_LAYER_SPACING", xpict_core::LayoutOpts::DEFAULT_LAYER_SPACING)?;
     m.add("HAS_FONT", true)?;
     Ok(())
 }

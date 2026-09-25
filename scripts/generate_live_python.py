@@ -8,7 +8,8 @@ Generic rules (no per-type name tables):
 2. string ``enum`` → ``Literal[...]`` alias.
 3. ``oneOf`` of string enums only → merge into one ``Literal`` (schemars split).
 4. ``oneOf`` of objects with a single-value ``kind``/``type`` enum → tagged
-   variants. Name = reuse a def with the same disc value, else:
+   variants. Name = reuse a def with the same disc value **and the same
+   property key set**, else:
    - ``kind`` → ``{Pascal(value)}Prim``
    - ``type`` + parent ``FooBarBaz`` → ``{Pascal(value)}{BarBaz}`` (drop first
      CamelCase segment); parent ending in ``Spec`` → ``{Pascal(value)}Node``.
@@ -166,10 +167,23 @@ class Emitter:
     def defs(self) -> dict[str, Any]:
         return _defs(self.schema)
 
-    def find_def_for_disc(self, key: str, value: str) -> str | None:
+    def find_def_for_disc(
+        self, key: str, value: str, alt: dict[str, Any] | None = None
+    ) -> str | None:
+        """Reuse a named def only when disc tag *and* property keys match.
+
+        Same ``type``/``kind`` alone is not enough — e.g. TypedOptsPatch's
+        ``type: mol`` must not collapse onto ``MolNode``.
+        """
+        alt_keys = set((alt or {}).get("properties") or {})
         for name, node in self.defs().items():
-            if node.get("type") == "object" and _object_disc_value(node, key) == value:
-                return name
+            if node.get("type") != "object":
+                continue
+            if _object_disc_value(node, key) != value:
+                continue
+            if alt_keys and set(node.get("properties") or {}) != alt_keys:
+                continue
+            return name
         return None
 
     def variant_name(self, parent: str, alt: dict[str, Any], index: int) -> str:
@@ -179,7 +193,7 @@ class Emitter:
         if not disc:
             return f"{parent}{index + 1}"
         key, val = disc
-        if (existing := self.find_def_for_disc(key, val)):
+        if (existing := self.find_def_for_disc(key, val, alt)):
             return existing
         if key == "kind":
             return f"{_pascal(val)}Prim"
@@ -327,6 +341,31 @@ class Emitter:
             self.blocks[i] = "\n".join(out)
             return
 
+    def _patch_edge_node_aliases(self) -> None:
+        """Accept singular ``source`` / ``target`` as aliases for MolIds fields."""
+        for i, block in enumerate(self.blocks):
+            if not block.startswith("class EdgeNode("):
+                continue
+            if "_coerce_endpoints" in block:
+                return
+            # Insert validator before class ends (after fields).
+            patch = '''
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_endpoints(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        out = dict(data)
+        if "sources" not in out and "source" in out:
+            out["sources"] = out.pop("source")
+        if "targets" not in out and "target" in out:
+            out["targets"] = out.pop("target")
+        out.pop("source", None)
+        out.pop("target", None)
+        return out'''
+            self.blocks[i] = block.rstrip() + "\n" + patch + "\n"
+            return
+
     def emit_object(self, name: str, node: dict[str, Any]) -> None:
         if name in self.emitted:
             return
@@ -374,6 +413,8 @@ class Emitter:
         self.blocks.append(
             f"class {name}(StrictModel):{doc}" + ("\n".join(fields) if fields else "    pass")
         )
+        if name == "EdgeNode":
+            self._patch_edge_node_aliases()
 
     def _field(
         self, pschema: dict[str, Any], *, required: bool
@@ -461,6 +502,8 @@ class Emitter:
         pydantic_imports = ["BaseModel", "ConfigDict", "Field"]
         if "RootModel" in body:
             pydantic_imports.append("RootModel")
+        if "model_validator" in body:
+            pydantic_imports.append("model_validator")
         return (
             "# Auto-generated from Rust schemars (make types) — do not edit.\n"
             f'"""{self.module_doc}"""\n\n'

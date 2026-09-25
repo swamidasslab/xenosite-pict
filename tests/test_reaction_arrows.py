@@ -12,8 +12,15 @@ from xpict import Pict, render
 from xpict.future.nodes import PictSpec
 from xpict.contracts.scene import PathPrim, Viewport
 from xpict.future.spec import EdgeArrow, EdgeSpec
-from xpict.diagram.elk import elk_graph, layout_diagram
-from xpict.draw.arrows import diagram_overlays, edge_anchors, edge_primitives
+from xpict.diagram.elk import elk_graph, layout_diagram, layout_diagram_ex
+from xpict.draw.arrows import (
+    diagram_overlays,
+    edge_anchors,
+    edge_primitives,
+    filleted_path_d,
+    resolve_route,
+    simplify_route,
+)
 from xpict.draw.scene_builder import build_scene
 from xpict.warnings import PictBackendWarning
 
@@ -236,7 +243,7 @@ def test_reaction_elk_defaults_wider_spacing():
             ],
             "diagram": {
                 "kind": "reaction",
-                "edges": [{"source": "A", "target": "B"}],
+                "edges": [{"source": "A", "target": "B", "label": "ADH", "label_pos": "below"}],
             },
         }
     )
@@ -244,9 +251,64 @@ def test_reaction_elk_defaults_wider_spacing():
     graph = elk_graph(layouts, doc)
     opts = graph["layoutOptions"]
     assert opts["elk.direction"] == "RIGHT"
-    assert opts["elk.edgeRouting"] == "ORTHOGONAL"
-    assert float(opts["elk.spacing.nodeNode"]) >= 56
-    assert float(opts["elk.layered.spacing.nodeNodeBetweenLayers"]) >= 80
+    assert opts["elk.edgeRouting"] == "POLYLINE"
+    assert opts["elk.layered.unnecessaryBendpoints"] == "false"
+    assert float(opts["elk.spacing.nodeNode"]) == 20
+    assert float(opts["elk.layered.spacing.nodeNodeBetweenLayers"]) == 0
+    assert float(opts["elk.layered.spacing.edgeNodeBetweenLayers"]) == 0
+    # Measured text boxes go to ELK with placement side.
+    labs = graph["edges"][0]["labels"]
+    assert len(labs) == 1
+    assert labs[0]["text"] == "ADH"
+    assert labs[0]["width"] > 8
+    assert labs[0]["height"] > 6
+    assert (
+        labs[0]["layoutOptions"]["elk.layered.edgeLabels.sideSelection"]
+        == "ALWAYS_DOWN"
+    )
+
+
+def test_reaction_packing_spacing_knobs():
+    """node_spacing / layer_spacing tighten or loosen ELK packing."""
+    tight = PictSpec.model_validate(
+        {
+            "molecules": [
+                {"id": "A", "smiles": "CCO"},
+                {"id": "B", "smiles": "CC=O"},
+            ],
+            "diagram": {
+                "kind": "reaction",
+                "node_spacing": 24,
+                "layer_spacing": 36,
+                "edges": [{"source": "A", "target": "B"}],
+            },
+        }
+    )
+    loose = PictSpec.model_validate(
+        {
+            "molecules": [
+                {"id": "A", "smiles": "CCO"},
+                {"id": "B", "smiles": "CC=O"},
+            ],
+            "diagram": {
+                "kind": "reaction",
+                "node_spacing": 80,
+                "layer_spacing": 120,
+                "edges": [{"source": "A", "target": "B"}],
+            },
+        }
+    )
+    pict = Pict(backend=layout_backend())
+    tg = elk_graph(pict.layout(tight), tight)["layoutOptions"]
+    lg = elk_graph(pict.layout(loose), loose)["layoutOptions"]
+    assert float(tg["elk.spacing.nodeNode"]) == 24
+    assert float(tg["elk.layered.spacing.nodeNodeBetweenLayers"]) == 36
+    assert float(lg["elk.spacing.nodeNode"]) == 80
+    assert float(lg["elk.layered.spacing.nodeNodeBetweenLayers"]) == 120
+    # Tighter packing should place B closer to A along x.
+    tp = layout_diagram(pict.layout(tight), tight)
+    lp = layout_diagram(pict.layout(loose), loose)
+    assert lp[1][0] - lp[0][0] > tp[1][0] - tp[0][0]
 
 
 def test_diagram_overlays_skips_missing_ids():
@@ -307,6 +369,8 @@ def test_branched_reaction_uses_elk_routes():
             ],
             "diagram": {
                 "kind": "reaction",
+                # Orthogonal routes produce bend points; default polyline may be straight.
+                "elk_options": {"elk.edgeRouting": "ORTHOGONAL"},
                 "edges": [
                     {"source": "A", "target": "B", "label": "ADH"},
                     {"source": "B", "target": "C", "label": "ALDH"},
@@ -351,17 +415,119 @@ def test_branched_reaction_uses_elk_routes():
     assert "stroke-dasharray" in svg
 
 
-def test_polyline_route_drawn_with_bends():
+def test_diagram_algorithm_maps_to_elk():
+    """algorithm: radial / force / stress select non-layered ELK engines."""
+    base_mols = [
+        {"id": "A", "smiles": "CCO"},
+        {"id": "B", "smiles": "CC=O"},
+        {"id": "C", "smiles": "CC(=O)O"},
+        {"id": "D", "smiles": "c1ccccc1"},
+        {"id": "E", "smiles": "c1ccccc1O"},
+    ]
+    edges = [
+        {"source": "A", "target": "B"},
+        {"source": "B", "target": "C"},
+        {"source": "A", "target": "D"},
+        {"source": "D", "target": "E"},
+        {"source": "B", "target": "E"},
+    ]
+    pict = Pict(backend=layout_backend())
+    for alg in ("radial", "force", "stress"):
+        doc = PictSpec.model_validate(
+            {
+                "molecules": base_mols,
+                "diagram": {
+                    "kind": "network",
+                    "algorithm": alg,
+                    "edges": edges,
+                },
+            }
+        )
+        graph = elk_graph(pict.layout(doc), doc)
+        assert graph["layoutOptions"]["elk.algorithm"] == alg
+        place = layout_diagram_ex(pict.layout(doc), doc)
+        assert len(place.positions) == 5
+        # Non-layered layouts spread in 2D (not a single row).
+        ys = {round(y, 0) for _x, y in place.positions}
+        xs = {round(x, 0) for x, _y in place.positions}
+        assert len(ys) >= 2 or len(xs) >= 2
+
+
+def test_simplify_route_snaps_micro_kink_to_straight():
+    """Orthogonal / polyline jogs under the kink threshold become a straight shaft."""
+    # Classic 5px jog — must collapse to two endpoints.
+    jog = [(0.0, 0.0), (100.0, 0.0), (100.0, 5.0), (200.0, 5.0)]
+    flat = simplify_route(jog, kink_px=10.0)
+    assert len(flat) == 2
+    assert flat[0] == (0.0, 0.0)
+    assert flat[-1] == (200.0, 5.0)
+
+    # Real L-bend stays (arms well above threshold).
+    elbow = [(0.0, 0.0), (80.0, 0.0), (80.0, 60.0), (140.0, 60.0)]
+    kept = simplify_route(elbow, kink_px=10.0)
+    assert len(kept) == 4
+
+
+def test_resolve_route_applies_simplify():
+    a = Viewport(id="A", x=0, y=0, width=40, height=40)
+    b = Viewport(id="B", x=200, y=0, width=40, height=40)
+    route = [(40.0, 20.0), (120.0, 20.0), (120.0, 28.0), (200.0, 28.0)]
+    pts = resolve_route(a, b, route)
+    assert len(pts) == 2
+
+
+def test_filleted_path_has_quadratic_turns():
+    pts = [(0.0, 0.0), (80.0, 0.0), (120.0, 60.0), (180.0, 60.0)]
+    d = filleted_path_d(pts, radius=36.0)
+    assert "Q" in d
+    # Straight two-point path stays linear.
+    assert "Q" not in filleted_path_d([(0.0, 0.0), (10.0, 0.0)])
+
+
+def test_orthogonal_route_stays_axis_aligned():
+    """Orthogonal (axis-aligned) shafts keep sharp corners — no quadratic fillets."""
     a = Viewport(id="A", x=0, y=0, width=40, height=40)
     b = Viewport(id="B", x=100, y=80, width=40, height=40)
     route = [(40.0, 20.0), (70.0, 20.0), (70.0, 100.0), (100.0, 100.0)]
     prims = edge_primitives(
-        EdgeSpec(source="A", target="B", label="bend"),
+        EdgeSpec(source="A", target="B", edge_routing="orthogonal", label="ortho"),
         a,
         b,
         route=route,
     )
     paths = [p for p in prims if isinstance(p, PathPrim)]
     shaft = next(p for p in paths if "head" not in (p.cls or ""))
+    assert "Q" not in shaft.d
     assert shaft.d.count("L") >= 2
+
+
+def test_polyline_route_drawn_with_bends():
+    """Non-orthogonal polyline corners get a larger fillet radius."""
+    a = Viewport(id="A", x=0, y=0, width=40, height=40)
+    b = Viewport(id="B", x=140, y=80, width=40, height=40)
+    # Diagonal middle segment → soft fillet (not axis-aligned).
+    route = [(40.0, 20.0), (90.0, 20.0), (110.0, 100.0), (140.0, 100.0)]
+    prims = edge_primitives(
+        EdgeSpec(source="A", target="B", edge_routing="polyline", label="bend"),
+        a,
+        b,
+        route=route,
+    )
+    paths = [p for p in prims if isinstance(p, PathPrim)]
+    shaft = next(p for p in paths if "head" not in (p.cls or ""))
+    assert "Q" in shaft.d
+    assert shaft.d.count("L") >= 1
     assert "bend" in " ".join(getattr(p, "text", "") or "" for p in prims)
+
+
+def test_micro_kink_route_draws_straight_shaft():
+    """Tiny jog snaps to a straight shaft (no fillet / no kink)."""
+    a = Viewport(id="A", x=0, y=0, width=40, height=40)
+    b = Viewport(id="B", x=200, y=0, width=40, height=40)
+    route = [(40.0, 20.0), (120.0, 20.0), (120.0, 26.0), (200.0, 26.0)]
+    prims = edge_primitives(EdgeSpec(source="A", target="B"), a, b, route=route)
+    paths = [p for p in prims if isinstance(p, PathPrim)]
+    shaft = next(p for p in paths if "head" not in (p.cls or ""))
+    assert "Q" not in shaft.d
+    # Single line segment after simplify.
+    assert shaft.d.count("L") == 1

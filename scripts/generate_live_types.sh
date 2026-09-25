@@ -41,7 +41,11 @@ if [[ -d "$BINDINGS" ]]; then
     TextAnchor LayerName Primitive Layer Viewport Scene
 
   write_barrel "$OUT_TS/depict-abi.ts" \
-    ShadeSpec AlignToSpec AlignTo MolNodeKind MolNode DepictSpec
+    ShadeSpec ShadeStyle AlignToSpec AlignTo MolNodeKind MolNode \
+    CommonOpts MolOpts NodeType ForTypesPatch TypedOptsPatch OptsPatch Opts \
+    EdgeArrow EdgeNodeKind EdgeNode TextNodeKind TextNode \
+    LabelPos LabelPlacement LabelItem LabelLanes Label \
+    MolIds LayoutDirection EdgeRouting LayoutAlgorithm LayoutOpts Node DepictSpec
 
   echo "wrote $OUT_TS/*.ts"
 else

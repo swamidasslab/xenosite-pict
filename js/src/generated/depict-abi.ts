@@ -1,8 +1,32 @@
 // Auto-generated barrel — do not edit (make types).
 
 export type { ShadeSpec } from "./ShadeSpec.js";
+export type { ShadeStyle } from "./ShadeStyle.js";
 export type { AlignToSpec } from "./AlignToSpec.js";
 export type { AlignTo } from "./AlignTo.js";
 export type { MolNodeKind } from "./MolNodeKind.js";
 export type { MolNode } from "./MolNode.js";
+export type { CommonOpts } from "./CommonOpts.js";
+export type { MolOpts } from "./MolOpts.js";
+export type { NodeType } from "./NodeType.js";
+export type { ForTypesPatch } from "./ForTypesPatch.js";
+export type { TypedOptsPatch } from "./TypedOptsPatch.js";
+export type { OptsPatch } from "./OptsPatch.js";
+export type { Opts } from "./Opts.js";
+export type { EdgeArrow } from "./EdgeArrow.js";
+export type { EdgeNodeKind } from "./EdgeNodeKind.js";
+export type { EdgeNode } from "./EdgeNode.js";
+export type { TextNodeKind } from "./TextNodeKind.js";
+export type { TextNode } from "./TextNode.js";
+export type { LabelPos } from "./LabelPos.js";
+export type { LabelPlacement } from "./LabelPlacement.js";
+export type { LabelItem } from "./LabelItem.js";
+export type { LabelLanes } from "./LabelLanes.js";
+export type { Label } from "./Label.js";
+export type { MolIds } from "./MolIds.js";
+export type { LayoutDirection } from "./LayoutDirection.js";
+export type { EdgeRouting } from "./EdgeRouting.js";
+export type { LayoutAlgorithm } from "./LayoutAlgorithm.js";
+export type { LayoutOpts } from "./LayoutOpts.js";
+export type { Node } from "./Node.js";
 export type { DepictSpec } from "./DepictSpec.js";

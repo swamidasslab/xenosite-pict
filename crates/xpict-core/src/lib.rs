@@ -8,6 +8,7 @@
 #![forbid(unsafe_code)]
 
 pub mod align;
+pub mod arrows;
 pub mod bonds;
 pub mod colormap;
 pub mod cxsmiles;
@@ -29,6 +30,11 @@ pub mod rings;
 pub mod scene;
 
 pub use align::{kabsch_2d, rigid_align_coords, RigidTransform};
+pub use arrows::{
+    axis_aligned, clip_box_edge, edge_anchors, edge_primitives as arrow_edge_primitives,
+    filleted_path_d, shaft_path_d, should_fillet, simplify_route, EdgePaintIn, EdgePrim,
+    ANCHOR_GAP, KINK_PX, TURN_RADIUS,
+};
 pub use bonds::{
     bond_paths, bond_strokes, centered_displacements, depict_order, join_centered_multibonds,
     line_intersect, multi_bond_offset, BondStrokes, DrawnBond, StrokePath,
@@ -37,8 +43,12 @@ pub use colormap::{colormap_rgb, sample_colormap, XENOSITE};
 pub use cxsmiles::{apply_cx_by_index, cx_atom_labels, cx_source, smiles_base};
 pub use depict::depict_molecule;
 pub use doc::{
-    apply_star_labels, assign_mol_ids, plan_edge, render_doc, AlignTo, AlignToSpec, DepictSpec,
-    DocPaint, MolNode, MolNodeKind, ShadeSpec,
+    apply_star_labels, assign_mol_ids, plan_edge, render_doc,
+    resolve_mol_opts, validate_edges, AlignTo, AlignToSpec, CommonOpts, DepictSpec, DocPaint,
+    EdgeArrow, EdgeNode, EdgeNodeKind, EdgeRouting, ForTypesPatch, Label, LabelItem, LabelLanes,
+    LabelPlacement, LabelPos, LayoutAlgorithm, LayoutDirection, LayoutOpts, MolIds, MolNode,
+    MolNodeKind, MolOpts,
+    Node, NodeType, Opts, OptsPatch, ShadeSpec, ShadeStyle, TextNode, TextNodeKind, TypedOptsPatch,
 };
 pub use edge::{
     AlignOpts, CoordGenMoleculeResult, CoordMethod, EdgePlan, EdgeResult, EdgeTask,
@@ -46,7 +56,9 @@ pub use edge::{
 };
 pub use elements::{atomic_number, element_symbol, SYMBOLS};
 #[cfg(feature = "elk")]
-pub use elk::layout_json as elk_layout_json;
+pub use elk::{
+    layout_json as elk_layout_json, scheme_layout_options, DiagramKind as ElkDiagramKind,
+};
 pub use geom::{capsule_halo_path_d, disk_halo_path_d, polygon_to_svg_d};
 #[cfg(feature = "font")]
 pub use labels::{

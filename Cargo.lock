@@ -1039,6 +1039,7 @@ name = "xpict-py"
 version = "0.3.0"
 dependencies = [
  "pyo3",
+ "serde",
  "serde_json",
  "xpict-core",
 ]

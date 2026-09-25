@@ -1,16 +1,14 @@
 //! Declarative document — plan (pass 1) + paint (pass 2).
 //!
+//! Wire types live in [`spec`] (opts cascade + DepictSpec collocated).
 //! Hosts call [`plan_edge`] → process the [`EdgePlan`] with RDKit →
 //! [`render_doc`] with the [`EdgeResult`]. No RDKit in this module.
 
+mod spec;
+
+pub use spec::*;
+
 use std::collections::HashMap;
-
-use serde::{Deserialize, Serialize};
-
-#[cfg(feature = "codegen")]
-use schemars::JsonSchema;
-#[cfg(feature = "codegen")]
-use ts_rs::TS;
 
 use crate::cxsmiles::{apply_cx_by_index, cx_source};
 use crate::depict::depict_molecule;
@@ -19,242 +17,6 @@ use crate::edge::{
     MolTemplate,
 };
 use crate::scene::{MoleculeIn, Scene};
-
-/// Per-atom / per-bond colormap scores.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
-#[cfg_attr(feature = "codegen", ts(export))]
-pub struct ShadeSpec {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "codegen", ts(optional))]
-    pub atoms: Option<Vec<f64>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "codegen", ts(optional))]
-    pub bonds: Option<Vec<f64>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "codegen", ts(optional))]
-    pub colormap: Option<String>,
-    #[serde(default = "default_shade_vmin")]
-    pub vmin: f64,
-    #[serde(default = "default_shade_vmax")]
-    pub vmax: f64,
-}
-
-fn default_shade_vmin() -> f64 {
-    0.0
-}
-fn default_shade_vmax() -> f64 {
-    1.0
-}
-
-impl Default for ShadeSpec {
-    fn default() -> Self {
-        Self {
-            atoms: None,
-            bonds: None,
-            colormap: None,
-            vmin: 0.0,
-            vmax: 1.0,
-        }
-    }
-}
-
-/// Object form of document ``align_to`` (template ref + EdgePlan-style opts).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
-#[cfg_attr(feature = "codegen", ts(export))]
-pub struct AlignToSpec {
-    /// Id of the template mol in this group.
-    #[serde(rename = "ref")]
-    #[cfg_attr(feature = "codegen", ts(rename = "ref"))]
-    pub ref_id: String,
-    /// Pairs `(query, template)` vs the template; skips MCS when set.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "codegen", ts(optional))]
-    pub atom_map: Option<Vec<(u32, u32)>>,
-    /// Override [`crate::edge::MIN_MCS_ATOMS`] when set.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "codegen", ts(optional))]
-    pub min_atoms: Option<u32>,
-}
-
-/// Document align target: id string or `{ "ref", "atom_map"?, "min_atoms"? }`.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(untagged)]
-#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
-#[cfg_attr(feature = "codegen", ts(export))]
-pub enum AlignTo {
-    /// Shorthand for `{ "ref": "…" }`.
-    Ref(String),
-    Spec(AlignToSpec),
-}
-
-impl AlignTo {
-    pub fn ref_id(&self) -> &str {
-        match self {
-            AlignTo::Ref(s) => s.as_str(),
-            AlignTo::Spec(s) => s.ref_id.as_str(),
-        }
-    }
-
-    pub fn align_opts(&self) -> AlignOpts {
-        match self {
-            AlignTo::Ref(_) => AlignOpts::default(),
-            AlignTo::Spec(s) => AlignOpts {
-                atom_map: s.atom_map.clone(),
-                min_atoms: s.min_atoms,
-            },
-        }
-    }
-}
-
-/// Discriminator for mol nodes (`"type": "mol"`).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
-#[cfg_attr(feature = "codegen", ts(export))]
-pub enum MolNodeKind {
-    #[default]
-    Mol,
-}
-
-/// Mol node — subset of future ``MolNode``.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
-#[cfg_attr(feature = "codegen", ts(export))]
-pub struct MolNode {
-    #[serde(rename = "type", default)]
-    pub type_: MolNodeKind,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "codegen", ts(optional))]
-    pub smiles: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "codegen", ts(optional))]
-    pub cxsmiles: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "codegen", ts(optional))]
-    pub molfile: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "codegen", ts(optional))]
-    pub id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "codegen", ts(optional))]
-    pub color: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "codegen", ts(optional))]
-    pub shade: Option<ShadeSpec>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "codegen", ts(optional))]
-    pub star_labels: Option<Vec<Option<String>>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "codegen", ts(optional))]
-    pub scale: Option<f64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "codegen", ts(optional))]
-    pub weight: Option<f64>,
-    /// Template id string, or `{ "ref", "atom_map"?, "min_atoms"? }`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "codegen", ts(optional))]
-    pub align_to: Option<AlignTo>,
-}
-
-/// Declarative document (`mol` or `group` root).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "lowercase")]
-#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
-#[cfg_attr(feature = "codegen", ts(export))]
-pub enum DepictSpec {
-    Mol {
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(feature = "codegen", ts(optional))]
-        smiles: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(feature = "codegen", ts(optional))]
-        cxsmiles: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(feature = "codegen", ts(optional))]
-        molfile: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(feature = "codegen", ts(optional))]
-        id: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(feature = "codegen", ts(optional))]
-        color: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(feature = "codegen", ts(optional))]
-        shade: Option<ShadeSpec>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(feature = "codegen", ts(optional))]
-        star_labels: Option<Vec<Option<String>>>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(feature = "codegen", ts(optional))]
-        scale: Option<f64>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(feature = "codegen", ts(optional))]
-        weight: Option<f64>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(feature = "codegen", ts(optional))]
-        align_to: Option<AlignTo>,
-    },
-    Group {
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(feature = "codegen", ts(optional))]
-        id: Option<String>,
-        /// When true, later children align onto the first (or each `align_to`).
-        #[serde(default)]
-        align: bool,
-        #[serde(default)]
-        children: Vec<MolNode>,
-    },
-}
-
-impl DepictSpec {
-    /// Flatten to mol nodes in document order.
-    pub fn mols(&self) -> Vec<MolNode> {
-        match self {
-            DepictSpec::Mol {
-                smiles,
-                cxsmiles,
-                molfile,
-                id,
-                color,
-                shade,
-                star_labels,
-                scale,
-                weight,
-                align_to,
-            } => vec![MolNode {
-                type_: MolNodeKind::Mol,
-                smiles: smiles.clone(),
-                cxsmiles: cxsmiles.clone(),
-                molfile: molfile.clone(),
-                id: id.clone(),
-                color: color.clone(),
-                shade: shade.clone(),
-                star_labels: star_labels.clone(),
-                scale: *scale,
-                weight: *weight,
-                align_to: align_to.clone(),
-            }],
-            DepictSpec::Group { children, .. } => children.clone(),
-        }
-    }
-
-    pub fn align_enabled(&self) -> bool {
-        matches!(self, DepictSpec::Group { align: true, .. })
-    }
-}
-
-impl MolNode {
-    pub fn structure(&self) -> Result<&str, String> {
-        for s in [&self.molfile, &self.cxsmiles, &self.smiles] {
-            if let Some(t) = s.as_ref().filter(|x| !x.trim().is_empty()) {
-                return Ok(t.as_str());
-            }
-        }
-        Err("mol node needs smiles, cxsmiles, or molfile".into())
-    }
-}
 
 /// Assign stable unique ids (`user id` or `m_<i>`) in document order.
 pub fn assign_mol_ids(mols: &[MolNode]) -> Result<Vec<String>, String> {
@@ -273,6 +35,102 @@ pub fn assign_mol_ids(mols: &[MolNode]) -> Result<Vec<String>, String> {
     Ok(out)
 }
 
+/// Ensure edge endpoints and label refs resolve to the right node kinds.
+pub fn validate_edges(spec: &DepictSpec) -> Result<(), String> {
+    // Groups must not contain edge children.
+    if matches!(spec, DepictSpec::Group { .. }) {
+        for (i, n) in spec.nodes().iter().enumerate() {
+            if n.as_edge().is_some() {
+                return Err(format!("group children[{i}] cannot be an edge"));
+            }
+        }
+    }
+
+    let mol_ids = assign_mol_ids(&spec.mols())?;
+    let mol_set: std::collections::HashSet<&str> =
+        mol_ids.iter().map(String::as_str).collect();
+
+    // Collect labelable ids (mol + text).
+    let mut labelable = mol_set.clone();
+    for t in spec.texts() {
+        let Some(id) = t
+            .id
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        else {
+            continue;
+        };
+        if !labelable.insert(id) {
+            return Err(format!("duplicate node id {id}"));
+        }
+    }
+
+    for m in spec.mols() {
+        if let Some(ref lab) = m.label {
+            for (id, _pos) in lab.placements() {
+                let id = id.trim();
+                if id.is_empty() {
+                    return Err("mol label ref must be non-empty".into());
+                }
+                match spec.node_by_id(id) {
+                    Some(Node::Text(_)) => {}
+                    Some(Node::Mol(_)) => {
+                        return Err(format!("mol label {id} must ref a text node, not a mol"));
+                    }
+                    Some(Node::Edge(_)) => {
+                        return Err(format!("mol label {id} must ref a text node, not an edge"));
+                    }
+                    None => return Err(format!("mol label unknown text id {id}")),
+                }
+            }
+        }
+    }
+
+    for e in spec.edges() {
+        if e.sources.is_empty() {
+            return Err("edge sources must be non-empty".into());
+        }
+        if e.targets.is_empty() {
+            return Err("edge targets must be non-empty".into());
+        }
+        for id in e.sources.iter() {
+            let id = id.trim();
+            if id.is_empty() {
+                return Err("edge source id must be non-empty".into());
+            }
+            if !mol_set.contains(id) {
+                return Err(format!("edge source unknown id {id}"));
+            }
+        }
+        for id in e.targets.iter() {
+            let id = id.trim();
+            if id.is_empty() {
+                return Err("edge target id must be non-empty".into());
+            }
+            if !mol_set.contains(id) {
+                return Err(format!("edge target unknown id {id}"));
+            }
+        }
+        if let Some(ref lab) = e.label {
+            for (id, pos) in lab.placements() {
+                let id = id.trim();
+                if id.is_empty() {
+                    return Err("edge label ref must be non-empty".into());
+                }
+                match spec.node_by_id(id) {
+                    Some(Node::Text(_)) | Some(Node::Mol(_)) => {}
+                    Some(Node::Edge(_)) => {
+                        return Err(format!("edge label ({pos:?}) id {id} cannot ref an edge"));
+                    }
+                    None => return Err(format!("edge label ({pos:?}) unknown id {id}")),
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Pass 1: build an [`EdgePlan`] for every mol that needs host coord gen.
 ///
 /// - No align: each mol is its own free-layout root.
@@ -280,6 +138,7 @@ pub fn assign_mol_ids(mols: &[MolNode]) -> Result<Vec<String>, String> {
 ///
 /// Returns `None` only when the document has no molecules.
 pub fn plan_edge(spec: &DepictSpec) -> Result<Option<EdgePlan>, String> {
+    validate_edges(spec)?;
     let mols = spec.mols();
     if mols.is_empty() {
         return Ok(None);
@@ -403,23 +262,44 @@ pub fn apply_star_labels(mol: &mut MoleculeIn, labels: &[Option<String>]) {
     }
 }
 
-fn apply_doc_chrome(mut mol: MoleculeIn, node: &MolNode, id: &str) -> MoleculeIn {
+fn apply_doc_chrome(
+    mut mol: MoleculeIn,
+    node: &MolNode,
+    id: &str,
+    chrome: &MolOpts,
+) -> MoleculeIn {
     mol.id = Some(id.to_string());
-    if let Some(ref c) = node.color {
+    if let Some(ref c) = chrome.color {
         mol.color = Some(c.clone());
     }
+    // Scores always from the node (non-cascading); window from resolved chrome.
     if let Some(ref shade) = node.shade {
         mol.atom_shade = shade.atoms.clone();
         mol.bond_shade = shade.bonds.clone();
+    }
+    if let Some(ref style) = chrome.shade {
+        if let Some(v) = style.vmin {
+            mol.shade_vmin = Some(v);
+        } else if let Some(ref shade) = node.shade {
+            mol.shade_vmin = Some(shade.vmin);
+        }
+        if let Some(v) = style.vmax {
+            mol.shade_vmax = Some(v);
+        } else if let Some(ref shade) = node.shade {
+            mol.shade_vmax = Some(shade.vmax);
+        }
+    } else if let Some(ref shade) = node.shade {
         mol.shade_vmin = Some(shade.vmin);
         mol.shade_vmax = Some(shade.vmax);
     }
-    if let Some(s) = node.scale {
+    if let Some(s) = chrome.scale {
         mol.scale = s;
     }
-    if let Some(w) = node.weight {
+    if let Some(w) = chrome.weight {
         mol.weight = w;
     }
+    // halo reserved on chrome for future paint; MoleculeIn has no halo flag yet.
+    let _ = chrome.halo;
     if let Some(ref labels) = node.star_labels {
         apply_star_labels(&mut mol, labels);
     } else if let Some(src) = cx_source(node.cxsmiles.as_deref(), node.smiles.as_deref()) {
@@ -458,7 +338,8 @@ pub fn render_doc(spec: &DepictSpec, edge: &EdgeResult) -> Result<Vec<DocPaint>,
             .molecule
             .clone()
             .ok_or_else(|| format!("EdgeResult {id} missing molecule"))?;
-        let molecule = apply_doc_chrome(base, node, id);
+        let chrome = spec.resolve_mol_chrome(i);
+        let molecule = apply_doc_chrome(base, node, id, &chrome);
         let scene = depict_molecule(&molecule);
         out.push(DocPaint {
             id: id.clone(),
@@ -543,15 +424,18 @@ mod tests {
             id: None,
             align: false,
             children: vec![
-                MolNode {
+                Node::Mol(MolNode {
                     smiles: Some("CCO".into()),
                     ..Default::default()
-                },
-                MolNode {
+                }),
+                Node::Mol(MolNode {
                     smiles: Some("CCCO".into()),
                     ..Default::default()
-                },
+                }),
             ],
+                    opts: None,
+            color: None,
+            scale: None,
         };
         let plan = plan_edge(&spec).unwrap().unwrap();
         match &plan.tasks[0] {
@@ -569,12 +453,12 @@ mod tests {
             id: None,
             align: true,
             children: vec![
-                MolNode {
+                Node::Mol(MolNode {
                     id: Some("ref".into()),
                     smiles: Some("c1ccccc1".into()),
                     ..Default::default()
-                },
-                MolNode {
+                }),
+                Node::Mol(MolNode {
                     smiles: Some("Cc1ccccc1".into()),
                     align_to: Some(AlignTo::Spec(AlignToSpec {
                         ref_id: "ref".into(),
@@ -582,8 +466,11 @@ mod tests {
                         min_atoms: None,
                     })),
                     ..Default::default()
-                },
+                }),
             ],
+            opts: None,
+            color: None,
+            scale: None,
         };
         let plan = plan_edge(&spec).unwrap().unwrap();
         match &plan.tasks[0] {
@@ -604,6 +491,7 @@ mod tests {
     #[test]
     fn render_doc_stitches_edge_result() {
         let spec = DepictSpec::Mol {
+            label: None,
             smiles: Some("CCO".into()),
             cxsmiles: None,
             molfile: None,
@@ -614,6 +502,8 @@ mod tests {
             scale: None,
             weight: None,
             align_to: None,
+                    halo: None,
+            opts: None,
         };
         let plan = plan_edge(&spec).unwrap().unwrap();
         let id = match &plan.tasks[0] {
@@ -639,6 +529,7 @@ mod tests {
     #[test]
     fn render_doc_applies_cx_when_no_star_labels() {
         let spec = DepictSpec::Mol {
+            label: None,
             smiles: None,
             cxsmiles: Some("*C |$R1;$|".into()),
             molfile: None,
@@ -649,6 +540,8 @@ mod tests {
             scale: None,
             weight: None,
             align_to: None,
+                    halo: None,
+            opts: None,
         };
         let mol = MoleculeIn {
             id: Some("m".into()),
@@ -758,6 +651,9 @@ mod tests {
             id: None,
             align: false,
             children: vec![],
+                    opts: None,
+            color: None,
+            scale: None,
         };
         assert!(plan_edge(&spec).unwrap().is_none());
     }
@@ -768,17 +664,20 @@ mod tests {
             id: None,
             align: true,
             children: vec![
-                MolNode {
+                Node::Mol(MolNode {
                     id: Some("a".into()),
                     smiles: Some("C".into()),
                     ..Default::default()
-                },
-                MolNode {
+                }),
+                Node::Mol(MolNode {
                     smiles: Some("CC".into()),
                     align_to: Some(AlignTo::Ref("missing".into())),
                     ..Default::default()
-                },
+                }),
             ],
+                    opts: None,
+            color: None,
+            scale: None,
         };
         assert!(plan_edge(&unknown).unwrap_err().contains("unknown id"));
 
@@ -786,18 +685,21 @@ mod tests {
             id: None,
             align: true,
             children: vec![
-                MolNode {
+                Node::Mol(MolNode {
                     id: Some("a".into()),
                     smiles: Some("C".into()),
                     ..Default::default()
-                },
-                MolNode {
+                }),
+                Node::Mol(MolNode {
                     id: Some("b".into()),
                     smiles: Some("CC".into()),
                     align_to: Some(AlignTo::Ref("b".into())),
                     ..Default::default()
-                },
+                }),
             ],
+                    opts: None,
+            color: None,
+            scale: None,
         };
         assert!(plan_edge(&self_align).unwrap_err().contains("itself"));
     }
@@ -808,23 +710,26 @@ mod tests {
             id: None,
             align: true,
             children: vec![
-                MolNode {
+                Node::Mol(MolNode {
                     id: Some("left".into()),
                     smiles: Some("C".into()),
                     ..Default::default()
-                },
-                MolNode {
+                }),
+                Node::Mol(MolNode {
                     id: Some("mid".into()),
                     smiles: Some("CC".into()),
                     ..Default::default()
-                },
-                MolNode {
+                }),
+                Node::Mol(MolNode {
                     id: Some("q".into()),
                     smiles: Some("CCC".into()),
                     align_to: Some(AlignTo::Ref("mid".into())),
                     ..Default::default()
-                },
+                }),
             ],
+                    opts: None,
+            color: None,
+            scale: None,
         };
         let plan = plan_edge(&spec).unwrap().unwrap();
         match &plan.tasks[0] {
@@ -896,6 +801,7 @@ mod tests {
     #[test]
     fn render_doc_star_labels_shade_scale_weight() {
         let spec = DepictSpec::Mol {
+            label: None,
             smiles: Some("*C".into()),
             cxsmiles: None,
             molfile: None,
@@ -912,6 +818,8 @@ mod tests {
             scale: Some(1.5),
             weight: Some(1.2),
             align_to: None,
+                    halo: None,
+            opts: None,
         };
         let mut mol = ethanol_mol("s");
         mol.atoms[0].element = Some("*".into());
@@ -939,6 +847,7 @@ mod tests {
     #[test]
     fn render_doc_errors_on_missing_or_failed_edge_row() {
         let spec = DepictSpec::Mol {
+            label: None,
             smiles: Some("C".into()),
             cxsmiles: None,
             molfile: None,
@@ -949,6 +858,8 @@ mod tests {
             scale: None,
             weight: None,
             align_to: None,
+                    halo: None,
+            opts: None,
         };
         let missing = EdgeResult::new_v1(vec![EdgeTaskResult::CoordGen {
             ok: false,
@@ -992,6 +903,9 @@ mod tests {
             id: Some("g".into()),
             align: true,
             children: vec![],
+                    opts: None,
+            color: None,
+            scale: None,
         };
         assert!(g.align_enabled());
         assert!(g.mols().is_empty());
@@ -1009,5 +923,470 @@ mod tests {
         let opts = o.align_opts();
         assert_eq!(opts.atom_map.as_ref().unwrap().len(), 2);
         assert_eq!(opts.min_atoms, Some(4));
+    }
+
+    #[test]
+    fn opts_patch_json_discriminated_and_list() {
+        // Universal singleton
+        let u: Opts = serde_json::from_str(r##"{"color":"#111"}"##).unwrap();
+        match &u {
+            Opts::One(OptsPatch::Universal(c)) => assert_eq!(c.color.as_deref(), Some("#111")),
+            _ => panic!("expected universal"),
+        }
+        // Typed mol patch
+        let t: OptsPatch = serde_json::from_str(r#"{"type":"mol","weight":1.5,"halo":false}"#).unwrap();
+        match t {
+            OptsPatch::Typed(TypedOptsPatch::Mol { opts }) => {
+                assert_eq!(opts.weight, Some(1.5));
+                assert_eq!(opts.halo, Some(false));
+            }
+            _ => panic!("expected typed mol"),
+        }
+        // for_types multi
+        let f: OptsPatch =
+            serde_json::from_str(r##"{"for_types":["mol","group"],"color":"#0b6e4f"}"##).unwrap();
+        match f {
+            OptsPatch::ForTypes(p) => {
+                assert_eq!(p.for_types, vec![NodeType::Mol, NodeType::Group]);
+                assert_eq!(p.opts.color.as_deref(), Some("#0b6e4f"));
+            }
+            _ => panic!("expected for_types"),
+        }
+        // List container
+        let list: Opts = serde_json::from_str(
+            r##"[{"color":"#111"},{"type":"mol","weight":1.2},{"for_types":["mol"],"scale":2.0}]"##,
+        )
+        .unwrap();
+        assert!(matches!(list, Opts::Many(ref v) if v.len() == 3));
+    }
+
+    #[test]
+    fn cascade_group_opts_list_inherits_then_child_overrides() {
+        let spec: DepictSpec = serde_json::from_str(
+            r##"{
+              "type": "group",
+              "align": false,
+              "opts": [
+                {"color": "#111", "scale": 1.0},
+                {"type": "mol", "weight": 1.0, "halo": true},
+                {"type": "mol", "weight": 1.25},
+                {"for_types": ["mol"], "scale": 1.5}
+              ],
+              "children": [
+                {
+                  "type": "mol",
+                  "id": "a",
+                  "smiles": "CCO",
+                  "opts": {"type": "mol", "color": "#0b6e4f"}
+                },
+                {
+                  "type": "mol",
+                  "id": "b",
+                  "smiles": "CCC",
+                  "weight": 2.0,
+                  "opts": [
+                    {"type": "mol", "halo": false},
+                    {"for_types": ["group"], "color": "#fff"}
+                  ]
+                }
+              ]
+            }"##,
+        )
+        .unwrap();
+
+        let a = spec.resolve_mol_chrome(0);
+        assert_eq!(a.color.as_deref(), Some("#0b6e4f")); // child typed patch wins
+        assert_eq!(a.weight, Some(1.25)); // later typed patch in group list wins
+        assert_eq!(a.scale, Some(1.5)); // later for_types common key overrides universal
+        assert_eq!(a.halo, Some(true));
+
+        let b = spec.resolve_mol_chrome(1);
+        assert_eq!(b.color.as_deref(), Some("#111")); // group universal; child for_types group ignored
+        assert_eq!(b.weight, Some(2.0)); // local flat last
+        assert_eq!(b.halo, Some(false)); // child opts list
+        assert_eq!(b.scale, Some(1.5)); // inherited from group for_types
+    }
+
+    #[test]
+    fn cascade_group_flat_overrides_group_opts_list() {
+        let spec: DepictSpec = serde_json::from_str(
+            r##"{
+              "type": "group",
+              "opts": [{"color": "#111", "scale": 1.0}],
+              "color": "#222",
+              "children": [{"type": "mol", "smiles": "C", "scale": 3.0}]
+            }"##,
+        )
+        .unwrap();
+        let chrome = spec.resolve_mol_chrome(0);
+        assert_eq!(chrome.color.as_deref(), Some("#222")); // group flat after opts list
+        assert_eq!(chrome.scale, Some(3.0)); // node local last
+    }
+
+    #[test]
+    fn cascade_shade_style_deep_merges_across_list() {
+        let spec: DepictSpec = serde_json::from_str(
+            r#"{
+              "type": "group",
+              "opts": [
+                {"type": "mol", "shade": {"vmin": 0.0, "vmax": 1.0}},
+                {"type": "mol", "shade": {"vmax": 0.5, "colormap": "xenosite"}}
+              ],
+              "children": [
+                {
+                  "type": "mol",
+                  "smiles": "C",
+                  "shade": {"atoms": [0.2], "vmin": -1.0, "vmax": 1.0}
+                }
+              ]
+            }"#,
+        )
+        .unwrap();
+        let chrome = spec.resolve_mol_chrome(0);
+        let s = chrome.shade.as_ref().unwrap();
+        // Local shade.style() merges last → vmin/vmax from node ShadeSpec
+        assert_eq!(s.vmin, Some(-1.0));
+        assert_eq!(s.vmax, Some(1.0));
+        // colormap from group list still present unless local cleared it
+        assert_eq!(s.colormap.as_deref(), Some("xenosite"));
+    }
+
+    #[test]
+    fn cascade_typed_group_patch_does_not_apply_to_mol() {
+        let spec: DepictSpec = serde_json::from_str(
+            r##"{
+              "type": "group",
+              "opts": [
+                {"type": "group", "color": "#ff0000"},
+                {"type": "mol", "color": "#00ff00"}
+              ],
+              "children": [{"type": "mol", "smiles": "C"}]
+            }"##,
+        )
+        .unwrap();
+        let chrome = spec.resolve_mol_chrome(0);
+        assert_eq!(chrome.color.as_deref(), Some("#00ff00"));
+    }
+
+    #[test]
+    fn render_doc_uses_cascaded_color_from_group_opts_list() {
+        let spec: DepictSpec = serde_json::from_str(
+            r##"{
+              "type": "group",
+              "opts": [{"color": "#abcdef"}, {"type": "mol", "weight": 1.5}],
+              "children": [{"type": "mol", "id": "e", "smiles": "CCO"}]
+            }"##,
+        )
+        .unwrap();
+        let edge = EdgeResult::new_v1(vec![EdgeTaskResult::CoordGen {
+            ok: true,
+            molecules: vec![CoordGenMoleculeResult {
+                id: "e".into(),
+                ok: true,
+                method: CoordMethod::Free,
+                used_map: None,
+                molecule: Some(ethanol_mol("e")),
+                error: None,
+            }],
+        }]);
+        let painted = render_doc(&spec, &edge).unwrap();
+        assert_eq!(painted[0].molecule.color.as_deref(), Some("#abcdef"));
+        assert!((painted[0].molecule.weight - 1.5).abs() < 1e-12);
+    }
+
+    #[test]
+    fn reaction_scheme_nodes_and_edges_json() {
+        let spec: DepictSpec = serde_json::from_str(
+            r##"{
+              "type": "reaction_scheme",
+              "opts": [{"color": "#111"}, {"type": "mol", "weight": 1.2}],
+              "children": [
+                {"type": "text", "id": "adh", "text": "ADH"},
+                {"type": "text", "id": "aldh", "text": "ALDH"},
+                {"type": "mol", "id": "a", "smiles": "CCO", "label": "adh"},
+                {
+                  "type": "edge",
+                  "source": "a",
+                  "target": "b",
+                  "label": {
+                    "above": ["adh"],
+                    "below": ["rt"],
+                    "left": ["nabh4"]
+                  },
+                  "arrow": "forward"
+                },
+                {"type": "text", "id": "rt", "text": "rt"},
+                {"type": "mol", "id": "nabh4", "smiles": "[BH4-]", "scale": 0.4},
+                {"type": "mol", "id": "b", "smiles": "CC=O"},
+                {
+                  "type": "edge",
+                  "source": "b",
+                  "target": "c",
+                  "label": [
+                    "aldh",
+                    {"id": "nad", "pos": "right"}
+                  ],
+                  "arrow": "equilibrium",
+                  "color": "#064",
+                  "dashed": true
+                },
+                {"type": "text", "id": "nad", "text": "NAD+"},
+                {"type": "mol", "id": "c", "smiles": "CC(=O)O"}
+              ]
+            }"##,
+        )
+        .unwrap();
+
+        assert_eq!(spec.mols().len(), 4);
+        assert_eq!(spec.texts().len(), 4);
+        assert_eq!(spec.nodes().len(), 10);
+        let edges = spec.edges();
+        assert_eq!(edges.len(), 2);
+        assert_eq!(edges[0].sources.as_slice(), &["a".to_string()]);
+        assert_eq!(edges[0].targets.as_slice(), &["b".to_string()]);
+        let e0 = edges[0].label.as_ref().unwrap().placements();
+        assert_eq!(
+            e0,
+            vec![
+                ("adh".into(), crate::doc::LabelPos::Above),
+                ("rt".into(), crate::doc::LabelPos::Below),
+                ("nabh4".into(), crate::doc::LabelPos::Left),
+            ]
+        );
+        assert_eq!(edges[0].arrow, EdgeArrow::Forward);
+        assert_eq!(edges[1].arrow, EdgeArrow::Equilibrium);
+        let e1 = edges[1].label.as_ref().unwrap().placements();
+        assert_eq!(
+            e1,
+            vec![
+                ("aldh".into(), crate::doc::LabelPos::Above),
+                ("nad".into(), crate::doc::LabelPos::Right),
+            ]
+        );
+        assert_eq!(edges[1].color.as_deref(), Some("#064"));
+        assert!(edges[1].dashed);
+        assert_eq!(
+            spec.mols()[0].label.as_ref().unwrap().placements(),
+            vec![("adh".into(), crate::doc::LabelPos::Above)]
+        );
+        validate_edges(&spec).unwrap();
+
+        let chrome = spec.resolve_mol_chrome(0);
+        assert_eq!(chrome.color.as_deref(), Some("#111"));
+        assert_eq!(chrome.weight, Some(1.2));
+    }
+
+    #[test]
+    fn group_mol_label_refs_text_node() {
+        let spec: DepictSpec = serde_json::from_str(
+            r#"{
+              "type": "group",
+              "children": [
+                {"type": "text", "id": "cap", "text": "ethanol"},
+                {"type": "mol", "id": "a", "smiles": "CCO", "label": "cap"}
+              ]
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(spec.mols().len(), 1);
+        assert_eq!(spec.texts().len(), 1);
+        assert_eq!(
+            spec.mols()[0].label.as_ref().unwrap().placements(),
+            vec![("cap".into(), LabelPos::Above)]
+        );
+        validate_edges(&spec).unwrap();
+    }
+
+    #[test]
+    fn edge_label_string_list_and_placed_json() {
+        let spec: DepictSpec = serde_json::from_str(
+            r#"{
+              "type": "reaction_scheme",
+              "children": [
+                {"type": "text", "id": "adh", "text": "ADH"},
+                {"type": "text", "id": "rt", "text": "rt"},
+                {"type": "mol", "id": "a", "smiles": "C"},
+                {"type": "mol", "id": "b", "smiles": "CC"},
+                {
+                  "type": "edge",
+                  "source": "a",
+                  "target": "b",
+                  "label": "adh"
+                },
+                {
+                  "type": "edge",
+                  "source": "b",
+                  "target": "a",
+                  "label": {"id": "rt", "pos": "below"}
+                }
+              ]
+            }"#,
+        )
+        .unwrap();
+        let edges = spec.edges();
+        assert_eq!(
+            edges[0].label.as_ref().unwrap().placements(),
+            vec![("adh".into(), LabelPos::Above)]
+        );
+        assert_eq!(
+            edges[1].label.as_ref().unwrap().placements(),
+            vec![("rt".into(), LabelPos::Below)]
+        );
+        validate_edges(&spec).unwrap();
+    }
+
+    #[test]
+    fn reaction_scheme_edge_unknown_id_errors() {
+        let spec: DepictSpec = serde_json::from_str(
+            r#"{
+              "type": "reaction_scheme",
+              "children": [
+                {"type": "mol", "id": "a", "smiles": "C"},
+                {"type": "edge", "source": "a", "target": "missing"}
+              ]
+            }"#,
+        )
+        .unwrap();
+        let err = validate_edges(&spec).unwrap_err();
+        assert!(err.contains("unknown id missing"));
+        assert!(plan_edge(&spec).unwrap_err().contains("unknown id"));
+    }
+
+    #[test]
+    fn mol_label_unknown_text_id_errors() {
+        let spec: DepictSpec = serde_json::from_str(
+            r#"{
+              "type": "group",
+              "children": [
+                {"type": "mol", "id": "a", "smiles": "C", "label": "nope"}
+              ]
+            }"#,
+        )
+        .unwrap();
+        let err = validate_edges(&spec).unwrap_err();
+        assert!(err.contains("unknown text id nope"));
+    }
+
+    #[test]
+    fn reaction_scheme_layout_defaults_and_overrides() {
+        let bare: DepictSpec = serde_json::from_str(
+            r#"{"type":"reaction_scheme","children":[{"type":"mol","id":"a","smiles":"C"}]}"#,
+        )
+        .unwrap();
+        let layout = match &bare {
+            DepictSpec::ReactionScheme { layout, .. } => layout.clone().unwrap_or_default(),
+            _ => panic!("expected reaction_scheme"),
+        };
+        assert_eq!(layout.direction_or_default(), LayoutDirection::Right);
+        assert_eq!(layout.edge_routing_or_default(), EdgeRouting::Polyline);
+        assert_eq!(layout.algorithm_or_default(), LayoutAlgorithm::Layered);
+
+        let custom: DepictSpec = serde_json::from_str(
+            r#"{
+              "type": "reaction_scheme",
+              "layout": {
+                "direction": "down",
+                "edge_routing": "orthogonal",
+                "algorithm": "force"
+              },
+              "children": [{"type":"mol","id":"a","smiles":"C"}]
+            }"#,
+        )
+        .unwrap();
+        let layout = match &custom {
+            DepictSpec::ReactionScheme {
+                layout: Some(l), ..
+            } => l,
+            _ => panic!("expected layout"),
+        };
+        assert_eq!(layout.direction, Some(LayoutDirection::Down));
+        assert_eq!(layout.edge_routing, Some(EdgeRouting::Orthogonal));
+        assert_eq!(layout.algorithm, Some(LayoutAlgorithm::Force));
+    }
+
+    #[test]
+    fn edge_routing_overrides_scheme_layout() {
+        let spec: DepictSpec = serde_json::from_str(
+            r#"{
+              "type": "reaction_scheme",
+              "layout": { "edge_routing": "polyline" },
+              "children": [
+                {"type": "mol", "id": "a", "smiles": "C"},
+                {"type": "mol", "id": "b", "smiles": "CC"},
+                {
+                  "type": "edge",
+                  "source": "a",
+                  "target": "b",
+                  "edge_routing": "orthogonal"
+                },
+                {
+                  "type": "edge",
+                  "source": "b",
+                  "target": "a"
+                }
+              ]
+            }"#,
+        )
+        .unwrap();
+        let layout = match &spec {
+            DepictSpec::ReactionScheme {
+                layout: Some(l), ..
+            } => l.clone(),
+            _ => LayoutOpts::default(),
+        };
+        let edges = spec.edges();
+        assert_eq!(edges[0].edge_routing, Some(EdgeRouting::Orthogonal));
+        assert_eq!(edges[0].edge_routing_or(&layout), EdgeRouting::Orthogonal);
+        assert_eq!(edges[1].edge_routing, None);
+        assert_eq!(edges[1].edge_routing_or(&layout), EdgeRouting::Polyline);
+    }
+
+    #[test]
+    fn edge_multi_reactants_and_products() {
+        let spec: DepictSpec = serde_json::from_str(
+            r#"{
+              "type": "reaction_scheme",
+              "children": [
+                {"type": "mol", "id": "a", "smiles": "C"},
+                {"type": "mol", "id": "b", "smiles": "O"},
+                {"type": "mol", "id": "c", "smiles": "CO"},
+                {"type": "mol", "id": "d", "smiles": "O=O"},
+                {
+                  "type": "edge",
+                  "sources": ["a", "b"],
+                  "targets": ["c", "d"],
+                  "arrow": "forward"
+                }
+              ]
+            }"#,
+        )
+        .unwrap();
+        let e = &spec.edges()[0];
+        assert_eq!(
+            e.sources.as_slice(),
+            &["a".to_string(), "b".to_string()]
+        );
+        assert_eq!(
+            e.targets.as_slice(),
+            &["c".to_string(), "d".to_string()]
+        );
+        validate_edges(&spec).unwrap();
+    }
+
+    #[test]
+    fn cascade_reaction_scheme_typed_patch_does_not_paint_mol() {
+        let spec: DepictSpec = serde_json::from_str(
+            r##"{
+              "type": "reaction_scheme",
+              "opts": [
+                {"type": "reaction_scheme", "color": "#ff0000"},
+                {"type": "mol", "color": "#00ff00"}
+              ],
+              "children": [{"type": "mol", "id": "n", "smiles": "C"}]
+            }"##,
+        )
+        .unwrap();
+        let chrome = spec.resolve_mol_chrome(0);
+        assert_eq!(chrome.color.as_deref(), Some("#00ff00"));
     }
 }

@@ -198,10 +198,11 @@ not bit-identical to elkjs 0.9. Needs **Rust ≥ 1.85**.
 (buffer / union / difference / even-odd contours / halo). Python draw uses
 `_native.Shape`; Shapely is no longer a dependency.
 
-`diagram.kind: reaction` widens ELK node/edge spacing and falls back to a
-vertically-centered row with extra gap for arrow shafts. `layout_diagram_ex`
+`diagram.kind: reaction` packs ELK tightly (node spacing ~20, layer spacing ~0)
+and falls back to a vertically-centered row. `layout_diagram_ex`
 returns node positions **and** ELK edge section polylines (orthogonal bends);
-`draw/arrows.py` strokes those routes into `Scene.overlays` (straight
-viewport-to-viewport anchors when ELK is unavailable).
+Rust `xpict-core::arrows` strokes those routes into `Scene.overlays` (straight
+viewport-to-viewport anchors when ELK is unavailable). Orthogonal shafts stay
+axis-aligned; polyline bends use a larger fillet radius.
 
 See also `docs/pocs/` for derisk POCs and schema-alpha feedback.

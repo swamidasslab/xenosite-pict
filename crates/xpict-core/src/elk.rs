@@ -6,6 +6,126 @@
 
 #![cfg(feature = "elk")]
 
+use std::collections::BTreeMap;
+
+use crate::doc::{EdgeRouting, LayoutAlgorithm, LayoutDirection, LayoutOpts};
+
+/// Whether the diagram uses reaction packing defaults (vs generic network).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiagramKind {
+    Network,
+    Reaction,
+}
+
+fn direction_elk(d: LayoutDirection) -> &'static str {
+    match d {
+        LayoutDirection::Right => "RIGHT",
+        LayoutDirection::Left => "LEFT",
+        LayoutDirection::Up => "UP",
+        LayoutDirection::Down => "DOWN",
+    }
+}
+
+fn routing_elk(r: EdgeRouting) -> &'static str {
+    match r {
+        EdgeRouting::Orthogonal => "ORTHOGONAL",
+        EdgeRouting::Polyline => "POLYLINE",
+        EdgeRouting::Splines => "SPLINES",
+    }
+}
+
+fn algorithm_elk(a: LayoutAlgorithm) -> &'static str {
+    match a {
+        LayoutAlgorithm::Layered => "layered",
+        LayoutAlgorithm::Radial => "radial",
+        LayoutAlgorithm::Force => "force",
+        LayoutAlgorithm::Stress => "stress",
+    }
+}
+
+/// Backend-agnostic [`LayoutOpts`] → ELK `layoutOptions` map.
+///
+/// Reaction diagrams pack tightly (node spacing ~20, layer spacing ~0) and pin
+/// `unnecessaryBendpoints=false` so shafts only bend where they turn.
+pub fn scheme_layout_options(
+    kind: DiagramKind,
+    opts: &LayoutOpts,
+) -> BTreeMap<String, String> {
+    let mut base: BTreeMap<String, String> = BTreeMap::from([
+        ("elk.algorithm".into(), "layered".into()),
+        ("elk.direction".into(), "RIGHT".into()),
+        ("elk.edgeRouting".into(), "POLYLINE".into()),
+        // Keep shafts simple: only bend where the edge actually turns.
+        ("elk.layered.unnecessaryBendpoints".into(), "false".into()),
+        ("elk.spacing.nodeNode".into(), "40".into()),
+        ("elk.spacing.edgeEdge".into(), "16".into()),
+        ("elk.spacing.edgeNode".into(), "20".into()),
+        ("elk.layered.spacing.nodeNodeBetweenLayers".into(), "48".into()),
+        ("elk.layered.spacing.edgeNodeBetweenLayers".into(), "24".into()),
+        (
+            "elk.layered.crossingMinimization.strategy".into(),
+            "LAYER_SWEEP".into(),
+        ),
+        (
+            "elk.layered.nodePlacement.strategy".into(),
+            "NETWORK_SIMPLEX".into(),
+        ),
+    ]);
+
+    if kind == DiagramKind::Reaction {
+        base.insert(
+            "elk.spacing.nodeNode".into(),
+            LayoutOpts::DEFAULT_NODE_SPACING.to_string(),
+        );
+        base.insert(
+            "elk.layered.spacing.nodeNodeBetweenLayers".into(),
+            LayoutOpts::DEFAULT_LAYER_SPACING.to_string(),
+        );
+        base.insert(
+            "elk.layered.spacing.edgeNodeBetweenLayers".into(),
+            LayoutOpts::DEFAULT_LAYER_SPACING.to_string(),
+        );
+        base.insert("elk.spacing.edgeEdge".into(), "16".into());
+        base.insert(
+            "elk.layered.crossingMinimization.forceNodeModelOrder".into(),
+            "false".into(),
+        );
+    }
+
+    if opts.algorithm.is_some() {
+        base.insert(
+            "elk.algorithm".into(),
+            algorithm_elk(opts.algorithm_or_default()).into(),
+        );
+    }
+    if opts.direction.is_some() {
+        base.insert(
+            "elk.direction".into(),
+            direction_elk(opts.direction_or_default()).into(),
+        );
+    }
+    if opts.edge_routing.is_some() {
+        base.insert(
+            "elk.edgeRouting".into(),
+            routing_elk(opts.edge_routing_or_default()).into(),
+        );
+    }
+    if let Some(ns) = opts.node_spacing {
+        base.insert("elk.spacing.nodeNode".into(), ns.to_string());
+    }
+    if let Some(ls) = opts.layer_spacing {
+        base.insert(
+            "elk.layered.spacing.nodeNodeBetweenLayers".into(),
+            ls.to_string(),
+        );
+        base.insert(
+            "elk.layered.spacing.edgeNodeBetweenLayers".into(),
+            (ls * 0.5).max(0.0).to_string(),
+        );
+    }
+    base
+}
+
 /// Lay out an ELK JSON graph string; returns laid-out JSON.
 ///
 /// Errors are returned as strings (invalid JSON, unknown algorithm, …).
@@ -17,6 +137,93 @@ pub fn layout_json(input: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reaction_defaults_tight_pack_no_extra_bends() {
+        let opts = LayoutOpts::default();
+        let m = scheme_layout_options(DiagramKind::Reaction, &opts);
+        assert_eq!(m.get("elk.algorithm").unwrap(), "layered");
+        assert_eq!(m.get("elk.layered.unnecessaryBendpoints").unwrap(), "false");
+        assert_eq!(
+            m.get("elk.spacing.nodeNode").unwrap(),
+            &LayoutOpts::DEFAULT_NODE_SPACING.to_string()
+        );
+        assert_eq!(
+            m.get("elk.layered.spacing.nodeNodeBetweenLayers").unwrap(),
+            &LayoutOpts::DEFAULT_LAYER_SPACING.to_string()
+        );
+    }
+
+    #[test]
+    fn algorithm_override_selects_force() {
+        let opts = LayoutOpts {
+            algorithm: Some(LayoutAlgorithm::Force),
+            ..Default::default()
+        };
+        let m = scheme_layout_options(DiagramKind::Network, &opts);
+        assert_eq!(m.get("elk.algorithm").unwrap(), "force");
+    }
+
+    #[test]
+    fn layout_opts_map_direction_routing_spacing() {
+        for (dir, want) in [
+            (LayoutDirection::Right, "RIGHT"),
+            (LayoutDirection::Left, "LEFT"),
+            (LayoutDirection::Up, "UP"),
+            (LayoutDirection::Down, "DOWN"),
+        ] {
+            let opts = LayoutOpts {
+                direction: Some(dir),
+                ..Default::default()
+            };
+            let m = scheme_layout_options(DiagramKind::Network, &opts);
+            assert_eq!(m.get("elk.direction").unwrap(), want);
+        }
+        for (r, want) in [
+            (EdgeRouting::Orthogonal, "ORTHOGONAL"),
+            (EdgeRouting::Polyline, "POLYLINE"),
+            (EdgeRouting::Splines, "SPLINES"),
+        ] {
+            let opts = LayoutOpts {
+                edge_routing: Some(r),
+                ..Default::default()
+            };
+            let m = scheme_layout_options(DiagramKind::Network, &opts);
+            assert_eq!(m.get("elk.edgeRouting").unwrap(), want);
+        }
+        for (a, want) in [
+            (LayoutAlgorithm::Layered, "layered"),
+            (LayoutAlgorithm::Radial, "radial"),
+            (LayoutAlgorithm::Force, "force"),
+            (LayoutAlgorithm::Stress, "stress"),
+        ] {
+            let opts = LayoutOpts {
+                algorithm: Some(a),
+                ..Default::default()
+            };
+            assert_eq!(
+                scheme_layout_options(DiagramKind::Reaction, &opts)
+                    .get("elk.algorithm")
+                    .unwrap(),
+                want
+            );
+        }
+        let opts = LayoutOpts {
+            node_spacing: Some(24.0),
+            layer_spacing: Some(40.0),
+            ..Default::default()
+        };
+        let m = scheme_layout_options(DiagramKind::Reaction, &opts);
+        assert_eq!(m.get("elk.spacing.nodeNode").unwrap(), "24");
+        assert_eq!(
+            m.get("elk.layered.spacing.nodeNodeBetweenLayers").unwrap(),
+            "40"
+        );
+        assert_eq!(
+            m.get("elk.layered.spacing.edgeNodeBetweenLayers").unwrap(),
+            "20"
+        );
+    }
 
     #[test]
     fn layered_orthogonal_emits_edge_sections() {
