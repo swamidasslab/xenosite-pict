@@ -863,7 +863,7 @@ pub enum EdgeRouting {
 /// Individual [`EdgeNode`]s may override [`Self::edge_routing`].
 ///
 /// Spacing (px, document space) controls packing tightness:
-/// - [`Self::node_spacing`] — gap between nodes in the same layer (default ~56)
+/// - [`Self::node_spacing`] — gap between nodes in the same layer (default ~20)
 /// - [`Self::layer_spacing`] — gap between reactant/product layers (default ~20)
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]

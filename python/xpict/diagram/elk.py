@@ -150,11 +150,11 @@ def _reaction_defaults(spec: LegacyPictSpec) -> dict[str, str]:
     if spec.diagram.kind == DiagramKind.reaction:
         base.update(
             {
-                "elk.spacing.nodeNode": "56",
-                # Tight between reactant/product columns so arrows stay short.
+                # Tight pack: short arrows between mols / layers.
+                "elk.spacing.nodeNode": "20",
                 "elk.layered.spacing.nodeNodeBetweenLayers": "20",
                 "elk.layered.spacing.edgeNodeBetweenLayers": "10",
-                "elk.spacing.edgeEdge": "20",
+                "elk.spacing.edgeEdge": "16",
                 # Prefer spreading branches so metabolite sinks don't stack.
                 "elk.layered.crossingMinimization.forceNodeModelOrder": "false",
             }

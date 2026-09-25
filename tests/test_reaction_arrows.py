@@ -13,7 +13,14 @@ from xpict.future.nodes import PictSpec
 from xpict.contracts.scene import PathPrim, Viewport
 from xpict.future.spec import EdgeArrow, EdgeSpec
 from xpict.diagram.elk import elk_graph, layout_diagram
-from xpict.draw.arrows import diagram_overlays, edge_anchors, edge_primitives
+from xpict.draw.arrows import (
+    diagram_overlays,
+    edge_anchors,
+    edge_primitives,
+    filleted_path_d,
+    resolve_route,
+    simplify_route,
+)
 from xpict.draw.scene_builder import build_scene
 from xpict.warnings import PictBackendWarning
 
@@ -245,7 +252,7 @@ def test_reaction_elk_defaults_wider_spacing():
     opts = graph["layoutOptions"]
     assert opts["elk.direction"] == "RIGHT"
     assert opts["elk.edgeRouting"] == "POLYLINE"
-    assert float(opts["elk.spacing.nodeNode"]) >= 56
+    assert float(opts["elk.spacing.nodeNode"]) == 20
     assert float(opts["elk.layered.spacing.nodeNodeBetweenLayers"]) == 20
     # Measured text boxes go to ELK with placement side.
     labs = graph["edges"][0]["labels"]
@@ -406,6 +413,37 @@ def test_branched_reaction_uses_elk_routes():
     assert "stroke-dasharray" in svg
 
 
+def test_simplify_route_snaps_micro_kink_to_straight():
+    """Orthogonal / polyline jogs under the kink threshold become a straight shaft."""
+    # Classic 5px jog — must collapse to two endpoints.
+    jog = [(0.0, 0.0), (100.0, 0.0), (100.0, 5.0), (200.0, 5.0)]
+    flat = simplify_route(jog, kink_px=10.0)
+    assert len(flat) == 2
+    assert flat[0] == (0.0, 0.0)
+    assert flat[-1] == (200.0, 5.0)
+
+    # Real L-bend stays (arms well above threshold).
+    elbow = [(0.0, 0.0), (80.0, 0.0), (80.0, 60.0), (140.0, 60.0)]
+    kept = simplify_route(elbow, kink_px=10.0)
+    assert len(kept) == 4
+
+
+def test_resolve_route_applies_simplify():
+    a = Viewport(id="A", x=0, y=0, width=40, height=40)
+    b = Viewport(id="B", x=200, y=0, width=40, height=40)
+    route = [(40.0, 20.0), (120.0, 20.0), (120.0, 28.0), (200.0, 28.0)]
+    pts = resolve_route(a, b, route)
+    assert len(pts) == 2
+
+
+def test_filleted_path_has_quadratic_turns():
+    pts = [(0.0, 0.0), (80.0, 0.0), (80.0, 60.0), (140.0, 60.0)]
+    d = filleted_path_d(pts, radius=18.0)
+    assert "Q" in d
+    # Straight two-point path stays linear.
+    assert "Q" not in filleted_path_d([(0.0, 0.0), (10.0, 0.0)])
+
+
 def test_polyline_route_drawn_with_bends():
     a = Viewport(id="A", x=0, y=0, width=40, height=40)
     b = Viewport(id="B", x=100, y=80, width=40, height=40)
@@ -418,5 +456,20 @@ def test_polyline_route_drawn_with_bends():
     )
     paths = [p for p in prims if isinstance(p, PathPrim)]
     shaft = next(p for p in paths if "head" not in (p.cls or ""))
-    assert shaft.d.count("L") >= 2
+    # Real bends keep corners; fillets paint them as quadratic arcs.
+    assert "Q" in shaft.d
+    assert shaft.d.count("L") >= 1
     assert "bend" in " ".join(getattr(p, "text", "") or "" for p in prims)
+
+
+def test_micro_kink_route_draws_straight_shaft():
+    """Tiny jog snaps to a straight shaft (no fillet / no kink)."""
+    a = Viewport(id="A", x=0, y=0, width=40, height=40)
+    b = Viewport(id="B", x=200, y=0, width=40, height=40)
+    route = [(40.0, 20.0), (120.0, 20.0), (120.0, 26.0), (200.0, 26.0)]
+    prims = edge_primitives(EdgeSpec(source="A", target="B"), a, b, route=route)
+    paths = [p for p in prims if isinstance(p, PathPrim)]
+    shaft = next(p for p in paths if "head" not in (p.cls or ""))
+    assert "Q" not in shaft.d
+    # Single line segment after simplify.
+    assert shaft.d.count("L") == 1

@@ -14,10 +14,128 @@ _HEAD = 9.0
 _GAP = 6.0
 _DASH = "6 4"
 _EQ_SEP = 3.2
+# Flatten tiny orthogonal/polyline jogs; larger → more aggressive straightening.
+_KINK_PX = 10.0
+# Corner fillet radius for remaining bends (and spline-like soft turns).
+_TURN_RADIUS = 18.0
 
 
 def _vp_center(vp: Viewport) -> tuple[float, float]:
     return vp.x + vp.width * 0.5, vp.y + vp.height * 0.5
+
+
+def _point_line_distance(
+    px: float, py: float, ax: float, ay: float, bx: float, by: float
+) -> float:
+    """Perpendicular distance from P to infinite line AB."""
+    dx, dy = bx - ax, by - ay
+    L2 = dx * dx + dy * dy
+    if L2 < 1e-12:
+        return math.hypot(px - ax, py - ay)
+    t = ((px - ax) * dx + (py - ay) * dy) / L2
+    qx, qy = ax + t * dx, ay + t * dy
+    return math.hypot(px - qx, py - qy)
+
+
+def simplify_route(
+    pts: Sequence[tuple[float, float]],
+    *,
+    kink_px: float = _KINK_PX,
+) -> list[tuple[float, float]]:
+    """Drop near-duplicates and flatten kinks under ``kink_px``.
+
+    Used for orthogonal / polyline routes so a tiny jog becomes a straight
+    shaft. Spline-dense paths also shed noise but keep real bends.
+    """
+    if len(pts) < 2:
+        return [(float(x), float(y)) for x, y in pts]
+    # 1) Dedup consecutive points.
+    cleaned: list[tuple[float, float]] = []
+    for x, y in pts:
+        p = (float(x), float(y))
+        if not cleaned or math.hypot(p[0] - cleaned[-1][0], p[1] - cleaned[-1][1]) > 1e-6:
+            cleaned.append(p)
+    if len(cleaned) <= 2:
+        return cleaned
+
+    # 2) Collapse short middle segments (classic orthogonal micro-jog).
+    changed = True
+    while changed and len(cleaned) > 2:
+        changed = False
+        out: list[tuple[float, float]] = [cleaned[0]]
+        i = 1
+        while i < len(cleaned) - 1:
+            x0, y0 = out[-1]
+            x1, y1 = cleaned[i]
+            x2, y2 = cleaned[i + 1]
+            seg = math.hypot(x1 - x0, y1 - y0)
+            nxt = math.hypot(x2 - x1, y2 - y1)
+            # Short elbow: skip the middle vertex and keep walking.
+            if seg < kink_px or nxt < kink_px:
+                i += 1
+                changed = True
+                continue
+            out.append(cleaned[i])
+            i += 1
+        out.append(cleaned[-1])
+        cleaned = out
+
+    # 3) Remove vertices nearly collinear with neighbors (RDP-lite pass).
+    changed = True
+    while changed and len(cleaned) > 2:
+        changed = False
+        out = [cleaned[0]]
+        for i in range(1, len(cleaned) - 1):
+            ax, ay = out[-1]
+            px, py = cleaned[i]
+            bx, by = cleaned[i + 1]
+            if _point_line_distance(px, py, ax, ay, bx, by) < kink_px:
+                changed = True
+                continue
+            out.append(cleaned[i])
+        out.append(cleaned[-1])
+        cleaned = out
+
+    return cleaned
+
+
+def filleted_path_d(
+    pts: Sequence[tuple[float, float]],
+    *,
+    radius: float = _TURN_RADIUS,
+) -> str:
+    """Polyline with quadratic fillets at corners (larger ``radius`` → softer turns)."""
+    if len(pts) < 2:
+        return ""
+    if len(pts) == 2 or radius <= 0:
+        return _path_d(pts)
+
+    bits: list[str] = [f"M {pts[0][0]:.2f} {pts[0][1]:.2f}"]
+    for i in range(1, len(pts) - 1):
+        ax, ay = pts[i - 1]
+        bx, by = pts[i]
+        cx, cy = pts[i + 1]
+        v1x, v1y = ax - bx, ay - by
+        v2x, v2y = cx - bx, cy - by
+        len1 = math.hypot(v1x, v1y) or 1.0
+        len2 = math.hypot(v2x, v2y) or 1.0
+        # Skip near-straight corners — already simplified, but be safe.
+        dot = (v1x * v2x + v1y * v2y) / (len1 * len2)
+        if dot < -0.98:  # ~180° — almost straight through
+            bits.append(f"L {bx:.2f} {by:.2f}")
+            continue
+        r = min(radius, 0.45 * len1, 0.45 * len2)
+        if r < 1.0:
+            bits.append(f"L {bx:.2f} {by:.2f}")
+            continue
+        u1x, u1y = v1x / len1, v1y / len1
+        u2x, u2y = v2x / len2, v2y / len2
+        p1 = (bx + u1x * r, by + u1y * r)
+        p2 = (bx + u2x * r, by + u2y * r)
+        bits.append(f"L {p1[0]:.2f} {p1[1]:.2f}")
+        bits.append(f"Q {bx:.2f} {by:.2f} {p2[0]:.2f} {p2[1]:.2f}")
+    bits.append(f"L {pts[-1][0]:.2f} {pts[-1][1]:.2f}")
+    return " ".join(bits)
 
 
 def _clip_box_edge(
@@ -137,7 +255,7 @@ def _shaft_poly(
     cls: str,
 ) -> PathPrim:
     return PathPrim(
-        d=_path_d(pts),
+        d=filleted_path_d(pts),
         stroke=color,
         fill="none",
         stroke_width=width,
@@ -249,9 +367,13 @@ def resolve_route(
     tgt: Viewport,
     route: Sequence[tuple[float, float]] | None = None,
 ) -> list[tuple[float, float]]:
-    """ELK polyline when present; otherwise straight viewport-boundary anchors."""
+    """ELK polyline when present; otherwise straight viewport-boundary anchors.
+
+    Orthogonal / polyline routes are simplified so micro-kinks under
+    ``_KINK_PX`` collapse to a straight shaft before painting.
+    """
     if route is not None and len(route) >= 2:
-        return [(float(x), float(y)) for x, y in route]
+        return simplify_route([(float(x), float(y)) for x, y in route])
     (x1, y1), (x2, y2) = edge_anchors(src, tgt)
     return [(x1, y1), (x2, y2)]
 
