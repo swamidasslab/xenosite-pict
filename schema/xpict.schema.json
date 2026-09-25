@@ -615,7 +615,7 @@
       ]
     },
     "LayoutOpts": {
-      "description": "Layout for [`DepictSpec::ReactionScheme`].\n\nBackend-agnostic knobs — hosts map these onto ELK, Dagre, or another engine. Defaults when omitted: [`LayoutDirection::Right`], [`EdgeRouting::Polyline`], [`LayoutAlgorithm::Layered`]. Individual [`EdgeNode`]s may override [`Self::edge_routing`].\n\nSpacing (px, document space) controls packing tightness: - [`Self::node_spacing`] — gap between nodes in the same layer (default ~20) - [`Self::layer_spacing`] — gap between reactant/product layers (default ~20)",
+      "description": "Layout for [`DepictSpec::ReactionScheme`].\n\nBackend-agnostic knobs — hosts map these onto ELK, Dagre, or another engine. Defaults when omitted: [`LayoutDirection::Right`], [`EdgeRouting::Polyline`], [`LayoutAlgorithm::Layered`]. Individual [`EdgeNode`]s may override [`Self::edge_routing`].\n\nSpacing (px, document space) controls packing tightness: - [`Self::node_spacing`] — gap between nodes in the same layer (default ~20) - [`Self::layer_spacing`] — gap between reactant/product layers (default ~0)",
       "type": "object",
       "properties": {
         "algorithm": {

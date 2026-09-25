@@ -33,7 +33,7 @@ def _flat(spec: LegacyPictSpec | object) -> LegacyPictSpec:
 
 
 _GAP = 24.0
-_REACTION_GAP = 20.0  # fallback row gap ≈ default layer_spacing
+_REACTION_GAP = 0.0  # fallback row gap ≈ default layer_spacing
 
 
 def _label_size(text: str, *, font_px: float = _EDGE_LABEL_FONT_PX) -> tuple[float, float]:
@@ -154,8 +154,8 @@ def _reaction_defaults(spec: LegacyPictSpec) -> dict[str, str]:
             {
                 # Tight pack: short arrows between mols / layers.
                 "elk.spacing.nodeNode": "20",
-                "elk.layered.spacing.nodeNodeBetweenLayers": "20",
-                "elk.layered.spacing.edgeNodeBetweenLayers": "10",
+                "elk.layered.spacing.nodeNodeBetweenLayers": "0",
+                "elk.layered.spacing.edgeNodeBetweenLayers": "0",
                 "elk.spacing.edgeEdge": "16",
                 # Prefer spreading branches so metabolite sinks don't stack.
                 "elk.layered.crossingMinimization.forceNodeModelOrder": "false",
@@ -180,7 +180,7 @@ def _reaction_defaults(spec: LegacyPictSpec) -> dict[str, str]:
         )
         # Keep edge–node clearance proportional when packing changes.
         base["elk.layered.spacing.edgeNodeBetweenLayers"] = str(
-            max(6.0, float(spec.diagram.layer_spacing) * 0.5)
+            max(0.0, float(spec.diagram.layer_spacing) * 0.5)
         )
     return base
 

@@ -132,7 +132,12 @@ def build_scene(
                 max_b = max(max_b, y + 8.0)
 
     # Diagram arrows / edge labels are drawn but do not opt into the halo.
-    overlays = diagram_overlays(spec.diagram.edges, placed, edge_paths=edge_paths)
+    overlays = diagram_overlays(
+        spec.diagram.edges,
+        placed,
+        edge_paths=edge_paths,
+        scheme_routing=getattr(spec.diagram, "edge_routing", None),
+    )
 
     halo_prims: list[Primitive] = []
     if spec.halo and doc_halo:

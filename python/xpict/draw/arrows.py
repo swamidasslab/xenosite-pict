@@ -16,12 +16,47 @@ _DASH = "6 4"
 _EQ_SEP = 3.2
 # Flatten tiny orthogonal/polyline jogs; larger → more aggressive straightening.
 _KINK_PX = 10.0
-# Corner fillet radius for remaining bends (and spline-like soft turns).
-_TURN_RADIUS = 18.0
+# Corner fillet radius for non-orthogonal (polyline) bends.
+_TURN_RADIUS = 36.0
 
 
 def _vp_center(vp: Viewport) -> tuple[float, float]:
     return vp.x + vp.width * 0.5, vp.y + vp.height * 0.5
+
+
+def _routing_name(routing: object | None) -> str | None:
+    if routing is None:
+        return None
+    raw = getattr(routing, "value", routing)
+    return str(raw).lower()
+
+
+def _axis_aligned(pts: Sequence[tuple[float, float]], *, tol: float = 1e-3) -> bool:
+    """True when every segment is horizontal or vertical (orthogonal route)."""
+    if len(pts) < 2:
+        return True
+    for i in range(1, len(pts)):
+        dx = abs(pts[i][0] - pts[i - 1][0])
+        dy = abs(pts[i][1] - pts[i - 1][1])
+        if dx > tol and dy > tol:
+            return False
+    return True
+
+
+def _should_fillet(
+    pts: Sequence[tuple[float, float]],
+    *,
+    edge_routing: object | None = None,
+) -> bool:
+    """Fillet soft polyline turns; keep orthogonal shafts axis-aligned."""
+    name = _routing_name(edge_routing)
+    if name == "orthogonal":
+        return False
+    if name in {"polyline", "splines"}:
+        # Explicit polyline may still be axis-aligned from ELK — keep H/V sharp.
+        return not _axis_aligned(pts)
+    # Unknown / unset: fillet only when the path already has diagonal segments.
+    return len(pts) > 2 and not _axis_aligned(pts)
 
 
 def _point_line_distance(
@@ -253,9 +288,11 @@ def _shaft_poly(
     width: float,
     dashed: bool,
     cls: str,
+    fillet: bool = True,
 ) -> PathPrim:
+    d = filleted_path_d(pts) if fillet else _path_d(pts)
     return PathPrim(
-        d=filleted_path_d(pts),
+        d=d,
         stroke=color,
         fill="none",
         stroke_width=width,
@@ -321,6 +358,7 @@ def _harpoon_poly(
     dashed: bool,
     head_size: float,
     cls: str,
+    fillet: bool = True,
 ) -> list[PathPrim]:
     """Half-arrow along a polyline."""
     shaft, tip, (ux, uy) = _shorten_polyline_end(pts, head_size)
@@ -329,7 +367,11 @@ def _harpoon_poly(
     bx, by = tip[0] - ux * head_size, tip[1] - uy * head_size
     out: list[PathPrim] = []
     if len(shaft) >= 2:
-        out.append(_shaft_poly(shaft, color=color, width=width, dashed=dashed, cls=cls))
+        out.append(
+            _shaft_poly(
+                shaft, color=color, width=width, dashed=dashed, cls=cls, fillet=fillet
+            )
+        )
     out.append(
         PathPrim(
             d=(f"M {tip[0]:.2f} {tip[1]:.2f} L {bx + px * barb:.2f} {by + py * barb:.2f}"),
@@ -385,6 +427,7 @@ def edge_primitives(
     *,
     index: int = 0,
     route: Sequence[tuple[float, float]] | None = None,
+    scheme_routing: object | None = None,
 ) -> list[Primitive]:
     """Build document-space primitives for one diagram edge."""
     pts = resolve_route(src, tgt, route)
@@ -396,6 +439,8 @@ def edge_primitives(
     dashed = edge.dashed
     arrow = edge.arrow
     cls = f"edge edge-{index}"
+    routing = getattr(edge, "edge_routing", None) or scheme_routing
+    fillet = _should_fillet(pts, edge_routing=routing)
     out: list[Primitive] = []
 
     if arrow == EdgeArrow.equilibrium:
@@ -409,6 +454,7 @@ def edge_primitives(
                 dashed=dashed,
                 head_size=_HEAD * 0.85,
                 cls=f"{cls} eq-fwd",
+                fillet=fillet,
             )
         )
         out.extend(
@@ -419,14 +465,28 @@ def edge_primitives(
                 dashed=dashed,
                 head_size=_HEAD * 0.85,
                 cls=f"{cls} eq-rev",
+                fillet=fillet,
             )
         )
     elif arrow == EdgeArrow.line:
-        out.append(_shaft_poly(pts, color=color, width=width, dashed=dashed, cls=cls))
+        out.append(
+            _shaft_poly(
+                pts, color=color, width=width, dashed=dashed, cls=cls, fillet=fillet
+            )
+        )
     elif arrow == EdgeArrow.open:
         shaft, tip, (ux, uy) = _shorten_polyline_end(pts, _HEAD)
         if len(shaft) >= 2:
-            out.append(_shaft_poly(shaft, color=color, width=width, dashed=dashed, cls=cls))
+            out.append(
+                _shaft_poly(
+                    shaft,
+                    color=color,
+                    width=width,
+                    dashed=dashed,
+                    cls=cls,
+                    fillet=fillet,
+                )
+            )
         out.append(
             _open_head(
                 tip[0],
@@ -443,8 +503,21 @@ def edge_primitives(
         # forward
         shaft, tip, (ux, uy) = _shorten_polyline_end(pts, _HEAD)
         if len(shaft) >= 2:
-            out.append(_shaft_poly(shaft, color=color, width=width, dashed=dashed, cls=cls))
-        out.append(_filled_head(tip[0], tip[1], ux, uy, color=color, size=_HEAD, cls=f"{cls} head"))
+            out.append(
+                _shaft_poly(
+                    shaft,
+                    color=color,
+                    width=width,
+                    dashed=dashed,
+                    cls=cls,
+                    fillet=fillet,
+                )
+            )
+        out.append(
+            _filled_head(
+                tip[0], tip[1], ux, uy, color=color, size=_HEAD, cls=f"{cls} head"
+            )
+        )
 
     if edge.label:
         mx, my, px, py = _label_point(pts)
@@ -470,6 +543,8 @@ def diagram_overlays(
     edges: Sequence[EdgeSpec],
     viewports: Sequence[Viewport],
     edge_paths: Sequence[Sequence[tuple[float, float]] | None] | None = None,
+    *,
+    scheme_routing: object | None = None,
 ) -> list[Primitive]:
     """Document overlays for all edges that resolve to placed viewports."""
     by_id = {vp.id: vp for vp in viewports if vp.id}
@@ -485,5 +560,14 @@ def diagram_overlays(
         route = None
         if edge_paths is not None and i < len(edge_paths):
             route = edge_paths[i]
-        prims.extend(edge_primitives(edge, src, tgt, index=i, route=route))
+        prims.extend(
+            edge_primitives(
+                edge,
+                src,
+                tgt,
+                index=i,
+                route=route,
+                scheme_routing=scheme_routing,
+            )
+        )
     return prims

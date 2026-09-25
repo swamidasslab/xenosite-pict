@@ -254,7 +254,8 @@ def test_reaction_elk_defaults_wider_spacing():
     assert opts["elk.edgeRouting"] == "POLYLINE"
     assert opts["elk.layered.unnecessaryBendpoints"] == "false"
     assert float(opts["elk.spacing.nodeNode"]) == 20
-    assert float(opts["elk.layered.spacing.nodeNodeBetweenLayers"]) == 20
+    assert float(opts["elk.layered.spacing.nodeNodeBetweenLayers"]) == 0
+    assert float(opts["elk.layered.spacing.edgeNodeBetweenLayers"]) == 0
     # Measured text boxes go to ELK with placement side.
     labs = graph["edges"][0]["labels"]
     assert len(labs) == 1
@@ -476,26 +477,44 @@ def test_resolve_route_applies_simplify():
 
 
 def test_filleted_path_has_quadratic_turns():
-    pts = [(0.0, 0.0), (80.0, 0.0), (80.0, 60.0), (140.0, 60.0)]
-    d = filleted_path_d(pts, radius=18.0)
+    pts = [(0.0, 0.0), (80.0, 0.0), (120.0, 60.0), (180.0, 60.0)]
+    d = filleted_path_d(pts, radius=36.0)
     assert "Q" in d
     # Straight two-point path stays linear.
     assert "Q" not in filleted_path_d([(0.0, 0.0), (10.0, 0.0)])
 
 
-def test_polyline_route_drawn_with_bends():
+def test_orthogonal_route_stays_axis_aligned():
+    """Orthogonal (axis-aligned) shafts keep sharp corners — no quadratic fillets."""
     a = Viewport(id="A", x=0, y=0, width=40, height=40)
     b = Viewport(id="B", x=100, y=80, width=40, height=40)
     route = [(40.0, 20.0), (70.0, 20.0), (70.0, 100.0), (100.0, 100.0)]
     prims = edge_primitives(
-        EdgeSpec(source="A", target="B", label="bend"),
+        EdgeSpec(source="A", target="B", edge_routing="orthogonal", label="ortho"),
         a,
         b,
         route=route,
     )
     paths = [p for p in prims if isinstance(p, PathPrim)]
     shaft = next(p for p in paths if "head" not in (p.cls or ""))
-    # Real bends keep corners; fillets paint them as quadratic arcs.
+    assert "Q" not in shaft.d
+    assert shaft.d.count("L") >= 2
+
+
+def test_polyline_route_drawn_with_bends():
+    """Non-orthogonal polyline corners get a larger fillet radius."""
+    a = Viewport(id="A", x=0, y=0, width=40, height=40)
+    b = Viewport(id="B", x=140, y=80, width=40, height=40)
+    # Diagonal middle segment → soft fillet (not axis-aligned).
+    route = [(40.0, 20.0), (90.0, 20.0), (110.0, 100.0), (140.0, 100.0)]
+    prims = edge_primitives(
+        EdgeSpec(source="A", target="B", edge_routing="polyline", label="bend"),
+        a,
+        b,
+        route=route,
+    )
+    paths = [p for p in prims if isinstance(p, PathPrim)]
+    shaft = next(p for p in paths if "head" not in (p.cls or ""))
     assert "Q" in shaft.d
     assert shaft.d.count("L") >= 1
     assert "bend" in " ".join(getattr(p, "text", "") or "" for p in prims)
