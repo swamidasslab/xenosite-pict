@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
+from typing import Any
 
 from xpict import _native as _rust
 from xpict.contracts.scene import PathPrim, Primitive, TextPrim, Viewport
@@ -63,7 +64,7 @@ def _name(val: object | None) -> str | None:
     return str(getattr(val, "value", val)).lower()
 
 
-def _from_native_prims(raw: list[dict]) -> list[Primitive]:
+def _from_native_prims(raw: list[dict[str, Any]]) -> list[Primitive]:
     out: list[Primitive] = []
     for p in raw:
         kind = p.get("kind")
