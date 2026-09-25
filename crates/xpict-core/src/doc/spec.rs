@@ -864,7 +864,7 @@ pub enum EdgeRouting {
 ///
 /// Spacing (px, document space) controls packing tightness:
 /// - [`Self::node_spacing`] — gap between nodes in the same layer (default ~56)
-/// - [`Self::layer_spacing`] — gap between reactant/product layers (default ~80)
+/// - [`Self::layer_spacing`] — gap between reactant/product layers (default ~20)
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
 #[cfg_attr(feature = "codegen", ts(export))]

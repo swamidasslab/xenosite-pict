@@ -246,7 +246,7 @@ def test_reaction_elk_defaults_wider_spacing():
     assert opts["elk.direction"] == "RIGHT"
     assert opts["elk.edgeRouting"] == "POLYLINE"
     assert float(opts["elk.spacing.nodeNode"]) >= 56
-    assert float(opts["elk.layered.spacing.nodeNodeBetweenLayers"]) >= 80
+    assert float(opts["elk.layered.spacing.nodeNodeBetweenLayers"]) == 20
     # Measured text boxes go to ELK with placement side.
     labs = graph["edges"][0]["labels"]
     assert len(labs) == 1

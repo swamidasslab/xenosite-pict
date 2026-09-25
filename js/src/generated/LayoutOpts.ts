@@ -11,7 +11,7 @@ import type { LayoutDirection } from "./LayoutDirection";
  *
  * Spacing (px, document space) controls packing tightness:
  * - [`Self::node_spacing`] — gap between nodes in the same layer (default ~56)
- * - [`Self::layer_spacing`] — gap between reactant/product layers (default ~80)
+ * - [`Self::layer_spacing`] — gap between reactant/product layers (default ~20)
  */
 export type LayoutOpts = { 
 /**
