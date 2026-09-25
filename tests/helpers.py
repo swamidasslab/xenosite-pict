@@ -43,6 +43,10 @@ def layout_to_rdkit_with_wedges(layout: MoleculeLayout) -> Any:
         a = Chem.Atom(atom.element)
         if atom.charge:
             a.SetFormalCharge(int(atom.charge))
+        if atom.isotope:
+            a.SetIsotope(int(atom.isotope))
+        if atom.radical:
+            a.SetNumRadicalElectrons(int(atom.radical))
         idx[atom.index] = em.AddAtom(a)
     for bond in layout.bonds:
         if bond.order >= 2.5:

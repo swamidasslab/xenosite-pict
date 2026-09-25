@@ -20,6 +20,12 @@ from xpict.draw.metrics import FONT_PX
 LabelSide = Literal["east", "west", "north", "south"]
 
 
+def label_has_charge_suffix(text: str) -> bool:
+    """True when ``text`` already ends with a charge sign (ASCII or unicode)."""
+    t = text.rstrip()
+    return bool(t) and t[-1] in "+-−⁺⁻"
+
+
 @dataclass(frozen=True, slots=True)
 class PlacedLabel:
     text: str

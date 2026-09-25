@@ -27,7 +27,7 @@ from helpers import (
 from xpict import Pict
 from xpict.contracts.layout import BondLayout, MoleculeLayout
 
-# Seeds spanning acyclic, aromatic, amino-acid, and ring stereo.
+# Seeds spanning acyclic, aromatic, amino-acid, ring, isotope, and charged stereo.
 _CHIRAL_SEEDS: tuple[str, ...] = (
     "C[C@H](O)Cl",
     "C[C@@H](O)Cl",
@@ -44,6 +44,10 @@ _CHIRAL_SEEDS: tuple[str, ...] = (
     "C[C@@](F)(Cl)Br",
     "O[C@H]1CCCC1",
     "Cl[C@@H]1CCOCC1",
+    "C[C@]([2H])(O)Cl",
+    "C[C@@]([2H])(O)Cl",
+    "C[C@H]([NH3+])C(=O)[O-]",
+    "C[C@@H]([NH3+])C(=O)[O-]",
 )
 
 

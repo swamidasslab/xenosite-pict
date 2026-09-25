@@ -173,7 +173,12 @@ class Drawable(ABC):
 
 
 def display_text(atom) -> str | None:
-    """Label string actually painted (includes charge suffix)."""
+    """Label string actually painted (includes charge suffix when missing).
+
+    Backends often embed charge in ``atom.label`` (``NH4+``, ``O−``). Match
+    Rust ``display_label``: append ``atom.charge`` only when the label body
+    does not already carry a charge suffix.
+    """
     label = atom.label
     if label is None and (atom.charge or atom.radical or atom.element == "*"):
         label = "*" if atom.element == "*" else atom.element
@@ -181,9 +186,12 @@ def display_text(atom) -> str | None:
         return None
     text = label
     if atom.charge:
-        sign = "+" if atom.charge > 0 else "−"
-        mag = abs(atom.charge)
-        text = f"{label}{sign}" if mag == 1 else f"{label}{mag}{sign}"
+        from xpict.draw.label_place import label_has_charge_suffix
+
+        if not label_has_charge_suffix(text):
+            sign = "+" if atom.charge > 0 else "−"
+            mag = abs(atom.charge)
+            text = f"{label}{sign}" if mag == 1 else f"{label}{mag}{sign}"
     return text
 
 
