@@ -1,11 +1,14 @@
-//! Declarative document — plan (pass 1) + paint (pass 2).
+//! Declarative document — plan (pass 1) + paint (pass 2) + scheme compose.
 //!
 //! Wire types live in [`spec`] (opts cascade + DepictSpec collocated).
 //! Hosts call [`plan_edge`] → process the [`EdgePlan`] with RDKit →
-//! [`render_doc`] with the [`EdgeResult`]. No RDKit in this module.
+//! [`render_doc`] with the [`EdgeResult`] → [`compose_scheme`] for reaction
+//! schemes. No RDKit in this module.
 
+mod compose;
 mod spec;
 
+pub use compose::compose_scheme;
 pub use spec::*;
 
 use std::collections::HashMap;

@@ -1,13 +1,16 @@
-"""Build a Scene from layout + PictSpec (xenopict-inspired layers)."""
+"""Build a Scene from layout + PictSpec (xenopict-inspired layers).
+
+Scheme (reaction/network) composition lives in Rust ``compose_scheme`` —
+this module only places molecule viewports for row/grid docs.
+"""
 
 from __future__ import annotations
 
 from collections.abc import Sequence
 
 from xpict.contracts.layout import MoleculeLayout
-from xpict.contracts.scene import PathPrim, Primitive, Scene, TextPrim, Viewport
+from xpict.contracts.scene import Primitive, Scene, Viewport
 from xpict.future.spec import LegacyPictSpec, MoleculeSpec
-from xpict.draw.arrows import diagram_overlays
 from xpict.draw.drawable import (
     display_text,
     mol_occupancy,
@@ -18,7 +21,8 @@ from xpict.draw.drawn import Halo
 from xpict.draw.markush import apply_rgroup_texts
 from xpict.draw.metrics import shared_coord_scale
 from xpict.draw.mol_title import pack_label
-from xpict.draw.paths import path_coords
+
+_GAP = 24.0
 
 
 def _flat(spec: LegacyPictSpec | object) -> LegacyPictSpec:
@@ -30,6 +34,7 @@ def _flat(spec: LegacyPictSpec | object) -> LegacyPictSpec:
 
 __all__ = [
     "build_scene",
+    "grid_positions",
     "molecule_to_viewport",
     "normalize_coords",
     "viewport_size",
@@ -78,24 +83,41 @@ def molecule_to_viewport(
     return vp
 
 
+def grid_positions(
+    layouts: Sequence[MoleculeLayout],
+    columns: int,
+    sizes: Sequence[tuple[float, float]],
+) -> list[tuple[float, float]]:
+    """Top-left positions for a simple grid of viewports."""
+    cols = max(1, columns)
+    n = len(layouts)
+    rows = (n + cols - 1) // cols
+    col_w = [0.0] * cols
+    row_h = [0.0] * rows
+    for i, (w, h) in enumerate(sizes):
+        r, c = divmod(i, cols)
+        col_w[c] = max(col_w[c], w)
+        row_h[r] = max(row_h[r], h)
+    xs = [0.0]
+    for c in range(cols - 1):
+        xs.append(xs[-1] + col_w[c] + _GAP)
+    ys = [0.0]
+    for r in range(rows - 1):
+        ys.append(ys[-1] + row_h[r] + _GAP)
+    return [(xs[c], ys[r]) for i in range(n) for r, c in [divmod(i, cols)]]
+
+
 def build_scene(
     layouts: Sequence[MoleculeLayout],
     mol_specs: Sequence[MoleculeSpec],
     spec: LegacyPictSpec | object,
     positions: Sequence[tuple[float, float]] | None = None,
-    edge_paths: Sequence[Sequence[tuple[float, float]] | None] | None = None,
     *,
-    diagram_width: float | None = None,
-    diagram_height: float | None = None,
     scale: float | None = None,
 ) -> Scene:
-    """Assemble viewports + overlays; one document :class:`~xpict.draw.drawn.Halo`.
+    """Assemble viewports (+ optional document halo). No scheme overlays.
 
-    Drawables opt into that halo (backbone, element symbols, annotations).
-    Shading, molecule captions, and diagram arrows do not.
-
-    Co-displayed molecules share one coord ``scale`` (default:
-    :func:`~xpict.draw.metrics.shared_coord_scale`).
+    Reaction / network arrows are composed in Rust ``compose_scheme``.
     """
     spec = _flat(spec)
     if scale is None:
@@ -124,45 +146,18 @@ def build_scene(
             mol_halo.shift(px, py)
             doc_halo.extend(mol_halo.jobs)
 
-    if edge_paths:
-        for route in edge_paths:
-            if not route:
-                continue
-            for x, y in route:
-                max_r = max(max_r, x + 8.0)
-                max_b = max(max_b, y + 8.0)
-
-    # Diagram arrows / edge labels are drawn but do not opt into the halo.
-    overlays = diagram_overlays(
-        spec.diagram.edges,
-        placed,
-        edge_paths=edge_paths,
-        scheme_routing=getattr(spec.diagram, "edge_routing", None),
-    )
-
-    # Expand canvas for overlay ink (heads, labels) beyond route endpoints.
-    for prim in overlays:
-        if isinstance(prim, TextPrim):
-            max_r = max(max_r, float(prim.x) + 12.0)
-            max_b = max(max_b, float(prim.y) + 12.0)
-        elif isinstance(prim, PathPrim) and prim.d:
-            for x, y in path_coords(prim.d):
-                max_r = max(max_r, x + 8.0)
-                max_b = max(max_b, y + 8.0)
-
     halo_prims: list[Primitive] = []
     if spec.halo and doc_halo:
         prim = doc_halo.to_prim(cls="halo")
         if prim is not None:
             halo_prims = [prim]
 
-    # Total size is the max of preferred size, viewport extents, and ELK diagram.
-    width = max(float(spec.width or 0.0), max_r, float(diagram_width or 0.0))
-    height = max(float(spec.height or 0.0), max_b, float(diagram_height or 0.0))
+    width = max(float(spec.width or 0.0), max_r)
+    height = max(float(spec.height or 0.0), max_b)
     return Scene(
         width=width,
         height=height,
         viewports=placed,
-        overlays=overlays,
+        overlays=[],
         halo=halo_prims,
     )

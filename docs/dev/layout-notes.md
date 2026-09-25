@@ -199,10 +199,8 @@ not bit-identical to elkjs 0.9. Needs **Rust ≥ 1.85**.
 `_native.Shape`; Shapely is no longer a dependency.
 
 `diagram.kind: reaction` packs ELK tightly (node spacing ~20, layer spacing ~0)
-and falls back to a vertically-centered row. `layout_diagram_ex`
-returns node positions **and** ELK edge section polylines (orthogonal bends);
-Rust `xpict-core::arrows` strokes those routes into `Scene.overlays` (straight
-viewport-to-viewport anchors when ELK is unavailable). Orthogonal shafts stay
-axis-aligned; polyline bends use a larger fillet radius.
+via Rust `compose_scheme` (ELK + arrow overlays). Live wire form is
+`type: reaction_scheme`. Orthogonal shafts stay axis-aligned; polyline bends
+use a larger fillet radius.
 
 See also `docs/pocs/` for derisk POCs and schema-alpha feedback.

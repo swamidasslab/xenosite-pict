@@ -30,3 +30,5 @@ venv/
 # Generated API docs (MkDocs build) — produced into `_site/`, not committed
 docs/typedoc/
 docs/rustdoc/
+target/
+lcov.info

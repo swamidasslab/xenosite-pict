@@ -100,8 +100,9 @@ def render(
 ) -> Any:
     """Single-mol ``render(mol, opts)`` or document ``render(doc)``.
 
-    Live nested ``DepictSpec`` (``type: mol|group``) uses the Rust two-pass
-    (``depict`` → SVG). Legacy flat / future docs still go through ``Pict``.
+    Live nested ``DepictSpec`` (``type: mol|group|reaction_scheme``) uses the
+    Rust two/three-pass (``depict`` → SVG). Legacy flat / future docs still go
+    through ``Pict`` (schemes convert to live ``reaction_scheme``).
     """
     if isinstance(input, (Mol, str)):
         return render_mol(input, opts)
