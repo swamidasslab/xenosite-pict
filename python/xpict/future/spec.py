@@ -463,6 +463,14 @@ class DiagramSpec(StrictModel):
     kind: DiagramKind = DiagramKind.single
     columns: int | None = Field(default=None, description="Grid columns when kind=grid")
     edges: list[EdgeSpec] = Field(default_factory=list)
+    node_spacing: float | None = Field(
+        default=None,
+        description="Within-layer node gap (px); overrides reaction/network defaults",
+    )
+    layer_spacing: float | None = Field(
+        default=None,
+        description="Between-layer gap along flow (px); overrides reaction/network defaults",
+    )
     elk_options: dict[str, Any] = Field(
         default_factory=dict,
         description="Pass-through ELK layout options (engine-specific support varies)",

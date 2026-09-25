@@ -8,6 +8,10 @@ import type { LayoutDirection } from "./LayoutDirection";
  * Backend-agnostic knobs — hosts map these onto ELK, Dagre, or another engine.
  * Defaults when omitted: [`LayoutDirection::Right`], [`EdgeRouting::Polyline`].
  * Individual [`EdgeNode`]s may override [`Self::edge_routing`].
+ *
+ * Spacing (px, document space) controls packing tightness:
+ * - [`Self::node_spacing`] — gap between nodes in the same layer (default ~56)
+ * - [`Self::layer_spacing`] — gap between reactant/product layers (default ~80)
  */
 export type LayoutOpts = { 
 /**
@@ -17,4 +21,12 @@ direction?: LayoutDirection,
 /**
  * Shaft style (`polyline` / `orthogonal` / `splines`).
  */
-edge_routing?: EdgeRouting, };
+edge_routing?: EdgeRouting, 
+/**
+ * Within-layer node gap (px). Smaller → tighter pack.
+ */
+node_spacing?: number, 
+/**
+ * Between-layer gap along the flow axis (px). Smaller → tighter pack.
+ */
+layer_spacing?: number, };

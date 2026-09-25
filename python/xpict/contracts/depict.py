@@ -226,6 +226,8 @@ class LayoutOpts(StrictModel):
     """Layout for [`DepictSpec::ReactionScheme`]."""
     direction: Annotated[LayoutDirection | None, Field(description='Flow axis (`right` / `left` / `up` / `down`).')] = None
     edge_routing: Annotated[EdgeRouting | None, Field(description='Shaft style (`polyline` / `orthogonal` / `splines`).')] = None
+    layer_spacing: Annotated[float | None, Field(description='Between-layer gap along the flow axis (px). Smaller → tighter pack.')] = None
+    node_spacing: Annotated[float | None, Field(description='Within-layer node gap (px). Smaller → tighter pack.')] = None
 
 
 class ReactionSchemeNode(StrictModel):

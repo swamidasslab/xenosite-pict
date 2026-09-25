@@ -56,6 +56,14 @@ class LayoutSpec(StrictModel):
         default=None, description="Stack / reaction flow direction"
     )
     gap: float | None = Field(default=None, description="Spacing between children")
+    node_spacing: float | None = Field(
+        default=None,
+        description="Within-layer node gap (px); smaller packs tighter",
+    )
+    layer_spacing: float | None = Field(
+        default=None,
+        description="Between-layer gap along flow (px); smaller packs tighter",
+    )
     attach: Literal["below", "above", "left", "right"] | None = Field(
         default=None,
         description="Where a nested child attaches relative to its parent",
@@ -388,6 +396,8 @@ def lift_legacy(data: dict[str, Any]) -> dict[str, Any]:
         "height": root.get("height"),
         "columns": diagram.get("columns"),
         "align": bool(diagram.get("align", False)),
+        "node_spacing": diagram.get("node_spacing"),
+        "layer_spacing": diagram.get("layer_spacing"),
         "elk_options": dict(diagram.get("elk_options") or {}),
         "edges": list(diagram.get("edges") or []),
     }
@@ -599,6 +609,10 @@ def flatten_to_legacy(node: Node) -> LegacyPictSpec:
             kind=kind,
             columns=columns,
             edges=edges,
+            node_spacing=root_layout.node_spacing,
+            layer_spacing=root_layout.layer_spacing
+            if root_layout.layer_spacing is not None
+            else root_layout.gap,
             elk_options=elk_options,
             align=align,
         ),

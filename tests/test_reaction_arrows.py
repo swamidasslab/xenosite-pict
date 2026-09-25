@@ -259,6 +259,49 @@ def test_reaction_elk_defaults_wider_spacing():
     )
 
 
+def test_reaction_packing_spacing_knobs():
+    """node_spacing / layer_spacing tighten or loosen ELK packing."""
+    tight = PictSpec.model_validate(
+        {
+            "molecules": [
+                {"id": "A", "smiles": "CCO"},
+                {"id": "B", "smiles": "CC=O"},
+            ],
+            "diagram": {
+                "kind": "reaction",
+                "node_spacing": 24,
+                "layer_spacing": 36,
+                "edges": [{"source": "A", "target": "B"}],
+            },
+        }
+    )
+    loose = PictSpec.model_validate(
+        {
+            "molecules": [
+                {"id": "A", "smiles": "CCO"},
+                {"id": "B", "smiles": "CC=O"},
+            ],
+            "diagram": {
+                "kind": "reaction",
+                "node_spacing": 80,
+                "layer_spacing": 120,
+                "edges": [{"source": "A", "target": "B"}],
+            },
+        }
+    )
+    pict = Pict(backend=layout_backend())
+    tg = elk_graph(pict.layout(tight), tight)["layoutOptions"]
+    lg = elk_graph(pict.layout(loose), loose)["layoutOptions"]
+    assert float(tg["elk.spacing.nodeNode"]) == 24
+    assert float(tg["elk.layered.spacing.nodeNodeBetweenLayers"]) == 36
+    assert float(lg["elk.spacing.nodeNode"]) == 80
+    assert float(lg["elk.layered.spacing.nodeNodeBetweenLayers"]) == 120
+    # Tighter packing should place B closer to A along x.
+    tp = layout_diagram(pict.layout(tight), tight)
+    lp = layout_diagram(pict.layout(loose), loose)
+    assert lp[1][0] - lp[0][0] > tp[1][0] - tp[0][0]
+
+
 def test_diagram_overlays_skips_missing_ids():
     a = Viewport(id="A", x=0, y=0, width=40, height=40)
     prims = diagram_overlays(

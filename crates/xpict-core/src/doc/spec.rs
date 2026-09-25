@@ -861,6 +861,10 @@ pub enum EdgeRouting {
 /// Backend-agnostic knobs — hosts map these onto ELK, Dagre, or another engine.
 /// Defaults when omitted: [`LayoutDirection::Right`], [`EdgeRouting::Polyline`].
 /// Individual [`EdgeNode`]s may override [`Self::edge_routing`].
+///
+/// Spacing (px, document space) controls packing tightness:
+/// - [`Self::node_spacing`] — gap between nodes in the same layer (default ~56)
+/// - [`Self::layer_spacing`] — gap between reactant/product layers (default ~80)
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
 #[cfg_attr(feature = "codegen", ts(export))]
@@ -873,6 +877,14 @@ pub struct LayoutOpts {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub edge_routing: Option<EdgeRouting>,
+    /// Within-layer node gap (px). Smaller → tighter pack.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub node_spacing: Option<f64>,
+    /// Between-layer gap along the flow axis (px). Smaller → tighter pack.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub layer_spacing: Option<f64>,
 }
 
 impl LayoutOpts {

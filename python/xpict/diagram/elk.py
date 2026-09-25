@@ -158,6 +158,17 @@ def _reaction_defaults(spec: LegacyPictSpec) -> dict[str, str]:
                 "elk.layered.crossingMinimization.forceNodeModelOrder": "false",
             }
         )
+    # Generic packing knobs (backend-agnostic names on DiagramSpec).
+    if spec.diagram.node_spacing is not None:
+        base["elk.spacing.nodeNode"] = str(spec.diagram.node_spacing)
+    if spec.diagram.layer_spacing is not None:
+        base["elk.layered.spacing.nodeNodeBetweenLayers"] = str(
+            spec.diagram.layer_spacing
+        )
+        # Keep edge–node clearance proportional when packing changes.
+        base["elk.layered.spacing.edgeNodeBetweenLayers"] = str(
+            max(12.0, float(spec.diagram.layer_spacing) * 0.35)
+        )
     return base
 
 
