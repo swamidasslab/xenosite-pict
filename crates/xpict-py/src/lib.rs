@@ -182,6 +182,17 @@ fn scheme_elk_options(kind: &str, opts_json: &str) -> PyResult<String> {
         .map_err(|e| PyRuntimeError::new_err(format!("options JSON: {e}")))
 }
 
+/// Viewport-boundary anchors: ``src``/``tgt`` are ``[x,y,w,h]``.
+#[pyfunction]
+#[pyo3(signature = (src, tgt, pad=None))]
+fn edge_anchors(
+    src: (f64, f64, f64, f64),
+    tgt: (f64, f64, f64, f64),
+    pad: Option<f64>,
+) -> ((f64, f64), (f64, f64)) {
+    xpict_core::edge_anchors(src, tgt, pad.unwrap_or(xpict_core::ANCHOR_GAP))
+}
+
 /// Simplify a route polyline JSON ``[[x,y],…]`` → same shape (kink snap).
 #[pyfunction]
 #[pyo3(signature = (pts_json, kink_px=None))]
@@ -660,6 +671,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(disk_halo_path_d, m)?)?;
     m.add_function(wrap_pyfunction!(elk_layout_json, m)?)?;
     m.add_function(wrap_pyfunction!(scheme_elk_options, m)?)?;
+    m.add_function(wrap_pyfunction!(edge_anchors, m)?)?;
     m.add_function(wrap_pyfunction!(simplify_route, m)?)?;
     m.add_function(wrap_pyfunction!(shaft_path_d, m)?)?;
     m.add_function(wrap_pyfunction!(filleted_path_d, m)?)?;

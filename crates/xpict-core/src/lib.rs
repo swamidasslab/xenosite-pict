@@ -31,8 +31,9 @@ pub mod scene;
 
 pub use align::{kabsch_2d, rigid_align_coords, RigidTransform};
 pub use arrows::{
-    axis_aligned, edge_primitives as arrow_edge_primitives, filleted_path_d, shaft_path_d,
-    should_fillet, simplify_route, EdgePaintIn, EdgePrim, KINK_PX, TURN_RADIUS,
+    axis_aligned, clip_box_edge, edge_anchors, edge_primitives as arrow_edge_primitives,
+    filleted_path_d, shaft_path_d, should_fillet, simplify_route, EdgePaintIn, EdgePrim,
+    ANCHOR_GAP, KINK_PX, TURN_RADIUS,
 };
 pub use bonds::{
     bond_paths, bond_strokes, centered_displacements, depict_order, join_centered_multibonds,

@@ -165,6 +165,67 @@ mod tests {
     }
 
     #[test]
+    fn layout_opts_map_direction_routing_spacing() {
+        for (dir, want) in [
+            (LayoutDirection::Right, "RIGHT"),
+            (LayoutDirection::Left, "LEFT"),
+            (LayoutDirection::Up, "UP"),
+            (LayoutDirection::Down, "DOWN"),
+        ] {
+            let opts = LayoutOpts {
+                direction: Some(dir),
+                ..Default::default()
+            };
+            let m = scheme_layout_options(DiagramKind::Network, &opts);
+            assert_eq!(m.get("elk.direction").unwrap(), want);
+        }
+        for (r, want) in [
+            (EdgeRouting::Orthogonal, "ORTHOGONAL"),
+            (EdgeRouting::Polyline, "POLYLINE"),
+            (EdgeRouting::Splines, "SPLINES"),
+        ] {
+            let opts = LayoutOpts {
+                edge_routing: Some(r),
+                ..Default::default()
+            };
+            let m = scheme_layout_options(DiagramKind::Network, &opts);
+            assert_eq!(m.get("elk.edgeRouting").unwrap(), want);
+        }
+        for (a, want) in [
+            (LayoutAlgorithm::Layered, "layered"),
+            (LayoutAlgorithm::Radial, "radial"),
+            (LayoutAlgorithm::Force, "force"),
+            (LayoutAlgorithm::Stress, "stress"),
+        ] {
+            let opts = LayoutOpts {
+                algorithm: Some(a),
+                ..Default::default()
+            };
+            assert_eq!(
+                scheme_layout_options(DiagramKind::Reaction, &opts)
+                    .get("elk.algorithm")
+                    .unwrap(),
+                want
+            );
+        }
+        let opts = LayoutOpts {
+            node_spacing: Some(24.0),
+            layer_spacing: Some(40.0),
+            ..Default::default()
+        };
+        let m = scheme_layout_options(DiagramKind::Reaction, &opts);
+        assert_eq!(m.get("elk.spacing.nodeNode").unwrap(), "24");
+        assert_eq!(
+            m.get("elk.layered.spacing.nodeNodeBetweenLayers").unwrap(),
+            "40"
+        );
+        assert_eq!(
+            m.get("elk.layered.spacing.edgeNodeBetweenLayers").unwrap(),
+            "20"
+        );
+    }
+
+    #[test]
     fn layered_orthogonal_emits_edge_sections() {
         let input = r#"{
           "id": "root",

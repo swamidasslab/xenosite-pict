@@ -9,36 +9,16 @@ from xpict import _native as _rust
 from xpict.contracts.scene import PathPrim, Primitive, TextPrim, Viewport
 from xpict.future.spec import EdgeSpec
 
-_GAP = 6.0
-
-
-def _vp_center(vp: Viewport) -> tuple[float, float]:
-    return vp.x + vp.width * 0.5, vp.y + vp.height * 0.5
-
-
-def _clip_box_edge(
-    cx: float, cy: float, tx: float, ty: float, w: float, h: float, pad: float
-) -> tuple[float, float]:
-    """Point on the padded axis-aligned box around (cx,cy) toward (tx,ty)."""
-    dx, dy = tx - cx, ty - cy
-    if abs(dx) < 1e-9 and abs(dy) < 1e-9:
-        return cx, cy
-    hw, hh = w * 0.5 + pad, h * 0.5 + pad
-    sx = hw / abs(dx) if abs(dx) > 1e-9 else float("inf")
-    sy = hh / abs(dy) if abs(dy) > 1e-9 else float("inf")
-    t = min(sx, sy)
-    return cx + dx * t, cy + dy * t
-
 
 def edge_anchors(
-    src: Viewport, tgt: Viewport, *, pad: float = _GAP
+    src: Viewport, tgt: Viewport, *, pad: float | None = None
 ) -> tuple[tuple[float, float], tuple[float, float]]:
-    """Viewport-boundary anchors for an edge from ``src`` to ``tgt``."""
-    sx, sy = _vp_center(src)
-    tx, ty = _vp_center(tgt)
-    p0 = _clip_box_edge(sx, sy, tx, ty, src.width, src.height, pad)
-    p1 = _clip_box_edge(tx, ty, sx, sy, tgt.width, tgt.height, pad)
-    return p0, p1
+    """Viewport-boundary anchors for an edge from ``src`` to ``tgt`` (Rust)."""
+    return _rust.edge_anchors(
+        (src.x, src.y, src.width, src.height),
+        (tgt.x, tgt.y, tgt.width, tgt.height),
+        pad,
+    )
 
 
 def simplify_route(
@@ -74,8 +54,7 @@ def resolve_route(
     """ELK polyline when present; otherwise straight viewport-boundary anchors."""
     if route is not None and len(route) >= 2:
         return simplify_route([(float(x), float(y)) for x, y in route])
-    (x1, y1), (x2, y2) = edge_anchors(src, tgt)
-    return [(x1, y1), (x2, y2)]
+    return list(edge_anchors(src, tgt))
 
 
 def _name(val: object | None) -> str | None:

@@ -15,6 +15,58 @@ const DEFAULT_WIDTH: f64 = 1.6;
 const HEAD: f64 = 9.0;
 const DASH: &str = "6 4";
 const EQ_SEP: f64 = 3.2;
+/// Gap from molecule viewport edge to shaft anchors (document px).
+pub const ANCHOR_GAP: f64 = 6.0;
+
+/// Axis-aligned box around ``(cx,cy)`` clipped toward ``(tx,ty)``.
+pub fn clip_box_edge(
+    cx: f64,
+    cy: f64,
+    tx: f64,
+    ty: f64,
+    w: f64,
+    h: f64,
+    pad: f64,
+) -> Pt {
+    let dx = tx - cx;
+    let dy = ty - cy;
+    if dx.abs() < 1e-9 && dy.abs() < 1e-9 {
+        return (cx, cy);
+    }
+    let hw = w * 0.5 + pad;
+    let hh = h * 0.5 + pad;
+    let sx = if dx.abs() > 1e-9 {
+        hw / dx.abs()
+    } else {
+        f64::INFINITY
+    };
+    let sy = if dy.abs() > 1e-9 {
+        hh / dy.abs()
+    } else {
+        f64::INFINITY
+    };
+    let t = sx.min(sy);
+    (cx + dx * t, cy + dy * t)
+}
+
+/// Viewport-boundary anchors between two molecule boxes.
+///
+/// Each box is ``(x, y, width, height)`` in document space.
+pub fn edge_anchors(
+    src: (f64, f64, f64, f64),
+    tgt: (f64, f64, f64, f64),
+    pad: f64,
+) -> (Pt, Pt) {
+    let (sx, sy, sw, sh) = src;
+    let (tx, ty, tw, th) = tgt;
+    let scx = sx + sw * 0.5;
+    let scy = sy + sh * 0.5;
+    let tcx = tx + tw * 0.5;
+    let tcy = ty + th * 0.5;
+    let p0 = clip_box_edge(scx, scy, tcx, tcy, sw, sh, pad);
+    let p1 = clip_box_edge(tcx, tcy, scx, scy, tw, th, pad);
+    (p0, p1)
+}
 
 /// Document-space point.
 pub type Pt = (f64, f64);
@@ -543,6 +595,24 @@ pub fn edge_primitives(edge: &EdgePaintIn) -> Vec<EdgePrim> {
 mod tests {
     use super::*;
 
+    fn paint(
+        pts: Vec<Pt>,
+        arrow: EdgeArrow,
+        routing: Option<EdgeRouting>,
+    ) -> EdgePaintIn {
+        EdgePaintIn {
+            pts,
+            arrow,
+            routing,
+            color: Some("#06c".into()),
+            stroke_width: Some(2.0),
+            dashed: true,
+            label: Some("lab".into()),
+            label_pos: Some("below".into()),
+            index: 1,
+        }
+    }
+
     #[test]
     fn simplify_snaps_micro_kink() {
         let jog = vec![(0.0, 0.0), (100.0, 0.0), (100.0, 5.0), (200.0, 5.0)];
@@ -553,9 +623,22 @@ mod tests {
     }
 
     #[test]
+    fn simplify_handles_short_and_duplicates() {
+        assert!(simplify_route(&[], KINK_PX).is_empty());
+        assert_eq!(simplify_route(&[(1.0, 2.0)], KINK_PX), vec![(1.0, 2.0)]);
+        let dups = vec![(0.0, 0.0), (0.0, 0.0), (10.0, 0.0)];
+        assert_eq!(simplify_route(&dups, KINK_PX).len(), 2);
+        // Real elbow stays.
+        let elbow = vec![(0.0, 0.0), (80.0, 0.0), (80.0, 60.0), (140.0, 60.0)];
+        assert_eq!(simplify_route(&elbow, KINK_PX).len(), 4);
+    }
+
+    #[test]
     fn orthogonal_keeps_sharp_corners() {
         let pts = vec![(0.0, 0.0), (80.0, 0.0), (80.0, 60.0), (140.0, 60.0)];
         assert!(!should_fillet(&pts, Some(EdgeRouting::Orthogonal)));
+        assert!(!should_fillet(&pts, Some(EdgeRouting::Polyline))); // axis-aligned
+        assert!(!should_fillet(&pts, None));
         let d = shaft_path_d(&pts, Some(EdgeRouting::Orthogonal));
         assert!(!d.contains('Q'));
         assert!(d.matches('L').count() >= 2);
@@ -565,25 +648,100 @@ mod tests {
     fn polyline_diagonal_gets_fillet() {
         let pts = vec![(0.0, 0.0), (80.0, 0.0), (120.0, 60.0), (180.0, 60.0)];
         assert!(should_fillet(&pts, Some(EdgeRouting::Polyline)));
+        assert!(should_fillet(&pts, Some(EdgeRouting::Splines)));
+        assert!(should_fillet(&pts, None));
         let d = shaft_path_d(&pts, Some(EdgeRouting::Polyline));
         assert!(d.contains('Q'));
     }
 
     #[test]
+    fn filleted_path_edge_cases() {
+        assert!(filleted_path_d(&[], TURN_RADIUS).is_empty());
+        assert!(!filleted_path_d(&[(0.0, 0.0), (10.0, 0.0)], TURN_RADIUS).contains('Q'));
+        assert!(!filleted_path_d(&[(0.0, 0.0), (10.0, 0.0), (20.0, 0.0)], 0.0).contains('Q'));
+        // Near-collinear corner → L, not Q.
+        let almost = vec![(0.0, 0.0), (50.0, 0.0), (100.0, 0.1)];
+        let d = filleted_path_d(&almost, TURN_RADIUS);
+        assert!(d.contains('L'));
+        // Tiny arms skip fillet.
+        let tiny = vec![(0.0, 0.0), (1.0, 0.0), (1.0, 1.0)];
+        assert!(!filleted_path_d(&tiny, TURN_RADIUS).contains('Q'));
+    }
+
+    #[test]
+    fn axis_aligned_and_point_line() {
+        assert!(axis_aligned(&[(0.0, 0.0)], 1e-3));
+        assert!(axis_aligned(&[(0.0, 0.0), (1.0, 0.0), (1.0, 2.0)], 1e-3));
+        assert!(!axis_aligned(&[(0.0, 0.0), (1.0, 1.0)], 1e-3));
+        assert!(point_line_distance(0.0, 1.0, 0.0, 0.0, 0.0, 0.0) >= 0.0);
+        assert!((point_line_distance(1.0, 1.0, 0.0, 0.0, 2.0, 0.0) - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn shorten_polyline_edge_cases() {
+        let (s, tip, _) = shorten_polyline_end(&[], 5.0);
+        assert_eq!(s.len(), 1);
+        assert_eq!(tip, (0.0, 0.0));
+        let (s, tip, dir) = shorten_polyline_end(&[(1.0, 2.0)], 5.0);
+        assert_eq!(tip, (1.0, 2.0));
+        assert_eq!(dir, (1.0, 0.0));
+        assert_eq!(s, vec![(1.0, 2.0)]);
+        // Zero-length segment skipped.
+        let pts = vec![(0.0, 0.0), (0.0, 0.0), (100.0, 0.0)];
+        let (s, _, (ux, _)) = shorten_polyline_end(&pts, 10.0);
+        assert!(s.len() >= 2);
+        assert!(ux > 0.0);
+        // Trim longer than path.
+        let (s, _, _) = shorten_polyline_end(&[(0.0, 0.0), (5.0, 0.0)], 20.0);
+        assert!(s.len() <= 2);
+    }
+
+    #[test]
     fn forward_edge_emits_shaft_and_head() {
-        let edge = EdgePaintIn {
-            pts: vec![(0.0, 0.0), (100.0, 0.0)],
-            arrow: EdgeArrow::Forward,
-            routing: Some(EdgeRouting::Polyline),
-            color: None,
-            stroke_width: None,
-            dashed: false,
-            label: Some("ox".into()),
-            label_pos: None,
-            index: 0,
-        };
+        let edge = paint(vec![(0.0, 0.0), (100.0, 0.0)], EdgeArrow::Forward, None);
         let prims = edge_primitives(&edge);
         assert!(prims.len() >= 2);
         assert!(prims.iter().any(|p| matches!(p, EdgePrim::Text { .. })));
+        assert!(prims.iter().any(|p| matches!(
+            p,
+            EdgePrim::Path {
+                stroke_dasharray: Some(_),
+                ..
+            }
+        )));
+    }
+
+    #[test]
+    fn line_open_equilibrium_arrows() {
+        let pts = vec![(0.0, 0.0), (40.0, 0.0), (40.0, 40.0), (80.0, 40.0)];
+        for arrow in [EdgeArrow::Line, EdgeArrow::Open, EdgeArrow::Equilibrium] {
+            let mut edge = paint(pts.clone(), arrow, Some(EdgeRouting::Orthogonal));
+            edge.label_pos = Some("above".into());
+            let prims = edge_primitives(&edge);
+            assert!(!prims.is_empty(), "{arrow:?}");
+        }
+        // Short path → no paint.
+        let short = paint(vec![(0.0, 0.0), (1.0, 0.0)], EdgeArrow::Line, None);
+        assert!(edge_primitives(&short).is_empty());
+    }
+
+    #[test]
+    fn edge_anchors_on_box_boundary() {
+        let (p0, p1) = edge_anchors((0.0, 0.0, 100.0, 80.0), (200.0, 0.0, 100.0, 80.0), 0.0);
+        assert!((p0.0 - 100.0).abs() < 1e-6);
+        assert!((p1.0 - 200.0).abs() < 1e-6);
+        assert!((p0.1 - 40.0).abs() < 1e-6);
+        let same = clip_box_edge(0.0, 0.0, 0.0, 0.0, 10.0, 10.0, 0.0);
+        assert_eq!(same, (0.0, 0.0));
+    }
+
+    #[test]
+    fn offset_and_label_helpers() {
+        assert_eq!(offset_polyline(&[(0.0, 0.0)], 2.0).len(), 1);
+        let off = offset_polyline(&[(0.0, 0.0), (10.0, 0.0), (10.0, 10.0)], 2.0);
+        assert_eq!(off.len(), 3);
+        let (x, y, _, _) = label_point(&[]);
+        assert_eq!((x, y), (0.0, 0.0));
+        let _ = label_point(&[(5.0, 5.0)]);
     }
 }
