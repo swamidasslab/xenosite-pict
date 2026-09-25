@@ -33,7 +33,7 @@ def _flat(spec: LegacyPictSpec | object) -> LegacyPictSpec:
 
 
 _GAP = 24.0
-_REACTION_GAP = 0.0  # fallback row gap ≈ default layer_spacing
+_REACTION_GAP = 0.0  # fallback row gap ≈ LayoutOpts::DEFAULT_LAYER_SPACING
 
 
 def _label_size(text: str, *, font_px: float = _EDGE_LABEL_FONT_PX) -> tuple[float, float]:
@@ -134,55 +134,25 @@ def _row_positions(
 
 
 def _reaction_defaults(spec: LegacyPictSpec) -> dict[str, str]:
-    """ELK defaults for network / reaction diagrams (caller options win)."""
-    base = {
-        "elk.algorithm": "layered",
-        "elk.direction": "RIGHT",
-        "elk.edgeRouting": "POLYLINE",
-        # Keep shafts simple: only bend where the edge actually turns.
-        "elk.layered.unnecessaryBendpoints": "false",
-        "elk.spacing.nodeNode": "40",
-        "elk.spacing.edgeEdge": "16",
-        "elk.spacing.edgeNode": "20",
-        "elk.layered.spacing.nodeNodeBetweenLayers": "48",
-        "elk.layered.spacing.edgeNodeBetweenLayers": "24",
-        "elk.layered.crossingMinimization.strategy": "LAYER_SWEEP",
-        "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
-    }
-    if spec.diagram.kind == DiagramKind.reaction:
-        base.update(
-            {
-                # Tight pack: short arrows between mols / layers.
-                "elk.spacing.nodeNode": "20",
-                "elk.layered.spacing.nodeNodeBetweenLayers": "0",
-                "elk.layered.spacing.edgeNodeBetweenLayers": "0",
-                "elk.spacing.edgeEdge": "16",
-                # Prefer spreading branches so metabolite sinks don't stack.
-                "elk.layered.crossingMinimization.forceNodeModelOrder": "false",
-            }
-        )
-    # Backend-agnostic layout knobs on DiagramSpec.
+    """ELK defaults for network / reaction diagrams (Rust ``scheme_layout_options``)."""
+    from xpict import _native as _rust
+
+    kind = "reaction" if spec.diagram.kind == DiagramKind.reaction else "network"
+    opts: dict[str, Any] = {}
     alg = getattr(spec.diagram, "algorithm", None)
     if alg is not None:
-        base["elk.algorithm"] = str(
-            alg.value if hasattr(alg, "value") else alg
-        ).lower()
+        opts["algorithm"] = str(alg.value if hasattr(alg, "value") else alg).lower()
     routing = getattr(spec.diagram, "edge_routing", None)
     if routing is not None:
-        base["elk.edgeRouting"] = str(
+        opts["edge_routing"] = str(
             routing.value if hasattr(routing, "value") else routing
-        ).upper()
+        ).lower()
     if spec.diagram.node_spacing is not None:
-        base["elk.spacing.nodeNode"] = str(spec.diagram.node_spacing)
+        opts["node_spacing"] = float(spec.diagram.node_spacing)
     if spec.diagram.layer_spacing is not None:
-        base["elk.layered.spacing.nodeNodeBetweenLayers"] = str(
-            spec.diagram.layer_spacing
-        )
-        # Keep edge–node clearance proportional when packing changes.
-        base["elk.layered.spacing.edgeNodeBetweenLayers"] = str(
-            max(0.0, float(spec.diagram.layer_spacing) * 0.5)
-        )
-    return base
+        opts["layer_spacing"] = float(spec.diagram.layer_spacing)
+    raw = _rust.scheme_elk_options(kind, json.dumps(opts))
+    return {str(k): str(v) for k, v in json.loads(raw).items()}
 
 
 def elk_graph(layouts: Sequence[MoleculeLayout], spec: LegacyPictSpec | object) -> dict[str, Any]:

@@ -912,6 +912,11 @@ pub struct LayoutOpts {
 }
 
 impl LayoutOpts {
+    /// Default within-layer gap for reaction schemes (px).
+    pub const DEFAULT_NODE_SPACING: f64 = 20.0;
+    /// Default between-layer gap for reaction schemes (px).
+    pub const DEFAULT_LAYER_SPACING: f64 = 0.0;
+
     pub fn algorithm_or_default(&self) -> LayoutAlgorithm {
         self.algorithm.unwrap_or_default()
     }
@@ -922,6 +927,14 @@ impl LayoutOpts {
 
     pub fn edge_routing_or_default(&self) -> EdgeRouting {
         self.edge_routing.unwrap_or_default()
+    }
+
+    pub fn node_spacing_or_default(&self) -> f64 {
+        self.node_spacing.unwrap_or(Self::DEFAULT_NODE_SPACING)
+    }
+
+    pub fn layer_spacing_or_default(&self) -> f64 {
+        self.layer_spacing.unwrap_or(Self::DEFAULT_LAYER_SPACING)
     }
 }
 

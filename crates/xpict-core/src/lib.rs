@@ -8,6 +8,7 @@
 #![forbid(unsafe_code)]
 
 pub mod align;
+pub mod arrows;
 pub mod bonds;
 pub mod colormap;
 pub mod cxsmiles;
@@ -29,6 +30,10 @@ pub mod rings;
 pub mod scene;
 
 pub use align::{kabsch_2d, rigid_align_coords, RigidTransform};
+pub use arrows::{
+    axis_aligned, edge_primitives as arrow_edge_primitives, filleted_path_d, shaft_path_d,
+    should_fillet, simplify_route, EdgePaintIn, EdgePrim, KINK_PX, TURN_RADIUS,
+};
 pub use bonds::{
     bond_paths, bond_strokes, centered_displacements, depict_order, join_centered_multibonds,
     line_intersect, multi_bond_offset, BondStrokes, DrawnBond, StrokePath,
@@ -50,7 +55,9 @@ pub use edge::{
 };
 pub use elements::{atomic_number, element_symbol, SYMBOLS};
 #[cfg(feature = "elk")]
-pub use elk::layout_json as elk_layout_json;
+pub use elk::{
+    layout_json as elk_layout_json, scheme_layout_options, DiagramKind as ElkDiagramKind,
+};
 pub use geom::{capsule_halo_path_d, disk_halo_path_d, polygon_to_svg_d};
 #[cfg(feature = "font")]
 pub use labels::{
