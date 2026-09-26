@@ -6,7 +6,7 @@
  */
 
 import { layoutWithRdkit } from "./layout/rdkit-layout.js";
-import { mcsAtomMap, validateEdgePlanJson } from "./native.js";
+import { validateEdgePlanJson } from "./native.js";
 import type {
   AlignOpts,
   CoordGenMoleculeResult,
@@ -141,9 +141,7 @@ export async function processEdgePlanWithFrames(
           const template = poses.get(parentId);
           if (!template) throw new Error(`missing parent pose ${parentId}`);
           const parentSrc = sources.get(parentId) ?? null;
-          if (atomMap == null && parentSrc) {
-            atomMap = mcsAtomMap(source, parentSrc, minAtoms);
-          }
+          // Chematic MCS runs inside layoutWithRdkit when atomMap is unset.
           const laid = await layoutWithRdkit(source, {
             id: node.id,
             template,

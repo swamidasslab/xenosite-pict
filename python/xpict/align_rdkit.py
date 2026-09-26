@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import math
 
-from xpict.align import RigidAligner, with_warning
+from xpict.align import RigidAligner, choose_mapping, with_warning
 from xpict.contracts.layout import BondLayout, MoleculeLayout
 
 _MIN_MAP = 3
@@ -46,17 +46,16 @@ def _layout_to_mcs_graph(layout: MoleculeLayout) -> dict:
 
 
 def _fmcs_mapping(ref: MoleculeLayout, other: MoleculeLayout) -> dict[int, int] | None:
-    """House MCS via chematic (element+hyb); returns other→ref layout indices."""
-    from xpict.native_bridge import mcs_atom_map_graph
+    """House MCS via chematic; ``choose_mapping`` picks a near-zero rigid fit."""
+    from xpict.native_bridge import mcs_atom_map_graph_candidates
 
-    pairs = mcs_atom_map_graph(
+    candidates = mcs_atom_map_graph_candidates(
         _layout_to_mcs_graph(other),
         _layout_to_mcs_graph(ref),
         _MIN_MAP,
     )
-    if pairs is None:
-        return None
-    return {int(q): int(t) for q, t in pairs}
+    mappings = [{int(q): int(t) for q, t in pairs} for pairs in candidates]
+    return choose_mapping(ref, other, mappings, min_size=_MIN_MAP)
 
 
 def mcs_params():

@@ -117,29 +117,49 @@ fn house_mcs_config(min_atoms: u32) -> McsConfig {
     }
 }
 
-fn mcs_pairs(query: &Molecule, template: &Molecule, min_atoms: u32) -> Option<Vec<(u32, u32)>> {
+fn mcs_pair_candidates(
+    query: &Molecule,
+    template: &Molecule,
+    min_atoms: u32,
+) -> Vec<Vec<(u32, u32)>> {
     let qtag = tag_hybridization_isotopes(query);
     let ttag = tag_hybridization_isotopes(template);
     let cfg = house_mcs_config(min_atoms);
     let pattern = find_mcs_with_config(&[&qtag, &ttag], &cfg);
     if pattern.atom_count() < min_atoms as usize {
-        return None;
+        return Vec::new();
     }
     let qm = find_matches(&pattern, &qtag);
     let tm = find_matches(&pattern, &ttag);
     if qm.is_empty() || tm.is_empty() {
-        return None;
+        return Vec::new();
     }
-    let mut pairs = Vec::with_capacity(qm[0].len());
-    for (qi, qa) in &qm[0] {
-        if let Some(ta) = tm[0].get(qi) {
-            pairs.push((qa.0, ta.0));
+    // Cap orientations so choose_mapping stays bounded (parity with old
+    // Python place/order caps).
+    const PLACE_CAP: usize = 8;
+    const ORDER_CAP: usize = 24;
+    let mut out = Vec::new();
+    for qmatch in qm.iter().take(PLACE_CAP * ORDER_CAP) {
+        for tmatch in tm.iter().take(ORDER_CAP) {
+            let mut pairs = Vec::with_capacity(qmatch.len());
+            for (qi, qa) in qmatch {
+                if let Some(ta) = tmatch.get(qi) {
+                    pairs.push((qa.0, ta.0));
+                }
+            }
+            if pairs.len() >= min_atoms as usize {
+                out.push(pairs);
+            }
+            if out.len() >= PLACE_CAP * ORDER_CAP {
+                return out;
+            }
         }
     }
-    if pairs.len() < min_atoms as usize {
-        return None;
-    }
-    Some(pairs)
+    out
+}
+
+fn mcs_pairs(query: &Molecule, template: &Molecule, min_atoms: u32) -> Option<Vec<(u32, u32)>> {
+    mcs_pair_candidates(query, template, min_atoms).into_iter().next()
 }
 
 fn parse_smiles_mol(source: &str) -> Option<Molecule> {
@@ -225,6 +245,22 @@ pub fn mcs_atom_map_graph(
     mcs_pairs(&q, &t, floor)
 }
 
+/// All MCS embeddings (query×template match orientations) for rigid ranking.
+pub fn mcs_atom_map_graph_candidates(
+    query: &McsMolIn,
+    template: &McsMolIn,
+    min_atoms: Option<u32>,
+) -> Vec<Vec<(u32, u32)>> {
+    let floor = min_atoms.unwrap_or(MIN_MCS_ATOMS);
+    let Some(q) = graph_to_mol(query) else {
+        return Vec::new();
+    };
+    let Some(t) = graph_to_mol(template) else {
+        return Vec::new();
+    };
+    mcs_pair_candidates(&q, &t, floor)
+}
+
 /// JSON helpers for language bindings (`[[q,t], …]` or `null`).
 pub fn mcs_atom_map_json(
     query_smiles: &str,
@@ -250,6 +286,19 @@ pub fn mcs_atom_map_graph_json(
         Some(pairs) => serde_json::to_string(&pairs).unwrap_or_else(|_| "null".into()),
         None => "null".into(),
     })
+}
+
+pub fn mcs_atom_map_graph_candidates_json(
+    query_json: &str,
+    template_json: &str,
+    min_atoms: Option<u32>,
+) -> Result<String, String> {
+    let q: McsMolIn =
+        serde_json::from_str(query_json).map_err(|e| format!("query McsMolIn JSON: {e}"))?;
+    let t: McsMolIn =
+        serde_json::from_str(template_json).map_err(|e| format!("template McsMolIn JSON: {e}"))?;
+    let maps = mcs_atom_map_graph_candidates(&q, &t, min_atoms);
+    serde_json::to_string(&maps).map_err(|e| format!("candidates JSON: {e}"))
 }
 
 #[cfg(test)]

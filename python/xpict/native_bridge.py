@@ -112,6 +112,19 @@ def mcs_atom_map_graph(
     return [(int(q), int(t)) for q, t in data]
 
 
+def mcs_atom_map_graph_candidates(
+    query: dict[str, Any] | str,
+    template: dict[str, Any] | str,
+    min_atoms: int | None = None,
+) -> list[list[tuple[int, int]]]:
+    """All MCS embeddings for rigid ranking (``choose_mapping``)."""
+    raw = _rust.mcs_atom_map_graph_candidates(
+        _as_json(query), _as_json(template), min_atoms
+    )
+    data = json.loads(raw)
+    return [[(int(q), int(t)) for q, t in pairs] for pairs in data]
+
+
 def plan_edge(spec: dict[str, Any] | str | Any) -> dict[str, Any] | None:
     """Pass 1: DepictSpec → EdgePlan (Rust core). ``None`` when empty."""
     raw = _rust.plan_edge(_as_json(spec))

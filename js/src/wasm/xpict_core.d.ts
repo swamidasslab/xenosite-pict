@@ -7,6 +7,16 @@
 export function depictMolecule(molecule_json: string): string;
 
 /**
+ * House MCS: SMILES → `[[q,t],…]` JSON or `null` (chematic; not 2D coords).
+ */
+export function mcsAtomMap(query_smiles: string, template_smiles: string, min_atoms?: number | null): string;
+
+/**
+ * House MCS from layout graphs (JSON) → `[[q,t],…]` or `null`.
+ */
+export function mcsAtomMapGraph(query_json: string, template_json: string, min_atoms?: number | null): string;
+
+/**
  * Pass 1: `DepictSpec` JSON → `EdgePlan` JSON (or ``null`` when empty).
  */
 export function planEdge(spec_json: string): string;
@@ -26,6 +36,8 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly depictMolecule: (a: number, b: number, c: number) => void;
+    readonly mcsAtomMap: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+    readonly mcsAtomMapGraph: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly planEdge: (a: number, b: number, c: number) => void;
     readonly renderDoc: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly validateEdgePlan: (a: number, b: number, c: number) => void;

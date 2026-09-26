@@ -69,7 +69,8 @@ pub use labels::{
 #[cfg(feature = "font")]
 pub use markup::parse_label_markup;
 pub use mcs::{
-    mcs_atom_map, mcs_atom_map_graph, mcs_atom_map_graph_json, mcs_atom_map_json, McsAtomIn,
+    mcs_atom_map, mcs_atom_map_graph, mcs_atom_map_graph_candidates,
+    mcs_atom_map_graph_candidates_json, mcs_atom_map_graph_json, mcs_atom_map_json, McsAtomIn,
     McsBondIn, McsMolIn, MCS_TIMEOUT_MS,
 };
 pub use metrics::{BOND_PX, OFFSET_FRAC, OFFSET_PX, SCALE, SHADE_FRAC, STROKE_PX};

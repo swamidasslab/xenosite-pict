@@ -354,8 +354,13 @@ async function render(
   }
   if (opts.align_to) {
     const template = await ensureFrame(opts.align_to);
+    const templateSmiles =
+      typeof opts.align_to === "object" && opts.align_to && "source" in opts.align_to
+        ? String((opts.align_to as { source: string }).source)
+        : null;
     const result = await layoutWithRdkit(m.source, {
       template,
+      templateSmiles,
       id: opts.id,
       atomMap: opts.atom_map ?? null,
     });
