@@ -78,8 +78,8 @@ export function buildAlignPlan(opts: {
 }): EdgePlan {
   const childAlign: AlignOpts =
     opts.atomMap != null
-      ? { atom_map: opts.atomMap }
-      : {};
+      ? { atom_map: opts.atomMap, map_from_mcs: false }
+      : { map_from_mcs: false };
   const plan: EdgePlan = {
     version: 1,
     tasks: [
