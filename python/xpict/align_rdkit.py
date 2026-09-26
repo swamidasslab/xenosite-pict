@@ -8,6 +8,7 @@ reference bond length. If that fails, callers use the rigid aligner.
 from __future__ import annotations
 
 import math
+from typing import Any
 
 from xpict.align import RigidAligner, choose_mapping, with_warning
 from xpict.contracts.layout import BondLayout, MoleculeLayout
@@ -15,11 +16,11 @@ from xpict.contracts.layout import BondLayout, MoleculeLayout
 _MIN_MAP = 3
 
 
-def _layout_to_mcs_graph(layout: MoleculeLayout) -> dict:
+def _layout_to_mcs_graph(layout: MoleculeLayout) -> dict[str, Any]:
     """Atom/bond graph for chematic MCS (layout indices)."""
     from xpict import _native
 
-    atoms = []
+    atoms: list[dict[str, Any]] = []
     for atom in sorted(layout.atoms, key=lambda a: a.index):
         z = 0
         el = atom.element
@@ -30,14 +31,15 @@ def _layout_to_mcs_graph(layout: MoleculeLayout) -> dict:
             except Exception:
                 z = 0
         atoms.append({"z": z, "aromatic": None})
-    bonds = [
+    bonds: list[dict[str, Any]] = [
         {"begin": int(b.begin), "end": int(b.end), "order": float(b.order)}
         for b in layout.bonds
     ]
     # Mark aromatic atoms from aromatic bonds (order ≈ 1.5).
     for b in bonds:
-        if abs(b["order"] - 1.5) < 0.1:
-            bi, ei = b["begin"], b["end"]
+        if abs(float(b["order"]) - 1.5) < 0.1:
+            bi = int(b["begin"])
+            ei = int(b["end"])
             if bi < len(atoms):
                 atoms[bi]["aromatic"] = True
             if ei < len(atoms):
