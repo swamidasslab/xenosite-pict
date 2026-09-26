@@ -25,6 +25,9 @@ export const MCS_DETAILS_JSON = JSON.stringify({
 
 const MIN_MCS_ATOMS = 3;
 
+/** Unique-isotope tags for MinimalLib atom-map align (must not collide with real mass numbers). */
+const BRIDGE_ISO_BASE = 9100;
+
 type RdkitAtomJson = {
   z?: number;
   chg?: number;
@@ -42,12 +45,62 @@ type RdkitMolJson = {
   }>;
 };
 
-function stripMolblockIsotopes(molblock: string): string {
-  return molblock
+/** Keep real ``M  ISO`` rows; drop bridge tags (≥ ``BRIDGE_ISO_BASE``). */
+function stripBridgeMolblockIsotopes(molblock: string): string {
+  const lines = molblock.replace(/\r\n/g, "\n").split("\n");
+  const out: string[] = [];
+  for (const line of lines) {
+    if (!line.startsWith("M  ISO")) {
+      out.push(line);
+      continue;
+    }
+    // ``M  ISO`` + count(3) + (atom(4) + mass(4))×n
+    const body = line.slice(6);
+    if (body.length < 3) continue;
+    const count = parseInt(body.slice(0, 3), 10);
+    if (!Number.isFinite(count) || count <= 0) continue;
+    const kept: string[] = [];
+    for (let i = 0; i < count; i++) {
+      const off = 3 + i * 8;
+      const atom = body.slice(off, off + 4);
+      const massStr = body.slice(off + 4, off + 8);
+      const mass = parseInt(massStr, 10);
+      if (!Number.isFinite(mass) || mass >= BRIDGE_ISO_BASE) continue;
+      kept.push(atom + massStr);
+    }
+    if (!kept.length) continue;
+    for (let i = 0; i < kept.length; i += 8) {
+      const slice = kept.slice(i, i + 8);
+      out.push("M  ISO" + String(slice.length).padStart(3) + slice.join(""));
+    }
+  }
+  return out.join("\n");
+}
+
+/**
+ * Re-apply source mol ``M  ISO`` after align (bridge tags may have overwritten
+ * real masses on mapped atoms during the MinimalLib round-trip).
+ */
+function restoreMolblockIsotopes(alignedMb: string, sourceMb: string): string {
+  const withoutIso = alignedMb
     .replace(/\r\n/g, "\n")
     .split("\n")
-    .filter((l) => !l.startsWith("M  ISO"))
-    .join("\n");
+    .filter((l) => !l.startsWith("M  ISO"));
+  const sourceIso = sourceMb
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .filter((l) => l.startsWith("M  ISO"));
+  if (!sourceIso.length) return withoutIso.join("\n");
+  const end = withoutIso.findIndex((l) => l.startsWith("M  END"));
+  if (end < 0) return withoutIso.join("\n");
+  withoutIso.splice(end, 0, ...sourceIso);
+  return withoutIso.join("\n");
+}
+
+/** Mass number for depiction; ignore align bridge tags. */
+function realIsotope(mass: number | undefined): number | undefined {
+  if (mass === undefined || mass <= 0 || mass >= BRIDGE_ISO_BASE) return undefined;
+  return mass;
 }
 
 /**
@@ -119,12 +172,20 @@ function elementFromZ(z: number | undefined): string {
   return elementSymbol(z);
 }
 
-function atomLabel(element: string, impHs: number, charge: number): string | undefined {
-  if (element === "C" && !charge) return undefined;
-  if (element === "*") return "*";
+function atomLabel(
+  element: string,
+  impHs: number,
+  charge: number,
+  isotope?: number
+): string | undefined {
+  if (element === "C" && !charge && !isotope && impHs <= 4) return undefined;
+  if (element === "*" || element === "R" || element.startsWith("R") || element.startsWith("_")) {
+    return "*";
+  }
   let text = element;
   if (impHs === 1) text = `${element}H`;
   else if (impHs > 1) text = `${element}H${impHs}`;
+  if (isotope) text = `${isotope}${text}`;
   if (charge) {
     const sign = charge > 0 ? "+" : "−";
     const mag = Math.abs(charge);
@@ -160,12 +221,18 @@ function parseCoords(mol: RdkitMol): Array<[number, number]> {
 
 function toMoleculeIn(
   mol: RdkitMol,
-  opts: { id?: string; scale?: number; flipMaxY?: number } = {}
+  opts: {
+    id?: string;
+    scale?: number;
+    flipMaxY?: number;
+    /** Override coords (e.g. aligned pose from a bridge-tagged copy). */
+    coords?: Array<[number, number]>;
+  } = {}
 ): MoleculeIn {
   const json = JSON.parse(mol.get_json()) as RdkitMolJson;
   const entry = json.molecules[0];
   if (!entry) throw new Error("RDKit JSON missing molecule");
-  const coords = parseCoords(mol);
+  const coords = opts.coords ?? parseCoords(mol);
   const scale = opts.scale ?? SCALE / meanBondLength(coords, entry.bonds);
 
   let maxY = opts.flipMaxY;
@@ -179,12 +246,13 @@ function toMoleculeIn(
     const element = elementFromZ(a.z);
     const charge = a.chg ?? 0;
     const impHs = a.impHs ?? 0;
+    const isotope = realIsotope(a.isotope);
     const [x0, y0] = coords[index] ?? [0, 0];
     // RDKit is Y-up; SVG / depict is Y-down. Shared flipMaxY keeps a
     // template frame stable across aligned molecules.
     const x = x0 * scale;
     const y = (maxY! - y0) * scale;
-    const label = atomLabel(element, impHs, charge);
+    const label = atomLabel(element, impHs, charge, isotope);
     return {
       index,
       z,
@@ -307,7 +375,7 @@ function tagExplicitMapIsotopes(
   const isoByAtom = new Array<number>(n).fill(0);
   atomMap.forEach(([q, t], i) => {
     const idx = side === "query" ? q : t;
-    if (idx >= 0 && idx < n) isoByAtom[idx] = 9100 + i;
+    if (idx >= 0 && idx < n) isoByAtom[idx] = BRIDGE_ISO_BASE + i;
   });
   const lines = mol.get_molblock().replace(/\r\n/g, "\n").split("\n");
   const end = lines.findIndex((l) => l.startsWith("M  END"));
@@ -425,14 +493,19 @@ export async function layoutWithRdkit(
       const tmplScale = SCALE / meanBondLength(tmplCoords, tmplBonds);
       let flipMaxY = -Infinity;
       for (const [, y] of tmplCoords) flipMaxY = Math.max(flipMaxY, y);
+      // Atom props (incl. real isotopes) from the untagged mol; pose from align.
       return {
-        molecule: toMoleculeIn(taggedMol, {
+        molecule: toMoleculeIn(mol, {
           id: opts.id,
           scale: tmplScale,
           flipMaxY,
+          coords: parseCoords(taggedMol),
         }),
         molblock: sanitizeDummyMolblock(
-          stripMolblockIsotopes(taggedMol.get_molblock())
+          restoreMolblockIsotopes(
+            stripBridgeMolblockIsotopes(taggedMol.get_molblock()),
+            mol.get_molblock()
+          )
         ),
         meta: { method, used_map },
       };

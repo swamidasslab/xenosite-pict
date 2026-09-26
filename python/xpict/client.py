@@ -220,21 +220,38 @@ def _smiles_base(source: str) -> str:
     return source[:pipe].strip()
 
 
-def _element_label(element: str, imp_hs: int, charge: int) -> str | None:
-    if element == "C" and charge == 0:
+def _element_label(
+    element: str, imp_hs: int, charge: int, isotope: int | None = None
+) -> str | None:
+    """Terminal-hetero style labels; hide plain C; prefix isotope mass."""
+    if element == "C" and not charge and not isotope and imp_hs <= 4:
         return None
-    if element == "*":
+    if element in {"*", "R"} or element.startswith("R") or element.startswith("_"):
         return "*"
-    text = element
-    if imp_hs == 1:
+    if imp_hs <= 0:
+        text = element
+    elif imp_hs == 1:
         text = f"{element}H"
-    elif imp_hs > 1:
+    else:
         text = f"{element}H{imp_hs}"
+    if isotope:
+        text = f"{isotope}{text}"
     if charge:
         sign = "+" if charge > 0 else "−"
         mag = abs(charge)
         text = f"{text}{sign}" if mag == 1 else f"{text}{mag}{sign}"
     return text
+
+
+# Keep in sync with JS ``BRIDGE_ISO_BASE`` (MinimalLib atom-map tags).
+_BRIDGE_ISO_BASE = 9100
+
+
+def _real_isotope(mass: int) -> int | None:
+    """Mass number for depiction, ignoring align bridge tags (≥9100)."""
+    if mass <= 0 or mass >= _BRIDGE_ISO_BASE:
+        return None
+    return mass
 
 
 def _bond_order(bond) -> float:
@@ -323,7 +340,8 @@ def _mol_to_molecule_in(
         el = "*" if z == 0 or atom.GetSymbol() == "*" else atom.GetSymbol()
         charge = int(atom.GetFormalCharge())
         imp_hs = int(atom.GetTotalNumHs())
-        label = _element_label(el, imp_hs, charge)
+        isotope = _real_isotope(int(atom.GetIsotope()))
+        label = _element_label(el, imp_hs, charge, isotope)
         atoms.append(
             {
                 "index": idx,

@@ -388,4 +388,208 @@ mod tests {
             "null"
         );
     }
+
+    #[test]
+    fn json_pairs_on_hit() {
+        let s = mcs_atom_map_json("c1ccccc1CC", "c1ccccc1CCCCC", None);
+        assert!(s.starts_with('['), "{s}");
+        let pairs: Vec<(u32, u32)> = serde_json::from_str(&s).unwrap();
+        assert!(pairs.len() >= 8);
+    }
+
+    #[test]
+    fn empty_smiles_rejected() {
+        assert!(mcs_atom_map("", "CCO", None).is_none());
+        assert!(mcs_atom_map("   ", "CCO", None).is_none());
+        assert!(mcs_atom_map("|$;$|", "CCO", None).is_none());
+    }
+
+    #[test]
+    fn alkyne_maps_cover_triple_hyb() {
+        let m = mcs_atom_map("CC#CC", "CC#CCO", Some(3)).unwrap();
+        assert!(m.len() >= 3);
+    }
+
+    #[test]
+    fn order_to_bond_branches_via_graph() {
+        assert_eq!(order_to_bond(1.0), BondOrder::Single);
+        assert_eq!(order_to_bond(1.5), BondOrder::Aromatic);
+        assert_eq!(order_to_bond(2.0), BondOrder::Double);
+        assert_eq!(order_to_bond(3.0), BondOrder::Triple);
+        assert_eq!(order_to_bond(1.4), BondOrder::Single);
+        assert_eq!(order_to_bond(2.7), BondOrder::Triple);
+    }
+
+    #[test]
+    fn bond_weight_covers_orders() {
+        assert_eq!(bond_weight(BondOrder::Single), 1.0);
+        assert_eq!(bond_weight(BondOrder::Up), 1.0);
+        assert_eq!(bond_weight(BondOrder::Down), 1.0);
+        assert_eq!(bond_weight(BondOrder::Double), 2.0);
+        assert_eq!(bond_weight(BondOrder::Triple), 3.0);
+        assert_eq!(bond_weight(BondOrder::Aromatic), 1.5);
+        assert_eq!(bond_weight(BondOrder::Quadruple), 1.0);
+        assert_eq!(bond_weight(BondOrder::Zero), 1.0);
+        assert_eq!(bond_weight(BondOrder::QueryAny), 1.0);
+    }
+
+    #[test]
+    fn graph_empty_and_wildcard() {
+        assert!(graph_to_mol(&McsMolIn {
+            atoms: vec![],
+            bonds: vec![],
+        })
+        .is_none());
+        assert!(mcs_atom_map_graph(
+            &McsMolIn {
+                atoms: vec![],
+                bonds: vec![],
+            },
+            &McsMolIn {
+                atoms: vec![McsAtomIn {
+                    z: 6,
+                    aromatic: None,
+                }],
+                bonds: vec![],
+            },
+            Some(1)
+        )
+        .is_none());
+
+        let star = McsMolIn {
+            atoms: vec![
+                McsAtomIn {
+                    z: 0,
+                    aromatic: None,
+                },
+                McsAtomIn {
+                    z: 6,
+                    aromatic: None,
+                },
+                McsAtomIn {
+                    z: 6,
+                    aromatic: None,
+                },
+            ],
+            bonds: vec![
+                McsBondIn {
+                    begin: 0,
+                    end: 1,
+                    order: 1.0,
+                },
+                McsBondIn {
+                    begin: 1,
+                    end: 2,
+                    order: 1.0,
+                },
+            ],
+        };
+        let mol = graph_to_mol(&star).unwrap();
+        assert_eq!(mol.atom_count(), 3);
+        let m = mcs_atom_map_graph(&star, &star, Some(2)).unwrap();
+        assert!(m.len() >= 2);
+    }
+
+    #[test]
+    fn graph_multi_order_and_candidates_json() {
+        let q = McsMolIn {
+            atoms: vec![
+                McsAtomIn {
+                    z: 6,
+                    aromatic: None,
+                },
+                McsAtomIn {
+                    z: 6,
+                    aromatic: None,
+                },
+                McsAtomIn {
+                    z: 6,
+                    aromatic: None,
+                },
+                McsAtomIn {
+                    z: 8,
+                    aromatic: None,
+                },
+            ],
+            bonds: vec![
+                McsBondIn {
+                    begin: 0,
+                    end: 1,
+                    order: 3.0,
+                },
+                McsBondIn {
+                    begin: 1,
+                    end: 2,
+                    order: 1.0,
+                },
+                McsBondIn {
+                    begin: 2,
+                    end: 3,
+                    order: 2.0,
+                },
+            ],
+        };
+        let t = q.clone();
+        let m = mcs_atom_map_graph(&q, &t, Some(3)).unwrap();
+        assert!(m.len() >= 3);
+
+        let qj = serde_json::to_string(&q).unwrap();
+        let tj = serde_json::to_string(&t).unwrap();
+        let hit = mcs_atom_map_graph_json(&qj, &tj, Some(3)).unwrap();
+        assert!(hit.starts_with('['), "{hit}");
+        let cands = mcs_atom_map_graph_candidates_json(&qj, &tj, Some(3)).unwrap();
+        let parsed: Vec<Vec<(u32, u32)>> = serde_json::from_str(&cands).unwrap();
+        assert!(!parsed.is_empty());
+        assert!(parsed[0].len() >= 3);
+
+        let bad = mcs_atom_map_graph_json("{", &tj, None);
+        assert!(bad.is_err());
+        let bad2 = mcs_atom_map_graph_candidates_json(&qj, "{", None);
+        assert!(bad2.is_err());
+    }
+
+    #[test]
+    fn graph_candidates_api_and_null_json() {
+        let q = McsMolIn {
+            atoms: (0..6)
+                .map(|_| McsAtomIn {
+                    z: 6,
+                    aromatic: Some(true),
+                })
+                .collect(),
+            bonds: (0..6)
+                .map(|i| McsBondIn {
+                    begin: i,
+                    end: (i + 1) % 6,
+                    order: 1.5,
+                })
+                .collect(),
+        };
+        let cands = mcs_atom_map_graph_candidates(&q, &q, None);
+        assert!(!cands.is_empty());
+        assert_eq!(cands[0].len(), 6);
+
+        let qj = serde_json::to_string(&q).unwrap();
+        let none = mcs_atom_map_graph_json(
+            &qj,
+            &serde_json::to_string(&McsMolIn {
+                atoms: vec![McsAtomIn {
+                    z: 7,
+                    aromatic: None,
+                }],
+                bonds: vec![],
+            })
+            .unwrap(),
+            Some(3),
+        )
+        .unwrap();
+        assert_eq!(none, "null");
+    }
+
+    #[test]
+    fn hetero_adj_unsat_hyb_sp2() {
+        // N adjacent to C=O → SP2 hyb tag path (z != 6 && adj_unsat).
+        let m = mcs_atom_map("CC(=O)N", "CC(=O)NC", Some(3)).unwrap();
+        assert!(m.len() >= 3);
+    }
 }

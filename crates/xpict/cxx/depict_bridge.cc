@@ -85,6 +85,7 @@ LayoutOut extract(RDKit::ROMol &mol) {
     la.z = a->getAtomicNum();
     la.charge = a->getFormalCharge();
     la.total_hs = a->getTotalNumHs();
+    la.isotope = a->getIsotope();
     la.x = pos.x;
     la.y = pos.y;
     la.symbol = a->getSymbol();

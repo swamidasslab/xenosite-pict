@@ -29,11 +29,11 @@ fn mean_bond_scale(atoms: &[(f64, f64)], bonds: &[(i32, i32)]) -> f64 {
     SCALE / mean
 }
 
-fn atom_label(element: &str, imp_hs: u32, charge: i32) -> Option<String> {
-    if element == "C" && charge == 0 {
+fn atom_label(element: &str, imp_hs: u32, charge: i32, isotope: Option<u32>) -> Option<String> {
+    if element == "C" && charge == 0 && isotope.is_none() && imp_hs <= 4 {
         return None;
     }
-    if element == "*" {
+    if element == "*" || element == "R" || element.starts_with('R') || element.starts_with('_') {
         return Some("*".into());
     }
     let mut text = element.to_string();
@@ -41,6 +41,9 @@ fn atom_label(element: &str, imp_hs: u32, charge: i32) -> Option<String> {
         text = format!("{element}H");
     } else if imp_hs > 1 {
         text = format!("{element}H{imp_hs}");
+    }
+    if let Some(mass) = isotope {
+        text = format!("{mass}{text}");
     }
     if charge != 0 {
         let sign = if charge > 0 { "+" } else { "−" };
@@ -103,7 +106,8 @@ fn layout_out_to_molecule(
             } else {
                 a.symbol.clone()
             };
-            let label = atom_label(&element, a.total_hs, a.charge);
+            let isotope = if a.isotope > 0 { Some(a.isotope) } else { None };
+            let label = atom_label(&element, a.total_hs, a.charge, isotope);
             AtomIn {
                 index: a.index,
                 element: Some(element),
