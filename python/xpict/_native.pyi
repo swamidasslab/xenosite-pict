@@ -103,6 +103,7 @@ def mcs_atom_map(
     template_smiles: str,
     min_atoms: int | None = None,
 ) -> str: ...
+def resolve_edge_plan_maps(plan_json: str) -> str: ...
 def mcs_atom_map_graph(
     query_json: str,
     template_json: str,

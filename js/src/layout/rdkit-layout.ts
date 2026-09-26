@@ -403,16 +403,17 @@ function tagExplicitMapIsotopes(
 
 /**
  * Layout `source` (SMILES / molfile). When `template` is set, RDKit aligns
- * onto that pose (explicit ``atomMap`` or MCS isotope SMARTS).
+ * onto that pose using an explicit ``atomMap`` (from Rust
+ * ``resolveEdgePlanMaps`` / ``planEdge``). MinimalLib has no atom-map
+ * overload, so mapped atoms are tagged with unique isotopes for
+ * ``generate_aligned_coords`` + isotope ``referenceSmarts``.
  */
 export async function layoutWithRdkit(
   source: string,
   opts: {
     template?: string | null;
-    /** Template SMILES for chematic MCS when ``atomMap`` unset. */
-    templateSmiles?: string | null;
     id?: string;
-    /** Pairs [query, template]; skips MCS when set. */
+    /** Pairs [query, template]; required for align (Rust fills via MCS). */
     atomMap?: Array<[number, number]> | null;
     minAtoms?: number;
   } = {}
@@ -432,21 +433,10 @@ export async function layoutWithRdkit(
       let method: LayoutMeta["method"] = "none";
       let used_map: Array<[number, number]> | undefined;
 
-      let atomMap = opts.atomMap ?? null;
-      if ((!atomMap || atomMap.length < floor) && opts.templateSmiles) {
-        const { mcsAtomMap } = await import("../native.js");
-        atomMap = mcsAtomMap(source, opts.templateSmiles, floor);
-        if (atomMap && atomMap.length >= floor) {
-          method = "mcs";
-          used_map = atomMap;
-        }
-      }
-
+      const atomMap = opts.atomMap ?? null;
       if (atomMap && atomMap.length >= floor) {
-        if (method === "none") {
-          method = "atom_map";
-          used_map = atomMap;
-        }
+        method = "atom_map";
+        used_map = atomMap;
         taggedTemplate = tagExplicitMapIsotopes(
           rdkit,
           templateMol,
@@ -461,9 +451,7 @@ export async function layoutWithRdkit(
               taggedTemplate,
               minimallibAlignDetails(smarts)
             );
-            if (alignSucceeded(aligned) && taggedMol.is_valid()) {
-              // Keep method/used_map from chematic MCS or explicit atom_map.
-            } else {
+            if (!(alignSucceeded(aligned) && taggedMol.is_valid())) {
               method = "none";
               used_map = undefined;
             }
@@ -476,7 +464,6 @@ export async function layoutWithRdkit(
           used_map = undefined;
         }
       }
-      // No host MinimalLib MCS — chematic via templateSmiles / atomMap only.
 
       if (method === "none" || !taggedMol?.is_valid()) {
         ensureCoords(mol);

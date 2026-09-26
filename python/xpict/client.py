@@ -130,20 +130,30 @@ def render(
     options = _coerce_opts(opts)
 
     template: str | None = None
-    template_smiles: str | None = None
+    atom_map = options.atom_map
     if options.align_to is not None:
         template = _ensure_frame(options.align_to)
-        align_obj = options.align_to
-        template_smiles = getattr(align_obj, "source", None)
+        if atom_map is None:
+            # Chematic MCS via Rust plan resolve (not host inventing maps).
+            from xpict.edge_plan import build_align_plan
+
+            align_obj = options.align_to
+            template_source = getattr(align_obj, "source", None) or m.source
+            plan = build_align_plan(
+                template_source=str(template_source),
+                query_source=m.source,
+            )
+            child = plan.tasks[0].roots[0].template_for[0]
+            if child.align is not None:
+                atom_map = child.align.atom_map
     elif options.atom_map is not None:
         raise ValueError("atom_map requires align_to")
 
     laid, pose_mb, _meta = _layout_with_rdkit(
         m.source,
         template=template,
-        template_smiles=template_smiles,
         id=options.id,
-        atom_map=options.atom_map,
+        atom_map=atom_map,
     )
     if m.frame_molblock is None and template is None:
         m.frame_molblock = pose_mb
@@ -379,20 +389,18 @@ def layout_with_rdkit(
     source: str,
     *,
     template: str | None = None,
-    template_smiles: str | None = None,
     id: str | None = None,
     atom_map: list[tuple[int, int]] | None = None,
     min_atoms: int | None = None,
 ) -> tuple[dict[str, Any], str, dict[str, Any]]:
     """Public RDKit layout helper used by the EdgePlan processor.
 
-    ``template_smiles`` drives chematic MCS when ``atom_map`` is unset
-    (Depictor still uses ``template`` pose coords — not chematic 2D).
+    Align requires an explicit ``atom_map`` (filled by Rust
+    ``resolve_edge_plan_maps`` / ``plan_edge``). Depictor owns 2D coords.
     """
     return _layout_with_rdkit(
         source,
         template=template,
-        template_smiles=template_smiles,
         id=id,
         atom_map=atom_map,
         min_atoms=min_atoms,
@@ -406,11 +414,11 @@ def _layout_with_rdkit(
     id: str | None,
     atom_map: list[tuple[int, int]] | None = None,
     min_atoms: int | None = None,
-    template_smiles: str | None = None,
 ) -> tuple[dict[str, Any], str, dict[str, Any]]:
-    """RDKit layout (+ optional MCS / explicit atom-map align) → MoleculeIn + pose + meta.
+    """RDKit layout (+ optional explicit atom-map align) → MoleculeIn + pose + meta.
 
-    Meta is ``{"method": "free"|"atom_map"|"mcs"|"none", "used_map": ...}``.
+    Meta is ``{"method": "free"|"atom_map"|"none", "used_map": ...}``.
+    MCS discovery lives in Rust plans — this helper never invents maps.
     """
     try:
         from rdkit import Chem
@@ -439,30 +447,11 @@ def _layout_with_rdkit(
         aligned_ok = False
         try:
             map_for_depict: list[tuple[int, int]] | None = None
-            if atom_map is not None:
+            if atom_map is not None and len(atom_map) >= floor:
                 # Public pairs are (query, template); Depictor wants (template, query).
-                if len(atom_map) >= floor:
-                    map_for_depict = [(t, q) for q, t in atom_map]
-                    used_map = list(atom_map)
-                    method = "atom_map"
-            else:
-                from xpict.native_bridge import mcs_atom_map
-
-                query_smi = (
-                    source
-                    if not _looks_like_molblock(source)
-                    else Chem.MolToSmiles(rmol, canonical=False)
-                )
-                tmpl_smi = (
-                    template_smiles
-                    if template_smiles and not _looks_like_molblock(template_smiles)
-                    else Chem.MolToSmiles(ref_pose, canonical=False)
-                )
-                pairs = mcs_atom_map(query_smi, tmpl_smi, floor)
-                if pairs is not None and len(pairs) >= floor:
-                    map_for_depict = [(t, q) for q, t in pairs]
-                    used_map = list(pairs)
-                    method = "mcs"
+                map_for_depict = [(t, q) for q, t in atom_map]
+                used_map = list(atom_map)
+                method = "atom_map"
 
             if map_for_depict is not None:
                 params = rdDepictor.ConstrainedDepictionParams()

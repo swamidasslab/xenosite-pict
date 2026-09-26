@@ -131,6 +131,11 @@ def plan_edge(spec: dict[str, Any] | str | Any) -> dict[str, Any] | None:
     return json.loads(raw)
 
 
+def resolve_edge_plan_maps(plan: dict[str, Any] | str | Any) -> dict[str, Any]:
+    """Fill missing align atom maps via chematic MCS (Rust core)."""
+    return json.loads(_rust.resolve_edge_plan_maps(_as_json(plan)))
+
+
 def render_doc(
     spec: dict[str, Any] | str | Any, edge: dict[str, Any] | str | Any
 ) -> list[dict[str, Any]]:

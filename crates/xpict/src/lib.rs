@@ -268,7 +268,18 @@ pub fn render(input: &mut Mol, opts: MolRenderOptions) -> Result<Rendered, Error
             .as_deref()
             .filter(|s| !s.trim().is_empty());
         match tmpl_smi {
-            Some(ts) => xpict_core::mcs_atom_map(&input.source, ts, None),
+            Some(ts) => {
+                // Prefer plan resolve so MCS stays centralized with EdgePlan.
+                let plan = crate::edge_plan::build_align_plan(ts, &input.source, None);
+                plan.tasks
+                    .first()
+                    .and_then(|t| match t {
+                        xpict_core::EdgeTask::CoordGen { roots } => roots.first(),
+                    })
+                    .and_then(|r| r.template_for.first())
+                    .and_then(|c| c.align.as_ref())
+                    .and_then(|a| a.atom_map.clone())
+            }
             None => None,
         }
     } else {

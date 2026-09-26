@@ -35,6 +35,12 @@ pub fn plan_edge(spec_json: &str) -> Result<String, JsValue> {
     serde_json::to_string(&plan).map_err(|e| JsValue::from_str(&format!("EdgePlan JSON: {e}")))
 }
 
+/// Fill missing align atom maps via chematic MCS.
+#[wasm_bindgen(js_name = resolveEdgePlanMaps)]
+pub fn resolve_edge_plan_maps(plan_json: &str) -> Result<String, JsValue> {
+    xpict_core::resolve_edge_plan_maps_json(plan_json).map_err(|e| JsValue::from_str(&e))
+}
+
 /// Pass 2: `DepictSpec` + `EdgeResult` JSON → DocPaint list JSON.
 #[wasm_bindgen(js_name = renderDoc)]
 pub fn render_doc(spec_json: &str, edge_json: &str) -> Result<String, JsValue> {

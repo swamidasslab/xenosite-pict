@@ -57,6 +57,12 @@ fn plan_edge(spec_json: &str) -> PyResult<String> {
         .map_err(|e| PyRuntimeError::new_err(format!("EdgePlan JSON: {e}")))
 }
 
+/// Fill missing align atom maps via chematic MCS (host plans / hand-built forests).
+#[pyfunction]
+fn resolve_edge_plan_maps(plan_json: &str) -> PyResult<String> {
+    xpict_core::resolve_edge_plan_maps_json(plan_json).map_err(PyRuntimeError::new_err)
+}
+
 /// Pass 2: `DepictSpec` + `EdgeResult` JSON → list of `{id, molecule, scene}`.
 #[pyfunction]
 fn render_doc(spec_json: &str, edge_json: &str) -> PyResult<String> {
@@ -721,6 +727,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(depict_molecule, m)?)?;
     m.add_function(wrap_pyfunction!(validate_edge_plan, m)?)?;
     m.add_function(wrap_pyfunction!(plan_edge, m)?)?;
+    m.add_function(wrap_pyfunction!(resolve_edge_plan_maps, m)?)?;
     m.add_function(wrap_pyfunction!(render_doc, m)?)?;
     m.add_function(wrap_pyfunction!(compose_scheme, m)?)?;
     m.add_function(wrap_pyfunction!(mcs_atom_map, m)?)?;

@@ -20,7 +20,11 @@ pub const MIN_MCS_ATOMS: u32 = 3;
 #[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
 #[cfg_attr(feature = "codegen", ts(export))]
 pub struct AlignOpts {
-    /// Pairs `(query_atom, template_atom)`. `None` → edge runs MCS.
+    /// Pairs `(query_atom, template_atom)`.
+    ///
+    /// When unset, [`resolve_edge_plan_maps`] / [`crate::plan_edge`] fill this
+    /// via chematic MCS. Hosts must not invent maps — they only apply an
+    /// explicit map to Depictor / MinimalLib.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub atom_map: Option<Vec<(u32, u32)>>,
@@ -28,6 +32,11 @@ pub struct AlignOpts {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub min_atoms: Option<u32>,
+    /// True when [`Self::atom_map`] was filled by chematic MCS (not caller-supplied).
+    /// Hosts report [`CoordMethod::Mcs`] vs [`CoordMethod::AtomMap`] from this.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub map_from_mcs: bool,
 }
 
 /// One node in a coord_gen forest (root = free layout; children align to parent).
@@ -133,6 +142,59 @@ impl EdgePlan {
         }
         Ok(())
     }
+}
+
+/// Fill missing [`AlignOpts::atom_map`] entries via chematic MCS.
+///
+/// Walks every ``coord_gen`` forest. Children with an explicit map are left
+/// alone; others get ``atom_map`` + ``map_from_mcs`` when MCS succeeds.
+/// Hosts call this (or rely on [`crate::plan_edge`]) so they never invent maps.
+pub fn resolve_edge_plan_maps(plan: &mut EdgePlan) {
+    for task in &mut plan.tasks {
+        match task {
+            EdgeTask::CoordGen { roots } => {
+                for root in roots {
+                    resolve_tree_maps(root, None);
+                }
+            }
+        }
+    }
+}
+
+fn resolve_tree_maps(node: &mut MolTemplate, parent_source: Option<&str>) {
+    let child_src = node.source().ok().map(str::to_string);
+    if let (Some(parent), Some(align), Some(child_src)) =
+        (parent_source, node.align.as_mut(), child_src.as_deref())
+    {
+        let needs_map = align
+            .atom_map
+            .as_ref()
+            .map(|m| m.is_empty())
+            .unwrap_or(true);
+        if needs_map {
+            let floor = align.min_atoms.unwrap_or(MIN_MCS_ATOMS);
+            if let Some(map) = crate::mcs_atom_map(child_src, parent, Some(floor)) {
+                if (map.len() as u32) >= floor {
+                    align.atom_map = Some(map);
+                    align.map_from_mcs = true;
+                }
+            }
+        }
+    }
+    let own_source = child_src;
+    let parent_for_kids = own_source.as_deref();
+    for child in &mut node.template_for {
+        resolve_tree_maps(child, parent_for_kids);
+    }
+}
+
+/// JSON helper for language bindings.
+pub fn resolve_edge_plan_maps_json(plan_json: &str) -> Result<String, String> {
+    let mut plan: EdgePlan =
+        serde_json::from_str(plan_json).map_err(|e| format!("EdgePlan JSON: {e}"))?;
+    plan.validate()?;
+    resolve_edge_plan_maps(&mut plan);
+    serde_json::to_string(&plan).map_err(|e| format!("EdgePlan serialize: {e}"))
 }
 
 fn validate_tree(
@@ -259,12 +321,41 @@ mod tests {
                             (5, 4),
                             (6, 5),
                         ]),
-                        min_atoms: None,
+                        ..Default::default()
                     }),
                     template_for: vec![],
                 }],
             }],
         }])
+    }
+
+    #[test]
+    fn resolve_fills_mcs_map_on_hand_built_plan() {
+        let mut plan = EdgePlan::new_v1(vec![EdgeTask::CoordGen {
+            roots: vec![MolTemplate {
+                id: "m_0".into(),
+                smiles: Some("c1ccccc1".into()),
+                cxsmiles: None,
+                molfile: None,
+                align: None,
+                template_for: vec![MolTemplate {
+                    id: "m_1".into(),
+                    smiles: Some("Cc1ccccc1".into()),
+                    cxsmiles: None,
+                    molfile: None,
+                    align: Some(AlignOpts::default()),
+                    template_for: vec![],
+                }],
+            }],
+        }]);
+        resolve_edge_plan_maps(&mut plan);
+        match &plan.tasks[0] {
+            EdgeTask::CoordGen { roots } => {
+                let align = roots[0].template_for[0].align.as_ref().unwrap();
+                assert!(align.map_from_mcs);
+                assert!(align.atom_map.as_ref().unwrap().len() >= 6);
+            }
+        }
     }
 
     #[test]

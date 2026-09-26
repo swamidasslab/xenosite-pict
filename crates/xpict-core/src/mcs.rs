@@ -1,7 +1,8 @@
 //! House MCS via **chematic** (element + hybridization, any-bond).
 //!
-//! Clients call [`mcs_atom_map`] / [`mcs_atom_map_graph`] instead of
-//! implementing RDKit FMCS / MinimalLib MCS themselves. Depictor / MinimalLib
+//! [`crate::plan_edge`] / [`crate::resolve_edge_plan_maps`] fill align
+//! atom maps inside EdgePlans. Hosts apply those maps to Depictor /
+//! MinimalLib and must not invent maps themselves. Depictor / MinimalLib
 //! still own **2D coordinates** — chematic is not used for layout.
 //!
 //! Protocol (parity with prior Python/JS/native hosts):

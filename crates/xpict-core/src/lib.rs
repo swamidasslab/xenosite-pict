@@ -52,8 +52,9 @@ pub use doc::{
     Node, NodeType, Opts, OptsPatch, ShadeSpec, ShadeStyle, TextNode, TextNodeKind, TypedOptsPatch,
 };
 pub use edge::{
-    AlignOpts, CoordGenMoleculeResult, CoordMethod, EdgePlan, EdgeResult, EdgeTask,
-    EdgeTaskResult, MolTemplate, MIN_MCS_ATOMS as EDGE_MIN_MCS_ATOMS,
+    resolve_edge_plan_maps, resolve_edge_plan_maps_json, AlignOpts, CoordGenMoleculeResult,
+    CoordMethod, EdgePlan, EdgeResult, EdgeTask, EdgeTaskResult, MolTemplate,
+    MIN_MCS_ATOMS as EDGE_MIN_MCS_ATOMS,
 };
 pub use elements::{atomic_number, element_symbol, SYMBOLS};
 #[cfg(feature = "elk")]

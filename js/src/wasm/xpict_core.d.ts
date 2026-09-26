@@ -27,6 +27,11 @@ export function planEdge(spec_json: string): string;
 export function renderDoc(spec_json: string, edge_json: string): string;
 
 /**
+ * Fill missing align atom maps via chematic MCS.
+ */
+export function resolveEdgePlanMaps(plan_json: string): string;
+
+/**
  * Validate `EdgePlan` JSON (unique ids, structure fields, root align=null).
  */
 export function validateEdgePlan(plan_json: string): string;
@@ -40,6 +45,7 @@ export interface InitOutput {
     readonly mcsAtomMapGraph: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly planEdge: (a: number, b: number, c: number) => void;
     readonly renderDoc: (a: number, b: number, c: number, d: number, e: number) => void;
+    readonly resolveEdgePlanMaps: (a: number, b: number, c: number) => void;
     readonly validateEdgePlan: (a: number, b: number, c: number) => void;
     readonly __wbindgen_add_to_stack_pointer: (a: number) => number;
     readonly __wbindgen_export: (a: number, b: number) => number;

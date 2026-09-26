@@ -1,15 +1,16 @@
 //! Process [`xpict_core::EdgePlan`] with native RDKit Depictor.
 //!
-//! MCS discovery uses chematic via [`xpict_core::mcs_atom_map`] (not RDKit FMCS).
-//! Depictor still owns 2D coordinates.
+//! Chematic MCS runs in [`xpict_core::resolve_edge_plan_maps`] /
+//! [`xpict_core::plan_edge`]. This processor only applies explicit atom maps
+//! to Depictor.
 
 use std::collections::HashMap;
 
 use xpict_core::edge::{
-    AlignOpts, CoordGenMoleculeResult, CoordMethod, EdgePlan, EdgeResult, EdgeTask,
+    resolve_edge_plan_maps, CoordGenMoleculeResult, CoordMethod, EdgePlan, EdgeResult, EdgeTask,
     EdgeTaskResult, MolTemplate, MIN_MCS_ATOMS,
 };
-use xpict_core::mcs_atom_map;
+use xpict_core::AlignOpts;
 
 use crate::layout::layout_with_rdkit_meta;
 use crate::Error;
@@ -20,7 +21,7 @@ pub fn build_align_plan(
     query_source: &str,
     atom_map: Option<Vec<(u32, u32)>>,
 ) -> EdgePlan {
-    EdgePlan::new_v1(vec![EdgeTask::CoordGen {
+    let mut plan = EdgePlan::new_v1(vec![EdgeTask::CoordGen {
         roots: vec![MolTemplate {
             id: "m_0".into(),
             smiles: Some(template_source.into()),
@@ -34,12 +35,14 @@ pub fn build_align_plan(
                 molfile: None,
                 align: Some(AlignOpts {
                     atom_map,
-                    min_atoms: None,
+                    ..Default::default()
                 }),
                 template_for: vec![],
             }],
         }],
-    }])
+    }]);
+    resolve_edge_plan_maps(&mut plan);
+    plan
 }
 
 fn source_of(node: &MolTemplate) -> Result<String, Error> {
@@ -62,6 +65,9 @@ pub fn process_edge_plan_with_frames(
     plan: &EdgePlan,
 ) -> Result<(EdgeResult, HashMap<String, String>), Error> {
     plan.validate().map_err(Error::Parse)?;
+    let mut plan = plan.clone();
+    resolve_edge_plan_maps(&mut plan);
+
     let mut task_results = Vec::new();
     let mut all_poses: HashMap<String, String> = HashMap::new();
 
@@ -70,10 +76,9 @@ pub fn process_edge_plan_with_frames(
             EdgeTask::CoordGen { roots } => {
                 let mut rows: Vec<CoordGenMoleculeResult> = Vec::new();
                 let mut poses: HashMap<String, String> = HashMap::new();
-                let mut sources: HashMap<String, String> = HashMap::new();
 
                 for root in roots {
-                    visit(root, None, &mut rows, &mut poses, &mut sources)?;
+                    visit(root, None, &mut rows, &mut poses)?;
                 }
 
                 all_poses.extend(poses);
@@ -103,16 +108,15 @@ fn visit(
     parent_id: Option<&str>,
     rows: &mut Vec<CoordGenMoleculeResult>,
     poses: &mut HashMap<String, String>,
-    sources: &mut HashMap<String, String>,
 ) -> Result<(), Error> {
     let source = source_of(node)?;
-    sources.insert(node.id.clone(), source.clone());
     let min_atoms = node
         .align
         .as_ref()
         .and_then(|a| a.min_atoms)
         .unwrap_or(MIN_MCS_ATOMS);
     let explicit_map = node.align.as_ref().and_then(|a| a.atom_map.clone());
+    let map_from_mcs = node.align.as_ref().is_some_and(|a| a.map_from_mcs);
 
     match parent_id {
         None => match free_layout(&source, &node.id) {
@@ -169,27 +173,22 @@ fn visit(
                         }
                     }
                     for child in &node.template_for {
-                        visit(child, Some(node.id.as_str()), rows, poses, sources)?;
+                        visit(child, Some(node.id.as_str()), rows, poses)?;
                     }
                     return Ok(());
                 }
             };
 
-            let (use_map, method_if_ok): (Option<Vec<(u32, u32)>>, CoordMethod) =
-                if let Some(map) = explicit_map {
-                    if (map.len() as u32) >= min_atoms {
-                        (Some(map), CoordMethod::AtomMap)
-                    } else {
-                        (None, CoordMethod::None)
-                    }
-                } else if let Some(parent_src) = sources.get(pid) {
-                    match mcs_atom_map(&source, parent_src, Some(min_atoms)) {
-                        Some(map) => (Some(map), CoordMethod::Mcs),
-                        None => (None, CoordMethod::None),
-                    }
+            let use_map = explicit_map.filter(|m| (m.len() as u32) >= min_atoms);
+            let method_if_ok = if use_map.is_some() {
+                if map_from_mcs {
+                    CoordMethod::Mcs
                 } else {
-                    (None, CoordMethod::None)
-                };
+                    CoordMethod::AtomMap
+                }
+            } else {
+                CoordMethod::None
+            };
 
             match layout_with_rdkit_meta(
                 &source,
@@ -209,18 +208,18 @@ fn visit(
                     poses.insert(node.id.clone(), pose);
                 }
                 Ok(_) | Err(_) => match free_layout(&source, &node.id) {
-                    Ok((molecule, pose)) => {
+                    Ok((mol, pose2)) => {
                         rows.push(CoordGenMoleculeResult {
                             id: node.id.clone(),
                             ok: true,
                             method: CoordMethod::None,
                             used_map: None,
-                            molecule: Some(molecule),
+                            molecule: Some(mol),
                             error: Some(
                                 "align failed; fell back to unaligned coord gen".into(),
                             ),
                         });
-                        poses.insert(node.id.clone(), pose);
+                        poses.insert(node.id.clone(), pose2);
                     }
                     Err(e) => {
                         rows.push(CoordGenMoleculeResult {
@@ -231,7 +230,6 @@ fn visit(
                             molecule: None,
                             error: Some(e.to_string()),
                         });
-                        return Ok(());
                     }
                 },
             }
@@ -239,7 +237,7 @@ fn visit(
     }
 
     for child in &node.template_for {
-        visit(child, Some(node.id.as_str()), rows, poses, sources)?;
+        visit(child, Some(node.id.as_str()), rows, poses)?;
     }
     Ok(())
 }

@@ -10,6 +10,7 @@ import init, {
   mcsAtomMapGraph as wasmMcsAtomMapGraph,
   planEdge as wasmPlanEdge,
   renderDoc as wasmRenderDoc,
+  resolveEdgePlanMaps as wasmResolveEdgePlanMaps,
   validateEdgePlan as wasmValidateEdgePlan,
   type InitInput,
 } from "./wasm/xpict_core.js";
@@ -79,6 +80,12 @@ export function validateEdgePlanJson(planJson: string): string {
 export function planEdgeJson(specJson: string): string {
   requireReady();
   return wasmPlanEdge(specJson);
+}
+
+/** Fill missing align atom maps via chematic MCS. */
+export function resolveEdgePlanMaps(planJson: string): string {
+  requireReady();
+  return wasmResolveEdgePlanMaps(planJson);
 }
 
 /** Pass 2: DepictSpec + EdgeResult JSON → DocPaint list JSON. */
