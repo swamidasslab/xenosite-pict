@@ -14,8 +14,8 @@
 //!      (MinimalLib has no atom-map details key).
 //! 3. Treat empty / `"{}"` as failure ([`align_succeeded`])
 
-/// MinimalLib details for isotope-tagged copies (legacy helper; MCS itself
-/// is chematic). Kept for MinimalLib `generate_aligned_coords` SMARTS bridge.
+/// MinimalLib FMCS details for uniquely isotope-tagged atom-map copies
+/// (JS align bridge). Not used for MCS discovery (that is chematic).
 pub const MCS_DETAILS_JSON: &str =
     r#"{"AtomCompare":"Isotopes","BondCompare":"Any","Timeout":2}"#;
 

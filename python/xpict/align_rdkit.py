@@ -58,14 +58,6 @@ def _fmcs_mapping(ref: MoleculeLayout, other: MoleculeLayout) -> dict[int, int] 
     return choose_mapping(ref, other, mappings, min_size=_MIN_MAP)
 
 
-def mcs_params():
-    """Deprecated: MCS is chematic in Rust. Kept for import compatibility."""
-    raise RuntimeError(
-        "mcs_params() removed — use xpict.native_bridge.mcs_atom_map "
-        "(chematic house MCS). Depictor still owns 2D coords."
-    )
-
-
 def rdkit_available() -> bool:
     try:
         import importlib.util

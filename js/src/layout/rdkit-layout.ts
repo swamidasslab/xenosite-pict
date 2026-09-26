@@ -1,11 +1,10 @@
 /**
  * RDKit layout + template align → {@link MoleculeIn} (SVG / SCALE space).
  *
- * MCS uses element + hybridization (isotope-encoded ``Z×10+hyb`` on copies;
- * ``AtomCompare: Isotopes``) and ``BondCompare: Any``. Align calls MinimalLib
- * ``generate_aligned_coords`` with the MCS isotope ``referenceSmarts`` on those
- * same tagged copies (MinimalLib has no atom-map overload — that is Python /
- * native Depictor). Protocol mirrors Rust ``xpict::align_opts``.
+ * MCS discovery is chematic (`mcsAtomMap`). MinimalLib has no atom-map
+ * overload, so align tags mapped atoms with unique isotopes and uses
+ * ``generate_aligned_coords`` + isotope ``referenceSmarts``. Protocol
+ * mirrors Rust ``xpict::align_opts``.
  */
 
 import { ensureRdkit, type RdkitMol, type RdkitModule } from "../rdkit-loader.js";
@@ -15,8 +14,8 @@ import { elementSymbol } from "../elements.js";
 export const SCALE = 20;
 
 /**
+ * MinimalLib FMCS details for uniquely isotope-tagged atom-map copies.
  * Keep in sync with ``xpict::align_opts::MCS_DETAILS_JSON``.
- * Run on mols tagged with {@link tagHybridizationIsotopes}.
  */
 export const MCS_DETAILS_JSON = JSON.stringify({
   AtomCompare: "Isotopes",
@@ -43,85 +42,12 @@ type RdkitMolJson = {
   }>;
 };
 
-/**
- * Infer SP2 (2) vs SP3 (3) from MinimalLib bond orders (often kekulized).
- * Heteroatoms on an unsaturated neighbor count as SP2 (phenol / aniline).
- */
-export function inferHybridizationCodes(molJson: RdkitMolJson): number[] {
-  const mol0 = molJson.molecules[0];
-  const atoms = mol0?.atoms ?? [];
-  const bonds = mol0?.bonds ?? [];
-  const n = atoms.length;
-  const maxBo = Array<number>(n).fill(1);
-  for (const b of bonds) {
-    const bo = b.bo ?? 1;
-    for (const ai of b.atoms) {
-      if (ai >= 0 && ai < n) maxBo[ai] = Math.max(maxBo[ai]!, bo);
-    }
-  }
-  const adjUnsat = Array<boolean>(n).fill(false);
-  for (const b of bonds) {
-    const [a, c] = b.atoms;
-    if (a === undefined || c === undefined) continue;
-    if (maxBo[a]! >= 1.5) adjUnsat[c] = true;
-    if (maxBo[c]! >= 1.5) adjUnsat[a] = true;
-  }
-  return atoms.map((atom, i) => {
-    const z = atom.z ?? 6;
-    if (maxBo[i]! >= 1.5) return 2;
-    if (z !== 6 && adjUnsat[i]) return 2;
-    return 3;
-  });
-}
-
-function tagMolblockIsotopes(
-  molblock: string,
-  atomicNums: number[],
-  hybCodes: number[]
-): string {
-  const lines = molblock.replace(/\r\n/g, "\n").split("\n");
-  const end = lines.findIndex((l) => l.startsWith("M  END"));
-  if (end < 0) return molblock;
-  const pairs: string[] = [];
-  for (let i = 0; i < atomicNums.length; i++) {
-    const iso = atomicNums[i]! * 10 + hybCodes[i]!;
-    pairs.push(String(i + 1).padStart(4) + String(iso).padStart(4));
-  }
-  const chunks: string[] = [];
-  for (let i = 0; i < pairs.length; i += 8) {
-    const slice = pairs.slice(i, i + 8);
-    chunks.push("M  ISO" + String(slice.length).padStart(3) + slice.join(""));
-  }
-  lines.splice(end, 0, ...chunks);
-  return lines.join("\n");
-}
-
 function stripMolblockIsotopes(molblock: string): string {
   return molblock
     .replace(/\r\n/g, "\n")
     .split("\n")
     .filter((l) => !l.startsWith("M  ISO"))
     .join("\n");
-}
-
-/**
- * Copy with isotopes ``Z×10+hyb`` so MinimalLib ``AtomCompare: Isotopes``
- * matches Python element+hybridization MCS.
- */
-export function tagHybridizationIsotopes(
-  rdkit: RdkitModule,
-  mol: RdkitMol
-): RdkitMol | null {
-  const json = JSON.parse(mol.get_json()) as RdkitMolJson;
-  const atoms = json.molecules[0]?.atoms ?? [];
-  const z = atoms.map((a) => a.z ?? 6);
-  const hyb = inferHybridizationCodes(json);
-  const tagged = rdkit.get_mol(tagMolblockIsotopes(mol.get_molblock(), z, hyb));
-  if (!tagged || !tagged.is_valid()) {
-    tagged?.delete();
-    return null;
-  }
-  return tagged;
 }
 
 /**
@@ -308,8 +234,7 @@ function ensureCoords(mol: RdkitMol): void {
 }
 
 /**
- * FMCS on hybridization-tagged copies → isotope SMARTS when both tagged mols
- * match it with enough non-null atom indices.
+ * Unique-isotope SMARTS via MinimalLib FMCS (atom-map bridge; discovery is chematic).
  */
 function mcsIsotopeSmarts(
   rdkit: RdkitModule,
