@@ -73,7 +73,7 @@ def test_codisplayed_unlabeled_bonds_match_length():
     import re
 
     from xpict.contracts.scene import PathPrim
-    from xpict.diagram.elk import layout_diagram_ex
+    from xpict.draw.scene_builder import grid_positions, viewport_size
 
     doc = PictSpec.model_validate(
         {
@@ -87,8 +87,12 @@ def test_codisplayed_unlabeled_bonds_match_length():
     pict = Pict(backend=layout_backend())
     layouts = pict.layout(doc)
     scale = shared_coord_scale(layouts)
-    place = layout_diagram_ex(layouts, doc)
-    scene = build_scene(layouts, doc.molecules, doc, positions=place.positions, scale=scale)
+    sizes = [
+        viewport_size(layout, doc.molecules[i], scale=scale)
+        for i, layout in enumerate(layouts)
+    ]
+    positions = grid_positions(layouts, 2, sizes)
+    scene = build_scene(layouts, doc.molecules, doc, positions=positions, scale=scale)
 
     def unlabeled_skeleton_lens(vp):
         out = []

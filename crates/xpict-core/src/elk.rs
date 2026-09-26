@@ -1,8 +1,6 @@
 //! Multi-molecule diagram placement via **elkrs** (native ELK).
 //!
-//! Replaces the Python `jsrun` + vendored elkjs path for network/reaction
-//! diagrams. Input/output is ELK JSON — same graph the Python synthesizer
-//! already builds (`elk_graph` in `diagram/elk.py`).
+//! Used by [`crate::doc::compose_scheme`] for reaction_scheme documents.
 
 #![cfg(feature = "elk")]
 

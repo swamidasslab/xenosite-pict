@@ -12,9 +12,8 @@ import sys
 import warnings
 from pathlib import Path
 
-from xpict import Pict, render
+from xpict import Pict, depict, render
 from xpict.future.nodes import PictSpec
-from xpict.diagram.elk import elk_graph, layout_diagram
 from xpict.draw.svg import svg_to_img_tag
 from xpict.warnings import PictBackendWarning
 
@@ -117,48 +116,28 @@ def poc_shade(out: Path, backend: str) -> Path:
 
 
 def poc_elk(out: Path, backend: str) -> Path:
-    """POC C: network diagram via elkrs (row fallback if ELK fails)."""
-    spec_dict = {
-        "molecules": [
-            {"id": "A", "smiles": "CCO"},
-            {"id": "B", "smiles": "CC=O"},
-            {"id": "C", "smiles": "CC(=O)O"},
-            {"id": "D", "smiles": "c1ccccc1"},
+    """POC C: network diagram via Rust compose_scheme (ELK)."""
+    spec = {
+        "type": "reaction_scheme",
+        "children": [
+            {"type": "mol", "id": "A", "smiles": "CCO"},
+            {"type": "mol", "id": "B", "smiles": "CC=O"},
+            {"type": "mol", "id": "C", "smiles": "CC(=O)O"},
+            {"type": "mol", "id": "D", "smiles": "c1ccccc1"},
+            {"type": "edge", "sources": "A", "targets": "B"},
+            {"type": "edge", "sources": "B", "targets": "C"},
+            {"type": "edge", "sources": "A", "targets": "D"},
         ],
-        "diagram": {
-            "kind": "network",
-            "edges": [
-                {"source": "A", "target": "B"},
-                {"source": "B", "target": "C"},
-                {"source": "A", "target": "D"},
-            ],
-            "elk_options": {"elk.direction": "DOWN"},
-        },
+        "layout": {"direction": "down"},
     }
-    doc = PictSpec.model_validate(spec_dict)
-    pict = Pict(backend=backend)
-    layouts = pict.layout(doc)
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        positions = layout_diagram(layouts, doc)
-        svg = pict.render(doc)
-    (out / "poc-c-elk-graph.json").write_text(
-        json.dumps(elk_graph(layouts, doc), indent=2), encoding="utf-8"
-    )
+    rows = depict(spec)
+    scene = rows[0].scene
+    positions = [(vp.id, vp.x, vp.y) for vp in scene.viewports]
     (out / "poc-c-elk-positions.json").write_text(
-        json.dumps(
-            {
-                "positions": positions,
-                "warnings": [
-                    str(w.message)
-                    for w in caught
-                    if issubclass(w.category, PictBackendWarning)
-                ],
-            },
-            indent=2,
-        ),
+        json.dumps({"positions": positions}, indent=2),
         encoding="utf-8",
     )
+    svg = render(spec)
     path = out / f"poc-c-network-{backend}.svg"
     path.write_text(svg, encoding="utf-8")
     return path

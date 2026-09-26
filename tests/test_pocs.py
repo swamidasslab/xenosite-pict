@@ -1,15 +1,10 @@
-"""POC-focused tests: marks/shade drawing and ELK graph synthesis."""
+"""POC-focused tests: marks/shade drawing and reaction_scheme compose."""
 
 from __future__ import annotations
 
 from helpers import layout_backend
 
-import json
-import warnings
-
-from xpict import Pict, render
-from xpict.future.nodes import PictSpec
-from xpict.diagram.elk import elk_graph, elk_graph_json, layout_diagram
+from xpict import Pict, depict, render
 
 
 def _chem_backend() -> str:
@@ -46,71 +41,21 @@ def test_shade_and_marks_layers():
     assert "substructure-mark" in svg or "mark" in svg
 
 
-def test_elk_graph_uses_molecule_ids():
-    doc = PictSpec.model_validate(
+def test_network_scheme_places_distinct_viewports():
+    rows = depict(
         {
-            "molecules": [
-                {"id": "A", "smiles": "CCO"},
-                {"id": "B", "smiles": "C"},
+            "type": "reaction_scheme",
+            "children": [
+                {"type": "mol", "id": "A", "smiles": "CCO"},
+                {"type": "mol", "id": "B", "smiles": "C"},
+                {"type": "mol", "id": "C", "smiles": "O"},
+                {"type": "edge", "sources": "A", "targets": "B"},
+                {"type": "edge", "sources": "B", "targets": "C"},
             ],
-            "diagram": {
-                "kind": "network",
-                "edges": [{"source": "A", "target": "B"}],
-            },
         }
     )
-    pict = Pict(backend=layout_backend())
-    layouts = pict.layout(doc)
-    graph = elk_graph(layouts, doc)
-    ids = {c["id"] for c in graph["children"]}
-    assert ids == {"A", "B"}
-    assert graph["edges"][0]["sources"] == ["A"]
-    assert json.loads(elk_graph_json(layouts, doc))["id"] == "root"
-
-
-def test_network_layout_positions_length():
-    doc = PictSpec.model_validate(
-        {
-            "molecules": [
-                {"id": "A", "smiles": "CCO"},
-                {"id": "B", "smiles": "C"},
-                {"id": "C", "smiles": "O"},
-            ],
-            "diagram": {
-                "kind": "network",
-                "edges": [
-                    {"source": "A", "target": "B"},
-                    {"source": "B", "target": "C"},
-                ],
-            },
-        }
-    )
-    layouts = Pict(backend=layout_backend()).layout(doc)
-    with warnings.catch_warnings(record=True):
-        warnings.simplefilter("always")
-        positions = layout_diagram(layouts, doc)
-    assert len(positions) == 3
-
-
-def test_elk_places_network():
-    doc = PictSpec.model_validate(
-        {
-            "molecules": [
-                {"id": "A", "smiles": "CCO"},
-                {"id": "B", "smiles": "C"},
-                {"id": "C", "smiles": "CC=O"},
-            ],
-            "diagram": {
-                "kind": "network",
-                "edges": [
-                    {"source": "A", "target": "B"},
-                    {"source": "B", "target": "C"},
-                ],
-            },
-        }
-    )
-    layouts = Pict(backend=layout_backend()).layout(doc)
-    positions = layout_diagram(layouts, doc)
-    assert len(positions) == 3
-    # elkrs should separate nodes (not all stacked at origin).
-    assert len({(round(x, 1), round(y, 1)) for x, y in positions}) >= 2
+    assert len(rows) == 1
+    vps = rows[0].scene.viewports
+    assert len(vps) == 3
+    positions = {(round(vp.x, 1), round(vp.y, 1)) for vp in vps}
+    assert len(positions) >= 2

@@ -103,6 +103,14 @@ def render_doc(
     return json.loads(_rust.render_doc(_as_json(spec), _as_json(edge)))
 
 
+def compose_scheme(
+    spec: dict[str, Any] | str | Any, paints: list[dict[str, Any]] | str
+) -> dict[str, Any]:
+    """Pass 3: DepictSpec + DocPaint rows → composed Scene (ELK + overlays)."""
+    paints_json = paints if isinstance(paints, str) else json.dumps(paints)
+    return json.loads(_rust.compose_scheme(_as_json(spec), paints_json))
+
+
 def halo_path_d_for_ink(ink: InkGeometry, dist: float) -> str | None:
     """Rust fast path for tagged ink; ``None`` → caller uses Shape.halo."""
     if isinstance(ink, CapsuleInk):

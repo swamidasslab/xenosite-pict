@@ -79,6 +79,32 @@ fn render_doc(spec_json: &str, edge_json: &str) -> PyResult<String> {
         .map_err(|e| PyRuntimeError::new_err(format!("DocPaint JSON: {e}")))
 }
 
+/// Compose a reaction scheme Scene from DepictSpec + DocPaint JSON rows.
+#[pyfunction]
+fn compose_scheme(spec_json: &str, paints_json: &str) -> PyResult<String> {
+    #[derive(serde::Deserialize)]
+    struct PaintIn {
+        id: String,
+        molecule: xpict_core::scene::MoleculeIn,
+        scene: xpict_core::scene::Scene,
+    }
+    let spec: xpict_core::DepictSpec = serde_json::from_str(spec_json)
+        .map_err(|e| PyRuntimeError::new_err(format!("DepictSpec JSON: {e}")))?;
+    let raw: Vec<PaintIn> = serde_json::from_str(paints_json)
+        .map_err(|e| PyRuntimeError::new_err(format!("DocPaint JSON: {e}")))?;
+    let paints: Vec<xpict_core::DocPaint> = raw
+        .into_iter()
+        .map(|p| xpict_core::DocPaint {
+            id: p.id,
+            molecule: p.molecule,
+            scene: p.scene,
+        })
+        .collect();
+    let scene = xpict_core::compose_scheme(&spec, &paints).map_err(PyRuntimeError::new_err)?;
+    serde_json::to_string(&scene)
+        .map_err(|e| PyRuntimeError::new_err(format!("Scene JSON: {e}")))
+}
+
 /// Element symbol for atomic number (`0` → ``*``, `1` → ``H``, …).
 #[pyfunction]
 fn element_symbol(z: u32) -> &'static str {
@@ -661,6 +687,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(validate_edge_plan, m)?)?;
     m.add_function(wrap_pyfunction!(plan_edge, m)?)?;
     m.add_function(wrap_pyfunction!(render_doc, m)?)?;
+    m.add_function(wrap_pyfunction!(compose_scheme, m)?)?;
     m.add_function(wrap_pyfunction!(element_symbol, m)?)?;
     m.add_function(wrap_pyfunction!(atomic_number, m)?)?;
     m.add_function(wrap_pyfunction!(kabsch_2d, m)?)?;
