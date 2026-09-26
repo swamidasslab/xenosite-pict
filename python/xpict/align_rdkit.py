@@ -9,100 +9,62 @@ from __future__ import annotations
 
 import math
 
-from xpict.align import RigidAligner, choose_mapping, with_warning
+from xpict.align import RigidAligner, with_warning
 from xpict.contracts.layout import BondLayout, MoleculeLayout
 
 _MIN_MAP = 3
-_PLACE_CAP = 8
-_ORDER_CAP = 24
 
 
-def mcs_params():
-    """FMCS: element + hybridization atoms; any-bond (aromatic ↔ kekulé / quinone).
+def _layout_to_mcs_graph(layout: MoleculeLayout) -> dict:
+    """Atom/bond graph for chematic MCS (layout indices)."""
+    from xpict import _native
 
-    Hybridization separates aliphatic rings from quinones without a post-filter.
-    Parity with JS MinimalLib (isotope-encoded Z×10+hyb + ``AtomCompare: Isotopes``).
-    Align passes **atom matches only** into Depictor (not the MCS bond pattern).
-    Shared by document align and single-mol ``client`` layout.
-    """
-    from rdkit.Chem import rdFMCS
-
-    class _ElemHyb(rdFMCS.MCSAtomCompare):
-        def __call__(self, _params, mol1, idx1, mol2, idx2) -> bool:  # noqa: ANN001
-            a1 = mol1.GetAtomWithIdx(idx1)
-            a2 = mol2.GetAtomWithIdx(idx2)
-            if a1.GetAtomicNum() != a2.GetAtomicNum():
-                return False
-            return a1.GetHybridization() == a2.GetHybridization()
-
-    params = rdFMCS.MCSParameters()
-    params.Timeout = 2
-    params.AtomTyper = _ElemHyb()
-    params.BondTyper = rdFMCS.BondCompare.CompareAny
-    return params
-
-
-def _substruct_orders(mol, pattern) -> list[tuple[int, ...]]:
-    """Match orders, with at least one order for every place the pattern sits.
-
-    ``uniquify=True`` collapses a symmetric ring to a single arbitrary
-    rotation. ``uniquify=False`` is capped, and that cap can fill up on the
-    first place, so unique places are merged back in.
-    """
-    places = mol.GetSubstructMatches(pattern, uniquify=True, maxMatches=_PLACE_CAP)
-    orders = mol.GetSubstructMatches(pattern, uniquify=False, maxMatches=_PLACE_CAP * _ORDER_CAP)
-    grouped: dict[frozenset[int], list[tuple[int, ...]]] = {}
-    for match in list(orders) + list(places):
-        grouped.setdefault(frozenset(match), [])
-        bucket = grouped[frozenset(match)]
-        if match not in bucket:
-            bucket.append(match)
-    selected: list[tuple[int, ...]] = []
-    for i, bucket in enumerate(grouped.values()):
-        if i >= _PLACE_CAP:
-            break
-        selected.extend(bucket[:_ORDER_CAP])
-    return selected
+    atoms = []
+    for atom in sorted(layout.atoms, key=lambda a: a.index):
+        z = 0
+        el = atom.element
+        if el not in {"*", "R"} and not el.startswith("R") and not el.startswith("_"):
+            try:
+                n = _native.atomic_number(el)
+                z = int(n) if n is not None else 0
+            except Exception:
+                z = 0
+        atoms.append({"z": z, "aromatic": None})
+    bonds = [
+        {"begin": int(b.begin), "end": int(b.end), "order": float(b.order)}
+        for b in layout.bonds
+    ]
+    # Mark aromatic atoms from aromatic bonds (order ≈ 1.5).
+    for b in bonds:
+        if abs(b["order"] - 1.5) < 0.1:
+            bi, ei = b["begin"], b["end"]
+            if bi < len(atoms):
+                atoms[bi]["aromatic"] = True
+            if ei < len(atoms):
+                atoms[ei]["aromatic"] = True
+    return {"atoms": atoms, "bonds": bonds}
 
 
 def _fmcs_mapping(ref: MoleculeLayout, other: MoleculeLayout) -> dict[int, int] | None:
-    from rdkit import Chem
-    from rdkit.Chem import rdFMCS
+    """House MCS via chematic (element+hyb); returns other→ref layout indices."""
+    from xpict.native_bridge import mcs_atom_map_graph
 
-    built_ref = layout_to_rdkit(ref)
-    built_other = layout_to_rdkit(other)
-    if built_ref is None or built_other is None:
+    pairs = mcs_atom_map_graph(
+        _layout_to_mcs_graph(other),
+        _layout_to_mcs_graph(ref),
+        _MIN_MAP,
+    )
+    if pairs is None:
         return None
-    ref_mol, ref_to_rd = built_ref
-    other_mol, other_to_rd = built_other
-    rd_to_ref = {rd: lay for lay, rd in ref_to_rd.items()}
-    rd_to_other = {rd: lay for lay, rd in other_to_rd.items()}
-    try:
-        mcs = rdFMCS.FindMCS([ref_mol, other_mol], mcs_params())
-    except Exception:
-        return None
-    if getattr(mcs, "canceled", False) or mcs.numAtoms < _MIN_MAP:
-        return None
-    try:
-        pattern = Chem.MolFromSmarts(mcs.smartsString)
-    except Exception:
-        pattern = None
-    if pattern is None:
-        return None
-    ref_orders = _substruct_orders(ref_mol, pattern)
-    other_orders = _substruct_orders(other_mol, pattern)
-    mappings: list[dict[int, int]] = []
-    for ref_match in ref_orders:
-        for other_match in other_orders:
-            if len(ref_match) != len(other_match):
-                continue
-            mappings.append(
-                {
-                    rd_to_other[other_i]: rd_to_ref[ref_i]
-                    for ref_i, other_i in zip(ref_match, other_match, strict=True)
-                }
-            )
-    return choose_mapping(ref, other, mappings, min_size=_MIN_MAP)
+    return {int(q): int(t) for q, t in pairs}
+
+
+def mcs_params():
+    """Deprecated: MCS is chematic in Rust. Kept for import compatibility."""
+    raise RuntimeError(
+        "mcs_params() removed — use xpict.native_bridge.mcs_atom_map "
+        "(chematic house MCS). Depictor still owns 2D coords."
+    )
 
 
 def rdkit_available() -> bool:

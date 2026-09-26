@@ -1,4 +1,7 @@
 //! Process [`xpict_core::EdgePlan`] with native RDKit Depictor.
+//!
+//! MCS discovery uses chematic via [`xpict_core::mcs_atom_map`] (not RDKit FMCS).
+//! Depictor still owns 2D coordinates.
 
 use std::collections::HashMap;
 
@@ -6,6 +9,7 @@ use xpict_core::edge::{
     AlignOpts, CoordGenMoleculeResult, CoordMethod, EdgePlan, EdgeResult, EdgeTask,
     EdgeTaskResult, MolTemplate, MIN_MCS_ATOMS,
 };
+use xpict_core::mcs_atom_map;
 
 use crate::layout::layout_with_rdkit_meta;
 use crate::Error;
@@ -66,9 +70,10 @@ pub fn process_edge_plan_with_frames(
             EdgeTask::CoordGen { roots } => {
                 let mut rows: Vec<CoordGenMoleculeResult> = Vec::new();
                 let mut poses: HashMap<String, String> = HashMap::new();
+                let mut sources: HashMap<String, String> = HashMap::new();
 
                 for root in roots {
-                    visit(root, None, &mut rows, &mut poses)?;
+                    visit(root, None, &mut rows, &mut poses, &mut sources)?;
                 }
 
                 all_poses.extend(poses);
@@ -98,14 +103,16 @@ fn visit(
     parent_id: Option<&str>,
     rows: &mut Vec<CoordGenMoleculeResult>,
     poses: &mut HashMap<String, String>,
+    sources: &mut HashMap<String, String>,
 ) -> Result<(), Error> {
     let source = source_of(node)?;
+    sources.insert(node.id.clone(), source.clone());
     let min_atoms = node
         .align
         .as_ref()
         .and_then(|a| a.min_atoms)
         .unwrap_or(MIN_MCS_ATOMS);
-    let atom_map = node.align.as_ref().and_then(|a| a.atom_map.clone());
+    let explicit_map = node.align.as_ref().and_then(|a| a.atom_map.clone());
 
     match parent_id {
         None => match free_layout(&source, &node.id) {
@@ -136,7 +143,6 @@ fn visit(
             let template = match poses.get(pid) {
                 Some(p) => p.clone(),
                 None => {
-                    // No parent pose — still try free layout.
                     match free_layout(&source, &node.id) {
                         Ok((molecule, pose)) => {
                             rows.push(CoordGenMoleculeResult {
@@ -163,75 +169,77 @@ fn visit(
                         }
                     }
                     for child in &node.template_for {
-                        visit(child, Some(node.id.as_str()), rows, poses)?;
+                        visit(child, Some(node.id.as_str()), rows, poses, sources)?;
                     }
                     return Ok(());
                 }
             };
-            let map_ref = atom_map.as_deref();
-            let map_ok_len = atom_map
-                .as_ref()
-                .map(|m| m.len() as u32 >= min_atoms)
-                .unwrap_or(true);
-            let use_map = if map_ok_len { map_ref } else { None };
+
+            let (use_map, method_if_ok): (Option<Vec<(u32, u32)>>, CoordMethod) =
+                if let Some(map) = explicit_map {
+                    if (map.len() as u32) >= min_atoms {
+                        (Some(map), CoordMethod::AtomMap)
+                    } else {
+                        (None, CoordMethod::None)
+                    }
+                } else if let Some(parent_src) = sources.get(pid) {
+                    match mcs_atom_map(&source, parent_src, Some(min_atoms)) {
+                        Some(map) => (Some(map), CoordMethod::Mcs),
+                        None => (None, CoordMethod::None),
+                    }
+                } else {
+                    (None, CoordMethod::None)
+                };
 
             match layout_with_rdkit_meta(
                 &source,
                 Some(&template),
-                use_map,
+                use_map.as_deref(),
                 Some(node.id.clone()),
             ) {
                 Ok((molecule, pose, matched)) if matched => {
-                    let method = if atom_map.is_some() {
-                        CoordMethod::AtomMap
-                    } else {
-                        CoordMethod::Mcs
-                    };
                     rows.push(CoordGenMoleculeResult {
                         id: node.id.clone(),
                         ok: true,
-                        method,
-                        used_map: atom_map.clone(),
+                        method: method_if_ok,
+                        used_map: use_map,
                         molecule: Some(molecule),
                         error: None,
                     });
                     poses.insert(node.id.clone(), pose);
                 }
-                Ok(_) | Err(_) => {
-                    // Align failed or errored → free layout fallback.
-                    match free_layout(&source, &node.id) {
-                        Ok((molecule, pose)) => {
-                            rows.push(CoordGenMoleculeResult {
-                                id: node.id.clone(),
-                                ok: true,
-                                method: CoordMethod::None,
-                                used_map: None,
-                                molecule: Some(molecule),
-                                error: Some(
-                                    "align failed; fell back to unaligned coord gen".into(),
-                                ),
-                            });
-                            poses.insert(node.id.clone(), pose);
-                        }
-                        Err(e) => {
-                            rows.push(CoordGenMoleculeResult {
-                                id: node.id.clone(),
-                                ok: false,
-                                method: CoordMethod::None,
-                                used_map: None,
-                                molecule: None,
-                                error: Some(e.to_string()),
-                            });
-                            return Ok(());
-                        }
+                Ok(_) | Err(_) => match free_layout(&source, &node.id) {
+                    Ok((molecule, pose)) => {
+                        rows.push(CoordGenMoleculeResult {
+                            id: node.id.clone(),
+                            ok: true,
+                            method: CoordMethod::None,
+                            used_map: None,
+                            molecule: Some(molecule),
+                            error: Some(
+                                "align failed; fell back to unaligned coord gen".into(),
+                            ),
+                        });
+                        poses.insert(node.id.clone(), pose);
                     }
-                }
+                    Err(e) => {
+                        rows.push(CoordGenMoleculeResult {
+                            id: node.id.clone(),
+                            ok: false,
+                            method: CoordMethod::None,
+                            used_map: None,
+                            molecule: None,
+                            error: Some(e.to_string()),
+                        });
+                        return Ok(());
+                    }
+                },
             }
         }
     }
 
     for child in &node.template_for {
-        visit(child, Some(node.id.as_str()), rows, poses)?;
+        visit(child, Some(node.id.as_str()), rows, poses, sources)?;
     }
     Ok(())
 }

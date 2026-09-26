@@ -416,6 +416,8 @@ export async function layoutWithRdkit(
   source: string,
   opts: {
     template?: string | null;
+    /** Template SMILES for chematic MCS when ``atomMap`` unset. */
+    templateSmiles?: string | null;
     id?: string;
     /** Pairs [query, template]; skips MCS when set. */
     atomMap?: Array<[number, number]> | null;
@@ -437,14 +439,28 @@ export async function layoutWithRdkit(
       let method: LayoutMeta["method"] = "none";
       let used_map: Array<[number, number]> | undefined;
 
-      if (opts.atomMap && opts.atomMap.length >= floor) {
+      let atomMap = opts.atomMap ?? null;
+      if ((!atomMap || atomMap.length < floor) && opts.templateSmiles) {
+        const { mcsAtomMap } = await import("../native.js");
+        atomMap = mcsAtomMap(source, opts.templateSmiles, floor);
+        if (atomMap && atomMap.length >= floor) {
+          method = "mcs";
+          used_map = atomMap;
+        }
+      }
+
+      if (atomMap && atomMap.length >= floor) {
+        if (method === "none") {
+          method = "atom_map";
+          used_map = atomMap;
+        }
         taggedTemplate = tagExplicitMapIsotopes(
           rdkit,
           templateMol,
-          opts.atomMap,
+          atomMap,
           "template"
         );
-        taggedMol = tagExplicitMapIsotopes(rdkit, mol, opts.atomMap, "query");
+        taggedMol = tagExplicitMapIsotopes(rdkit, mol, atomMap, "query");
         if (taggedTemplate && taggedMol) {
           const smarts = mcsIsotopeSmarts(rdkit, taggedMol, taggedTemplate);
           if (smarts) {
@@ -453,27 +469,21 @@ export async function layoutWithRdkit(
               minimallibAlignDetails(smarts)
             );
             if (alignSucceeded(aligned) && taggedMol.is_valid()) {
-              method = "atom_map";
-              used_map = opts.atomMap.map(([q, t]) => [q, t]);
+              // Keep method/used_map from chematic MCS or explicit atom_map.
+            } else {
+              method = "none";
+              used_map = undefined;
             }
+          } else {
+            method = "none";
+            used_map = undefined;
           }
-        }
-      } else if (!opts.atomMap) {
-        taggedTemplate = tagHybridizationIsotopes(rdkit, templateMol);
-        taggedMol = tagHybridizationIsotopes(rdkit, mol);
-        if (taggedTemplate && taggedMol) {
-          const smarts = mcsIsotopeSmarts(rdkit, taggedMol, taggedTemplate);
-          if (smarts) {
-            aligned = taggedMol.generate_aligned_coords(
-              taggedTemplate,
-              minimallibAlignDetails(smarts)
-            );
-            if (alignSucceeded(aligned) && taggedMol.is_valid()) {
-              method = "mcs";
-            }
-          }
+        } else {
+          method = "none";
+          used_map = undefined;
         }
       }
+      // No host MinimalLib MCS — chematic via templateSmiles / atomMap only.
 
       if (method === "none" || !taggedMol?.is_valid()) {
         ensureCoords(mol);

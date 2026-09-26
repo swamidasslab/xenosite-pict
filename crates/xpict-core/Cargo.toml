@@ -31,6 +31,8 @@ font = ["dep:ttf-parser", "geom"]
 codegen = ["dep:schemars", "dep:ts-rs"]
 
 [dependencies]
+# Chemical MCS / SMARTS (not 2D coords — hosts keep RDKit Depictor / MinimalLib).
+chematic = { version = "1.0.27", default-features = false, features = ["smiles", "smarts"] }
 elkrs = { version = "0.1.1", optional = true }
 i_overlay = { version = "9.0.0", optional = true }
 ttf-parser = { version = "0.25", optional = true }

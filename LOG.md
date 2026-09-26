@@ -1,5 +1,13 @@
 # Lab log
 
+## 2026-09-26
+
+- Added **chematic 1.0.27** (`smiles` + `smarts` only — not `depict` / 2D) to
+  `xpict-core`. House MCS is `mcs_atom_map` / `mcs_atom_map_graph` (element +
+  hybridization via ``Z×10+hyb`` isotopes, any-bond). Py/JS/native hosts call
+  that API; RDKit Depictor / MinimalLib still own 2D coords. Bumped workspace
+  `rust-version` to **1.88** (chematic MSRV).
+
 ## 2026-09-23 (codegen)
 
 - Spike rejected **typebridge** (wrong serde tag rename / broken untagged

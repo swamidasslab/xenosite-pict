@@ -54,7 +54,8 @@ The native `crates/xpict` package is **not** linked into py/wasm.
 | Logic | Test once in |
 | --- | --- |
 | CX parse / apply, `plan_edge`, `render_doc` chrome, EdgePlan validate | `xpict-core` |
-| RDKit / MinimalLib `process_edge_plan` (atom_map, MCS, fallback) | each host (Rust `xpict`, Python, JS) |
+| RDKit Depictor / MinimalLib 2D + atom-map align | each host (Rust `xpict`, Python, JS) |
+| House MCS (`mcs_atom_map`, chematic) | `xpict-core` (once) |
 | Public `depict` / `render` wiring | one smoke per language |
 
 Do **not** re-assert core behavior in Py + JS + Rust host suites.
@@ -86,14 +87,16 @@ Crates to prefer when filling stubs: **`ttf-parser`/`skrifa`** (fonts),
 
 ## Coords + alignment (RDKit at the edges, Rust for shared math)
 
-**Focus:** each language calls **RDKit** for 2D layout and template alignment.
-**Never** put RDKit inside `xpict-core` (won't WASM cleanly).
+**Focus:** each language calls **RDKit** for 2D layout and template
+depiction. **MCS** is chematic in `xpict-core` (`mcs_atom_map`) — hosts do
+not reimplement FMCS. **Never** put RDKit or chematic 2D inside
+`xpict-core` paint.
 
-| Runtime | 2D coords | Template align | Then |
-| --- | --- | --- | --- |
-| Python | `backend="rdkit"` (`xpict[rdkit]`) | `align_rdkit.RdkitAligner` | Draw / rigid helpers via `_native` |
-| Browser | `xpict.mol` / `render` / `toSvg` | RDKit align (hidden) | `scene` JSON → string |
-| Native Rust | crates.io `rdkit` + `crates/xpict` Depictor FFI | `generateDepictionMatching2DStructure` | `xpict-core` paint → SVG |
+| Runtime | 2D coords | MCS | Template align | Then |
+| --- | --- | --- | --- | --- |
+| Python | `backend="rdkit"` | `_native.mcs_atom_map` | Depictor atom map | Draw |
+| Browser | MinimalLib | wasm `mcsAtomMap` | `generate_aligned_coords` | `scene` JSON |
+| Native Rust | Depictor FFI | `xpict_core::mcs_atom_map` | atom-map Depictor | SVG |
 
 **Indigo alternate:** `backend="indigo"` + **fake/rigid align** in Rust only
 (no RDKit template). Rigid-only also when RDKit is absent.

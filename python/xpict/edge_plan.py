@@ -70,6 +70,7 @@ def _layout(
     source: str,
     *,
     template: str | None,
+    template_smiles: str | None,
     atom_map: list[tuple[int, int]] | None,
     id: str | None,
     min_atoms: int,
@@ -80,6 +81,7 @@ def _layout(
     molecule, pose, meta = layout_with_rdkit(
         source,
         template=template,
+        template_smiles=template_smiles,
         id=id,
         atom_map=atom_map,
         min_atoms=min_atoms,
@@ -109,6 +111,7 @@ def process_edge_plan_with_frames(
     for task in p.tasks:
         rows: list[CoordGenMoleculeResult] = []
         poses: dict[str, str] = {}
+        sources: dict[str, str] = {}
 
         def _mol(molecule: dict[str, Any] | None) -> MoleculeIn | None:
             if molecule is None:
@@ -117,6 +120,7 @@ def process_edge_plan_with_frames(
 
         def visit(node: MolTemplate, parent_id: str | None) -> None:
             source = _source_of(node)
+            sources[node.id] = source
             min_atoms = _MIN_MCS_ATOMS
             atom_map = None
             if node.align is not None:
@@ -125,11 +129,13 @@ def process_edge_plan_with_frames(
                 atom_map = node.align.atom_map
 
             template_pose = poses.get(parent_id) if parent_id else None
+            parent_smiles = sources.get(parent_id) if parent_id else None
 
             def free_layout() -> tuple[dict[str, Any], str]:
                 molecule, pose, _method, _used = _layout(
                     source,
                     template=None,
+                    template_smiles=None,
                     atom_map=None,
                     id=node.id,
                     min_atoms=min_atoms,
@@ -156,6 +162,7 @@ def process_edge_plan_with_frames(
                     molecule, pose, method, used = _layout(
                         source,
                         template=template_pose,
+                        template_smiles=parent_smiles,
                         atom_map=atom_map,
                         id=node.id,
                         min_atoms=min_atoms,

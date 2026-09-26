@@ -6,7 +6,7 @@
  */
 
 import { layoutWithRdkit } from "./layout/rdkit-layout.js";
-import { validateEdgePlanJson } from "./native.js";
+import { mcsAtomMap, validateEdgePlanJson } from "./native.js";
 import type {
   AlignOpts,
   CoordGenMoleculeResult,
@@ -116,10 +116,13 @@ export async function processEdgePlanWithFrames(
   for (const task of plan.tasks) {
     const rows: CoordGenMoleculeResult[] = [];
     const poses = new Map<string, string>();
+    const sources = new Map<string, string>();
 
     const visit = async (node: MolTemplate, parentId: string | null) => {
       const source = sourceOf(node);
-      const atomMap = node.align?.atom_map ?? null;
+      sources.set(node.id, source);
+      let atomMap = node.align?.atom_map ?? null;
+      const minAtoms = node.align?.min_atoms ?? MIN_MCS_ATOMS;
 
       const freeLayout = async () =>
         layoutWithRdkit(source, { id: node.id, template: null });
@@ -137,11 +140,16 @@ export async function processEdgePlanWithFrames(
         } else {
           const template = poses.get(parentId);
           if (!template) throw new Error(`missing parent pose ${parentId}`);
+          const parentSrc = sources.get(parentId) ?? null;
+          if (atomMap == null && parentSrc) {
+            atomMap = mcsAtomMap(source, parentSrc, minAtoms);
+          }
           const laid = await layoutWithRdkit(source, {
             id: node.id,
             template,
+            templateSmiles: parentSrc,
             atomMap,
-            minAtoms: node.align?.min_atoms ?? MIN_MCS_ATOMS,
+            minAtoms,
           });
           if (laid.meta.method === "atom_map" || laid.meta.method === "mcs") {
             rows.push({

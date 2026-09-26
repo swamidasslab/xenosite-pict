@@ -4,15 +4,17 @@ Shared **paint core** for [xpict](https://github.com/swamidasslab/xenosite-pict)
 **declarative molecule depiction** rendered as **publication-quality vector
 graphics** (SVG paths). Used from Rust, Python, and JS/WASM.
 
-**No RDKit** in this crate — layout stays at language edges.
-
 | Capability | Status |
 | --- | --- |
 | Kekulé bonds, wedges, marks, shade, color | Shipped |
 | Atom labels + chem markup (`$R_1$`, `R^2`, `\alpha`, bold/italic) | Shipped |
 | Halo / glyph outlines (Liberation Sans) | Shipped |
 | Document two-pass (`plan_edge` / `render_doc`) + CX chrome | Shipped |
-| Multi-mol / ELK / reactions | Design only (`xpict.future`) |
+| House MCS ([`mcs_atom_map`](https://docs.rs/xpict-core), chematic 1.0.27) | Shipped — **not** 2D coords |
+| Multi-mol / ELK / reactions | Shipped (`compose_scheme`) |
+
+**No RDKit** and **no chematic 2D** in this crate — layout stays at language
+edges (RDKit Depictor / MinimalLib). Chematic is used only for MCS / SMARTS.
 
 ```bash
 cargo test -p xpict-core

@@ -79,6 +79,29 @@ fn render_doc(spec_json: &str, edge_json: &str) -> PyResult<String> {
         .map_err(|e| PyRuntimeError::new_err(format!("DocPaint JSON: {e}")))
 }
 
+/// House MCS atom map: SMILES → `[[q,t],…]` JSON or `null`.
+#[pyfunction]
+#[pyo3(signature = (query_smiles, template_smiles, min_atoms=None))]
+fn mcs_atom_map(
+    query_smiles: &str,
+    template_smiles: &str,
+    min_atoms: Option<u32>,
+) -> String {
+    xpict_core::mcs_atom_map_json(query_smiles, template_smiles, min_atoms)
+}
+
+/// House MCS from layout graphs (JSON `McsMolIn`) → `[[q,t],…]` or `null`.
+#[pyfunction]
+#[pyo3(signature = (query_json, template_json, min_atoms=None))]
+fn mcs_atom_map_graph(
+    query_json: &str,
+    template_json: &str,
+    min_atoms: Option<u32>,
+) -> PyResult<String> {
+    xpict_core::mcs_atom_map_graph_json(query_json, template_json, min_atoms)
+        .map_err(PyRuntimeError::new_err)
+}
+
 /// Compose a reaction scheme Scene from DepictSpec + DocPaint JSON rows.
 #[pyfunction]
 fn compose_scheme(spec_json: &str, paints_json: &str) -> PyResult<String> {
@@ -688,6 +711,8 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(plan_edge, m)?)?;
     m.add_function(wrap_pyfunction!(render_doc, m)?)?;
     m.add_function(wrap_pyfunction!(compose_scheme, m)?)?;
+    m.add_function(wrap_pyfunction!(mcs_atom_map, m)?)?;
+    m.add_function(wrap_pyfunction!(mcs_atom_map_graph, m)?)?;
     m.add_function(wrap_pyfunction!(element_symbol, m)?)?;
     m.add_function(wrap_pyfunction!(atomic_number, m)?)?;
     m.add_function(wrap_pyfunction!(kabsch_2d, m)?)?;

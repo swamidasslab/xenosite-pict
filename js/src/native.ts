@@ -6,6 +6,8 @@
 
 import init, {
   depictMolecule as wasmDepictMolecule,
+  mcsAtomMap as wasmMcsAtomMap,
+  mcsAtomMapGraph as wasmMcsAtomMapGraph,
   planEdge as wasmPlanEdge,
   renderDoc as wasmRenderDoc,
   validateEdgePlan as wasmValidateEdgePlan,
@@ -83,4 +85,36 @@ export function planEdgeJson(specJson: string): string {
 export function renderDocJson(specJson: string, edgeJson: string): string {
   requireReady();
   return wasmRenderDoc(specJson, edgeJson);
+}
+
+/** House MCS via chematic (not MinimalLib). Returns `[query, template][]` or null. */
+export function mcsAtomMap(
+  querySmiles: string,
+  templateSmiles: string,
+  minAtoms?: number | null
+): Array<[number, number]> | null {
+  requireReady();
+  const raw = wasmMcsAtomMap(
+    querySmiles,
+    templateSmiles,
+    minAtoms == null ? undefined : minAtoms
+  );
+  if (raw === "null") return null;
+  return JSON.parse(raw) as Array<[number, number]>;
+}
+
+/** House MCS from layout graphs. */
+export function mcsAtomMapGraph(
+  query: { atoms: Array<{ z: number; aromatic?: boolean | null }>; bonds: Array<{ begin: number; end: number; order: number }> },
+  template: { atoms: Array<{ z: number; aromatic?: boolean | null }>; bonds: Array<{ begin: number; end: number; order: number }> },
+  minAtoms?: number | null
+): Array<[number, number]> | null {
+  requireReady();
+  const raw = wasmMcsAtomMapGraph(
+    JSON.stringify(query),
+    JSON.stringify(template),
+    minAtoms == null ? undefined : minAtoms
+  );
+  if (raw === "null") return null;
+  return JSON.parse(raw) as Array<[number, number]>;
 }

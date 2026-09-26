@@ -130,14 +130,18 @@ def render(
     options = _coerce_opts(opts)
 
     template: str | None = None
+    template_smiles: str | None = None
     if options.align_to is not None:
         template = _ensure_frame(options.align_to)
+        align_obj = options.align_to
+        template_smiles = getattr(align_obj, "source", None)
     elif options.atom_map is not None:
         raise ValueError("atom_map requires align_to")
 
     laid, pose_mb, _meta = _layout_with_rdkit(
         m.source,
         template=template,
+        template_smiles=template_smiles,
         id=options.id,
         atom_map=options.atom_map,
     )
@@ -357,14 +361,20 @@ def layout_with_rdkit(
     source: str,
     *,
     template: str | None = None,
+    template_smiles: str | None = None,
     id: str | None = None,
     atom_map: list[tuple[int, int]] | None = None,
     min_atoms: int | None = None,
 ) -> tuple[dict[str, Any], str, dict[str, Any]]:
-    """Public RDKit layout helper used by the EdgePlan processor."""
+    """Public RDKit layout helper used by the EdgePlan processor.
+
+    ``template_smiles`` drives chematic MCS when ``atom_map`` is unset
+    (Depictor still uses ``template`` pose coords — not chematic 2D).
+    """
     return _layout_with_rdkit(
         source,
         template=template,
+        template_smiles=template_smiles,
         id=id,
         atom_map=atom_map,
         min_atoms=min_atoms,
@@ -378,6 +388,7 @@ def _layout_with_rdkit(
     id: str | None,
     atom_map: list[tuple[int, int]] | None = None,
     min_atoms: int | None = None,
+    template_smiles: str | None = None,
 ) -> tuple[dict[str, Any], str, dict[str, Any]]:
     """RDKit layout (+ optional MCS / explicit atom-map align) → MoleculeIn + pose + meta.
 
@@ -385,7 +396,7 @@ def _layout_with_rdkit(
     """
     try:
         from rdkit import Chem
-        from rdkit.Chem import rdDepictor, rdFMCS
+        from rdkit.Chem import rdDepictor
     except ImportError as e:
         raise ImportError(
             "Single-mol render requires rdkit. Install with: pip install 'xpict[rdkit]'"
@@ -417,25 +428,23 @@ def _layout_with_rdkit(
                     used_map = list(atom_map)
                     method = "atom_map"
             else:
-                from xpict.align_rdkit import mcs_params
+                from xpict.native_bridge import mcs_atom_map
 
-                mcs = rdFMCS.FindMCS([ref_pose, rmol], mcs_params())
-                if (
-                    not getattr(mcs, "canceled", False)
-                    and mcs.numAtoms >= floor
-                ):
-                    pattern = Chem.MolFromSmarts(mcs.smartsString)
-                    if pattern is not None:  # pyright: ignore[reportUnnecessaryComparison]
-                        ref_match = ref_pose.GetSubstructMatch(pattern)
-                        mol_match = rmol.GetSubstructMatch(pattern)
-                        if len(ref_match) >= floor and len(ref_match) == len(mol_match):
-                            map_for_depict = list(
-                                zip(ref_match, mol_match, strict=True)
-                            )
-                            used_map = list(
-                                zip(mol_match, ref_match, strict=True)
-                            )
-                            method = "mcs"
+                query_smi = (
+                    source
+                    if not _looks_like_molblock(source)
+                    else Chem.MolToSmiles(rmol, canonical=False)
+                )
+                tmpl_smi = (
+                    template_smiles
+                    if template_smiles and not _looks_like_molblock(template_smiles)
+                    else Chem.MolToSmiles(ref_pose, canonical=False)
+                )
+                pairs = mcs_atom_map(query_smi, tmpl_smi, floor)
+                if pairs is not None and len(pairs) >= floor:
+                    map_for_depict = [(t, q) for q, t in pairs]
+                    used_map = list(pairs)
+                    method = "mcs"
 
             if map_for_depict is not None:
                 params = rdDepictor.ConstrainedDepictionParams()
