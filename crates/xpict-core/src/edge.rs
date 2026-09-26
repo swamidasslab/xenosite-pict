@@ -34,8 +34,7 @@ pub struct AlignOpts {
     pub min_atoms: Option<u32>,
     /// True when [`Self::atom_map`] was filled by chematic MCS (not caller-supplied).
     /// Hosts report [`CoordMethod::Mcs`] vs [`CoordMethod::AtomMap`] from this.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    #[cfg_attr(feature = "codegen", ts(optional))]
+    #[serde(default)]
     pub map_from_mcs: bool,
 }
 

@@ -6,8 +6,8 @@
 export type AlignOpts = { 
 /**
  * Pairs `(query_atom, template_atom)`.
- * 
- * When unset, `resolve_edge_plan_maps` / `plan_edge` fill this
+ *
+ * When unset, [`resolve_edge_plan_maps`] / [`crate::plan_edge`] fill this
  * via chematic MCS. Hosts must not invent maps — they only apply an
  * explicit map to Depictor / MinimalLib.
  */
@@ -17,7 +17,7 @@ atom_map?: Array<[number, number]>,
  */
 min_atoms?: number, 
 /**
- * True when `atom_map` was filled by chematic MCS (not caller-supplied).
- * Hosts report `CoordMethod::Mcs` vs `CoordMethod::AtomMap` from this.
+ * True when [`Self::atom_map`] was filled by chematic MCS (not caller-supplied).
+ * Hosts report [`CoordMethod::Mcs`] vs [`CoordMethod::AtomMap`] from this.
  */
-map_from_mcs?: boolean, };
+map_from_mcs: boolean, };

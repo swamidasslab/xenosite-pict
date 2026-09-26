@@ -26,7 +26,7 @@
       "type": "object",
       "properties": {
         "atom_map": {
-          "description": "Pairs `(query_atom, template_atom)`. `None` → edge runs MCS.",
+          "description": "Pairs `(query_atom, template_atom)`.\n\nWhen unset, [`resolve_edge_plan_maps`] / [`crate::plan_edge`] fill this via chematic MCS. Hosts must not invent maps — they only apply an explicit map to Depictor / MinimalLib.",
           "type": [
             "array",
             "null"
@@ -48,6 +48,11 @@
             "maxItems": 2,
             "minItems": 2
           }
+        },
+        "map_from_mcs": {
+          "description": "True when [`Self::atom_map`] was filled by chematic MCS (not caller-supplied). Hosts report [`CoordMethod::Mcs`] vs [`CoordMethod::AtomMap`] from this.",
+          "default": false,
+          "type": "boolean"
         },
         "min_atoms": {
           "description": "Override [`MIN_MCS_ATOMS`] when set.",
