@@ -6,19 +6,21 @@
 
 use std::collections::HashMap;
 
-use serde_json::{json, Value};
-
 use crate::arrows::{
     edge_anchors, edge_primitives as paint_edge, simplify_route, EdgePaintIn, EdgePrim, ANCHOR_GAP,
     KINK_PX,
 };
 use crate::scene::{Primitive, Scene, TextAnchor, Viewport};
 
-use super::{
-    DepictSpec, DocPaint, EdgeNode, EdgeRouting, LabelPos, LayoutOpts, Node,
-};
+use super::{DepictSpec, DocPaint, EdgeNode, LabelPos, LayoutOpts, Node};
+#[cfg(feature = "elk")]
+use super::EdgeRouting;
+#[cfg(feature = "elk")]
+use serde_json::{json, Value};
 
+#[cfg(feature = "elk")]
 const EDGE_LABEL_FONT_PX: f64 = 11.0;
+#[cfg(feature = "elk")]
 const EDGE_LABEL_PAD: f64 = 4.0;
 const ROW_GAP: f64 = 0.0; // ≈ LayoutOpts::DEFAULT_LAYER_SPACING
 
@@ -365,6 +367,7 @@ fn elk_edge_labels(spec: &DepictSpec, edge: &EdgeNode, edge_id: &str) -> Option<
     }]))
 }
 
+#[cfg(feature = "elk")]
 fn measure_label(text: &str) -> (f64, f64) {
     #[cfg(feature = "font")]
     {

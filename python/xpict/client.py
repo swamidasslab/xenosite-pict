@@ -87,7 +87,12 @@ class Rendered:
 
 @dataclass
 class MolRenderOptions:
-    """Render options — parity with JS / Rust ``MolRenderOptions``."""
+    """Render options — parity with JS / Rust ``MolRenderOptions``.
+
+    ``chematic_layout`` is a **host-only** experiment flag (not DepictSpec /
+    EdgePlan schema). When true, 2D coords come from chematic instead of
+    RDKit Depictor. Also enabled via env ``XPICT_CHEMATIC_LAYOUT=1``.
+    """
 
     id: str | None = None
     color: str | None = None
@@ -101,9 +106,20 @@ class MolRenderOptions:
     align_to: Mol | Rendered | None = None
     #: Pairs ``(query_atom, template_atom)``. Requires ``align_to``; skips MCS.
     atom_map: list[tuple[int, int]] | None = None
+    #: Experimental: use chematic for free 2D layout (not in live schema).
+    chematic_layout: bool = False
 
 
 AlignTarget = Mol | Rendered
+
+
+def _want_chematic_layout(opts: MolRenderOptions) -> bool:
+    if opts.chematic_layout:
+        return True
+    import os
+
+    raw = os.environ.get("XPICT_CHEMATIC_LAYOUT", "").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
 
 
 def mol(smiles_or_molfile: str) -> Mol:
@@ -129,9 +145,61 @@ def render(
     m = mol(input) if isinstance(input, str) else input
     options = _coerce_opts(opts)
 
+    if _want_chematic_layout(options):
+        if options.align_to is not None or options.atom_map is not None:
+            raise ValueError(
+                "chematic_layout is free-layout only (no align_to / atom_map yet)"
+            )
+        laid, pose_mb, _meta = _layout_with_chematic(m.source, id=options.id)
+        if m.frame_molblock is None:
+            m.frame_molblock = pose_mb
+        molecule = _apply_opts(laid, options, m.source)
+        from xpict import _native
+
+        scene = Scene.model_validate(
+            json.loads(_native.depict_molecule(json.dumps(molecule)))
+        )
+        coords = _to_coord_list(molecule["atoms"])
+        bonds = [
+            SvgBond(
+                index=int(b["index"]),
+                begin=int(b["begin"]),
+                end=int(b["end"]),
+                order=float(b["order"]),
+                stereo=b.get("stereo"),
+            )
+            for b in molecule["bonds"]
+        ]
+        return Rendered(
+            width=float(scene.width),
+            height=float(scene.height),
+            scene=scene,
+            molecule=molecule,
+            source=m.source,
+            frame_molblock=pose_mb,
+            coords=coords,
+            svg_coords=list(coords),
+            bonds=bonds,
+            mol=m,
+        )
+
     template: str | None = None
+    atom_map = options.atom_map
     if options.align_to is not None:
         template = _ensure_frame(options.align_to)
+        if atom_map is None:
+            # Chematic MCS via Rust plan resolve (not host inventing maps).
+            from xpict.edge_plan import build_align_plan
+
+            align_obj = options.align_to
+            template_source = getattr(align_obj, "source", None) or m.source
+            plan = build_align_plan(
+                template_source=str(template_source),
+                query_source=m.source,
+            )
+            child = plan.tasks[0].roots[0].template_for[0]
+            if child.align is not None:
+                atom_map = child.align.atom_map
     elif options.atom_map is not None:
         raise ValueError("atom_map requires align_to")
 
@@ -139,7 +207,7 @@ def render(
         m.source,
         template=template,
         id=options.id,
-        atom_map=options.atom_map,
+        atom_map=atom_map,
     )
     if m.frame_molblock is None and template is None:
         m.frame_molblock = pose_mb
@@ -216,21 +284,38 @@ def _smiles_base(source: str) -> str:
     return source[:pipe].strip()
 
 
-def _element_label(element: str, imp_hs: int, charge: int) -> str | None:
-    if element == "C" and charge == 0:
+def _element_label(
+    element: str, imp_hs: int, charge: int, isotope: int | None = None
+) -> str | None:
+    """Terminal-hetero style labels; hide plain C; prefix isotope mass."""
+    if element == "C" and not charge and not isotope and imp_hs <= 4:
         return None
-    if element == "*":
+    if element in {"*", "R"} or element.startswith("R") or element.startswith("_"):
         return "*"
-    text = element
-    if imp_hs == 1:
+    if imp_hs <= 0:
+        text = element
+    elif imp_hs == 1:
         text = f"{element}H"
-    elif imp_hs > 1:
+    else:
         text = f"{element}H{imp_hs}"
+    if isotope:
+        text = f"{isotope}{text}"
     if charge:
         sign = "+" if charge > 0 else "−"
         mag = abs(charge)
         text = f"{text}{sign}" if mag == 1 else f"{text}{mag}{sign}"
     return text
+
+
+# Keep in sync with JS ``BRIDGE_ISO_BASE`` (MinimalLib atom-map tags).
+_BRIDGE_ISO_BASE = 9100
+
+
+def _real_isotope(mass: int) -> int | None:
+    """Mass number for depiction, ignoring align bridge tags (≥9100)."""
+    if mass <= 0 or mass >= _BRIDGE_ISO_BASE:
+        return None
+    return mass
 
 
 def _bond_order(bond) -> float:
@@ -319,7 +404,8 @@ def _mol_to_molecule_in(
         el = "*" if z == 0 or atom.GetSymbol() == "*" else atom.GetSymbol()
         charge = int(atom.GetFormalCharge())
         imp_hs = int(atom.GetTotalNumHs())
-        label = _element_label(el, imp_hs, charge)
+        isotope = _real_isotope(int(atom.GetIsotope()))
+        label = _element_label(el, imp_hs, charge, isotope)
         atoms.append(
             {
                 "index": idx,
@@ -361,7 +447,11 @@ def layout_with_rdkit(
     atom_map: list[tuple[int, int]] | None = None,
     min_atoms: int | None = None,
 ) -> tuple[dict[str, Any], str, dict[str, Any]]:
-    """Public RDKit layout helper used by the EdgePlan processor."""
+    """Public RDKit layout helper used by the EdgePlan processor.
+
+    Align requires an explicit ``atom_map`` (filled by Rust
+    ``resolve_edge_plan_maps`` / ``plan_edge``). Depictor owns 2D coords.
+    """
     return _layout_with_rdkit(
         source,
         template=template,
@@ -369,6 +459,21 @@ def layout_with_rdkit(
         atom_map=atom_map,
         min_atoms=min_atoms,
     )
+
+
+def _layout_with_chematic(
+    source: str,
+    *,
+    id: str | None = None,
+) -> tuple[dict[str, Any], str, dict[str, Any]]:
+    """Chematic 2D layout → MoleculeIn + empty pose + meta (experimental)."""
+    from xpict import _native
+
+    if not getattr(_native, "HAS_CHEMATIC_LAYOUT", False):
+        raise RuntimeError("this build of xpict._native has no chematic 2D layout")
+    laid = json.loads(_native.layout_chematic(source, id))
+    # No V2000 pose from chematic yet — align_to is rejected upstream.
+    return laid, "", {"method": "chematic", "used_map": None}
 
 
 def _layout_with_rdkit(
@@ -379,13 +484,14 @@ def _layout_with_rdkit(
     atom_map: list[tuple[int, int]] | None = None,
     min_atoms: int | None = None,
 ) -> tuple[dict[str, Any], str, dict[str, Any]]:
-    """RDKit layout (+ optional MCS / explicit atom-map align) → MoleculeIn + pose + meta.
+    """RDKit layout (+ optional explicit atom-map align) → MoleculeIn + pose + meta.
 
-    Meta is ``{"method": "free"|"atom_map"|"mcs"|"none", "used_map": ...}``.
+    Meta is ``{"method": "free"|"atom_map"|"none", "used_map": ...}``.
+    MCS discovery lives in Rust plans — this helper never invents maps.
     """
     try:
         from rdkit import Chem
-        from rdkit.Chem import rdDepictor, rdFMCS
+        from rdkit.Chem import rdDepictor
     except ImportError as e:
         raise ImportError(
             "Single-mol render requires rdkit. Install with: pip install 'xpict[rdkit]'"
@@ -410,32 +516,11 @@ def _layout_with_rdkit(
         aligned_ok = False
         try:
             map_for_depict: list[tuple[int, int]] | None = None
-            if atom_map is not None:
+            if atom_map is not None and len(atom_map) >= floor:
                 # Public pairs are (query, template); Depictor wants (template, query).
-                if len(atom_map) >= floor:
-                    map_for_depict = [(t, q) for q, t in atom_map]
-                    used_map = list(atom_map)
-                    method = "atom_map"
-            else:
-                from xpict.align_rdkit import mcs_params
-
-                mcs = rdFMCS.FindMCS([ref_pose, rmol], mcs_params())
-                if (
-                    not getattr(mcs, "canceled", False)
-                    and mcs.numAtoms >= floor
-                ):
-                    pattern = Chem.MolFromSmarts(mcs.smartsString)
-                    if pattern is not None:  # pyright: ignore[reportUnnecessaryComparison]
-                        ref_match = ref_pose.GetSubstructMatch(pattern)
-                        mol_match = rmol.GetSubstructMatch(pattern)
-                        if len(ref_match) >= floor and len(ref_match) == len(mol_match):
-                            map_for_depict = list(
-                                zip(ref_match, mol_match, strict=True)
-                            )
-                            used_map = list(
-                                zip(mol_match, ref_match, strict=True)
-                            )
-                            method = "mcs"
+                map_for_depict = [(t, q) for q, t in atom_map]
+                used_map = list(atom_map)
+                method = "atom_map"
 
             if map_for_depict is not None:
                 params = rdDepictor.ConstrainedDepictionParams()

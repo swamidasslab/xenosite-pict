@@ -35,6 +35,12 @@ pub fn plan_edge(spec_json: &str) -> Result<String, JsValue> {
     serde_json::to_string(&plan).map_err(|e| JsValue::from_str(&format!("EdgePlan JSON: {e}")))
 }
 
+/// Fill missing align atom maps via chematic MCS.
+#[wasm_bindgen(js_name = resolveEdgePlanMaps)]
+pub fn resolve_edge_plan_maps(plan_json: &str) -> Result<String, JsValue> {
+    xpict_core::resolve_edge_plan_maps_json(plan_json).map_err(|e| JsValue::from_str(&e))
+}
+
 /// Pass 2: `DepictSpec` + `EdgeResult` JSON → DocPaint list JSON.
 #[wasm_bindgen(js_name = renderDoc)]
 pub fn render_doc(spec_json: &str, edge_json: &str) -> Result<String, JsValue> {
@@ -55,4 +61,25 @@ pub fn render_doc(spec_json: &str, edge_json: &str) -> Result<String, JsValue> {
         })
         .collect();
     serde_json::to_string(&rows).map_err(|e| JsValue::from_str(&format!("DocPaint JSON: {e}")))
+}
+
+/// House MCS: SMILES → `[[q,t],…]` JSON or `null` (chematic; not 2D coords).
+#[wasm_bindgen(js_name = mcsAtomMap)]
+pub fn mcs_atom_map(
+    query_smiles: &str,
+    template_smiles: &str,
+    min_atoms: Option<u32>,
+) -> String {
+    xpict_core::mcs_atom_map_json(query_smiles, template_smiles, min_atoms)
+}
+
+/// House MCS from layout graphs (JSON) → `[[q,t],…]` or `null`.
+#[wasm_bindgen(js_name = mcsAtomMapGraph)]
+pub fn mcs_atom_map_graph(
+    query_json: &str,
+    template_json: &str,
+    min_atoms: Option<u32>,
+) -> Result<String, JsValue> {
+    xpict_core::mcs_atom_map_graph_json(query_json, template_json, min_atoms)
+        .map_err(|e| JsValue::from_str(&e))
 }

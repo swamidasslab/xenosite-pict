@@ -1,4 +1,8 @@
-"""EdgePlan build + host ``coord_gen`` processor (Python / RDKit)."""
+"""EdgePlan build + host ``coord_gen`` processor (Python / RDKit).
+
+Chematic MCS is resolved in Rust (``resolve_edge_plan_maps`` / ``plan_edge``).
+This host only applies explicit atom maps to Depictor.
+"""
 
 from __future__ import annotations
 
@@ -25,6 +29,13 @@ def validate_edge_plan(plan: EdgePlan | dict[str, Any]) -> EdgePlan:
     return EdgePlan.model_validate(_core_validate(plan))
 
 
+def resolve_edge_plan_maps(plan: EdgePlan | dict[str, Any]) -> EdgePlan:
+    """Fill missing align atom maps via chematic MCS (Rust core)."""
+    from xpict.native_bridge import resolve_edge_plan_maps as _core_resolve
+
+    return EdgePlan.model_validate(_core_resolve(plan))
+
+
 def build_align_plan(
     *,
     template_source: str,
@@ -34,8 +45,10 @@ def build_align_plan(
     query_id: str = "m_1",
 ) -> EdgePlan:
     """Two-node forest: template root + one query child (simple-client helper)."""
-    child_align = AlignOpts(atom_map=atom_map) if atom_map is not None else AlignOpts()
-    return EdgePlan(
+    child_align = (
+        AlignOpts(atom_map=atom_map) if atom_map is not None else AlignOpts()
+    )
+    plan = EdgePlan(
         version=1,
         tasks=[
             CoordGenTask(
@@ -55,8 +68,9 @@ def build_align_plan(
                     )
                 ]
             )
-        ]
+        ],
     )
+    return resolve_edge_plan_maps(plan)
 
 
 def _source_of(node: MolTemplate) -> str:
@@ -73,8 +87,8 @@ def _layout(
     atom_map: list[tuple[int, int]] | None,
     id: str | None,
     min_atoms: int,
-) -> tuple[dict[str, Any], str, str, list[tuple[int, int]] | None]:
-    """Returns molecule, pose_molblock, method, used_map."""
+) -> tuple[dict[str, Any], str, bool]:
+    """Returns molecule, pose_molblock, aligned_ok."""
     from xpict.client import layout_with_rdkit
 
     molecule, pose, meta = layout_with_rdkit(
@@ -84,7 +98,7 @@ def _layout(
         atom_map=atom_map,
         min_atoms=min_atoms,
     )
-    return molecule, pose, meta["method"], meta.get("used_map")
+    return molecule, pose, meta["method"] in ("atom_map", "mcs")
 
 
 def process_edge_plan(plan: EdgePlan | dict[str, Any]) -> EdgeResult:
@@ -102,7 +116,7 @@ def process_edge_plan_with_frames(
     """Like :func:`process_edge_plan`, plus pose molblocks keyed by mol id."""
     from xpict.contracts.edge import MoleculeIn
 
-    p = validate_edge_plan(plan)
+    p = resolve_edge_plan_maps(validate_edge_plan(plan))
     task_results: list[CoordGenTaskResult] = []
     all_frames: dict[str, str] = {}
 
@@ -119,15 +133,17 @@ def process_edge_plan_with_frames(
             source = _source_of(node)
             min_atoms = _MIN_MCS_ATOMS
             atom_map = None
+            map_from_mcs = False
             if node.align is not None:
                 if node.align.min_atoms is not None:
                     min_atoms = int(node.align.min_atoms)
                 atom_map = node.align.atom_map
+                map_from_mcs = bool(node.align.map_from_mcs)
 
             template_pose = poses.get(parent_id) if parent_id else None
 
             def free_layout() -> tuple[dict[str, Any], str]:
-                molecule, pose, _method, _used = _layout(
+                molecule, pose, _ok = _layout(
                     source,
                     template=None,
                     atom_map=None,
@@ -153,20 +169,26 @@ def process_edge_plan_with_frames(
                 else:
                     if template_pose is None:
                         raise RuntimeError(f"missing parent pose {parent_id}")
-                    molecule, pose, method, used = _layout(
+                    use_map = (
+                        list(atom_map)
+                        if atom_map is not None and len(atom_map) >= min_atoms
+                        else None
+                    )
+                    molecule, pose, aligned = _layout(
                         source,
                         template=template_pose,
-                        atom_map=atom_map,
+                        atom_map=use_map,
                         id=node.id,
                         min_atoms=min_atoms,
                     )
-                    if method in ("atom_map", "mcs"):
+                    if aligned and use_map is not None:
+                        method = "mcs" if map_from_mcs else "atom_map"
                         rows.append(
                             CoordGenMoleculeResult(
                                 id=node.id,
                                 ok=True,
                                 method=method,  # type: ignore[arg-type]
-                                used_map=used,
+                                used_map=use_map,
                                 molecule=_mol(molecule),
                                 error=None,
                             )
@@ -222,7 +244,11 @@ def process_edge_plan_with_frames(
             visit(root, None)
 
         all_frames.update(poses)
-        task_ok = all(r.ok for r in rows)
-        task_results.append(CoordGenTaskResult(ok=task_ok, molecules=rows))
+        task_results.append(
+            CoordGenTaskResult(
+                ok=all(r.ok for r in rows),
+                molecules=rows,
+            )
+        )
 
     return EdgeResult(version=1, results=task_results), all_frames

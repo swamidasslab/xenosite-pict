@@ -86,10 +86,59 @@ def validate_edge_plan(plan: dict[str, Any] | str | Any) -> dict[str, Any]:
     return json.loads(_rust.validate_edge_plan(_as_json(plan)))
 
 
+def mcs_atom_map(
+    query_smiles: str,
+    template_smiles: str,
+    min_atoms: int | None = None,
+) -> list[tuple[int, int]] | None:
+    """House MCS via chematic (not RDKit FMCS). Returns ``(query, template)`` pairs."""
+    raw = _rust.mcs_atom_map(query_smiles, template_smiles, min_atoms)
+    data = json.loads(raw)
+    if data is None:
+        return None
+    return [(int(q), int(t)) for q, t in data]
+
+
+def mcs_atom_map_graph(
+    query: dict[str, Any] | str,
+    template: dict[str, Any] | str,
+    min_atoms: int | None = None,
+) -> list[tuple[int, int]] | None:
+    """House MCS from layout graphs (``{atoms, bonds}``)."""
+    raw = _rust.mcs_atom_map_graph(_as_json(query), _as_json(template), min_atoms)
+    data = json.loads(raw)
+    if data is None:
+        return None
+    return [(int(q), int(t)) for q, t in data]
+
+
+def mcs_atom_map_graph_candidates(
+    query: dict[str, Any] | str,
+    template: dict[str, Any] | str,
+    min_atoms: int | None = None,
+) -> list[list[tuple[int, int]]]:
+    """All MCS embeddings for rigid ranking (``choose_mapping``)."""
+    raw = _rust.mcs_atom_map_graph_candidates(
+        _as_json(query), _as_json(template), min_atoms
+    )
+    data = json.loads(raw)
+    return [[(int(q), int(t)) for q, t in pairs] for pairs in data]
+
+
 def plan_edge(spec: dict[str, Any] | str | Any) -> dict[str, Any] | None:
     """Pass 1: DepictSpec → EdgePlan (Rust core). ``None`` when empty."""
     raw = _rust.plan_edge(_as_json(spec))
     return json.loads(raw)
+
+
+def resolve_edge_plan_maps(plan: dict[str, Any] | str | Any) -> dict[str, Any]:
+    """Fill missing align atom maps via chematic MCS (Rust core)."""
+    return json.loads(_rust.resolve_edge_plan_maps(_as_json(plan)))
+
+
+def layout_chematic(source: str, id: str | None = None) -> dict[str, Any]:
+    """Experimental chematic 2D layout → ``MoleculeIn`` dict (host flag only)."""
+    return json.loads(_rust.layout_chematic(source, id))
 
 
 def render_doc(

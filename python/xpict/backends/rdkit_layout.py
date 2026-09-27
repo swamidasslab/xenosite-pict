@@ -1,6 +1,7 @@
 """RDKit layout backend — primary focus for 2D coords (language-edge RDKit).
 
-Uses ``Compute2DCoords`` / MolFromSmiles. Alignment stays in ``align_rdkit``
+Uses ``Compute2DCoords`` / MolFromSmiles. Alignment stays in ``align`` /
+``align_rdkit`` (chematic MCS + RDKit template depict).
 (template depict). RDKit is **not** linked into ``xpict-core``; this module
 calls the Python ``rdkit`` package only. JS will call ``@rdkit/rdkit`` the
 same way and feed coords into shared Rust draw/align helpers.

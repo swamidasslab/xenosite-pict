@@ -354,10 +354,23 @@ async function render(
   }
   if (opts.align_to) {
     const template = await ensureFrame(opts.align_to);
+    let atomMap = opts.atom_map ?? null;
+    if (!atomMap) {
+      const { buildAlignPlan } = await import("./edge-plan.js");
+      const templateSource =
+        typeof opts.align_to === "object" && opts.align_to && "source" in opts.align_to
+          ? String((opts.align_to as { source: string }).source)
+          : m.source;
+      const plan = buildAlignPlan({
+        templateSource,
+        querySource: m.source,
+      });
+      atomMap = plan.tasks[0]?.roots[0]?.template_for[0]?.align?.atom_map ?? null;
+    }
     const result = await layoutWithRdkit(m.source, {
       template,
       id: opts.id,
-      atomMap: opts.atom_map ?? null,
+      atomMap,
     });
     laid = result.molecule;
     poseMolblock = result.molblock;

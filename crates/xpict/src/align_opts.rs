@@ -1,21 +1,21 @@
-//! Shared RDKit alignment protocol (MinimalLib + native Depictor).
+//! Shared alignment protocol (MinimalLib + native Depictor).
 //!
 //! Alignment is **RDKit’s** `generateDepictionMatching2DStructure` /
 //! MinimalLib `generate_aligned_coords`, constrained by MCS atom matches.
 //!
 //! Protocol:
-//! 1. MCS: element + hybridization atoms; ``BondCompare: Any`` (aromatic ↔
-//!    kekulé / quinone). Ring↔chain atom matches are allowed.
+//! 1. **MCS** (chematic in `xpict-core`, not host RDKit FMCS): element +
+//!    hybridization via isotope tags ``Z×10+hyb``; any-bond. See
+//!    [`xpict_core::mcs_atom_map`]. Chematic is **not** used for 2D coords.
 //! 2. Align:
-//!    - Python / Rust (native): Depictor **atom map** overload (MCS SMARTS
-//!      only finds matches; bond pattern is not passed as `referencePattern`).
-//!    - JS MinimalLib: isotope-tag copies for MCS, then
-//!      `generate_aligned_coords` with that MCS isotope ``referenceSmarts``
-//!      on the **same tagged** mols (MinimalLib has no atom-map details key).
+//!    - Python / Rust (native): Depictor **atom map** overload.
+//!    - JS MinimalLib: unique-isotope tags from the atom map, then
+//!      `generate_aligned_coords` with that isotope ``referenceSmarts``
+//!      (MinimalLib has no atom-map details key).
 //! 3. Treat empty / `"{}"` as failure ([`align_succeeded`])
 
-/// MinimalLib / `findMCS_P` JSON after isotope-encoding ``Z×10+hyb`` on copies.
-/// Native Rust/Python do **not** use this — they set a custom AtomTyper.
+/// MinimalLib FMCS details for uniquely isotope-tagged atom-map copies
+/// (JS align bridge). Not used for MCS discovery (that is chematic).
 pub const MCS_DETAILS_JSON: &str =
     r#"{"AtomCompare":"Isotopes","BondCompare":"Any","Timeout":2}"#;
 

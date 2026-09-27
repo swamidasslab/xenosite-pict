@@ -221,6 +221,8 @@ pub fn plan_edge(spec: &DepictSpec) -> Result<Option<EdgePlan>, String> {
 
     let plan = EdgePlan::new_v1(vec![EdgeTask::CoordGen { roots }]);
     plan.validate()?;
+    let mut plan = plan;
+    crate::resolve_edge_plan_maps(&mut plan);
     Ok(Some(plan))
 }
 
@@ -418,6 +420,38 @@ mod tests {
             mark_bonds: vec![],
             scale: 1.0,
             weight: 1.0,
+        }
+    }
+
+    #[test]
+    fn plan_edge_fills_mcs_atom_map() {
+        let spec = DepictSpec::Group {
+            id: None,
+            align: true,
+            children: vec![
+                Node::Mol(MolNode {
+                    id: Some("ref".into()),
+                    smiles: Some("c1ccccc1".into()),
+                    ..Default::default()
+                }),
+                Node::Mol(MolNode {
+                    smiles: Some("Cc1ccccc1".into()),
+                    ..Default::default()
+                }),
+            ],
+            opts: None,
+            color: None,
+            scale: None,
+        };
+        let plan = plan_edge(&spec).unwrap().unwrap();
+        match &plan.tasks[0] {
+            EdgeTask::CoordGen { roots } => {
+                let child = &roots[0].template_for[0];
+                let align = child.align.as_ref().unwrap();
+                let map = align.atom_map.as_ref().expect("MCS should fill atom_map");
+                assert!(map.len() >= 6, "got {}", map.len());
+                assert!(align.map_from_mcs);
+            }
         }
     }
 

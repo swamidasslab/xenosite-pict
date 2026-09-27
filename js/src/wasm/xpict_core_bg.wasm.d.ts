@@ -2,8 +2,11 @@
 /* eslint-disable */
 export const memory: WebAssembly.Memory;
 export const depictMolecule: (a: number, b: number, c: number) => void;
+export const mcsAtomMap: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+export const mcsAtomMapGraph: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
 export const planEdge: (a: number, b: number, c: number) => void;
 export const renderDoc: (a: number, b: number, c: number, d: number, e: number) => void;
+export const resolveEdgePlanMaps: (a: number, b: number, c: number) => void;
 export const validateEdgePlan: (a: number, b: number, c: number) => void;
 export const __wbindgen_add_to_stack_pointer: (a: number) => number;
 export const __wbindgen_export: (a: number, b: number) => number;

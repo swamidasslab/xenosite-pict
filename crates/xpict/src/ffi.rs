@@ -11,6 +11,8 @@ pub mod ffi {
         z: i32,
         charge: i32,
         total_hs: u32,
+        /// Mass number from molblock (0 = unspecified).
+        isotope: u32,
         x: f64,
         y: f64,
         symbol: String,

@@ -9,12 +9,9 @@ Two implementations share one interface (``Aligner``):
   rotated and translated so the matched atoms overlap as well as a rigid
   move allows. Indigo cannot do the template step.
 
-The correspondence we lock is the largest set of atoms that already sit on
-the reference (near-zero rigid error). One extra atom that does not fit is
-not worth dragging that set off the reference. The first substructure hit
-is an arbitrary automorphism, so every embedding is scored before anything
-is fixed. If nothing is near zero, the largest subgraph is still used so a
-template can redraw a different shape.
+Atom correspondence comes from house MCS in ``xpict-core`` (chematic:
+  element + hybridization, any-bond). Embeddings are ranked here by near-zero
+  rigid fit so one bad pair does not dislodge an otherwise locked scaffold.
 
 ``align_layouts`` picks RDKit when it imports, and falls back to rigid if
 template depiction fails or RDKit is absent. RDKit is also the preferred
@@ -25,66 +22,64 @@ should use rigid / fake align only.
 from __future__ import annotations
 
 import math
-from collections import defaultdict
 from collections.abc import Sequence
-from typing import Protocol
+from typing import Any, Protocol
 
 from xpict.contracts.layout import AtomLayout, BondLayout, MoleculeLayout
 from xpict.future.spec import MoleculeSpec
 
-
-def _element_key(el: str) -> str:
-    if el == "*" or el.startswith("R") or el.startswith("_"):
-        return "*"
-    return el
+_MIN_MCS = 3
 
 
-def _adj(layout: MoleculeLayout) -> dict[int, dict[int, float]]:
-    adj: dict[int, dict[int, float]] = defaultdict(dict)
-    for b in layout.bonds:
-        order = float(b.order or 1.0)
-        adj[b.begin][b.end] = order
-        adj[b.end][b.begin] = order
-    return adj
+def layout_to_mcs_graph(layout: MoleculeLayout) -> dict[str, Any]:
+    """Atom/bond graph for chematic MCS (layout indices)."""
+    from xpict import _native
+
+    atoms: list[dict[str, Any]] = []
+    for atom in sorted(layout.atoms, key=lambda a: a.index):
+        z = 0
+        el = atom.element
+        if el not in {"*", "R"} and not el.startswith("R") and not el.startswith("_"):
+            try:
+                n = _native.atomic_number(el)
+                z = int(n) if n is not None else 0
+            except Exception:
+                z = 0
+        atoms.append({"z": z, "aromatic": None})
+    bonds: list[dict[str, Any]] = [
+        {"begin": int(b.begin), "end": int(b.end), "order": float(b.order)}
+        for b in layout.bonds
+    ]
+    for b in bonds:
+        if abs(float(b["order"]) - 1.5) < 0.1:
+            bi = int(b["begin"])
+            ei = int(b["end"])
+            if bi < len(atoms):
+                atoms[bi]["aromatic"] = True
+            if ei < len(atoms):
+                atoms[ei]["aromatic"] = True
+    return {"atoms": atoms, "bonds": bonds}
 
 
-def _order_ok(a: float, b: float, *, ring: bool = False) -> bool:
-    if abs(a - b) < 0.1:
-        return True
-    lo, hi = (a, b) if a <= b else (b, a)
-    # Kekule single/double in a ring are the same aromatic bond. Requiring
-    # them to match freezes one ring rotation — a local correspondence.
-    if ring and lo >= 0.9 and hi <= 2.1:
-        return True
-    return lo >= 1.4 and hi <= 2.1
+def mcs_mapping(
+    ref: MoleculeLayout,
+    other: MoleculeLayout,
+    *,
+    min_size: int = _MIN_MCS,
+) -> dict[int, int] | None:
+    """House MCS via chematic; ``choose_mapping`` picks a near-zero rigid fit.
 
+    Returns other index → ref index, or ``None`` when too small.
+    """
+    from xpict.native_bridge import mcs_atom_map_graph_candidates
 
-def _ring_edges(adj: dict[int, dict[int, float]]) -> set[frozenset[int]]:
-    """Edges that still connect their endpoints after the edge is removed."""
-    edges: list[frozenset[int]] = []
-    seen: set[frozenset[int]] = set()
-    for a, nbrs in adj.items():
-        for b in nbrs:
-            edge = frozenset((a, b))
-            if len(edge) == 2 and edge not in seen:
-                seen.add(edge)
-                edges.append(edge)
-    ring: set[frozenset[int]] = set()
-    for edge in edges:
-        start, goal = tuple(edge)
-        stack = [start]
-        visited = {start}
-        while stack:
-            u = stack.pop()
-            if u == goal:
-                ring.add(edge)
-                break
-            for v in adj[u]:
-                if v in visited or frozenset((u, v)) == edge:
-                    continue
-                visited.add(v)
-                stack.append(v)
-    return ring
+    candidates = mcs_atom_map_graph_candidates(
+        layout_to_mcs_graph(other),
+        layout_to_mcs_graph(ref),
+        min_size,
+    )
+    mappings = [{int(q): int(t) for q, t in pairs} for pairs in candidates]
+    return _choose_mapping(ref, other, mappings, min_size=min_size)
 
 
 def _mean_bond_length(layout: MoleculeLayout) -> float:
@@ -212,144 +207,6 @@ def _choose_mapping(
     return best_raw
 
 
-_NODE_BUDGET = 8000
-_MAP_KEEP = 32
-
-
-def _bond_ok(
-    o: int,
-    on: int,
-    r: int,
-    rn: int,
-    oth_adj: dict[int, dict[int, float]],
-    ref_adj: dict[int, dict[int, float]],
-    ring_o: set[frozenset[int]],
-    ring_r: set[frozenset[int]],
-) -> bool:
-    if rn not in ref_adj[r] or on not in oth_adj[o]:
-        return False
-    ring = frozenset((o, on)) in ring_o and frozenset((r, rn)) in ring_r
-    return _order_ok(oth_adj[o][on], ref_adj[r][rn], ring=ring)
-
-
-def _maps_from_seed(
-    seed_o: int,
-    seed_r: int,
-    oth_el: dict[int, str],
-    ref_el: dict[int, str],
-    oth_adj: dict[int, dict[int, float]],
-    ref_adj: dict[int, dict[int, float]],
-    ring_o: set[frozenset[int]],
-    ring_r: set[frozenset[int]],
-    *,
-    node_budget: int,
-) -> tuple[list[dict[int, int]], int]:
-    """Maximal connected maps from one seed. Several, not the first branch."""
-    found: list[dict[int, int]] = []
-    best_size = 0
-    nodes = 0
-
-    def compatible(on: int, rn: int, mapping: dict[int, int]) -> bool:
-        if oth_el[on] != ref_el[rn]:
-            return False
-        for o2 in oth_adj[on]:
-            if o2 not in mapping:
-                continue
-            if not _bond_ok(o2, on, mapping[o2], rn, oth_adj, ref_adj, ring_o, ring_r):
-                return False
-        return True
-
-    def rec(mapping: dict[int, int], inv: dict[int, int]) -> None:
-        nonlocal nodes, best_size
-        if nodes >= node_budget:
-            return
-        nodes += 1
-        growable: list[tuple[int, int, list[int]]] = []
-        for _o, _r in mapping.items():
-            for on in oth_adj[_o]:
-                if on in mapping:
-                    continue
-                cands = [rn for rn in ref_adj[_r] if rn not in inv and compatible(on, rn, mapping)]
-                if cands:
-                    growable.append((len(cands), on, cands))
-        if not growable:
-            size = len(mapping)
-            if size > best_size:
-                best_size = size
-                found.clear()
-                found.append(dict(mapping))
-            elif size == best_size and len(found) < _MAP_KEEP:
-                found.append(dict(mapping))
-            return
-        growable.sort(key=lambda item: (item[0], item[1]))
-        _n_cands, on, cands = growable[0]
-        for rn in sorted(cands):
-            mapping[on] = rn
-            inv[rn] = on
-            rec(mapping, inv)
-            del mapping[on]
-            del inv[rn]
-            if nodes >= node_budget:
-                return
-
-    rec({seed_o: seed_r}, {seed_r: seed_o})
-    return found, nodes
-
-
-def _mcs_mapping(
-    ref: MoleculeLayout,
-    other: MoleculeLayout,
-    *,
-    min_size: int = 3,
-) -> dict[int, int] | None:
-    """Largest connected common subgraph, other index → ref index.
-
-    The kept atoms are the largest near-zero rigid fit, not the first seed
-    that covers the graph.
-    """
-    ref_el = {a.index: _element_key(a.element) for a in ref.atoms}
-    oth_el = {a.index: _element_key(a.element) for a in other.atoms}
-    ref_adj = _adj(ref)
-    oth_adj = _adj(other)
-    ring_r = _ring_edges(ref_adj)
-    ring_o = _ring_edges(oth_adj)
-
-    seeds: list[tuple[int, int]] = []
-    for o, oe in oth_el.items():
-        for r, re in ref_el.items():
-            if oe == re:
-                seeds.append((o, r))
-    seeds.sort(
-        key=lambda p: (
-            0 if oth_el[p[0]] != "C" else 1,
-            -len(oth_adj[p[0]]),
-            -len(ref_adj[p[1]]),
-            p[0],
-            p[1],
-        )
-    )
-    budget = _NODE_BUDGET
-    found: list[dict[int, int]] = []
-    # Cap seed trials for portability on larger mols.
-    for o, r in seeds[: max(24, len(oth_el) * 2)]:
-        if budget <= 0:
-            break
-        maps, used = _maps_from_seed(
-            o,
-            r,
-            oth_el,
-            ref_el,
-            oth_adj,
-            ref_adj,
-            ring_o,
-            ring_r,
-            node_budget=budget,
-        )
-        budget -= used
-        found.extend(maps)
-    return _choose_mapping(ref, other, found, min_size=min_size)
-
-
 def _kabsch_2d(
     src: list[tuple[float, float]],
     dst: list[tuple[float, float]],
@@ -468,7 +325,6 @@ def _with_warning(layout: MoleculeLayout, text: str) -> MoleculeLayout:
 
 # Public re-exports for align_rdkit / shared helpers.
 choose_mapping = _choose_mapping
-mcs_mapping = _mcs_mapping
 with_warning = _with_warning
 
 
@@ -479,7 +335,7 @@ class RigidAligner:
     supports_template = False
 
     def map_atoms(self, ref: MoleculeLayout, other: MoleculeLayout) -> dict[int, int] | None:
-        return _mcs_mapping(ref, other)
+        return mcs_mapping(ref, other)
 
     def rigid_align(
         self,

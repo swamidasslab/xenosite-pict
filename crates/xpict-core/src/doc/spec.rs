@@ -158,6 +158,7 @@ impl AlignTo {
             AlignTo::Spec(s) => AlignOpts {
                 atom_map: s.atom_map.clone(),
                 min_atoms: s.min_atoms,
+                map_from_mcs: false,
             },
         }
     }

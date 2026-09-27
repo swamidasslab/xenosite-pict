@@ -187,6 +187,9 @@ pub struct MolRenderOptions {
     pub weight: Option<f64>,
     /// Template molblock for RDKit depiction matching.
     pub align_to: Option<String>,
+    /// Template SMILES/CX for chematic MCS when [`Self::atom_map`] is unset.
+    /// Depictor still uses [`Self::align_to`] coords — not chematic 2D.
+    pub align_to_smiles: Option<String>,
     /// Pairs ``(query_atom, template_atom)``. Requires ``align_to``; skips MCS.
     pub atom_map: Option<Vec<(u32, u32)>>,
 }
@@ -257,10 +260,36 @@ pub fn render(input: &mut Mol, opts: MolRenderOptions) -> Result<Rendered, Error
         return Err(Error::Parse("atom_map requires align_to".into()));
     }
 
+    let resolved_map: Option<Vec<(u32, u32)>> = if let Some(ref m) = opts.atom_map {
+        Some(m.clone())
+    } else if template.is_some() {
+        let tmpl_smi = opts
+            .align_to_smiles
+            .as_deref()
+            .filter(|s| !s.trim().is_empty());
+        match tmpl_smi {
+            Some(ts) => {
+                // Prefer plan resolve so MCS stays centralized with EdgePlan.
+                let plan = crate::edge_plan::build_align_plan(ts, &input.source, None);
+                plan.tasks
+                    .first()
+                    .and_then(|t| match t {
+                        xpict_core::EdgeTask::CoordGen { roots } => roots.first(),
+                    })
+                    .and_then(|r| r.template_for.first())
+                    .and_then(|c| c.align.as_ref())
+                    .and_then(|a| a.atom_map.clone())
+            }
+            None => None,
+        }
+    } else {
+        None
+    };
+
     let (laid, pose_mb, _) = layout_with_rdkit_meta(
         &input.source,
         template,
-        opts.atom_map.as_deref(),
+        resolved_map.as_deref(),
         opts.id.clone(),
     )?;
     if input.frame_molblock.is_none() {

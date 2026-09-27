@@ -2,11 +2,12 @@
  * EdgePlan / EdgeResult — host callback ABI (coord_gen / align).
  *
  * Types are generated from ``xpict-core`` (``make types`` / ts-rs).
- * Keep runtime helpers here.
+ * Chematic MCS is resolved in Rust (``resolveEdgePlanMaps`` / ``planEdge``);
+ * this host only applies explicit atom maps to MinimalLib.
  */
 
 import { layoutWithRdkit } from "./layout/rdkit-layout.js";
-import { validateEdgePlanJson } from "./native.js";
+import { resolveEdgePlanMaps, validateEdgePlanJson } from "./native.js";
 import type {
   AlignOpts,
   CoordGenMoleculeResult,
@@ -63,6 +64,11 @@ export function validateEdgePlan(plan: EdgePlan): EdgePlan {
   return JSON.parse(validateEdgePlanJson(JSON.stringify(plan))) as EdgePlan;
 }
 
+/** Fill missing align atom maps via chematic MCS (Rust core). */
+export function resolveEdgePlanAtomMaps(plan: EdgePlan): EdgePlan {
+  return JSON.parse(resolveEdgePlanMaps(JSON.stringify(plan))) as EdgePlan;
+}
+
 export function buildAlignPlan(opts: {
   templateSource: string;
   querySource: string;
@@ -70,9 +76,11 @@ export function buildAlignPlan(opts: {
   templateId?: string;
   queryId?: string;
 }): EdgePlan {
-  const childAlign: AlignOpts | undefined =
-    opts.atomMap != null ? { atom_map: opts.atomMap } : undefined;
-  return {
+  const childAlign: AlignOpts =
+    opts.atomMap != null
+      ? { atom_map: opts.atomMap, map_from_mcs: false }
+      : { map_from_mcs: false };
+  const plan: EdgePlan = {
     version: 1,
     tasks: [
       {
@@ -85,7 +93,7 @@ export function buildAlignPlan(opts: {
               {
                 id: opts.queryId ?? "m_1",
                 smiles: opts.querySource,
-                ...(childAlign ? { align: childAlign } : {}),
+                align: childAlign,
                 template_for: [],
               },
             ],
@@ -94,6 +102,7 @@ export function buildAlignPlan(opts: {
       },
     ],
   };
+  return resolveEdgePlanAtomMaps(plan);
 }
 
 /** Run all coord_gen tasks; always return flat molecule rows.
@@ -109,17 +118,19 @@ export async function processEdgePlan(plan: EdgePlan): Promise<EdgeResult> {
 export async function processEdgePlanWithFrames(
   plan: EdgePlan
 ): Promise<{ result: EdgeResult; frames: Map<string, string> }> {
-  validateEdgePlan(plan);
+  const resolved = resolveEdgePlanAtomMaps(validateEdgePlan(plan));
   const results: CoordGenTaskResult[] = [];
   const allFrames = new Map<string, string>();
 
-  for (const task of plan.tasks) {
+  for (const task of resolved.tasks) {
     const rows: CoordGenMoleculeResult[] = [];
     const poses = new Map<string, string>();
 
     const visit = async (node: MolTemplate, parentId: string | null) => {
       const source = sourceOf(node);
       const atomMap = node.align?.atom_map ?? null;
+          const mapFromMcs = Boolean(node.align?.map_from_mcs);
+      const minAtoms = node.align?.min_atoms ?? MIN_MCS_ATOMS;
 
       const freeLayout = async () =>
         layoutWithRdkit(source, { id: node.id, template: null });
@@ -137,18 +148,23 @@ export async function processEdgePlanWithFrames(
         } else {
           const template = poses.get(parentId);
           if (!template) throw new Error(`missing parent pose ${parentId}`);
+          const useMap =
+            atomMap && atomMap.length >= minAtoms ? atomMap : null;
           const laid = await layoutWithRdkit(source, {
             id: node.id,
             template,
-            atomMap,
-            minAtoms: node.align?.min_atoms ?? MIN_MCS_ATOMS,
+            atomMap: useMap,
+            minAtoms,
           });
-          if (laid.meta.method === "atom_map" || laid.meta.method === "mcs") {
+          if (
+            (laid.meta.method === "atom_map" || laid.meta.method === "mcs") &&
+            useMap
+          ) {
             rows.push({
               id: node.id,
               ok: true,
-              method: laid.meta.method,
-              used_map: laid.meta.used_map ?? undefined,
+              method: mapFromMcs ? "mcs" : "atom_map",
+              used_map: useMap,
               molecule: asWireMolecule(laid.molecule),
             });
             poses.set(node.id, laid.molblock);
@@ -194,10 +210,11 @@ export async function processEdgePlanWithFrames(
       }
     };
 
-    for (const root of task.roots) {
+    for (const root of task.roots ?? []) {
       await visit(root, null);
     }
-    for (const [k, v] of poses) allFrames.set(k, v);
+
+    for (const [id, mb] of poses) allFrames.set(id, mb);
     results.push({
       type: "coord_gen",
       ok: rows.every((r) => r.ok),
@@ -205,5 +222,8 @@ export async function processEdgePlanWithFrames(
     });
   }
 
-  return { result: { version: 1, results }, frames: allFrames };
+  return {
+    result: { version: 1, results },
+    frames: allFrames,
+  };
 }

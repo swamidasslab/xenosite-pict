@@ -1,5 +1,26 @@
 # Lab log
 
+## 2026-09-27 (chematic 2D flag)
+
+- Experimental host-only ``chematic_layout`` / ``XPICT_CHEMATIC_LAYOUT`` for
+  chematic ``compute_layout`` coords (Cargo feature ``chematic-layout``).
+  Not DepictSpec / EdgePlan schema. Compare script:
+  ``scripts/compare_chematic_layout.py``.
+
+## 2026-09-27
+
+- Dropped the home-grown Python MCS search in ``align.py``. Layout MCS is
+  chematic-only (``mcs_mapping`` → ``mcs_atom_map_graph_candidates``); RDKit
+  ``align_rdkit`` keeps template depiction only.
+
+## 2026-09-26
+
+- Added **chematic 1.0.27** (`smiles` + `smarts` only — not `depict` / 2D) to
+  `xpict-core`. House MCS is `mcs_atom_map` / `mcs_atom_map_graph` (element +
+  hybridization via ``Z×10+hyb`` isotopes, any-bond). Py/JS/native hosts call
+  that API; RDKit Depictor / MinimalLib still own 2D coords. Bumped workspace
+  `rust-version` to **1.88** (chematic MSRV).
+
 ## 2026-09-23 (codegen)
 
 - Spike rejected **typebridge** (wrong serde tag rename / broken untagged

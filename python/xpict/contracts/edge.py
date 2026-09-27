@@ -21,7 +21,8 @@ class StrictModel(BaseModel):
 
 class AlignOpts(StrictModel):
     """Align this mol onto its parent template."""
-    atom_map: Annotated[list[tuple[int, int]] | None, Field(description='Pairs `(query_atom, template_atom)`. `None` → edge runs MCS.')] = None
+    atom_map: Annotated[list[tuple[int, int]] | None, Field(description='Pairs `(query_atom, template_atom)`.')] = None
+    map_from_mcs: bool = Field(default=False, description='True when [`Self::atom_map`] was filled by chematic MCS (not caller-supplied). Hosts report [`CoordMethod::Mcs`] vs [`CoordMethod::AtomMap`] from this.')
     min_atoms: Annotated[int | None, Field(description='Override [`MIN_MCS_ATOMS`] when set.')] = None
 
 

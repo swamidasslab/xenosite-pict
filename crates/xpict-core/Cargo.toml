@@ -19,18 +19,24 @@ path = "src/lib.rs"
 crate-type = ["rlib"]
 
 [features]
-default = ["elk", "geom", "font"]
+default = ["elk", "geom", "font", "chematic-layout"]
 # Diagram placement via native ELK (drops Python jsrun + vendored elkjs).
 elk = ["dep:elkrs"]
 # Polygon buffer / boolean ops (drops Python Shapely).
 geom = ["dep:i_overlay"]
 # Liberation Sans outlines / advances (drops Python fontTools).
 font = ["dep:ttf-parser", "geom"]
+# Experimental chematic 2D coords (host flag only — not DepictSpec schema).
+# WASM keeps `default-features = false` so this stays off in the browser blob.
+chematic-layout = ["chematic/depict"]
 # Export live JSON Schema (schemars) + TypeScript (ts-rs). Dev/CI only —
 # not on the crates.io default feature set.
 codegen = ["dep:schemars", "dep:ts-rs"]
 
 [dependencies]
+# Chemical MCS / SMARTS. Optional `depict` via feature `chematic-layout`
+# for experimental 2D coords (hosts keep RDKit Depictor as default).
+chematic = { version = "1.0.27", default-features = false, features = ["smiles", "smarts"] }
 elkrs = { version = "0.1.1", optional = true }
 i_overlay = { version = "9.0.0", optional = true }
 ttf-parser = { version = "0.25", optional = true }

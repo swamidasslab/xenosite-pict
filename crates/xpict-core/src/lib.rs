@@ -24,6 +24,9 @@ pub mod geom;
 pub mod labels;
 #[cfg(feature = "font")]
 pub mod markup;
+#[cfg(feature = "chematic-layout")]
+pub mod layout_chematic;
+pub mod mcs;
 pub mod metrics;
 pub mod plotdot;
 pub mod rings;
@@ -51,8 +54,9 @@ pub use doc::{
     Node, NodeType, Opts, OptsPatch, ShadeSpec, ShadeStyle, TextNode, TextNodeKind, TypedOptsPatch,
 };
 pub use edge::{
-    AlignOpts, CoordGenMoleculeResult, CoordMethod, EdgePlan, EdgeResult, EdgeTask,
-    EdgeTaskResult, MolTemplate, MIN_MCS_ATOMS as EDGE_MIN_MCS_ATOMS,
+    resolve_edge_plan_maps, resolve_edge_plan_maps_json, AlignOpts, CoordGenMoleculeResult,
+    CoordMethod, EdgePlan, EdgeResult, EdgeTask, EdgeTaskResult, MolTemplate,
+    MIN_MCS_ATOMS as EDGE_MIN_MCS_ATOMS,
 };
 pub use elements::{atomic_number, element_symbol, SYMBOLS};
 #[cfg(feature = "elk")]
@@ -67,6 +71,13 @@ pub use labels::{
 };
 #[cfg(feature = "font")]
 pub use markup::parse_label_markup;
+#[cfg(feature = "chematic-layout")]
+pub use layout_chematic::{layout_with_chematic, layout_with_chematic_json};
+pub use mcs::{
+    mcs_atom_map, mcs_atom_map_graph, mcs_atom_map_graph_candidates,
+    mcs_atom_map_graph_candidates_json, mcs_atom_map_graph_json, mcs_atom_map_json, McsAtomIn,
+    McsBondIn, McsMolIn, MCS_TIMEOUT_MS,
+};
 pub use metrics::{BOND_PX, OFFSET_FRAC, OFFSET_PX, SCALE, SHADE_FRAC, STROKE_PX};
 pub use plotdot::{PlotDot, ShadeDisk};
 pub use rings::{apply_ring_interiors, bond_interior_normals, find_sssr, Ring};

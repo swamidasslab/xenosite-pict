@@ -69,6 +69,7 @@ fn align_to_rendered_pose() {
     let aligned = b
         .render(MolRenderOptions {
             align_to: Some(home.frame().to_string()),
+            align_to_smiles: Some(home.source.clone()),
             ..Default::default()
         })
         .unwrap();
@@ -107,6 +108,7 @@ fn align_mcs_ethyl_pentyl_both_ways() {
     let p_on_e = pentyl
         .render(MolRenderOptions {
             align_to: Some(e.frame().to_string()),
+            align_to_smiles: Some(e.source.clone()),
             ..Default::default()
         })
         .unwrap();
@@ -118,6 +120,7 @@ fn align_mcs_ethyl_pentyl_both_ways() {
     let e_on_p = ethyl2
         .render(MolRenderOptions {
             align_to: Some(p.frame().to_string()),
+            align_to_smiles: Some(p.source.clone()),
             ..Default::default()
         })
         .unwrap();
@@ -132,6 +135,7 @@ fn align_mcs_phenol_quinone() {
     let q_on_ph = quinone
         .render(MolRenderOptions {
             align_to: Some(ph.frame().to_string()),
+            align_to_smiles: Some(ph.source.clone()),
             ..Default::default()
         })
         .unwrap();
@@ -146,6 +150,7 @@ fn align_mcs_aniline_quinone_imine() {
     let im_on_a = imine
         .render(MolRenderOptions {
             align_to: Some(a.frame().to_string()),
+            align_to_smiles: Some(a.source.clone()),
             ..Default::default()
         })
         .unwrap();
@@ -162,6 +167,7 @@ fn align_mcs_rejects_aliphatic_vs_quinone() {
     let aligned = chain2
         .render(MolRenderOptions {
             align_to: Some(q.frame().to_string()),
+            align_to_smiles: Some(q.source.clone()),
             ..Default::default()
         })
         .unwrap();
@@ -208,6 +214,7 @@ fn align_atom_map_thp_chain() {
     let aligned = chain
         .render(MolRenderOptions {
             align_to: Some(r.frame().to_string()),
+            align_to_smiles: Some(r.source.clone()),
             ..Default::default()
         })
         .unwrap();
@@ -223,6 +230,7 @@ fn align_asymmetric_para_halo() {
     let q = query
         .render(MolRenderOptions {
             align_to: Some(t.frame().to_string()),
+            align_to_smiles: Some(t.source.clone()),
             ..Default::default()
         })
         .unwrap();
@@ -263,6 +271,7 @@ fn align_multi_query_leaves_template_frame() {
         let aligned = q
             .render(MolRenderOptions {
                 align_to: Some(frame.clone()),
+                align_to_smiles: Some(t0.source.clone()),
                 ..Default::default()
             })
             .unwrap();
@@ -277,6 +286,7 @@ fn align_multi_query_leaves_template_frame() {
     let on_frame = again
         .render(MolRenderOptions {
             align_to: Some(frame),
+            align_to_smiles: Some(t0.source.clone()),
             ..Default::default()
         })
         .unwrap();
