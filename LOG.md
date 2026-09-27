@@ -1,5 +1,12 @@
 # Lab log
 
+## 2026-09-27 (chematic 2D flag)
+
+- Experimental host-only ``chematic_layout`` / ``XPICT_CHEMATIC_LAYOUT`` for
+  chematic ``compute_layout`` coords (Cargo feature ``chematic-layout``).
+  Not DepictSpec / EdgePlan schema. Compare script:
+  ``scripts/compare_chematic_layout.py``.
+
 ## 2026-09-27
 
 - Dropped the home-grown Python MCS search in ``align.py``. Layout MCS is

@@ -24,6 +24,8 @@ pub mod geom;
 pub mod labels;
 #[cfg(feature = "font")]
 pub mod markup;
+#[cfg(feature = "chematic-layout")]
+pub mod layout_chematic;
 pub mod mcs;
 pub mod metrics;
 pub mod plotdot;
@@ -69,6 +71,8 @@ pub use labels::{
 };
 #[cfg(feature = "font")]
 pub use markup::parse_label_markup;
+#[cfg(feature = "chematic-layout")]
+pub use layout_chematic::{layout_with_chematic, layout_with_chematic_json};
 pub use mcs::{
     mcs_atom_map, mcs_atom_map_graph, mcs_atom_map_graph_candidates,
     mcs_atom_map_graph_candidates_json, mcs_atom_map_graph_json, mcs_atom_map_json, McsAtomIn,

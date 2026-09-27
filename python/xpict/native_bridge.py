@@ -136,6 +136,11 @@ def resolve_edge_plan_maps(plan: dict[str, Any] | str | Any) -> dict[str, Any]:
     return json.loads(_rust.resolve_edge_plan_maps(_as_json(plan)))
 
 
+def layout_chematic(source: str, id: str | None = None) -> dict[str, Any]:
+    """Experimental chematic 2D layout → ``MoleculeIn`` dict (host flag only)."""
+    return json.loads(_rust.layout_chematic(source, id))
+
+
 def render_doc(
     spec: dict[str, Any] | str | Any, edge: dict[str, Any] | str | Any
 ) -> list[dict[str, Any]]:

@@ -197,8 +197,9 @@ not bit-identical to elkjs 0.9. Needs **Rust ≥ 1.88** (chematic MSRV; elkrs
 needed ≥ 1.85).
 
 **Done: house MCS via chematic** (`xpict-core::mcs_atom_map`). Hosts no longer
-implement RDKit FMCS / MinimalLib MCS for discovery. Chematic is **not** used
-for 2D coordinate generation.
+implement RDKit FMCS / MinimalLib MCS for discovery. Chematic **2D layout** is
+an experimental host flag only (`chematic_layout` / `XPICT_CHEMATIC_LAYOUT`,
+Cargo `chematic-layout`) — not DepictSpec schema; default coords remain RDKit.
 
 **Done: Shapely → `i_overlay`.** `xpict-core` feature `geom` provides `Shape`
 (buffer / union / difference / even-odd contours / halo). Python draw uses

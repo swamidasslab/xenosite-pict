@@ -63,6 +63,13 @@ fn resolve_edge_plan_maps(plan_json: &str) -> PyResult<String> {
     xpict_core::resolve_edge_plan_maps_json(plan_json).map_err(PyRuntimeError::new_err)
 }
 
+/// Experimental chematic 2D layout → ``MoleculeIn`` JSON (host flag only).
+#[pyfunction]
+#[pyo3(signature = (source, id=None))]
+fn layout_chematic(source: &str, id: Option<&str>) -> PyResult<String> {
+    xpict_core::layout_with_chematic_json(source, id).map_err(PyRuntimeError::new_err)
+}
+
 /// Pass 2: `DepictSpec` + `EdgeResult` JSON → list of `{id, molecule, scene}`.
 #[pyfunction]
 fn render_doc(spec_json: &str, edge_json: &str) -> PyResult<String> {
@@ -728,6 +735,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(validate_edge_plan, m)?)?;
     m.add_function(wrap_pyfunction!(plan_edge, m)?)?;
     m.add_function(wrap_pyfunction!(resolve_edge_plan_maps, m)?)?;
+    m.add_function(wrap_pyfunction!(layout_chematic, m)?)?;
     m.add_function(wrap_pyfunction!(render_doc, m)?)?;
     m.add_function(wrap_pyfunction!(compose_scheme, m)?)?;
     m.add_function(wrap_pyfunction!(mcs_atom_map, m)?)?;
@@ -764,6 +772,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("SHADE_FRAC", metrics::SHADE_FRAC)?;
     m.add("HAS_ELK", true)?;
     m.add("HAS_GEOM", true)?;
+    m.add("HAS_CHEMATIC_LAYOUT", true)?;
     m.add("KINK_PX", xpict_core::KINK_PX)?;
     m.add("TURN_RADIUS", xpict_core::TURN_RADIUS)?;
     m.add("DEFAULT_NODE_SPACING", xpict_core::LayoutOpts::DEFAULT_NODE_SPACING)?;

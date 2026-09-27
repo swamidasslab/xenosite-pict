@@ -87,7 +87,12 @@ class Rendered:
 
 @dataclass
 class MolRenderOptions:
-    """Render options — parity with JS / Rust ``MolRenderOptions``."""
+    """Render options — parity with JS / Rust ``MolRenderOptions``.
+
+    ``chematic_layout`` is a **host-only** experiment flag (not DepictSpec /
+    EdgePlan schema). When true, 2D coords come from chematic instead of
+    RDKit Depictor. Also enabled via env ``XPICT_CHEMATIC_LAYOUT=1``.
+    """
 
     id: str | None = None
     color: str | None = None
@@ -101,9 +106,20 @@ class MolRenderOptions:
     align_to: Mol | Rendered | None = None
     #: Pairs ``(query_atom, template_atom)``. Requires ``align_to``; skips MCS.
     atom_map: list[tuple[int, int]] | None = None
+    #: Experimental: use chematic for free 2D layout (not in live schema).
+    chematic_layout: bool = False
 
 
 AlignTarget = Mol | Rendered
+
+
+def _want_chematic_layout(opts: MolRenderOptions) -> bool:
+    if opts.chematic_layout:
+        return True
+    import os
+
+    raw = os.environ.get("XPICT_CHEMATIC_LAYOUT", "").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
 
 
 def mol(smiles_or_molfile: str) -> Mol:
@@ -128,6 +144,44 @@ def render(
     """Layout → native ``depict_molecule`` → ``Rendered`` (JS ``xpict.render``)."""
     m = mol(input) if isinstance(input, str) else input
     options = _coerce_opts(opts)
+
+    if _want_chematic_layout(options):
+        if options.align_to is not None or options.atom_map is not None:
+            raise ValueError(
+                "chematic_layout is free-layout only (no align_to / atom_map yet)"
+            )
+        laid, pose_mb, _meta = _layout_with_chematic(m.source, id=options.id)
+        if m.frame_molblock is None:
+            m.frame_molblock = pose_mb
+        molecule = _apply_opts(laid, options, m.source)
+        from xpict import _native
+
+        scene = Scene.model_validate(
+            json.loads(_native.depict_molecule(json.dumps(molecule)))
+        )
+        coords = _to_coord_list(molecule["atoms"])
+        bonds = [
+            SvgBond(
+                index=int(b["index"]),
+                begin=int(b["begin"]),
+                end=int(b["end"]),
+                order=float(b["order"]),
+                stereo=b.get("stereo"),
+            )
+            for b in molecule["bonds"]
+        ]
+        return Rendered(
+            width=float(scene.width),
+            height=float(scene.height),
+            scene=scene,
+            molecule=molecule,
+            source=m.source,
+            frame_molblock=pose_mb,
+            coords=coords,
+            svg_coords=list(coords),
+            bonds=bonds,
+            mol=m,
+        )
 
     template: str | None = None
     atom_map = options.atom_map
@@ -405,6 +459,21 @@ def layout_with_rdkit(
         atom_map=atom_map,
         min_atoms=min_atoms,
     )
+
+
+def _layout_with_chematic(
+    source: str,
+    *,
+    id: str | None = None,
+) -> tuple[dict[str, Any], str, dict[str, Any]]:
+    """Chematic 2D layout → MoleculeIn + empty pose + meta (experimental)."""
+    from xpict import _native
+
+    if not getattr(_native, "HAS_CHEMATIC_LAYOUT", False):
+        raise RuntimeError("this build of xpict._native has no chematic 2D layout")
+    laid = json.loads(_native.layout_chematic(source, id))
+    # No V2000 pose from chematic yet — align_to is rejected upstream.
+    return laid, "", {"method": "chematic", "used_map": None}
 
 
 def _layout_with_rdkit(

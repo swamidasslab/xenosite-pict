@@ -8,6 +8,7 @@ STROKE_PX: float
 SHADE_FRAC: float
 HAS_ELK: bool
 HAS_GEOM: bool
+HAS_CHEMATIC_LAYOUT: bool
 HAS_FONT: bool
 
 class Shape:
@@ -104,6 +105,7 @@ def mcs_atom_map(
     min_atoms: int | None = None,
 ) -> str: ...
 def resolve_edge_plan_maps(plan_json: str) -> str: ...
+def layout_chematic(source: str, id: str | None = None) -> str: ...
 def mcs_atom_map_graph(
     query_json: str,
     template_json: str,

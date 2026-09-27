@@ -10,11 +10,14 @@ graphics** (SVG paths). Used from Rust, Python, and JS/WASM.
 | Atom labels + chem markup (`$R_1$`, `R^2`, `\alpha`, bold/italic) | Shipped |
 | Halo / glyph outlines (Liberation Sans) | Shipped |
 | Document two-pass (`plan_edge` / `render_doc`) + CX chrome | Shipped |
-| House MCS ([`mcs_atom_map`](https://docs.rs/xpict-core), chematic 1.0.27) | Shipped — **not** 2D coords |
+| House MCS ([`mcs_atom_map`](https://docs.rs/xpict-core), chematic 1.0.27) | Shipped — discovery |
+| Chematic 2D (`chematic-layout` + host flag) | Experimental — not schema |
 | Multi-mol / ELK / reactions | Shipped (`compose_scheme`) |
 
-**No RDKit** and **no chematic 2D** in this crate — layout stays at language
-edges (RDKit Depictor / MinimalLib). Chematic is used only for MCS / SMARTS.
+**No RDKit** in this crate. Default 2D coords stay at language edges
+(RDKit Depictor / MinimalLib). Opt-in chematic coords via feature
+``chematic-layout`` + host ``chematic_layout`` / ``XPICT_CHEMATIC_LAYOUT``
+(not DepictSpec). Chematic MCS / SMARTS are always on.
 
 ```bash
 cargo test -p xpict-core
