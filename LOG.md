@@ -1,5 +1,11 @@
 # Lab log
 
+## 2026-09-27
+
+- Dropped the home-grown Python MCS search in ``align.py``. Layout MCS is
+  chematic-only (``mcs_mapping`` → ``mcs_atom_map_graph_candidates``); RDKit
+  ``align_rdkit`` keeps template depiction only.
+
 ## 2026-09-26
 
 - Added **chematic 1.0.27** (`smiles` + `smarts` only — not `depict` / 2D) to

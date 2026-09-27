@@ -3,61 +3,18 @@
 Matched atoms stay on the reference coordinates. Everything else is
 regenerated around that core (``Compute2DCoords`` + ``coordMap``), at the
 reference bond length. If that fails, callers use the rigid aligner.
+
+Atom maps come from house MCS (chematic via ``xpict.align.mcs_mapping``).
 """
 
 from __future__ import annotations
 
 import math
-from typing import Any
 
-from xpict.align import RigidAligner, choose_mapping, with_warning
+from xpict.align import RigidAligner, mcs_mapping, with_warning
 from xpict.contracts.layout import BondLayout, MoleculeLayout
 
 _MIN_MAP = 3
-
-
-def _layout_to_mcs_graph(layout: MoleculeLayout) -> dict[str, Any]:
-    """Atom/bond graph for chematic MCS (layout indices)."""
-    from xpict import _native
-
-    atoms: list[dict[str, Any]] = []
-    for atom in sorted(layout.atoms, key=lambda a: a.index):
-        z = 0
-        el = atom.element
-        if el not in {"*", "R"} and not el.startswith("R") and not el.startswith("_"):
-            try:
-                n = _native.atomic_number(el)
-                z = int(n) if n is not None else 0
-            except Exception:
-                z = 0
-        atoms.append({"z": z, "aromatic": None})
-    bonds: list[dict[str, Any]] = [
-        {"begin": int(b.begin), "end": int(b.end), "order": float(b.order)}
-        for b in layout.bonds
-    ]
-    # Mark aromatic atoms from aromatic bonds (order ≈ 1.5).
-    for b in bonds:
-        if abs(float(b["order"]) - 1.5) < 0.1:
-            bi = int(b["begin"])
-            ei = int(b["end"])
-            if bi < len(atoms):
-                atoms[bi]["aromatic"] = True
-            if ei < len(atoms):
-                atoms[ei]["aromatic"] = True
-    return {"atoms": atoms, "bonds": bonds}
-
-
-def _fmcs_mapping(ref: MoleculeLayout, other: MoleculeLayout) -> dict[int, int] | None:
-    """House MCS via chematic; ``choose_mapping`` picks a near-zero rigid fit."""
-    from xpict.native_bridge import mcs_atom_map_graph_candidates
-
-    candidates = mcs_atom_map_graph_candidates(
-        _layout_to_mcs_graph(other),
-        _layout_to_mcs_graph(ref),
-        _MIN_MAP,
-    )
-    mappings = [{int(q): int(t) for q, t in pairs} for pairs in candidates]
-    return choose_mapping(ref, other, mappings, min_size=_MIN_MAP)
 
 
 def rdkit_available() -> bool:
@@ -193,17 +150,16 @@ def _bonds_after_depict(mol, bonds: list[BondLayout], to_rd: dict[int, int], smi
 class RdkitAligner(RigidAligner):
     """Template depiction via RDKit ``GenerateDepictionMatching2DStructure``.
 
-    MCS (element + hybridization, ``BondCompare.CompareAny``) finds the atom
-    correspondence; Depictor is called with that **atom map only** — MCS bond
-    topology is not passed as a reference pattern. No element-only MCS
-    fallback. The reference layout / pose mol is never modified.
+    MCS (chematic in core) finds the atom correspondence; Depictor is called
+    with that **atom map only**. The reference layout / pose mol is never
+    modified.
     """
 
     name = "rdkit"
     supports_template = True
 
     def map_atoms(self, ref: MoleculeLayout, other: MoleculeLayout) -> dict[int, int] | None:
-        return _fmcs_mapping(ref, other)
+        return mcs_mapping(ref, other)
 
     def depict_on_template(
         self,

@@ -78,7 +78,7 @@ xenosite today already embeds depictions as **data-URI `<img>`** with
 5. **Alignment at the edge**
    - **JS MVP:** `xpict.mol` / `xpict.render` / `xpict.toSvg` — scene JSON
      primary; stringify after optional tweaks. RDKit auto-loaded on first render.
-   - **Python:** existing `align_rdkit` / `diagram.align`.
+   - **Python:** chematic MCS + RDKit template depict (`align` / `align_rdkit`).
    - Rust Kabsch / `rigid_align_coords` remains for Indigo / no-RDKit only.
 
 6. **Publish `@xenosite/xpict`** to npmjs.org for the xenosite app

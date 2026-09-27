@@ -331,21 +331,21 @@ def test_rdkit_mcs_aniline_quinone_imine():
     aligner = RdkitAligner()
     im_on_an = align_to_reference(aniline, imine, aligner, smiles="O=C1C=CC(=N)C=C1")
     assert _overlay_hits(aniline, im_on_an) >= 6
-    from xpict.align_rdkit import _fmcs_mapping
+    from xpict.align import mcs_mapping
 
     # Ring-only MCS vs benzoquinone is OK (≥3); N does not map to O.
-    m = _fmcs_mapping(aniline, quinone)
+    m = mcs_mapping(aniline, quinone)
     assert m is not None and len(m) == 6
 
 
 @pytest.mark.skipif(not rdkit_available(), reason="rdkit not installed")
 def test_rdkit_atom_map_align_thp_chain():
     """C1CCCOC1 ← O=CCCCCO: MCS finds atoms; Depictor gets atom map only."""
-    from xpict.align_rdkit import _fmcs_mapping
+    from xpict.align import mcs_mapping
 
     ring = _layout("C1CCCOC1")
     chain = _layout("O=CCCCCO")
-    mapping = _fmcs_mapping(ring, chain)
+    mapping = mcs_mapping(ring, chain)
     assert mapping is not None and len(mapping) >= 3
     aligned = align_to_reference(ring, chain, RdkitAligner(), smiles="O=CCCCCO")
     assert _overlay_hits(ring, aligned) >= 4
@@ -354,12 +354,12 @@ def test_rdkit_atom_map_align_thp_chain():
 @pytest.mark.skipif(not rdkit_available(), reason="rdkit not installed")
 def test_rdkit_mcs_rejects_aliphatic_vs_quinone():
     """Cyclohexane ether must not MCS-align onto benzoquinone (SP3 ≠ SP2)."""
-    from xpict.align_rdkit import _fmcs_mapping
+    from xpict.align import mcs_mapping
 
     quinone = _layout("O=C1C=CC(=O)C=C1")
     chain = _layout("C1CCCCC1CCOCCCCCC")
-    assert _fmcs_mapping(quinone, chain) is None
-    assert _fmcs_mapping(chain, quinone) is None
+    assert mcs_mapping(quinone, chain) is None
+    assert mcs_mapping(chain, quinone) is None
 
     aligner = RdkitAligner()
     free = _layout("C1CCCCC1CCOCCCCCC")

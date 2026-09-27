@@ -26,7 +26,8 @@ test of quality — not benzene.
 **Focus (current):** call **RDKit at each language edge** for:
 
 1. **2D coordinates** — `backend="rdkit"` (Python `rdkit` / JS `@rdkit/rdkit`)
-2. **Template alignment** — existing `align_rdkit` / MinimalLib; pass maps into Rust
+2. **Template alignment** — `align` / MinimalLib apply chematic MCS maps;
+   RDKit Depictor for template coords
 
 **Do not** link RDKit into `xpict-core` (no Rust RDKit / no WASM chem wrapper).
 

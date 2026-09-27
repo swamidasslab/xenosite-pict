@@ -10,7 +10,7 @@ import warnings
 import pytest
 
 from xpict import Pict, PictBackendWarning, render
-from xpict.align import _mcs_mapping, align_layouts
+from xpict.align import align_layouts, mcs_mapping
 
 
 def _backend() -> str:
@@ -93,7 +93,7 @@ def test_align_mcs_maps_phenol_scaffold():
     pict = Pict(backend=backend)
     ph = pict.layout({"molecules": [{"smiles": "c1ccc(cc1)O"}]})[0]
     an = pict.layout({"molecules": [{"smiles": "COc1ccccc1"}]})[0]
-    mapping = _mcs_mapping(ph, an)
+    mapping = mcs_mapping(ph, an)
     assert mapping is not None
     assert len(mapping) >= 6  # phenyl carbons at least
 
