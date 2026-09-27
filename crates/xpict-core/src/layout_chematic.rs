@@ -4,7 +4,7 @@
 //! runtime flag — **not** part of DepictSpec / EdgePlan schema. Default
 //! production coords remain RDKit Depictor / MinimalLib.
 
-use chematic::core::{BondOrder, Element};
+use chematic::core::{apply_kekule, kekulize, BondOrder, Element};
 use chematic::depict::{compute_depict_data, DepictBondKind, BOND_LEN};
 use chematic::smiles;
 
@@ -76,6 +76,11 @@ pub fn layout_with_chematic(source: &str, id: Option<String>) -> Result<Molecule
         return Err("empty SMILES for chematic layout".into());
     }
     let mol = smiles::parse(&base).map_err(|e| format!("chematic SMILES parse: {e}"))?;
+    // Match RDKit host path: Kekulé bonds for paint offsets (not aromatic 1.5).
+    let mol = match kekulize(&mol) {
+        Ok(map) => apply_kekule(&mol, &map),
+        Err(_) => mol,
+    };
     let data = compute_depict_data(&mol);
     let scale = SCALE / BOND_LEN;
 
