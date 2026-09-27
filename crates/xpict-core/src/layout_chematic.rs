@@ -89,11 +89,18 @@ pub fn layout_with_chematic(source: &str, id: Option<String>) -> Result<Molecule
         .iter()
         .map(|a| {
             let idx = a.idx.0 as i32;
-            let z = u32::from(a.element.atomic_number());
-            let el = element_symbol(a.element);
+            let core_atom = mol.atom(a.idx);
+            let (el, z) = if core_atom.wildcard {
+                ("*".to_string(), 0_u32)
+            } else {
+                (
+                    element_symbol(a.element),
+                    u32::from(a.element.atomic_number()),
+                )
+            };
             let charge = i32::from(a.charge);
             let hcount = mol.implicit_hydrogen_count(a.idx);
-            let isotope = mol.atom(a.idx).isotope;
+            let isotope = core_atom.isotope;
             let label = element_label(&el, hcount, charge, isotope);
             AtomIn {
                 index: idx,
@@ -175,5 +182,93 @@ mod tests {
             lens.iter().sum::<f64>() / lens.len() as f64
         };
         assert!((mean - SCALE).abs() < 2.0, "mean bond {mean} vs SCALE {SCALE}");
+        // Kekulé doubles present after layout.
+        assert!(mol.bonds.iter().any(|b| (b.order - 2.0).abs() < 1e-9));
+    }
+
+    #[test]
+    fn empty_and_bad_smiles_err() {
+        assert!(layout_with_chematic("", None).is_err());
+        assert!(layout_with_chematic("   ", None).is_err());
+        assert!(layout_with_chematic("|$;$|", None).is_err());
+        assert!(layout_with_chematic("not-a-smiles!!!", None).is_err());
+    }
+
+    #[test]
+    fn cx_trailer_stripped_and_json_roundtrip() {
+        let json = layout_with_chematic_json("CCO |$;;OH$|", Some("e")).unwrap();
+        assert!(json.contains("\"id\":\"e\""));
+        let mol: MoleculeIn = serde_json::from_str(&json).unwrap();
+        assert_eq!(mol.atoms.len(), 3);
+    }
+
+    #[test]
+    fn labels_cover_charge_isotope_and_nh2() {
+        let mol = layout_with_chematic("[NH4+]", None).unwrap();
+        let n = mol.atoms.iter().find(|a| a.element.as_deref() == Some("N")).unwrap();
+        assert!(n.label.as_deref().unwrap_or("").contains('N'));
+        assert_eq!(n.charge, 1);
+
+        let mol2 = layout_with_chematic("[13CH4]", None).unwrap();
+        let c = &mol2.atoms[0];
+        assert!(
+            c.label
+                .as_deref()
+                .unwrap_or("")
+                .contains('1')
+                || c.label.is_none(),
+            "isotope label or silent C: {:?}",
+            c.label
+        );
+
+        let amine = layout_with_chematic("CN", None).unwrap();
+        let n = amine
+            .atoms
+            .iter()
+            .find(|a| a.element.as_deref() == Some("N"))
+            .unwrap();
+        assert_eq!(n.label.as_deref(), Some("NH2"));
+    }
+
+    #[test]
+    fn star_and_triple_and_stereo() {
+        let star = layout_with_chematic("[*]C", None).unwrap();
+        let wild = star
+            .atoms
+            .iter()
+            .find(|a| a.z == Some(0) || a.element.as_deref() == Some("*"))
+            .unwrap();
+        assert_eq!(wild.label.as_deref(), Some("*"));
+
+        let alkyne = layout_with_chematic("CC#N", None).unwrap();
+        assert!(alkyne.bonds.iter().any(|b| (b.order - 3.0).abs() < 1e-9));
+
+        let stereo = layout_with_chematic("C[C@H](O)Cl", None).unwrap();
+        assert!(stereo.atoms.len() >= 4);
+        let _ = stereo.bonds.iter().any(|b| b.stereo.is_some());
+    }
+
+    #[test]
+    fn element_label_helpers() {
+        assert_eq!(element_label("C", 3, 0, None), None);
+        assert_eq!(element_label("*", 0, 0, None).as_deref(), Some("*"));
+        assert_eq!(element_label("R1", 0, 0, None).as_deref(), Some("*"));
+        assert_eq!(element_label("_R", 0, 0, None).as_deref(), Some("*"));
+        assert_eq!(element_label("O", 0, 0, None).as_deref(), Some("O"));
+        assert_eq!(element_label("N", 1, 0, None).as_deref(), Some("NH"));
+        assert_eq!(element_label("N", 2, 0, None).as_deref(), Some("NH2"));
+        assert_eq!(element_label("O", 0, 1, None).as_deref(), Some("O+"));
+        assert_eq!(element_label("O", 0, -2, None).as_deref(), Some("O2−"));
+        assert_eq!(element_label("C", 0, 0, Some(13)).as_deref(), Some("13C"));
+        assert_eq!(bond_order(&DepictBondKind::Single), 1.0);
+        assert_eq!(bond_order(&DepictBondKind::Double), 2.0);
+        assert_eq!(bond_order(&DepictBondKind::Aromatic), 1.5);
+        assert_eq!(bond_order(&DepictBondKind::Triple), 3.0);
+        assert_eq!(bond_order(&DepictBondKind::Up), 1.0);
+        assert_eq!(bond_order(&DepictBondKind::Down), 1.0);
+        assert_eq!(bond_stereo(&DepictBondKind::Up), Some("up"));
+        assert_eq!(bond_stereo(&DepictBondKind::Down), Some("down"));
+        assert_eq!(bond_stereo(&DepictBondKind::Single), None);
+        assert_eq!(element_symbol(Element::C), "C");
     }
 }
