@@ -386,6 +386,9 @@ def _layout_with_rdkit(
     try:
         from rdkit import Chem
         from rdkit.Chem import rdDepictor, rdFMCS
+        from xpict.rdkit_coords import prefer_coordgen
+
+        prefer_coordgen()
     except ImportError as e:
         raise ImportError(
             "Single-mol render requires rdkit. Install with: pip install 'xpict[rdkit]'"
@@ -438,12 +441,12 @@ def _layout_with_rdkit(
                             method = "mcs"
 
             if map_for_depict is not None:
-                params = rdDepictor.ConstrainedDepictionParams()
-                params.allowRGroups = True
-                params.acceptFailure = False
-                rdDepictor.GenerateDepictionMatching2DStructure(
-                    rmol, ref_pose, map_for_depict, -1, params
-                )
+                from xpict.align_rdkit import _constrained_depict
+
+                depicted = _constrained_depict(rmol, ref_pose, map_for_depict)
+                if depicted is None:
+                    raise RuntimeError("constrained depiction failed to lock core")
+                rmol = depicted
                 aligned_ok = True
         except Exception:
             aligned_ok = False

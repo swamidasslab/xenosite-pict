@@ -1,5 +1,19 @@
 # Lab log
 
+## 2026-10-01
+
+- Default 2D coords: enable Schrödinger **CoordGen** for free layout when available (Python `prefer_coordgen`, JS `set_new_coords(true)`, native `RDDepict::preferCoordGen`). Constrained align tries CoordGen then `forceRDKit` if the core won’t lock; MinimalLib stays `useCoordGen:false`. Rigid phenol/anisole tolerance loosened to 1e-3 (CoordGen ~5e-5 RMSD).
+- Downloaded RDKit/CoordGen ring templates → `notebooks/data/coordgen_ring_templates.smi` (~582 CXSMILES); gallery notebook `notebooks/coordgen_templates_gallery.ipynb`.
+- Notebook `notebooks/rdkit_vs_chematic_layout.ipynb`: side-by-side RDKit
+  CoordGen vs Chematic native SVG for the same SMILES (no xpict). Procrustes
+  overlay allows reflection. Needs `chematic` + `matplotlib` in the venv.
+- **Verdict:** Chematic layout is not a drop-in for RDKit depiction. Simple
+  fused aromatics match (~0 RMSD). Failures cluster on polycyclic/bridged/
+  stereo: morphine (11 bond crossings, ~3.8× bond stretch), adamantane /
+  norbornane / barrelene / cubane (crossings), penicillin/caffeine high
+  RMSD. No relaxation knobs — rule-based placer only. Stay on RDKit for
+  xpict; Chematic not a WASM size win worth the layout quality hit.
+
 ## 2026-09-23 (codegen)
 
 - Spike rejected **typebridge** (wrong serde tag rename / broken untagged

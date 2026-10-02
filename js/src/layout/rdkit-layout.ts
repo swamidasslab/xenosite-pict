@@ -129,6 +129,8 @@ export function tagHybridizationIsotopes(
  * Keep in sync with ``xpict::align_opts::minimallib_align_details``.
  */
 export function minimallibAlignDetails(referenceSmarts: string): string {
+  // Free layout uses CoordGen (`set_new_coords(true)`); constrained align
+  // stays on the RDKit Depictor path — CoordGen here breaks core locking.
   return JSON.stringify({
     useCoordGen: false,
     referenceSmarts,
@@ -299,7 +301,7 @@ function getMol(rdkit: RdkitModule, source: string): RdkitMol {
 
 function ensureCoords(mol: RdkitMol): void {
   if (!mol.has_coords()) {
-    if (!mol.set_new_coords()) {
+    if (!mol.set_new_coords(true)) {
       throw new Error("RDKit failed to generate 2D coordinates");
     }
     mol.normalize_depiction();
@@ -538,7 +540,7 @@ export async function materializeTemplateMolblock(source: string): Promise<strin
   const mol = getMol(rdkit, source);
   try {
     if (!mol.has_coords()) {
-      if (!mol.set_new_coords()) {
+      if (!mol.set_new_coords(true)) {
         throw new Error("RDKit failed to generate template coordinates");
       }
       mol.normalize_depiction();

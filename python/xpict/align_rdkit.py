@@ -285,14 +285,8 @@ class RdkitAligner(RigidAligner):
             for i in range(ref_pose.GetNumAtoms())
         ]
 
-        params = rdDepictor.ConstrainedDepictionParams()
-        params.allowRGroups = True
-        params.acceptFailure = False
-        try:
-            rdDepictor.GenerateDepictionMatching2DStructure(
-                other_mol, ref_pose, atom_map, -1, params
-            )
-        except Exception:
+        other_mol = _constrained_depict(other_mol, ref_pose, atom_map)
+        if other_mol is None:
             return None
 
         ref_after = [
@@ -319,3 +313,45 @@ class RdkitAligner(RigidAligner):
         bonds = _bonds_after_depict(other_mol, other.bonds, to_rd, smiles)
         laid = other.model_copy(update={"atoms": atoms, "bonds": bonds})
         return with_warning(laid, "alignment: rdkit template depiction")
+
+
+def _core_locked(mol, ref, atom_map: list[tuple[int, int]], *, tol: float = 0.2) -> bool:
+    """Whether mapped query atoms sit on the reference coordinates."""
+    conf = mol.GetConformer()
+    ref_conf = ref.GetConformer()
+    hits = 0
+    for ref_i, query_i in atom_map:
+        p = conf.GetAtomPosition(query_i)
+        r = ref_conf.GetAtomPosition(ref_i)
+        if math.hypot(p.x - r.x, p.y - r.y) < tol:
+            hits += 1
+    return hits >= min(len(atom_map), _MIN_MAP) and hits >= (len(atom_map) + 1) // 2
+
+
+def _constrained_depict(query, ref, atom_map: list[tuple[int, int]]):
+    """Constrained depiction matching free-layout scale when possible.
+
+    Prefer CoordGen (when ``PreferCoordGen``) so new bonds match CoordGen
+    bond length; if the core fails to lock (e.g. distorted template), retry
+    with ``forceRDKit``.
+    """
+    from rdkit import Chem
+    from rdkit.Chem import rdDepictor
+
+    prefer = bool(rdDepictor.GetPreferCoordGen())
+    attempts = (False, True) if prefer else (True,)
+    for force in attempts:
+        mol = Chem.Mol(query)
+        params = rdDepictor.ConstrainedDepictionParams()
+        params.allowRGroups = True
+        params.acceptFailure = False
+        params.forceRDKit = force
+        try:
+            rdDepictor.GenerateDepictionMatching2DStructure(
+                mol, ref, atom_map, -1, params
+            )
+        except Exception:
+            continue
+        if _core_locked(mol, ref, atom_map):
+            return mol
+    return None

@@ -233,11 +233,12 @@ def test_halo_includes_buffered_label_glyphs():
     assert 'fill="#fff"' in halo.group(0)
     assert 'stroke="none"' in halo.group(0)
     assert 'opacity="0.5"' in halo.group(0)
+    # CoordGen may flip ethanol so the oxygen reads "HO" instead of "OH".
     assert re.search(
-        r'<path[^>]*data-text="OH"[^>]*class="[^"]*\blabel\b',
+        r'<path[^>]*data-text="(?:OH|HO)"[^>]*class="[^"]*\blabel\b',
         svg,
     ) or re.search(
-        r'<path[^>]*class="[^"]*\blabel\b[^"]*"[^>]*data-text="OH"',
+        r'<path[^>]*class="[^"]*\blabel\b[^"]*"[^>]*data-text="(?:OH|HO)"',
         svg,
     )
     d = re.search(r'\bd="([^"]+)"', halo.group(0))

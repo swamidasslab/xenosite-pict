@@ -1,7 +1,7 @@
 """RDKit layout backend — primary focus for 2D coords (language-edge RDKit).
 
-Uses ``Compute2DCoords`` / MolFromSmiles. Alignment stays in ``align_rdkit``
-(template depict). RDKit is **not** linked into ``xpict-core``; this module
+Uses ``Compute2DCoords`` / MolFromSmiles with CoordGen preferred when available
+(see ``xpict.rdkit_coords``). Alignment stays in ``align_rdkit`` (template depict). RDKit is **not** linked into ``xpict-core``; this module
 calls the Python ``rdkit`` package only. JS will call ``@rdkit/rdkit`` the
 same way and feed coords into shared Rust draw/align helpers.
 """
@@ -114,6 +114,9 @@ class RdkitBackend:
         except Exception:
             pass
 
+        from xpict.rdkit_coords import prefer_coordgen
+
+        prefer_coordgen()
         rdDepictor.Compute2DCoords(rmol)
         try:
             from rdkit.Chem.rdmolops import WedgeMolBonds

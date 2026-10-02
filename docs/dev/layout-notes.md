@@ -25,8 +25,8 @@ test of quality — not benzene.
 
 **Focus (current):** call **RDKit at each language edge** for:
 
-1. **2D coordinates** — `backend="rdkit"` (Python `rdkit` / JS `@rdkit/rdkit`)
-2. **Template alignment** — existing `align_rdkit` / MinimalLib; pass maps into Rust
+1. **2D coordinates** — `backend="rdkit"` (Python `rdkit` / JS `@rdkit/rdkit`); **CoordGen on by default** for free layout when the build includes it
+2. **Template alignment** — `align_rdkit` tries CoordGen then Depictor (`forceRDKit`) if the core won’t lock; MinimalLib stays `useCoordGen:false`; pass maps into Rust
 
 **Do not** link RDKit into `xpict-core` (no Rust RDKit / no WASM chem wrapper).
 
@@ -125,7 +125,7 @@ Sources: `Depictor/EmbeddedFrag.cpp`, `DepictUtils.cpp` (`embedRing`).
 
 | Stage | Owner | Role of SSSR |
 | --- | --- | --- |
-| Atom coordinates | RDKit (default) / Indigo (alternate) | Regular / fused / bridged / template |
+| Atom coordinates | RDKit+CoordGen free layout (default when available); constrained align CoordGen→Depictor fallback / Indigo (alternate) | Regular / fused / bridged / template |
 | Kekulé offsets, aromatic circle | Drawer (`draw/rings.py`, `scene_builder`) | Interior normals; optional circle |
 | “Can all faces be regular?” | Classifier in `draw/rings.py` | FUSED/SPIRO/BRIDGED + cage (atom in ≥3 rings) |
 

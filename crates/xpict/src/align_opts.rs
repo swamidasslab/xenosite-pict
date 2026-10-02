@@ -27,6 +27,8 @@ pub const MIN_MCS_ATOMS: u32 = 3;
 /// `layoutWithRdkit`).
 pub fn minimallib_align_details(reference_smarts: &str) -> String {
     // Hand-built JSON keeps this crate free of a serde_json dependency.
+    // Free layout prefers CoordGen; constrained align keeps Depictor
+    // (`useCoordGen:false`) so template cores lock reliably.
     format!(
         r#"{{"useCoordGen":false,"referenceSmarts":"{}","allowRGroups":true,"acceptFailure":false}}"#,
         escape_json_string(reference_smarts)
@@ -66,6 +68,7 @@ mod tests {
         assert!(d.contains("referenceSmarts"));
         assert!(d.contains("[62*]~[63*]"));
         assert!(d.contains("allowRGroups\":true"));
+        assert!(d.contains("useCoordGen\":false"));
     }
 
     #[test]

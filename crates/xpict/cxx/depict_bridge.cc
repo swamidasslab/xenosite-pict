@@ -13,6 +13,7 @@
 #include <GraphMol/Substruct/SubstructMatch.h>
 
 #include <algorithm>
+#include <cmath>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -43,9 +44,17 @@ void try_kekulize(RDKit::RWMol &mol) {
   }
 }
 
+/** Prefer CoordGen when this RDKit was built with it (xpict default). */
+void compute_2d_coords(RDKit::ROMol &mol) {
+#ifdef RDK_BUILD_COORDGEN_SUPPORT
+  RDDepict::preferCoordGen = true;
+#endif
+  RDDepict::compute2DCoords(mol);
+}
+
 void ensure_2d(RDKit::ROMol &mol) {
   if (mol.getNumConformers() == 0) {
-    RDDepict::compute2DCoords(mol);
+    compute_2d_coords(mol);
   }
 }
 
@@ -107,16 +116,57 @@ bool align_to_template(RDKit::ROMol &mol, const RDKit::ROMol &tmpl) {
     // (referenceIdx, queryIdx)
     atomMap.emplace_back(matchTmpl[i].second, matchMol[i].second);
   }
-  RDDepict::ConstrainedDepictionParams p;
-  p.allowRGroups = true;
-  p.acceptFailure = false;
-  try {
-    RDDepict::generateDepictionMatching2DStructure(mol, tmpl, atomMap, -1, p);
-    return true;
-  } catch (...) {
-    ensure_2d(mol);
-    return false;
+  // Prefer CoordGen (matches free-layout scale) when enabled; if the core
+  // fails to lock (e.g. distorted template), retry with forceRDKit.
+  auto core_locked = [&](const RDKit::ROMol &q) {
+    if (!q.getNumConformers() || !tmpl.getNumConformers()) {
+      return false;
+    }
+    const auto &qc = q.getConformer();
+    const auto &rc = tmpl.getConformer();
+    unsigned hits = 0;
+    for (const auto &pr : atomMap) {
+      const auto &p = qc.getAtomPos(pr.second);
+      const auto &r = rc.getAtomPos(pr.first);
+      const double dx = p.x - r.x;
+      const double dy = p.y - r.y;
+      if (std::sqrt(dx * dx + dy * dy) < 0.2) {
+        ++hits;
+      }
+    }
+    const unsigned n = static_cast<unsigned>(atomMap.size());
+    const unsigned need = std::max(kMinMcsAtoms, (n + 1) / 2);
+    return hits >= need;
+  };
+
+  const bool prefer_coordgen =
+#ifdef RDK_BUILD_COORDGEN_SUPPORT
+      RDDepict::preferCoordGen;
+#else
+      false;
+#endif
+  const bool attempts[] = {prefer_coordgen ? false : true, true};
+  const int n_attempts = prefer_coordgen ? 2 : 1;
+  for (int i = 0; i < n_attempts; ++i) {
+    RDKit::RWMol trial(mol);
+    RDDepict::ConstrainedDepictionParams p;
+    p.allowRGroups = true;
+    p.acceptFailure = false;
+    p.forceRDKit = attempts[i];
+    try {
+      RDDepict::generateDepictionMatching2DStructure(trial, tmpl, atomMap, -1,
+                                                     p);
+    } catch (...) {
+      continue;
+    }
+    if (core_locked(trial)) {
+      mol.clearConformers();
+      mol.addConformer(new RDKit::Conformer(trial.getConformer()), true);
+      return true;
+    }
   }
+  ensure_2d(mol);
+  return false;
 }
 
 rust::String bond_stereo(const RDKit::Bond &b) {
@@ -137,7 +187,7 @@ rust::String bond_stereo(const RDKit::Bond &b) {
 
 LayoutOut extract(RDKit::ROMol &mol) {
   if (mol.getNumConformers() == 0) {
-    RDDepict::compute2DCoords(mol);
+    compute_2d_coords(mol);
   }
   try {
     RDKit::WedgeMolBonds(mol, &mol.getConformer());
@@ -192,7 +242,7 @@ LayoutOut prepare_layout(rust::Str molblock, rust::Str template_molblock) {
   if (!tmpl_mb.empty()) {
     auto tmpl = parse_molblock(tmpl_mb);
     if (tmpl->getNumConformers() == 0) {
-      RDDepict::compute2DCoords(*tmpl);
+      compute_2d_coords(*tmpl);
     }
     matched = align_to_template(*mol, *tmpl);
   } else {
@@ -216,7 +266,7 @@ LayoutOut prepare_layout_mapped(rust::Str molblock, rust::Str template_molblock,
       atom_map_qt.size() % 2 == 0) {
     auto tmpl = parse_molblock(tmpl_mb);
     if (tmpl->getNumConformers() == 0) {
-      RDDepict::compute2DCoords(*tmpl);
+      compute_2d_coords(*tmpl);
     }
     RDKit::MatchVectType atomMap;
     const auto nq = mol->getNumAtoms();
@@ -252,7 +302,7 @@ LayoutOut prepare_layout_mapped(rust::Str molblock, rust::Str template_molblock,
     // Fall back to MCS when map empty / odd.
     auto tmpl = parse_molblock(tmpl_mb);
     if (tmpl->getNumConformers() == 0) {
-      RDDepict::compute2DCoords(*tmpl);
+      compute_2d_coords(*tmpl);
     }
     matched = align_to_template(*mol, *tmpl);
   }
