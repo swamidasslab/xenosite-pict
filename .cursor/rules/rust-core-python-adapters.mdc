@@ -1,0 +1,30 @@
+---
+description: Wrappers share one Rust core — zero expected behavioral drift
+alwaysApply: true
+---
+
+# One Rust core — zero wrapper drift
+
+**JS, Python, and Rust wrappers must behave the same because they call the
+same `xpict-core` code.** There is no expected drift to “keep in sync” by
+reimplementing logic per language. Drift means a host grew a parallel engine;
+fix that by moving the logic into Rust.
+
+## Python / JS hosts
+
+**Types + language-specific adapters only.** Not inherently language-specific
+logic goes in Rust.
+
+Allowed: generated contracts (`make types`), thin `_native` / wasm calls,
+IPython/`_repr_*_` / DOM presentation, Chematic or other host-only I/O,
+packaging.
+
+Forbidden: cascade, paint, layout, align, compose, edge plan, DepictSpec
+semantics, or any algorithm that belongs in `xpict-core` — including
+“temporary” host copies.
+
+## When adding a feature
+
+1. Implement and test in Rust (`xpict-core`).
+2. Expose the same API through bindings.
+3. Hosts: types + call Rust. Never a second implementation.

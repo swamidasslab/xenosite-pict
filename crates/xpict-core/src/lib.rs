@@ -12,6 +12,8 @@ pub mod arrows;
 pub mod bonds;
 pub mod colormap;
 pub mod cxsmiles;
+pub mod debug_align;
+pub mod debug_box;
 pub mod depict;
 pub mod doc;
 pub mod edge;
@@ -49,11 +51,20 @@ pub use arrows::{
     ANCHOR_GAP, KINK_PX, TURN_RADIUS,
 };
 pub use bonds::{
-    bond_paths, bond_strokes, centered_displacements, depict_order, join_centered_multibonds,
-    line_intersect, multi_bond_offset, BondStrokes, DrawnBond, StrokePath,
+    bond_paths, bond_strokes, centered_displacements, depict_order, is_aromatic_order,
+    join_centered_multibonds, line_intersect, multi_bond_offset, BondStrokes, DrawnBond,
+    StrokePath,
 };
 pub use colormap::{colormap_rgb, sample_colormap, XENOSITE};
 pub use cxsmiles::{apply_cx_by_index, cx_atom_labels, cx_source, smiles_base};
+pub use debug_align::{
+    align_debug_query, align_debug_template, paint_align_debug, DEBUG_ALIGN_BADGE,
+    DEBUG_ALIGN_OPACITY, DEBUG_ALIGN_PALETTE, DEBUG_ALIGN_UNMATCHED,
+};
+pub use debug_box::{
+    debug_rect, label_debug_rect, mol_debug_rect, scene_debug_rect, DEBUG_BOX_DASH,
+    DEBUG_BOX_STROKE, DEBUG_BOX_STROKE_PX,
+};
 pub use depict::depict_molecule;
 pub use doc::{
     apply_star_labels, assign_mol_ids, compose_scheme, plan_edge, render_doc,
@@ -62,6 +73,13 @@ pub use doc::{
     LabelPlacement, LabelPos, LayoutAlgorithm, LayoutDirection, LayoutOpts, MolIds, MolNode,
     MolNodeKind, MolOpts,
     Node, NodeType, Opts, OptsPatch, ShadeSpec, ShadeStyle, TextNode, TextNodeKind, TypedOptsPatch,
+};
+// Document ``depict`` lives at ``doc::depict`` (crate-root name would clash
+// with the ``depict`` paint module).
+#[cfg(feature = "coordgen")]
+pub use doc::{
+    process_edge_plan, process_edge_plan_with_frames, DepictRendered, SvgAtom as DepictSvgAtom,
+    SvgBond as DepictSvgBond,
 };
 pub use edge::{
     AlignOpts, CoordGenMoleculeResult, CoordMethod, EdgePlan, EdgeResult, EdgeTask,
@@ -82,7 +100,13 @@ pub use labels::{
 pub use markup::parse_label_markup;
 pub use metrics::{BOND_PX, OFFSET_FRAC, OFFSET_PX, SCALE, SHADE_FRAC, STROKE_PX};
 pub use plotdot::{PlotDot, ShadeDisk};
-pub use rings::{apply_ring_interiors, bond_interior_normals, find_sssr, Ring};
-pub use scene::{Layer, LayerName, MoleculeIn, Primitive, Scene, TextAnchor, Viewport};
+pub use rings::{
+    apply_ring_interiors, aromatic_ring_circles, bond_interior_normals, find_sssr,
+    kekule_paint_orders, Ring, AROMATIC_CIRCLE_FRAC,
+};
+pub use scene::{
+    AlignDebug, AlignDebugRole, AromaticStyle, Layer, LayerName, MoleculeIn, Primitive, Scene,
+    TextAnchor, Viewport,
+};
 // MoleculeIn atoms/bonds are scene::AtomIn / scene::BondIn (JSON ABI).
 // labels::AtomIn / BondIn remain the place_backbone wire types.

@@ -1,159 +1,79 @@
-"""Declarative DepictSpec — Rust-first two/three-pass (parity with JS / Rust).
-
-Pass 1: core ``plan_edge`` → EdgePlan
-Host:   language-edge ``coord_gen`` (Rust/JS today; Python host removed)
-Pass 2: core ``render_doc`` → per-mol scenes
-Pass 3: core ``compose_scheme`` → one Scene (reaction_scheme only)
-"""
+"""Declarative DepictSpec — thin adapter over Rust ``depict``."""
 
 from __future__ import annotations
 
-import json
-from typing import Any
-
-from xpict.client import Rendered, SvgAtom, SvgBond, to_svg
-from xpict.contracts import DepictSpec
-from xpict.contracts.depict import MolNode, ReactionSchemeNode
+from xpict.contracts import DepictSpecDict, DocPaintDict, RenderedDict, SceneDict
+from xpict.contracts.depict import ReactionSchemeNode
+from xpict.contracts.depict import DepictSpec as WireDepictSpec
+from xpict.contracts.edge import MoleculeIn
 from xpict.contracts.scene import Scene
-from xpict.edge_plan import process_edge_plan_with_frames
-from xpict.native_bridge import compose_scheme, plan_edge, render_doc
+from xpict.draw.svg import scene_to_svg
+from xpict.native_bridge import compose_scheme, depict as _native_depict
+from xpict.rendered import Rendered, SvgAtom, SvgBond
+
+DepictSpecLike = WireDepictSpec | DepictSpecDict | str
 
 
-def _as_depict_spec(spec: DepictSpec | dict[str, Any] | str) -> DepictSpec:
-    if isinstance(spec, DepictSpec):
-        return spec
+def as_depict_spec(spec: DepictSpecLike) -> WireDepictSpec:
+    """Pydantic-validate a live DepictSpec (model, dict, or JSON string)."""
     if isinstance(spec, str):
-        return DepictSpec.model_validate(json.loads(spec))
-    return DepictSpec.model_validate(spec)
+        return WireDepictSpec.model_validate_json(spec)
+    return WireDepictSpec.model_validate(spec)
 
 
-def _structure(node: MolNode) -> str:
-    for field in (node.molfile, node.cxsmiles, node.smiles):
-        if field is not None and str(field).strip():
-            return str(field)
-    raise ValueError("mol node needs smiles, cxsmiles, or molfile")
-
-
-def _node_by_id(spec: DepictSpec) -> dict[str, MolNode]:
-    nodes = spec.mols()
-    out: dict[str, MolNode] = {}
-    for i, n in enumerate(nodes):
-        key = (n.id or "").strip() or f"m_{i}"
-        out[key] = n
-    return out
-
-
-def _is_scheme(doc: DepictSpec) -> bool:
-    root = getattr(doc, "root", doc)
+def _is_scheme(doc: WireDepictSpec) -> bool:
+    root = doc.root
     return isinstance(root, ReactionSchemeNode) or getattr(root, "type", None) == "reaction_scheme"
 
 
-def _rendered_from_row(
-    row: dict[str, Any],
-    *,
-    by_id: dict[str, MolNode],
-    frames: dict[str, str],
-    source_fallback: str | None = None,
-) -> Rendered:
-    rid = str(row["id"])
-    node = by_id.get(rid)
-    source = (
-        _structure(node)
-        if node is not None
-        else (source_fallback or rid)
-    )
-    molecule = row["molecule"]
-    scene = Scene.model_validate(row["scene"])
-    atoms = molecule.get("atoms") or []
-    bonds_in = molecule.get("bonds") or []
-    coords = [
-        SvgAtom(
-            index=int(a["index"]),
-            element=str(a.get("element") or "C"),
-            x=float(a["x"]),
-            y=float(a["y"]),
-            label=a.get("label"),
-            charge=int(a.get("charge") or 0),
-        )
-        for a in atoms
-    ]
-    bonds = [
-        SvgBond(
-            index=int(b["index"]),
-            begin=int(b["begin"]),
-            end=int(b["end"]),
-            order=float(b["order"]),
-            stereo=b.get("stereo"),
-        )
-        for b in bonds_in
-    ]
+def as_rendered(row: RenderedDict, *, scene: SceneDict | None = None) -> Rendered:
+    """Bind a Rust ``Rendered`` JSON object — packing already happened in core."""
+    sc: SceneDict = scene if scene is not None else row["scene"]
     return Rendered(
-        width=float(scene.width),
-        height=float(scene.height),
-        scene=scene,
-        molecule=molecule if isinstance(molecule, dict) else dict(molecule),
-        source=source,
-        frame_molblock=frames.get(rid, ""),
-        coords=coords,
-        svg_coords=list(coords),
-        bonds=bonds,
+        width=float(sc.get("width", row["width"])),
+        height=float(sc.get("height", row["height"])),
+        scene=Scene.model_validate(sc),
+        molecule=MoleculeIn.model_validate(row["molecule"]),
+        source=str(row["source"]),
+        frame_molblock=str(row.get("frame_molblock") or ""),
+        coords=[SvgAtom(**a) for a in row["coords"]],
+        svg_coords=[SvgAtom(**a) for a in row["svg_coords"]],
+        bonds=[SvgBond(**b) for b in row["bonds"]],
     )
 
 
-def depict(spec: DepictSpec | dict[str, Any] | str) -> list[Rendered]:
-    """Declarative document → ``list[Rendered]`` via core plan/paint + host edge.
-
-    ``reaction_scheme`` roots are composed into **one** ``Rendered`` (ELK layout
-    + edge overlays in Rust). ``mol`` / ``group`` stay one row per molecule.
-
-    Python host ``coord_gen`` was removed (no RDKit / free-layout fallback).
-    """
-    doc = _as_depict_spec(spec)
-    plan = plan_edge(doc)
-    if plan is None:
+def depict(spec: DepictSpecLike) -> list[Rendered]:
+    """Declarative document → ``list[Rendered]`` via one Rust ``depict`` call."""
+    doc = as_depict_spec(spec)
+    painted = _native_depict(doc)
+    if not painted:
         return []
-    edge, frames = process_edge_plan_with_frames(plan)
-    painted = render_doc(doc, edge)
-    by_id = _node_by_id(doc)
 
     if _is_scheme(doc):
-        composed = compose_scheme(doc, painted)
-        # Prefer first mol as source identity for the composed document.
-        first = painted[0] if painted else {"id": "scheme", "molecule": {}}
-        return [
-            _rendered_from_row(
-                {
-                    "id": str(first.get("id") or "scheme"),
-                    "molecule": first.get("molecule") or {},
-                    "scene": composed,
-                },
-                by_id=by_id,
-                frames=frames,
-                source_fallback="reaction_scheme",
-            )
+        paints: list[DocPaintDict] = [
+            {"id": r["id"], "molecule": r["molecule"], "scene": r["scene"]}
+            for r in painted
         ]
+        composed = compose_scheme(doc, paints)
+        first: RenderedDict = {**painted[0], "source": "reaction_scheme"}
+        return [as_rendered(first, scene=composed)]
 
-    out: list[Rendered] = []
-    for row in painted:
-        out.append(_rendered_from_row(row, by_id=by_id, frames=frames))
-    return out
+    return [as_rendered(row) for row in painted]
 
 
-def depict_svg(spec: DepictSpec | dict[str, Any] | str) -> str:
-    """Two/three-pass depict then SVG (one composed scene for schemes)."""
+def depict_svg(spec: DepictSpecLike) -> str:
+    """Document depict then SVG (one composed scene for schemes)."""
     rows = depict(spec)
     if not rows:
         return ""
     if len(rows) == 1:
-        return to_svg(rows[0].scene)
-    return "\n".join(to_svg(r.scene) for r in rows)
+        return scene_to_svg(rows[0].scene)
+    return "\n".join(scene_to_svg(r.scene) for r in rows)
 
 
-def is_live_depict_spec(obj: Any) -> bool:
-    """True for nested live DepictSpec (``mol|group|reaction_scheme``)."""
-    if isinstance(obj, DepictSpec):
+def is_live_depict_spec(obj: WireDepictSpec | DepictSpecDict) -> bool:
+    """True for nested live DepictSpec (``mol|group|reaction_scheme|grid``)."""
+    if isinstance(obj, WireDepictSpec):
         return True
-    if isinstance(obj, dict):
-        t = obj.get("type")
-        return t in ("mol", "group", "reaction_scheme")
-    return False
+    t = obj.get("type") if isinstance(obj, dict) else None
+    return t in ("mol", "group", "reaction_scheme", "grid")

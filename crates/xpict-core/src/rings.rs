@@ -7,7 +7,13 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
+use crate::bonds::is_aromatic_order;
 use crate::scene::{AtomIn, MoleculeIn};
+
+/// Fraction of ring inradius (min centroid→edge distance) for aromatic circles.
+///
+/// Inside the skeleton with clear margin so the circle does not crowd bond ink.
+pub const AROMATIC_CIRCLE_FRAC: f64 = 0.60;
 
 /// One SSSR ring as an ordered atom cycle (atom indices).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -222,6 +228,119 @@ pub fn bond_interior_normals(
     normals
 }
 
+fn ring_is_fully_aromatic(
+    ring: &Ring,
+    order_by_bond: &HashMap<(i32, i32), f64>,
+) -> bool {
+    let bonds = ring.bonds();
+    !bonds.is_empty()
+        && bonds.iter().all(|k| {
+            order_by_bond
+                .get(k)
+                .copied()
+                .is_some_and(is_aromatic_order)
+        })
+}
+
+/// Perpendicular distance from point to the infinite line through `a`–`b`.
+fn point_line_distance(px: f64, py: f64, ax: f64, ay: f64, bx: f64, by: f64) -> f64 {
+    let dx = bx - ax;
+    let dy = by - ay;
+    let len = (dx * dx + dy * dy).sqrt().max(1e-9);
+    ((px - ax) * dy - (py - ay) * dx).abs() / len
+}
+
+/// Centroids + radii for SSSR rings whose every bond is aromatic-encoded.
+///
+/// Radius is [`AROMATIC_CIRCLE_FRAC`] × ring inradius (min centroid→edge
+/// distance). Mixed Kekulé/aromatic rings are skipped.
+pub fn aromatic_ring_circles(
+    mol: &MoleculeIn,
+    rings: &[Ring],
+    coords: &HashMap<i32, (f64, f64)>,
+) -> Vec<(f64, f64, f64)> {
+    let mut order_by_bond: HashMap<(i32, i32), f64> = HashMap::with_capacity(mol.bonds.len());
+    for b in &mol.bonds {
+        order_by_bond.insert(bond_key(b.begin, b.end), b.order);
+    }
+    let mut out = Vec::new();
+    for ring in rings {
+        if !ring_is_fully_aromatic(ring, &order_by_bond) {
+            continue;
+        }
+        let Some((cx, cy)) = ring_centroid(ring, coords) else {
+            continue;
+        };
+        let n = ring.size();
+        let mut inradius = f64::INFINITY;
+        for i in 0..n {
+            let a = ring.atoms[i];
+            let b = ring.atoms[(i + 1) % n];
+            let Some(&(x1, y1)) = coords.get(&a) else {
+                continue;
+            };
+            let Some(&(x2, y2)) = coords.get(&b) else {
+                continue;
+            };
+            inradius = inradius.min(point_line_distance(cx, cy, x1, y1, x2, y2));
+        }
+        if !inradius.is_finite() || inradius <= 1e-6 {
+            continue;
+        }
+        let r = inradius * AROMATIC_CIRCLE_FRAC;
+        if r > 1e-6 {
+            out.push((cx, cy, r));
+        }
+    }
+    out
+}
+
+/// Paint-only bond orders: assign alternating 2/1 around fully aromatic rings.
+///
+/// Does not mutate [`MoleculeIn`]. Shared bonds keep the first assignment
+/// (smaller rings first).
+pub fn kekule_paint_orders(mol: &MoleculeIn, rings: &[Ring]) -> HashMap<(i32, i32), f64> {
+    let mut orders: HashMap<(i32, i32), f64> = HashMap::with_capacity(mol.bonds.len());
+    for b in &mol.bonds {
+        orders.insert(bond_key(b.begin, b.end), b.order);
+    }
+    let aromatic_rings: Vec<&Ring> = {
+        let mut v: Vec<&Ring> = rings
+            .iter()
+            .filter(|r| ring_is_fully_aromatic(r, &orders))
+            .collect();
+        v.sort_by_key(|r| r.size());
+        v
+    };
+    for ring in aromatic_rings {
+        let n = ring.size();
+        let mut start = 0usize;
+        let mut want_double = true;
+        for i in 0..n {
+            let key = bond_key(ring.atoms[i], ring.atoms[(i + 1) % n]);
+            let cur = orders.get(&key).copied().unwrap_or(1.0);
+            if !is_aromatic_order(cur) {
+                start = (i + 1) % n;
+                want_double = !(cur >= 1.5 && cur < 2.5);
+                break;
+            }
+        }
+        for k in 0..n {
+            let i = (start + k) % n;
+            let key = bond_key(ring.atoms[i], ring.atoms[(i + 1) % n]);
+            let cur = orders.get(&key).copied().unwrap_or(1.0);
+            if is_aromatic_order(cur) {
+                orders.insert(key, if want_double { 2.0 } else { 1.0 });
+            } else {
+                want_double = !(cur >= 1.5 && cur < 2.5);
+                continue;
+            }
+            want_double = !want_double;
+        }
+    }
+    orders
+}
+
 /// Fill [`BondIn::interior`] for ring bonds from SSSR normals.
 ///
 /// Ring membership **overrules** the acyclic centered/extend path: any bond
@@ -290,6 +409,10 @@ mod tests {
             mark_bonds: vec![],
             weight: 1.0,
             scale: 1.0,
+            aromatic: Default::default(),
+            debug_box: false,
+            debug_align: false,
+            align_debug: None,
         }
     }
 
@@ -298,6 +421,27 @@ mod tests {
         let rings = find_sssr(&benzene(), 8);
         assert_eq!(rings.len(), 1);
         assert_eq!(rings[0].size(), 6);
+    }
+
+    #[test]
+    fn aromatic_orders_yield_one_circle_kekule_yields_none() {
+        let coords: HashMap<i32, (f64, f64)> = benzene()
+            .atoms
+            .iter()
+            .map(|a| (a.index, (a.x, a.y)))
+            .collect();
+        let rings = find_sssr(&benzene(), 8);
+        assert!(aromatic_ring_circles(&benzene(), &rings, &coords).is_empty());
+
+        let mut aromatic = benzene();
+        for b in &mut aromatic.bonds {
+            b.order = 4.0;
+        }
+        let circles = aromatic_ring_circles(&aromatic, &rings, &coords);
+        assert_eq!(circles.len(), 1);
+        let (cx, cy, r) = circles[0];
+        assert!(r > 14.0 && r < 16.5, "near-edge circle, r={r}");
+        assert!(cx.abs() < 1e-6 && cy.abs() < 1e-6);
     }
 
     #[test]
@@ -370,6 +514,10 @@ mod tests {
             mark_bonds: vec![],
             weight: 1.0,
             scale: 1.0,
+            aromatic: Default::default(),
+            debug_box: false,
+            debug_align: false,
+            align_debug: None,
         }
     }
 
@@ -393,6 +541,10 @@ mod tests {
             mark_bonds: vec![],
             weight: 1.0,
             scale: 1.0,
+            aromatic: Default::default(),
+            debug_box: false,
+            debug_align: false,
+            align_debug: None,
         };
         assert!(find_sssr(&empty, 8).is_empty());
     }
@@ -469,6 +621,10 @@ mod tests {
             mark_bonds: vec![],
             weight: 1.0,
             scale: 1.0,
+            aromatic: Default::default(),
+            debug_box: false,
+            debug_align: false,
+            align_debug: None,
         };
         let rings = find_sssr(&mol, 8);
         assert_eq!(rings.len(), 2, "expected two hexagons, got {:?}", rings);

@@ -27,7 +27,14 @@ pub fn mol_graph_from_layout(mol: &LayoutMolecule) -> MolGraph {
         .enumerate()
         .map(|(i, &a)| {
             let b = mol.bond_to[i];
-            let order = mol.bond_orders.get(i).copied().unwrap_or(1).clamp(0, 3) as u8;
+            // CTAB / Chematic aromatic is order 4 — do not clamp to 3 (triple).
+            let raw = mol.bond_orders.get(i).copied().unwrap_or(1);
+            let aromatic = raw >= 4;
+            let order = if aromatic {
+                1
+            } else {
+                raw.clamp(0, 3) as u8
+            };
             let stereo = match mol.bond_stereos.get(i).copied().unwrap_or(BOND_STEREO_NONE) {
                 x if x == BOND_STEREO_CIS => EzStereo::Cis,
                 x if x == BOND_STEREO_TRANS => EzStereo::Trans,
@@ -43,7 +50,7 @@ pub fn mol_graph_from_layout(mol: &LayoutMolecule) -> MolGraph {
                 begin: a as u16,
                 end: b as u16,
                 order,
-                aromatic: false,
+                aromatic,
                 stereo,
                 stereo_atom1: s1,
                 stereo_atom2: s2,
@@ -83,9 +90,27 @@ pub fn align_molecule_constrained(
     reference: &LayoutMolecule,
     query: &LayoutMolecule,
 ) -> Result<ConstrainedAlignResult, CoordGenError> {
-    let ref_g = mol_graph_from_layout(reference);
-    let query_g = mol_graph_from_layout(query);
-    let mapping = cost_mapping(&ref_g, &query_g).ok_or(CoordGenError::Empty)?;
+    align_molecule_constrained_with_map(reference, query, None)
+}
+
+/// Like [`align_molecule_constrained`], but ``dense_map`` (query→ref dense
+/// indices) skips MCS when provided.
+pub fn align_molecule_constrained_with_map(
+    reference: &LayoutMolecule,
+    query: &LayoutMolecule,
+    dense_map: Option<&[(u16, u16)]>,
+) -> Result<ConstrainedAlignResult, CoordGenError> {
+    let mapping = if let Some(pairs) = dense_map {
+        let mut map = std::collections::HashMap::new();
+        for &(q, r) in pairs {
+            map.insert(q, r);
+        }
+        MappingResult { map, cost: 0 }
+    } else {
+        let ref_g = mol_graph_from_layout(reference);
+        let query_g = mol_graph_from_layout(query);
+        cost_mapping(&ref_g, &query_g).ok_or(CoordGenError::Empty)?
+    };
 
     let ref_coords = ensure_ref_coords(reference)?;
 
@@ -115,6 +140,73 @@ pub fn align_molecule_constrained(
         ref_coords,
         query_coords,
     })
+}
+
+/// Free-layout ``query``, or constrained-align onto ``reference`` when given.
+///
+/// ``atom_map`` is **atom-index** pairs ``(query_atom, ref_atom)``; dense indices
+/// are derived from ``query_atom_indices`` / ``ref_atom_indices`` (parallel to
+/// the LayoutMolecule atom tables). When omitted, MCS supplies the map.
+pub fn layout_or_align(
+    query: &LayoutMolecule,
+    query_atom_indices: &[i32],
+    reference: Option<&LayoutMolecule>,
+    ref_atom_indices: Option<&[i32]>,
+    atom_map: Option<&[(i32, i32)]>,
+    peer_id: Option<&str>,
+) -> Result<(LayoutResult, Option<crate::scene::AlignDebug>), CoordGenError> {
+    use crate::debug_align::align_debug_query;
+
+    let Some(reference) = reference else {
+        let coords = generate_2d_coordinates(query)?;
+        return Ok((coords, None));
+    };
+
+    let ref_idx = ref_atom_indices.unwrap_or(&[]);
+    let dense = if let Some(pairs) = atom_map {
+        let q_of: std::collections::HashMap<i32, u16> = query_atom_indices
+            .iter()
+            .enumerate()
+            .map(|(i, &a)| (a, i as u16))
+            .collect();
+        let r_of: std::collections::HashMap<i32, u16> = ref_idx
+            .iter()
+            .enumerate()
+            .map(|(i, &a)| (a, i as u16))
+            .collect();
+        let mut dense_pairs = Vec::new();
+        for &(qa, ra) in pairs {
+            if let (Some(&qi), Some(&ri)) = (q_of.get(&qa), r_of.get(&ra)) {
+                dense_pairs.push((qi, ri));
+            }
+        }
+        if dense_pairs.is_empty() {
+            return Err(CoordGenError::Empty);
+        }
+        Some(dense_pairs)
+    } else {
+        None
+    };
+
+    let res = align_molecule_constrained_with_map(
+        reference,
+        query,
+        dense.as_deref(),
+    )?;
+
+    let mut tags: Vec<(i32, i32)> = res
+        .mapping
+        .map
+        .iter()
+        .filter_map(|(&qi, &ri)| {
+            let qa = *query_atom_indices.get(qi as usize)?;
+            let ra = *ref_idx.get(ri as usize)?;
+            Some((qa, ra))
+        })
+        .collect();
+    tags.sort_by_key(|(a, _)| *a);
+    let dbg = align_debug_query(peer_id.unwrap_or("?"), &tags);
+    Ok((res.query_coords, Some(dbg)))
 }
 
 /// Regular-hexagon fit error for a closed ring of coordinates (max vertex

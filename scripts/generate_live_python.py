@@ -352,7 +352,7 @@ class Emitter:
             patch = '''
     @model_validator(mode="before")
     @classmethod
-    def _coerce_endpoints(cls, data: Any) -> Any:
+    def _coerce_endpoints(cls, data: object) -> object:
         if not isinstance(data, dict):
             return data
         out = dict(data)
@@ -472,6 +472,14 @@ class Emitter:
                     f"        kwargs.setdefault('exclude_none', True)\n"
                     f"        return super().model_dump_json(*args, **kwargs)\n"
                 )
+                # Nested document children must use the union alias, not RootModel
+                # (avoids DepictSpec-in-DepictSpec wrap failures for grid rows).
+                root_alias = f"{title}Root"
+                for i, block in enumerate(self.blocks):
+                    if f"list[{title}]" in block:
+                        self.blocks[i] = block.replace(
+                            f"list[{title}]", f"list[{root_alias}]"
+                        )
         elif root.get("type") == "object" or "properties" in root:
             self.emit_object(title, root)
         else:
@@ -532,6 +540,185 @@ def emit_module(schema_files: tuple[str, ...], module_doc: str) -> str:
     return em.render()
 
 
+class DictEmitter(Emitter):
+    """Emit TypedDict wire forms (``FooDict``) — no ``dict[str, Any]`` dumps."""
+
+    def dict_name(self, name: str) -> str:
+        return name if name.endswith("Dict") else f"{name}Dict"
+
+    def ty(self, node: dict[str, Any]) -> str:
+        node, nullable = _unwrap(node)
+        if (r := _ref(node)):
+            d = self.defs().get(r)
+            # String enums / merged string-enum oneOfs keep bare name; else ``*Dict``.
+            if d and d.get("type") == "string" and "enum" in d:
+                expr = r
+            elif d and "oneOf" in d and all(
+                a.get("type") == "string" and "enum" in a for a in d["oneOf"]
+            ):
+                expr = r
+            else:
+                expr = self.dict_name(r)
+        elif node.get("type") == "string" and "enum" in node:
+            expr = f"Literal[{', '.join(repr(v) for v in node['enum'])}]"
+        elif "oneOf" in node:
+            expr = " | ".join(
+                self.dict_name(self.variant_name("Anon", a, i))
+                if "properties" in a or _disc(a)
+                else self.ty(a)
+                for i, a in enumerate(node["oneOf"])
+            )
+        elif "anyOf" in node:
+            expr = " | ".join(self.ty(p) for p in node["anyOf"])
+        elif node.get("type") == "array":
+            items = node.get("items")
+            if isinstance(items, list) and len(items) == 2:
+                expr = f"tuple[{self.ty(items[0])}, {self.ty(items[1])}]"
+            elif isinstance(items, dict):
+                expr = f"list[{self.ty(items)}]"
+            else:
+                expr = "list[object]"
+        elif node.get("type") == "string":
+            expr = "str"
+        elif node.get("type") == "integer":
+            expr = "int"
+        elif node.get("type") == "number":
+            expr = "float"
+        elif node.get("type") == "boolean":
+            expr = "bool"
+        elif node.get("type") == "object" and "properties" not in node:
+            expr = "Mapping[str, object]"
+        else:
+            expr = "object"
+        return f"{expr} | None" if nullable else expr
+
+    def emit_object(self, name: str, node: dict[str, Any]) -> None:
+        dname = self.dict_name(name)
+        if dname in self.emitted:
+            return
+        self.emitted.add(dname)
+        props = dict(node.get("properties") or {})
+        for pschema in props.values():
+            self.preemit(pschema)
+        required = set(node.get("required") or [])
+        keys = sorted(props, key=lambda k: (k not in required, k))
+        for pref in ("type", "kind"):
+            if pref in keys:
+                keys.remove(pref)
+                keys.insert(0, pref)
+        fields: list[str] = []
+        for pname in keys:
+            if pname in ("type", "kind"):
+                if (tag := self.single_enum_value(props[pname])) is not None:
+                    fields.append(f"    {pname}: Required[Literal[{tag!r}]]")
+                    continue
+            ann, _default, _fargs = self._field(props[pname], required=pname in required)
+            if ann.endswith(" | None"):
+                ann = ann[: -len(" | None")]
+            if pname in required:
+                fields.append(f"    {pname}: Required[{ann}]")
+            else:
+                fields.append(f"    {pname}: NotRequired[{ann}]")
+        desc = (node.get("description") or "").splitlines()
+        doc = f'    """{desc[0]}"""\n' if desc else ""
+        body = "\n".join(fields) if fields else "    pass"
+        self.blocks.append(
+            f"class {dname}(TypedDict, total=False):\n{doc}{body}"
+        )
+
+    def emit_def(self, name: str) -> None:
+        node = self.defs().get(name)
+        if not node:
+            return
+        if node.get("type") == "string" and "enum" in node:
+            if name not in self.emitted:
+                lit = ", ".join(repr(v) for v in node["enum"])
+                self.blocks.append(f"{name} = Literal[{lit}]")
+                self.emitted.add(name)
+            return
+        dname = self.dict_name(name)
+        if dname in self.emitted:
+            return
+        if "oneOf" in node:
+            self.emit_union(name, node)
+            return
+        if "anyOf" in node:
+            for p in node["anyOf"]:
+                self.preemit(p)
+            expr = " | ".join(self.ty(p) for p in node["anyOf"])
+            self.blocks.append(f"{dname} = {expr}")
+            self.emitted.add(dname)
+            return
+        if node.get("type") == "object" or "properties" in node:
+            self.emit_object(name, node)
+
+    def emit_union(self, name: str, node: dict[str, Any]) -> None:
+        alts = node["oneOf"]
+        if all(
+            a.get("type") == "string" and "enum" in a and "properties" not in a
+            for a in alts
+        ):
+            if name in self.emitted:
+                return
+            vals: list[str] = []
+            for a in alts:
+                vals.extend(str(v) for v in a["enum"])
+            self.blocks.append(f"{name} = Literal[{', '.join(repr(v) for v in vals)}]")
+            self.emitted.add(name)
+            return
+
+        dname = self.dict_name(name)
+        if dname in self.emitted:
+            return
+        # Break cycles (e.g. GridNodeDict.children → DepictSpecDict).
+        self.emitted.add(dname)
+        members: list[str] = []
+        for i, alt in enumerate(alts):
+            mname = self.variant_name(name, alt, i)
+            if "properties" in alt or _disc(alt):
+                self.emit_object(mname, alt)
+                members.append(self.dict_name(mname))
+            else:
+                members.append(self.ty(alt))
+        self.blocks.append(f"{dname} = {' | '.join(members)}")
+
+    def emit_root(self, title: str, root: dict[str, Any]) -> None:
+        if "oneOf" in root:
+            self.emit_union(title, root)
+        elif root.get("type") == "object" or "properties" in root:
+            self.emit_object(title, root)
+        else:
+            raise ValueError(f"unsupported root schema for {title!r}")
+
+    def render(self) -> str:
+        body = "\n\n\n".join(self.blocks)
+        typing_imports = ["Literal", "NotRequired", "Required", "TypedDict"]
+        if "Mapping[" in body:
+            typing_imports.insert(0, "Mapping")
+        if re.search(r"\bAny\b", body):
+            typing_imports.append("Any")
+        return (
+            "# Auto-generated from Rust schemars (make types) — do not edit.\n"
+            f'"""{self.module_doc} TypedDict wire forms (no ``dict[str, Any]``)."""\n\n'
+            "from __future__ import annotations\n\n"
+            f"from typing import {', '.join(typing_imports)}\n\n"
+            f"{body}\n"
+        )
+
+
+def emit_dict_module(schema_files: tuple[str, ...], module_doc: str) -> str:
+    schemas = [_load(name) for name in schema_files]
+    merged_defs: dict[str, Any] = {}
+    for s in schemas:
+        merged_defs.update(_defs(s))
+    em = DictEmitter({"definitions": merged_defs}, module_doc)
+    for s in schemas:
+        title = str(s["title"])
+        em.emit_root(title, _root_body(s))
+    em.emit_remaining_defs()
+    return em.render()
+
+
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     for filename, schema_files, doc in MODULES:
@@ -539,7 +726,13 @@ def main() -> None:
         path = OUT / filename
         path.write_text(text, encoding="utf-8")
         print(f"wrote {path.relative_to(ROOT)} ({len(text.splitlines())} lines)")
+        dict_name = filename.replace(".py", "_dict.py")
+        dtext = emit_dict_module(schema_files, doc)
+        dpath = OUT / dict_name
+        dpath.write_text(dtext, encoding="utf-8")
+        print(f"wrote {dpath.relative_to(ROOT)} ({len(dtext.splitlines())} lines)")
 
 
 if __name__ == "__main__":
     main()
+

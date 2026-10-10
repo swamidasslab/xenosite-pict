@@ -8,6 +8,8 @@ use std::collections::HashMap;
 
 use crate::bonds::{bond_strokes, join_centered_multibonds, DrawnBond, StrokePath};
 use crate::colormap::colormap_rgb;
+use crate::debug_align::paint_align_debug;
+use crate::debug_box::{label_debug_rect, mol_debug_rect, scene_debug_rect};
 use crate::font::FaceStyle;
 use crate::labels::{self, place_backbone};
 use crate::metrics::{
@@ -15,9 +17,11 @@ use crate::metrics::{
     BOND_PX, FONT_PX, HALO_OPACITY, MARK_FRAC, PAD_PX, SHADE_FRAC,
 };
 use crate::plotdot::PlotDot;
-use crate::rings::{bond_interior_normals, find_sssr};
+use crate::rings::{
+    aromatic_ring_circles, bond_interior_normals, find_sssr, kekule_paint_orders,
+};
 use crate::scene::{
-    AtomIn, Layer, LayerName, MoleculeIn, Primitive, Scene, Viewport,
+    AromaticStyle, AtomIn, Layer, LayerName, MoleculeIn, Primitive, Scene, Viewport,
 };
 
 /// Paint one molecule into a single-viewport [`Scene`].
@@ -102,7 +106,12 @@ pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
         .iter()
         .map(|a| (a.index, (a.x + dx, a.y + dy)))
         .collect();
-    let ring_normals = bond_interior_normals(&find_sssr(mol, 8), &ring_coords);
+    let rings = find_sssr(mol, 8);
+    let ring_normals = bond_interior_normals(&rings, &ring_coords);
+    let paint_orders = match mol.aromatic {
+        AromaticStyle::Kekule => Some(kekule_paint_orders(mol, &rings)),
+        AromaticStyle::Circle => None,
+    };
 
     let mut prepared: Vec<DrawnBond> = Vec::new();
     for (bond, ends) in mol.bonds.iter().zip(shortened.iter()) {
@@ -111,6 +120,15 @@ pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
         }
         let i0 = by_index[&bond.begin];
         let i1 = by_index[&bond.end];
+        let key = if bond.begin < bond.end {
+            (bond.begin, bond.end)
+        } else {
+            (bond.end, bond.begin)
+        };
+        let order = paint_orders
+            .as_ref()
+            .and_then(|m| m.get(&key).copied())
+            .unwrap_or(bond.order);
         let mut db = DrawnBond::new(
             bond.index,
             bond.begin,
@@ -119,14 +137,9 @@ pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
             ends.y1,
             ends.x2,
             ends.y2,
-            bond.order,
+            order,
         );
         db.stereo = bond.stereo.clone();
-        let key = if bond.begin < bond.end {
-            (bond.begin, bond.end)
-        } else {
-            (bond.end, bond.begin)
-        };
         // Ring membership overrules centered/extend; else keep caller interior.
         db.interior = ring_normals.get(&key).copied().or(bond.interior);
         db.begin_labeled = placed[i0].is_some();
@@ -165,6 +178,20 @@ pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
                 }
             }
             bond_prims.push(p);
+        }
+    }
+    if mol.aromatic == AromaticStyle::Circle {
+        for (cx, cy, r) in aromatic_ring_circles(mol, &rings, &ring_coords) {
+            bond_prims.push(Primitive::Circle {
+                cx,
+                cy,
+                r,
+                fill: None,
+                stroke: Some(color.to_string()),
+                stroke_width: stroke_px,
+                opacity: 1.0,
+                class: Some("aromatic".into()),
+            });
         }
     }
 
@@ -207,6 +234,44 @@ pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
     let mark_prims = paint_marks(mol, &by_index, dx, dy);
     let halo_prims = paint_halo(&bond_strokes_for_halo, &label_ink_for_halo, stroke_px, weight);
 
+    let mut debug_prims: Vec<Primitive> = Vec::new();
+    if mol.debug_box {
+        // Label ink AABBs only — never wrap bond/atom stroke primitives.
+        // `label_ink_for_halo` is pushed in the same order as non-None `placed`.
+        let mut ink_i = 0usize;
+        for (slot, pl) in placed.iter().enumerate() {
+            if pl.is_none() {
+                continue;
+            }
+            if ink_i >= label_ink_for_halo.len() {
+                break;
+            }
+            let ink = &label_ink_for_halo[ink_i];
+            ink_i += 1;
+            if let Some((x0, y0, x1, y1)) = ink.bounds() {
+                debug_prims.push(label_debug_rect(
+                    x0,
+                    y0,
+                    x1,
+                    y1,
+                    mol.atoms[slot].index,
+                ));
+            }
+        }
+        debug_prims.push(mol_debug_rect(width, height));
+    }
+    if mol.debug_align {
+        if let Some(ref ad) = mol.align_debug {
+            debug_prims.extend(paint_align_debug(
+                &mol.atoms,
+                ad,
+                dx,
+                dy,
+                FONT_PX * 0.55,
+            ));
+        }
+    }
+
     let mut layers = Vec::new();
     if !shade_prims.is_empty() {
         layers.push(Layer {
@@ -232,7 +297,18 @@ pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
             primitives: mark_prims,
         });
     }
+    if !debug_prims.is_empty() {
+        layers.push(Layer {
+            name: LayerName::Overlay,
+            primitives: debug_prims,
+        });
+    }
 
+    let mut overlays = Vec::new();
+    if mol.debug_box {
+        // Document box for the single-mol scene (compose adds one for multi-mol).
+        overlays.push(scene_debug_rect(width, height));
+    }
     let scene = Scene {
         width,
         height,
@@ -244,7 +320,7 @@ pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
             height,
             layers,
         }],
-        overlays: Vec::new(),
+        overlays,
         halo: halo_prims,
     };
     // Uniform diagram scale (font outlines, stroke, pad, geometry).
@@ -663,6 +739,10 @@ mod tests {
             mark_bonds: vec![],
             weight: 1.0,
             scale: 1.0,
+            aromatic: Default::default(),
+            debug_box: false,
+            debug_align: false,
+            align_debug: None,
         }
     }
 
@@ -710,6 +790,10 @@ mod tests {
             mark_bonds: vec![],
             weight: 1.0,
             scale: 1.0,
+            aromatic: Default::default(),
+            debug_box: false,
+            debug_align: false,
+            align_debug: None,
         }
     }
 
@@ -754,6 +838,10 @@ mod tests {
             mark_bonds: vec![],
             weight: 1.0,
             scale: 1.0,
+            aromatic: Default::default(),
+            debug_box: false,
+            debug_align: false,
+            align_debug: None,
         };
         assert_eq!(mol.atoms[0].symbol(), "C");
         assert_eq!(mol.atoms[1].symbol(), "O");
@@ -963,6 +1051,10 @@ mod tests {
             mark_bonds: vec![],
             weight: 1.0,
             scale: 1.0,
+            aromatic: Default::default(),
+            debug_box: false,
+            debug_align: false,
+            align_debug: None,
         };
         let scene = depict_molecule(&mol);
         let layer = scene.viewports[0]
@@ -980,6 +1072,246 @@ mod tests {
             .count();
         // Three ring doubles → one interior offset each (not two centered lines).
         assert_eq!(offset_count, 3, "ring doubles should be single-sided");
+    }
+
+    fn regular_hexagon_mol(orders: [f64; 6]) -> MoleculeIn {
+        let mut atoms = Vec::new();
+        for i in 0..6 {
+            let ang = std::f64::consts::PI / 2.0 + i as f64 * std::f64::consts::TAU / 6.0;
+            atoms.push(AtomIn {
+                index: i,
+                element: Some("C".into()),
+                z: None,
+                x: 20.0 * ang.cos(),
+                y: -20.0 * ang.sin(),
+                label: None,
+                charge: 0,
+            });
+        }
+        let mut bonds = Vec::new();
+        for i in 0..6 {
+            bonds.push(BondIn {
+                index: i,
+                begin: i,
+                end: (i + 1) % 6,
+                order: orders[i as usize],
+                stereo: None,
+                interior: None,
+            });
+        }
+        MoleculeIn {
+            id: Some("hex".into()),
+            atoms,
+            bonds,
+            color: None,
+            atom_shade: None,
+            bond_shade: None,
+            shade_vmin: None,
+            shade_vmax: None,
+            mark_atoms: vec![],
+            mark_bonds: vec![],
+            weight: 1.0,
+            scale: 1.0,
+            aromatic: AromaticStyle::Circle,
+            debug_box: false,
+            debug_align: false,
+            align_debug: None,
+        }
+    }
+
+    #[test]
+    fn benzene_aromatic_orders_draw_ring_circle() {
+        // CTAB/Chematic aromatic encoding (order 4) — not Kekulé doubles.
+        let mol = regular_hexagon_mol([4.0; 6]);
+        let scene = depict_molecule(&mol);
+        let layer = scene.viewports[0]
+            .layers
+            .iter()
+            .find(|l| l.name == LayerName::Bonds)
+            .expect("bonds");
+        let aromatic_circles: Vec<_> = layer
+            .primitives
+            .iter()
+            .filter(|p| match p {
+                Primitive::Circle {
+                    class: Some(c),
+                    fill: None,
+                    ..
+                } => c.contains("aromatic"),
+                _ => false,
+            })
+            .collect();
+        assert_eq!(
+            aromatic_circles.len(),
+            1,
+            "aromatic hexagon must draw one ring circle, got {:?}",
+            layer.primitives.len()
+        );
+        match aromatic_circles[0] {
+            Primitive::Circle { r, .. } => {
+                // Inradius of regular hexagon with R=20 is ≈17.32; circle ≈ 0.60× ≈ 10.4.
+                assert!(
+                    *r > 9.0 && *r < 12.0,
+                    "circle should sit inside ring, r={r}"
+                );
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn debug_box_draws_label_mol_and_scene_rects() {
+        let mut mol = acetone();
+        mol.debug_box = true;
+        let scene = depict_molecule(&mol);
+        let overlay = scene.viewports[0]
+            .layers
+            .iter()
+            .find(|l| l.name == LayerName::Overlay)
+            .expect("overlay layer");
+        let classes: Vec<&str> = overlay
+            .primitives
+            .iter()
+            .filter_map(|p| match p {
+                Primitive::Path {
+                    class: Some(c), ..
+                } => Some(c.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            classes.iter().any(|c| c.contains("debug-box-label")),
+            "expected label debug box, got {classes:?}"
+        );
+        assert!(
+            classes.iter().any(|c| c.contains("debug-box-mol")),
+            "expected mol debug box, got {classes:?}"
+        );
+        // Bond paths must not be wrapped as debug boxes.
+        let bond_layer = scene.viewports[0]
+            .layers
+            .iter()
+            .find(|l| l.name == LayerName::Bonds)
+            .expect("bonds");
+        assert!(bond_layer.primitives.iter().all(|p| match p {
+            Primitive::Path {
+                class: Some(c), ..
+            } => !c.contains("debug-box"),
+            _ => true,
+        }));
+        assert!(
+            scene.overlays.iter().any(|p| match p {
+                Primitive::Path {
+                    class: Some(c), ..
+                } => c.contains("debug-box-scene"),
+                _ => false,
+            }),
+            "expected scene debug box in overlays"
+        );
+    }
+
+    #[test]
+    fn debug_box_off_by_default() {
+        let scene = depict_molecule(&acetone());
+        assert!(scene.viewports[0]
+            .layers
+            .iter()
+            .all(|l| l.name != LayerName::Overlay || l.primitives.is_empty()
+                || l.primitives.iter().all(|p| match p {
+                    Primitive::Path {
+                        class: Some(c), ..
+                    } => !c.contains("debug-box"),
+                    _ => true,
+                })));
+        assert!(scene.overlays.iter().all(|p| match p {
+            Primitive::Path {
+                class: Some(c), ..
+            } => !c.contains("debug-box"),
+            _ => true,
+        }));
+    }
+
+    #[test]
+    fn debug_align_paints_tags_and_badge() {
+        use crate::scene::{AlignDebug, AlignDebugRole};
+        let mut mol = acetone();
+        mol.debug_align = true;
+        mol.align_debug = Some(AlignDebug {
+            role: AlignDebugRole::Query,
+            peer_id: Some("m0".into()),
+            tags: vec![(0, 5), (1, 1)],
+        });
+        let scene = depict_molecule(&mol);
+        let overlay = scene.viewports[0]
+            .layers
+            .iter()
+            .find(|l| l.name == LayerName::Overlay)
+            .expect("overlay layer");
+        let classes: Vec<&str> = overlay
+            .primitives
+            .iter()
+            .filter_map(|p| match p {
+                Primitive::Circle {
+                    class: Some(c), ..
+                }
+                | Primitive::Text {
+                    class: Some(c), ..
+                } => Some(c.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            classes.iter().any(|c| c.contains("debug-align-atom")),
+            "expected atom tags, got {classes:?}"
+        );
+        assert!(
+            classes.iter().any(|c| c.contains("debug-align-badge")),
+            "expected badge, got {classes:?}"
+        );
+        let texts: Vec<&str> = overlay
+            .primitives
+            .iter()
+            .filter_map(|p| match p {
+                Primitive::Text { text, .. } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert!(texts.iter().any(|t| *t == "5"), "tag text 5 missing: {texts:?}");
+        assert!(
+            texts.iter().any(|t| t.contains("align→Q")),
+            "query badge missing: {texts:?}"
+        );
+    }
+
+    #[test]
+    fn benzene_kekule_style_skips_circle_uses_doubles() {
+        let mut mol = regular_hexagon_mol([4.0; 6]);
+        mol.aromatic = AromaticStyle::Kekule;
+        let scene = depict_molecule(&mol);
+        let layer = scene.viewports[0]
+            .layers
+            .iter()
+            .find(|l| l.name == LayerName::Bonds)
+            .expect("bonds");
+        assert!(
+            !layer.primitives.iter().any(|p| matches!(
+                p,
+                Primitive::Circle {
+                    class: Some(c),
+                    ..
+                } if c.contains("aromatic")
+            )),
+            "kekule style must not draw aromatic circles"
+        );
+        let offset_count = layer
+            .primitives
+            .iter()
+            .filter(|p| match p {
+                Primitive::Path { class: Some(c), .. } => c.contains("bond-offset"),
+                _ => false,
+            })
+            .count();
+        assert_eq!(offset_count, 3, "kekule paint should invent three doubles");
     }
 
     #[test]
@@ -1258,6 +1590,10 @@ mod tests {
             mark_bonds: vec![],
             weight: 1.0,
             scale: 1.0,
+            aromatic: Default::default(),
+            debug_box: false,
+            debug_align: false,
+            align_debug: None,
         };
         let scene = depict_molecule(&mol);
         let names: std::collections::HashSet<_> = scene.viewports[0]
@@ -1342,6 +1678,10 @@ mod tests {
             mark_bonds: vec![],
             weight: 1.0,
             scale: 1.0,
+            aromatic: Default::default(),
+            debug_box: false,
+            debug_align: false,
+            align_debug: None,
         };
         let scene = depict_molecule(&empty);
         assert_eq!(scene.viewports[0].id.as_deref(), Some("empty"));
@@ -1371,6 +1711,10 @@ mod tests {
             mark_bonds: vec![],
             weight: 1.0,
             scale: 1.0,
+            aromatic: Default::default(),
+            debug_box: false,
+            debug_align: false,
+            align_debug: None,
         };
         let scene = depict_molecule(&mol);
         let labels = scene.viewports[0]
@@ -1432,6 +1776,10 @@ mod tests {
             mark_bonds: vec![],
             weight: 1.0,
             scale: 1.0,
+            aromatic: Default::default(),
+            debug_box: false,
+            debug_align: false,
+            align_debug: None,
         };
         let scene = depict_molecule(&mol);
         let labels = scene.viewports[0]
@@ -1491,6 +1839,10 @@ mod tests {
             mark_bonds: vec![],
             weight: 1.0,
             scale: 1.0,
+            aromatic: Default::default(),
+            debug_box: false,
+            debug_align: false,
+            align_debug: None,
         };
         let scene = depict_molecule(&mol);
         assert!(scene.height > PAD_PX * 2.0);
@@ -1667,6 +2019,10 @@ mod tests {
             mark_bonds: vec![],
             weight: 1.0,
             scale: 1.0,
+            aromatic: Default::default(),
+            debug_box: false,
+            debug_align: false,
+            align_debug: None,
         };
         let scene = depict_molecule(&mol);
         assert!(!scene.halo.is_empty());

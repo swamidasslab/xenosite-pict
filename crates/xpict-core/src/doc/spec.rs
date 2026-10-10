@@ -11,8 +11,8 @@
 //!   wins; nested objects (`shade`) deep-merge.
 //! - [`MolNode`] / [`DepictSpec`] **extend** paint opts with non-cascading
 //!   identity keys (`smiles`, `id`, `align_to`, shade **scores**, …). Local
-//!   flat `color` / `weight` / `scale` / `halo` are the leaf’s own opts
-//!   (same fields as [`MolOpts`]) and merge last.
+//!   flat `color` / `weight` / `scale` / `halo` / `aromatic` are the leaf’s
+//!   own opts (same fields as [`MolOpts`]) and merge last.
 
 use serde::{Deserialize, Serialize};
 
@@ -22,6 +22,7 @@ use schemars::JsonSchema;
 use ts_rs::TS;
 
 use crate::edge::AlignOpts;
+use crate::scene::AromaticStyle;
 
 // ---------------------------------------------------------------------------
 // Shade: scores (non-cascading, on mol) vs style window (cascading, in opts)
@@ -206,16 +207,35 @@ pub struct CommonOpts {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub scale: Option<f64>,
+    /// Aromatic ring paint: ``circle`` (default) or ``kekule``.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub aromatic: Option<AromaticStyle>,
+    /// Paint dashed debug rectangles for layout boxes (labels / mol / scene).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub debug_box: Option<bool>,
+    /// Paint alignment correspondence (matched atom tags + mol role badge).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub debug_align: Option<bool>,
+}
+
+/// Copy each ``Option`` field from ``$src`` onto ``$dst`` when ``Some``.
+/// Keep the field list next to the struct when adding a cascading opt.
+macro_rules! merge_opt_fields {
+    ($dst:expr, $src:expr, $($field:ident),+ $(,)?) => {
+        $(
+            if $src.$field.is_some() {
+                $dst.$field = $src.$field.clone();
+            }
+        )+
+    };
 }
 
 impl CommonOpts {
     pub fn merge_from(&mut self, other: &CommonOpts) {
-        if other.color.is_some() {
-            self.color = other.color.clone();
-        }
-        if other.scale.is_some() {
-            self.scale = other.scale;
-        }
+        merge_opt_fields!(self, other, color, scale, aromatic, debug_box, debug_align);
     }
 }
 
@@ -242,34 +262,43 @@ pub struct MolOpts {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub shade: Option<ShadeStyle>,
+    /// Aromatic ring paint: ``circle`` (default) or ``kekule``.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub aromatic: Option<AromaticStyle>,
+    /// Paint dashed debug rectangles for layout boxes (labels / mol / scene).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub debug_box: Option<bool>,
+    /// Paint alignment correspondence (matched atom tags + mol role badge).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub debug_align: Option<bool>,
 }
 
 impl MolOpts {
     pub fn merge_from(&mut self, other: &MolOpts) {
-        if other.color.is_some() {
-            self.color = other.color.clone();
-        }
-        if other.scale.is_some() {
-            self.scale = other.scale;
-        }
-        if other.weight.is_some() {
-            self.weight = other.weight;
-        }
-        if other.halo.is_some() {
-            self.halo = other.halo;
-        }
+        merge_opt_fields!(
+            self,
+            other,
+            color,
+            scale,
+            weight,
+            halo,
+            aromatic,
+            debug_box,
+            debug_align
+        );
         if let Some(ref s) = other.shade {
-            self.shade.get_or_insert_with(ShadeStyle::default).merge_from(s);
+            self.shade
+                .get_or_insert_with(ShadeStyle::default)
+                .merge_from(s);
         }
     }
 
     pub fn merge_common(&mut self, common: &CommonOpts) {
-        if common.color.is_some() {
-            self.color = common.color.clone();
-        }
-        if common.scale.is_some() {
-            self.scale = common.scale;
-        }
+        // Same keys as ``CommonOpts`` — update with that struct.
+        merge_opt_fields!(self, common, color, scale, aromatic, debug_box, debug_align);
     }
 }
 
@@ -462,6 +491,18 @@ pub struct MolNode {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub halo: Option<bool>,
+    /// Aromatic ring paint: ``circle`` (default) or ``kekule``.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub aromatic: Option<AromaticStyle>,
+    /// Paint dashed debug rectangles for layout boxes (labels / mol / scene).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub debug_box: Option<bool>,
+    /// Paint alignment correspondence (matched atom tags + mol role badge).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub debug_align: Option<bool>,
     /// Cascade patches for this node (list or singleton).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
@@ -477,6 +518,9 @@ impl MolNode {
             weight: self.weight,
             halo: self.halo,
             shade: None,
+            aromatic: self.aromatic,
+            debug_box: self.debug_box,
+            debug_align: self.debug_align,
         };
         if let Some(ref shade) = self.shade {
             o.shade = Some(shade.style());
@@ -938,7 +982,14 @@ impl LayoutOpts {
     }
 }
 
-/// Declarative document (`mol`, `group`, or `reaction_scheme` root).
+/// One ancestor container’s contribution to the opts cascade (outer → inner).
+#[derive(Debug, Clone)]
+struct CascadeLayer {
+    opts: Option<Opts>,
+    common: CommonOpts,
+}
+
+/// Declarative document (`mol`, `group`, `reaction_scheme`, or `grid` root).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 #[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
@@ -984,6 +1035,16 @@ pub enum DepictSpec {
         halo: Option<bool>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[cfg_attr(feature = "codegen", ts(optional))]
+        aromatic: Option<AromaticStyle>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        debug_box: Option<bool>,
+        /// Paint alignment correspondence (matched atom tags + mol role badge).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        debug_align: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
         opts: Option<Opts>,
     },
     Group {
@@ -1006,6 +1067,16 @@ pub enum DepictSpec {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[cfg_attr(feature = "codegen", ts(optional))]
         scale: Option<f64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        aromatic: Option<AromaticStyle>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        debug_box: Option<bool>,
+        /// Paint alignment correspondence (matched atom tags + mol role badge).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        debug_align: Option<bool>,
     },
     /// Reaction / pathway scheme: mixed **node** children (`mol` | `edge` | `text`).
     ReactionScheme {
@@ -1029,12 +1100,136 @@ pub enum DepictSpec {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[cfg_attr(feature = "codegen", ts(optional))]
         scale: Option<f64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        aromatic: Option<AromaticStyle>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        debug_box: Option<bool>,
+        /// Paint alignment correspondence (matched atom tags + mol role badge).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        debug_align: Option<bool>,
+    },
+    /// Grid root — each child is one row (`mol` / `group` / `reaction_scheme` / nested `grid`).
+    Grid {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        id: Option<String>,
+        /// Row roots (nested grids flatten in document order when walking mols).
+        #[serde(default)]
+        children: Vec<DepictSpec>,
+        /// Grid-level cascade bag (inherits onto every row / mol).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        opts: Option<Opts>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        color: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        scale: Option<f64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        aromatic: Option<AromaticStyle>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        debug_box: Option<bool>,
+        /// Paint alignment correspondence (matched atom tags + mol role badge).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        debug_align: Option<bool>,
     },
 }
 
 impl DepictSpec {
-    /// Flatten to mol nodes in document order (skips edge / text children).
-    pub fn mols(&self) -> Vec<MolNode> {
+    fn cascade_layer(&self) -> Option<CascadeLayer> {
+        match self {
+            DepictSpec::Mol { .. } => None,
+            DepictSpec::Group {
+                opts,
+                color,
+                scale,
+                aromatic,
+                debug_box,
+                debug_align,
+                ..
+            }
+            | DepictSpec::ReactionScheme {
+                opts,
+                color,
+                scale,
+                aromatic,
+                debug_box,
+                debug_align,
+                ..
+            }
+            | DepictSpec::Grid {
+                opts,
+                color,
+                scale,
+                aromatic,
+                debug_box,
+                debug_align,
+                ..
+            } => Some(CascadeLayer {
+                opts: opts.clone(),
+                common: CommonOpts {
+                    color: color.clone(),
+                    scale: *scale,
+                    aromatic: *aromatic,
+                    debug_box: *debug_box,
+                    debug_align: *debug_align,
+                },
+            }),
+        }
+    }
+
+    fn mol_node_from_root_fields(
+        smiles: &Option<String>,
+        cxsmiles: &Option<String>,
+        molfile: &Option<String>,
+        id: &Option<String>,
+        shade: &Option<ShadeSpec>,
+        star_labels: &Option<Vec<Option<String>>>,
+        align_to: &Option<AlignTo>,
+        label: &Option<Label>,
+        color: &Option<String>,
+        scale: Option<f64>,
+        weight: Option<f64>,
+        halo: Option<bool>,
+        aromatic: Option<AromaticStyle>,
+        debug_box: Option<bool>,
+        debug_align: Option<bool>,
+        opts: &Option<Opts>,
+    ) -> MolNode {
+        MolNode {
+            type_: MolNodeKind::Mol,
+            smiles: smiles.clone(),
+            cxsmiles: cxsmiles.clone(),
+            molfile: molfile.clone(),
+            id: id.clone(),
+            shade: shade.clone(),
+            star_labels: star_labels.clone(),
+            align_to: align_to.clone(),
+            label: label.clone(),
+            color: color.clone(),
+            scale,
+            weight,
+            halo,
+            aromatic,
+            debug_box,
+            debug_align,
+            opts: opts.clone(),
+        }
+    }
+
+    /// Walk mols in document order with ancestor cascade layers (outer → inner).
+    fn collect_mols_with_layers(
+        &self,
+        stack: &mut Vec<CascadeLayer>,
+        out: &mut Vec<(MolNode, Vec<CascadeLayer>)>,
+    ) {
         match self {
             DepictSpec::Mol {
                 smiles,
@@ -1049,66 +1244,134 @@ impl DepictSpec {
                 scale,
                 weight,
                 halo,
+                aromatic,
+                debug_box,
+                debug_align,
                 opts,
-            } => vec![MolNode {
-                type_: MolNodeKind::Mol,
-                smiles: smiles.clone(),
-                cxsmiles: cxsmiles.clone(),
-                molfile: molfile.clone(),
-                id: id.clone(),
-                shade: shade.clone(),
-                star_labels: star_labels.clone(),
-                align_to: align_to.clone(),
-                label: label.clone(),
-                color: color.clone(),
-                scale: *scale,
-                weight: *weight,
-                halo: *halo,
-                opts: opts.clone(),
-            }],
-            DepictSpec::Group { children, .. }
-            | DepictSpec::ReactionScheme { children, .. } => children
-                .iter()
-                .filter_map(Node::as_mol)
-                .cloned()
-                .collect(),
+            } => {
+                out.push((
+                    Self::mol_node_from_root_fields(
+                        smiles,
+                        cxsmiles,
+                        molfile,
+                        id,
+                        shade,
+                        star_labels,
+                        align_to,
+                        label,
+                        color,
+                        *scale,
+                        *weight,
+                        *halo,
+                        *aromatic,
+                        *debug_box,
+                        *debug_align,
+                        opts,
+                    ),
+                    stack.clone(),
+                ));
+            }
+            DepictSpec::Group { children, .. } | DepictSpec::ReactionScheme { children, .. } => {
+                let layer = self.cascade_layer();
+                if let Some(layer) = layer.clone() {
+                    stack.push(layer);
+                }
+                for n in children {
+                    if let Some(m) = n.as_mol() {
+                        out.push((m.clone(), stack.clone()));
+                    }
+                }
+                if layer.is_some() {
+                    stack.pop();
+                }
+            }
+            DepictSpec::Grid { children, .. } => {
+                let layer = self.cascade_layer();
+                if let Some(layer) = layer.clone() {
+                    stack.push(layer);
+                }
+                for row in children {
+                    row.collect_mols_with_layers(stack, out);
+                }
+                if layer.is_some() {
+                    stack.pop();
+                }
+            }
         }
     }
 
-    /// Child nodes of a container (empty for a mol root).
+    fn mols_with_layers(&self) -> Vec<(MolNode, Vec<CascadeLayer>)> {
+        let mut stack = Vec::new();
+        let mut out = Vec::new();
+        self.collect_mols_with_layers(&mut stack, &mut out);
+        out
+    }
+
+    /// Flatten to mol nodes in document order (skips edge / text; walks grid rows).
+    pub fn mols(&self) -> Vec<MolNode> {
+        self.mols_with_layers()
+            .into_iter()
+            .map(|(m, _)| m)
+            .collect()
+    }
+
+    /// Grid row roots (empty when not a grid).
+    pub fn grid_rows(&self) -> &[DepictSpec] {
+        match self {
+            DepictSpec::Grid { children, .. } => children.as_slice(),
+            _ => &[],
+        }
+    }
+
+    /// Child nodes of a flat container (empty for mol / grid roots).
     pub fn nodes(&self) -> &[Node] {
         match self {
             DepictSpec::Group { children, .. }
             | DepictSpec::ReactionScheme { children, .. } => children.as_slice(),
-            DepictSpec::Mol { .. } => &[],
+            DepictSpec::Mol { .. } | DepictSpec::Grid { .. } => &[],
         }
     }
 
-    /// Edge nodes in document order.
+    /// Edge nodes in document order (includes edges inside grid rows).
     pub fn edges(&self) -> Vec<&EdgeNode> {
-        self.nodes().iter().filter_map(Node::as_edge).collect()
+        match self {
+            DepictSpec::Grid { children, .. } => {
+                children.iter().flat_map(|row| row.edges()).collect()
+            }
+            _ => self.nodes().iter().filter_map(Node::as_edge).collect(),
+        }
     }
 
-    /// Text nodes in document order.
+    /// Text nodes in document order (includes texts inside grid rows).
     pub fn texts(&self) -> Vec<&TextNode> {
-        self.nodes().iter().filter_map(Node::as_text).collect()
+        match self {
+            DepictSpec::Grid { children, .. } => {
+                children.iter().flat_map(|row| row.texts()).collect()
+            }
+            _ => self.nodes().iter().filter_map(Node::as_text).collect(),
+        }
     }
 
     /// Look up a mol or text node by id (for label / lane refs).
     pub fn node_by_id(&self, id: &str) -> Option<&Node> {
-        self.nodes().iter().find(|n| n.id() == Some(id))
+        match self {
+            DepictSpec::Grid { children, .. } => {
+                children.iter().find_map(|row| row.node_by_id(id))
+            }
+            _ => self.nodes().iter().find(|n| n.id() == Some(id)),
+        }
     }
 
     pub fn align_enabled(&self) -> bool {
         matches!(self, DepictSpec::Group { align: true, .. })
     }
 
-    /// Container-level opts bag (`group` or `reaction_scheme`).
+    /// Container-level opts bag (`group`, `reaction_scheme`, or `grid`).
     pub fn container_opts(&self) -> Option<&Opts> {
         match self {
-            DepictSpec::Group { opts, .. } | DepictSpec::ReactionScheme { opts, .. } => {
-                opts.as_ref()
-            }
+            DepictSpec::Group { opts, .. }
+            | DepictSpec::ReactionScheme { opts, .. }
+            | DepictSpec::Grid { opts, .. } => opts.as_ref(),
             DepictSpec::Mol { .. } => None,
         }
     }
@@ -1124,29 +1387,28 @@ impl DepictSpec {
 
     /// Resolve cascading mol opts for child index `i` (0 for a mol root).
     ///
-    /// Order: container `opts` list → container flat common → node `opts` list →
-    /// node local flat fields (incl. legacy shade window).
+    /// Order: each ancestor (opts bag → flat common), outer → inner, then node
+    /// `opts` → node local flat fields. Grid rows contribute their own layers.
     pub fn resolve_mol_chrome(&self, i: usize) -> MolOpts {
-        let mols = self.mols();
-        let node = mols.get(i).expect("mol index");
+        let entries = self.mols_with_layers();
+        let (node, layers) = entries.get(i).expect("mol index");
         let mut o = MolOpts::default();
-        if let Some(bag) = self.container_opts() {
-            bag.apply_to_mol(&mut o);
-        }
-        match self {
-            DepictSpec::Group { color, scale, .. }
-            | DepictSpec::ReactionScheme { color, scale, .. } => {
-                o.merge_common(&CommonOpts {
-                    color: color.clone(),
-                    scale: *scale,
-                });
+        for layer in layers {
+            if let Some(ref bag) = layer.opts {
+                bag.apply_to_mol(&mut o);
             }
-            DepictSpec::Mol { .. } => {}
+            o.merge_common(&layer.common);
         }
         if let Some(ref bag) = node.opts {
             bag.apply_to_mol(&mut o);
         }
         o.merge_from(&node.local_opts());
         o
+    }
+
+    /// Resolved chrome for every mol in document order (host paint / tests).
+    pub fn resolve_all_mol_chrome(&self) -> Vec<MolOpts> {
+        let n = self.mols_with_layers().len();
+        (0..n).map(|i| self.resolve_mol_chrome(i)).collect()
     }
 }

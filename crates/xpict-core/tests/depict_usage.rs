@@ -104,6 +104,10 @@ fn ethanol_oh_and_single_bonds() {
         mark_bonds: vec![],
         weight: 1.0,
         scale: 1.0,
+        aromatic: Default::default(),
+        debug_box: false,
+        debug_align: false,
+        align_debug: None,
     };
     let scene = depict_molecule(&mol);
     assert!(scene.width > 0.0 && scene.height > 0.0);
@@ -134,6 +138,10 @@ fn braced_rgroup_markup_subscripts_on_star() {
         mark_bonds: vec![],
         weight: 1.0,
         scale: 1.0,
+        aromatic: Default::default(),
+        debug_box: false,
+        debug_align: false,
+        align_debug: None,
     };
     let texts = label_texts(&depict_molecule(&mol));
     assert!(
@@ -160,6 +168,10 @@ fn amine_nh2_subscript_in_scene() {
         mark_bonds: vec![],
         weight: 1.0,
         scale: 1.0,
+        aromatic: Default::default(),
+        debug_box: false,
+        debug_align: false,
+        align_debug: None,
     };
     let texts = label_texts(&depict_molecule(&mol));
     assert!(
@@ -186,6 +198,10 @@ fn ammonium_charge_superscript() {
         mark_bonds: vec![],
         weight: 1.0,
         scale: 1.0,
+        aromatic: Default::default(),
+        debug_box: false,
+        debug_align: false,
+        align_debug: None,
     };
     let texts = label_texts(&depict_molecule(&mol));
     assert!(
@@ -220,6 +236,10 @@ fn markush_and_star_markup_labels() {
         mark_bonds: vec![],
         weight: 1.0,
         scale: 1.0,
+        aromatic: Default::default(),
+        debug_box: false,
+        debug_align: false,
+        align_debug: None,
     };
     let texts = label_texts(&depict_molecule(&mol));
     let joined = texts.join("|");
@@ -247,6 +267,10 @@ fn bare_underscore_alias_not_subscripted() {
         mark_bonds: vec![],
         weight: 1.0,
         scale: 1.0,
+        aromatic: Default::default(),
+        debug_box: false,
+        debug_align: false,
+        align_debug: None,
     };
     let texts = label_texts(&depict_molecule(&mol));
     assert!(
@@ -279,6 +303,10 @@ fn acetone_double_bond_and_carbonyl_label() {
         mark_bonds: vec![],
         weight: 1.0,
         scale: 1.0,
+        aromatic: Default::default(),
+        debug_box: false,
+        debug_align: false,
+        align_debug: None,
     };
     let scene = depict_molecule(&mol);
     // Double bond → more than one stroke path (centered pair).
@@ -310,6 +338,10 @@ fn json_abi_roundtrip_then_depict() {
         mark_bonds: vec![],
         weight: 2.0,
         scale: 1.0,
+        aromatic: Default::default(),
+        debug_box: false,
+        debug_align: false,
+        align_debug: None,
     };
     let json = serde_json::to_string(&mol).expect("serialize");
     let back: MoleculeIn = serde_json::from_str(&json).expect("deserialize");
@@ -344,6 +376,10 @@ fn empty_molecule_does_not_panic() {
         mark_bonds: vec![],
         weight: 1.0,
         scale: 1.0,
+        aromatic: Default::default(),
+        debug_box: false,
+        debug_align: false,
+        align_debug: None,
     };
     let scene = depict_molecule(&mol);
     assert_eq!(scene.viewports.len(), 1);
@@ -378,6 +414,10 @@ fn west_oh_flips_to_ho_in_scene() {
         mark_bonds: vec![],
         weight: 1.0,
         scale: 1.0,
+        aromatic: Default::default(),
+        debug_box: false,
+        debug_align: false,
+        align_debug: None,
     };
     let texts = label_texts(&depict_molecule(&mol));
     assert!(
@@ -404,6 +444,10 @@ fn mol_weight_changes_oh_path_ink() {
         mark_bonds: vec![],
         weight: 1.0,
         scale: 1.0,
+        aromatic: Default::default(),
+        debug_box: false,
+        debug_align: false,
+        align_debug: None,
     };
     let thin = depict_molecule(&mol);
     mol.weight = 2.0;
@@ -436,6 +480,10 @@ fn formal_charge_on_nh2_and_silent_carbon() {
         mark_bonds: vec![],
         weight: 1.0,
         scale: 1.0,
+        aromatic: Default::default(),
+        debug_box: false,
+        debug_align: false,
+        align_debug: None,
     };
     let texts = label_texts(&depict_molecule(&mol));
     assert!(

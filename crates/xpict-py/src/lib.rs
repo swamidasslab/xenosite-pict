@@ -56,6 +56,16 @@ fn plan_edge(spec_json: &str) -> PyResult<String> {
         .map_err(|e| PyRuntimeError::new_err(format!("EdgePlan JSON: {e}")))
 }
 
+/// Resolve cascading mol chrome for every mol in document order (spec semantics).
+#[pyfunction]
+fn resolve_depict_chrome(spec_json: &str) -> PyResult<String> {
+    let spec: xpict_core::DepictSpec = serde_json::from_str(spec_json)
+        .map_err(|e| PyRuntimeError::new_err(format!("DepictSpec JSON: {e}")))?;
+    let chromes = spec.resolve_all_mol_chrome();
+    serde_json::to_string(&chromes)
+        .map_err(|e| PyRuntimeError::new_err(format!("MolOpts JSON: {e}")))
+}
+
 /// Pass 2: `DepictSpec` + `EdgeResult` JSON → list of `{id, molecule, scene}`.
 #[pyfunction]
 fn render_doc(spec_json: &str, edge_json: &str) -> PyResult<String> {
@@ -97,11 +107,24 @@ fn compose_scheme(spec_json: &str, paints_json: &str) -> PyResult<String> {
             id: p.id,
             molecule: p.molecule,
             scene: p.scene,
+            frame_json: String::new(),
         })
         .collect();
     let scene = xpict_core::compose_scheme(&spec, &paints).map_err(PyRuntimeError::new_err)?;
     serde_json::to_string(&scene)
         .map_err(|e| PyRuntimeError::new_err(format!("Scene JSON: {e}")))
+}
+
+/// Spec → ``Rendered[]`` JSON (`plan_edge` → CoordGen edge → `render_doc`).
+#[pyfunction]
+#[pyo3(name = "depict")]
+#[cfg(feature = "coordgen")]
+fn depict_doc(spec_json: &str) -> PyResult<String> {
+    let spec: xpict_core::DepictSpec = serde_json::from_str(spec_json)
+        .map_err(|e| PyRuntimeError::new_err(format!("DepictSpec JSON: {e}")))?;
+    let painted = xpict_core::doc::depict(&spec).map_err(PyRuntimeError::new_err)?;
+    serde_json::to_string(&painted)
+        .map_err(|e| PyRuntimeError::new_err(format!("Rendered JSON: {e}")))
 }
 
 /// Element symbol for atomic number (`0` → ``*``, `1` → ``H``, …).
@@ -921,8 +944,11 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(depict_molecule, m)?)?;
     m.add_function(wrap_pyfunction!(validate_edge_plan, m)?)?;
     m.add_function(wrap_pyfunction!(plan_edge, m)?)?;
+    m.add_function(wrap_pyfunction!(resolve_depict_chrome, m)?)?;
     m.add_function(wrap_pyfunction!(render_doc, m)?)?;
     m.add_function(wrap_pyfunction!(compose_scheme, m)?)?;
+    #[cfg(feature = "coordgen")]
+    m.add_function(wrap_pyfunction!(depict_doc, m)?)?;
     m.add_function(wrap_pyfunction!(element_symbol, m)?)?;
     m.add_function(wrap_pyfunction!(atomic_number, m)?)?;
     m.add_function(wrap_pyfunction!(plotdot_rings, m)?)?;

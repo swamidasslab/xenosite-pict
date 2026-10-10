@@ -1,14 +1,22 @@
-//! Declarative document — plan (pass 1) + paint (pass 2) + scheme compose.
+//! Declarative document — plan → edge resolve → paint (+ scheme compose).
 //!
 //! Wire types live in [`spec`] (opts cascade + DepictSpec collocated).
-//! Hosts call [`plan_edge`] → process the [`EdgePlan`] with RDKit →
-//! [`render_doc`] with the [`EdgeResult`] → [`compose_scheme`] for reaction
-//! schemes. No RDKit in this module.
+//! Preferred entry: [`depict`] (plan + in-core Chematic/CoordGen edge +
+//! [`render_doc`]). Hosts may still call [`plan_edge`] / [`render_doc`]
+//! separately. Reaction schemes use [`compose_scheme`].
 
 mod compose;
+#[cfg(feature = "coordgen")]
+mod depict_doc;
+#[cfg(feature = "coordgen")]
+mod edge_resolve;
 mod spec;
 
 pub use compose::compose_scheme;
+#[cfg(feature = "coordgen")]
+pub use depict_doc::{depict, Rendered as DepictRendered, SvgAtom, SvgBond};
+#[cfg(feature = "coordgen")]
+pub use edge_resolve::{process_edge_plan, process_edge_plan_with_frames};
 pub use spec::*;
 
 use std::collections::HashMap;
@@ -40,6 +48,14 @@ pub fn assign_mol_ids(mols: &[MolNode]) -> Result<Vec<String>, String> {
 
 /// Ensure edge endpoints and label refs resolve to the right node kinds.
 pub fn validate_edges(spec: &DepictSpec) -> Result<(), String> {
+    if let DepictSpec::Grid { children, .. } = spec {
+        for (i, row) in children.iter().enumerate() {
+            validate_edges(row).map_err(|e| format!("grid children[{i}]: {e}"))?;
+        }
+        assign_mol_ids(&spec.mols())?;
+        return Ok(());
+    }
+
     // Groups must not contain edge children.
     if matches!(spec, DepictSpec::Group { .. }) {
         for (i, n) in spec.nodes().iter().enumerate() {
@@ -134,10 +150,10 @@ pub fn validate_edges(spec: &DepictSpec) -> Result<(), String> {
     Ok(())
 }
 
-/// Pass 1: build an [`EdgePlan`] for every mol that needs host coord gen.
+/// Pass 1: build an [`EdgePlan`] for every mol that needs coord gen.
 ///
 /// - No align: each mol is its own free-layout root.
-/// - `align: true`: forest — default parent = first child; `align_to` overrides.
+/// - `align: true`: forest — default parent = previous mol; `align_to` overrides.
 ///
 /// Returns `None` only when the document has no molecules.
 pub fn plan_edge(spec: &DepictSpec) -> Result<Option<EdgePlan>, String> {
@@ -155,23 +171,21 @@ pub fn plan_edge(spec: &DepictSpec) -> Result<Option<EdgePlan>, String> {
 
     let align = spec.align_enabled();
 
-    // parent_of[i] = None → root; Some(j) → align onto j
+    // parent_of[i] = None → root; Some(j) → align onto j.
+    // Explicit ``align_to`` always wins; ``align: true`` defaults others to previous.
     let mut parent_of: Vec<Option<usize>> = vec![None; mols.len()];
-    if align && mols.len() >= 2 {
-        parent_of[0] = None;
-        for i in 1..mols.len() {
-            if let Some(ref target) = mols[i].align_to {
-                let name = target.ref_id();
-                let j = *id_to_idx
-                    .get(name)
-                    .ok_or_else(|| format!("align_to unknown id {name}"))?;
-                if j == i {
-                    return Err(format!("mol {} cannot align_to itself", ids[i]));
-                }
-                parent_of[i] = Some(j);
-            } else {
-                parent_of[i] = Some(0);
+    for i in 0..mols.len() {
+        if let Some(ref target) = mols[i].align_to {
+            let name = target.ref_id();
+            let j = *id_to_idx
+                .get(name)
+                .ok_or_else(|| format!("align_to unknown id {name}"))?;
+            if j == i {
+                return Err(format!("mol {} cannot align_to itself", ids[i]));
             }
+            parent_of[i] = Some(j);
+        } else if align && i > 0 {
+            parent_of[i] = Some(i - 1);
         }
     }
 
@@ -301,6 +315,15 @@ fn apply_doc_chrome(
     if let Some(w) = chrome.weight {
         mol.weight = w;
     }
+    if let Some(a) = chrome.aromatic {
+        mol.aromatic = a;
+    }
+    if let Some(d) = chrome.debug_box {
+        mol.debug_box = d;
+    }
+    if let Some(d) = chrome.debug_align {
+        mol.debug_align = d;
+    }
     // halo reserved on chrome for future paint; MoleculeIn has no halo flag yet.
     let _ = chrome.halo;
     if let Some(ref labels) = node.star_labels {
@@ -311,12 +334,14 @@ fn apply_doc_chrome(
     mol
 }
 
-/// One painted molecule from [`render_doc`] (pass 2).
+/// One painted molecule from [`render_doc`] / [`depict`].
 #[derive(Debug, Clone)]
 pub struct DocPaint {
     pub id: String,
     pub molecule: MoleculeIn,
     pub scene: Scene,
+    /// Unscaled pose frame JSON (filled by [`depict`]; empty from [`render_doc`]).
+    pub frame_json: String,
 }
 
 /// Pass 2: stitch host [`EdgeResult`] coords onto the document and paint.
@@ -348,6 +373,7 @@ pub fn render_doc(spec: &DepictSpec, edge: &EdgeResult) -> Result<Vec<DocPaint>,
             id: id.clone(),
             molecule,
             scene,
+            frame_json: String::new(),
         });
     }
     Ok(out)
@@ -357,7 +383,7 @@ pub fn render_doc(spec: &DepictSpec, edge: &EdgeResult) -> Result<Vec<DocPaint>,
 mod tests {
     use super::*;
     use crate::edge::{CoordMethod, EdgeTaskResult};
-    use crate::scene::{AtomIn, BondIn};
+    use crate::scene::{AromaticStyle, AtomIn, BondIn};
 
     fn ethanol_mol(id: &str) -> MoleculeIn {
         MoleculeIn {
@@ -418,6 +444,10 @@ mod tests {
             mark_bonds: vec![],
             scale: 1.0,
             weight: 1.0,
+            aromatic: Default::default(),
+            debug_box: false,
+            debug_align: false,
+            align_debug: None,
         }
     }
 
@@ -439,6 +469,9 @@ mod tests {
                     opts: None,
             color: None,
             scale: None,
+            aromatic: None,
+            debug_box: None,
+            debug_align: None,
         };
         let plan = plan_edge(&spec).unwrap().unwrap();
         match &plan.tasks[0] {
@@ -474,6 +507,9 @@ mod tests {
             opts: None,
             color: None,
             scale: None,
+            aromatic: None,
+            debug_box: None,
+            debug_align: None,
         };
         let plan = plan_edge(&spec).unwrap().unwrap();
         match &plan.tasks[0] {
@@ -506,6 +542,9 @@ mod tests {
             weight: None,
             align_to: None,
                     halo: None,
+                    aromatic: None,
+                    debug_box: None,
+                    debug_align: None,
             opts: None,
         };
         let plan = plan_edge(&spec).unwrap().unwrap();
@@ -544,6 +583,9 @@ mod tests {
             weight: None,
             align_to: None,
                     halo: None,
+                    aromatic: None,
+                    debug_box: None,
+                    debug_align: None,
             opts: None,
         };
         let mol = MoleculeIn {
@@ -585,6 +627,10 @@ mod tests {
             mark_bonds: vec![],
             scale: 1.0,
             weight: 1.0,
+            aromatic: Default::default(),
+            debug_box: false,
+            debug_align: false,
+            align_debug: None,
         };
         let edge = EdgeResult::new_v1(vec![EdgeTaskResult::CoordGen {
             ok: true,
@@ -657,6 +703,9 @@ mod tests {
                     opts: None,
             color: None,
             scale: None,
+            aromatic: None,
+            debug_box: None,
+            debug_align: None,
         };
         assert!(plan_edge(&spec).unwrap().is_none());
     }
@@ -681,6 +730,9 @@ mod tests {
                     opts: None,
             color: None,
             scale: None,
+            aromatic: None,
+            debug_box: None,
+            debug_align: None,
         };
         assert!(plan_edge(&unknown).unwrap_err().contains("unknown id"));
 
@@ -703,6 +755,9 @@ mod tests {
                     opts: None,
             color: None,
             scale: None,
+            aromatic: None,
+            debug_box: None,
+            debug_align: None,
         };
         assert!(plan_edge(&self_align).unwrap_err().contains("itself"));
     }
@@ -733,6 +788,9 @@ mod tests {
                     opts: None,
             color: None,
             scale: None,
+            aromatic: None,
+            debug_box: None,
+            debug_align: None,
         };
         let plan = plan_edge(&spec).unwrap().unwrap();
         match &plan.tasks[0] {
@@ -789,6 +847,10 @@ mod tests {
             mark_bonds: vec![],
             scale: 1.0,
             weight: 1.0,
+            aromatic: Default::default(),
+            debug_box: false,
+            debug_align: false,
+            align_debug: None,
         };
         apply_star_labels(&mut mol, &[]);
         assert_eq!(mol.atoms[0].label.as_deref(), Some("*"));
@@ -822,6 +884,9 @@ mod tests {
             weight: Some(1.2),
             align_to: None,
                     halo: None,
+                    aromatic: None,
+                    debug_box: None,
+                    debug_align: None,
             opts: None,
         };
         let mut mol = ethanol_mol("s");
@@ -862,6 +927,9 @@ mod tests {
             weight: None,
             align_to: None,
                     halo: None,
+                    aromatic: None,
+                    debug_box: None,
+                    debug_align: None,
             opts: None,
         };
         let missing = EdgeResult::new_v1(vec![EdgeTaskResult::CoordGen {
@@ -909,6 +977,9 @@ mod tests {
                     opts: None,
             color: None,
             scale: None,
+            aromatic: None,
+            debug_box: None,
+            debug_align: None,
         };
         assert!(g.align_enabled());
         assert!(g.mols().is_empty());
@@ -1024,6 +1095,107 @@ mod tests {
         let chrome = spec.resolve_mol_chrome(0);
         assert_eq!(chrome.color.as_deref(), Some("#222")); // group flat after opts list
         assert_eq!(chrome.scale, Some(3.0)); // node local last
+    }
+
+    #[test]
+    fn cascade_grid_root_inherits_onto_row_mols() {
+        let spec: DepictSpec = serde_json::from_str(
+            r##"{
+              "type": "grid",
+              "color": "red",
+              "debug_box": true,
+              "debug_align": true,
+              "children": [
+                {"type": "mol", "id": "a", "smiles": "CCCCCC"},
+                {
+                  "type": "group",
+                  "aromatic": "kekule",
+                  "children": [
+                    {"type": "mol", "id": "b", "smiles": "c1ccccc1"},
+                    {"type": "mol", "id": "c", "smiles": "c1ccccc1", "color": "blue"}
+                  ]
+                }
+              ]
+            }"##,
+        )
+        .unwrap();
+        assert_eq!(spec.mols().len(), 3);
+        let a = spec.resolve_mol_chrome(0);
+        assert_eq!(a.color.as_deref(), Some("red"));
+        assert_eq!(a.debug_box, Some(true));
+        assert_eq!(a.debug_align, Some(true));
+        let b = spec.resolve_mol_chrome(1);
+        assert_eq!(b.color.as_deref(), Some("red"));
+        assert_eq!(b.debug_box, Some(true));
+        assert_eq!(b.debug_align, Some(true));
+        assert_eq!(b.aromatic, Some(AromaticStyle::Kekule));
+        let c = spec.resolve_mol_chrome(2);
+        assert_eq!(c.color.as_deref(), Some("blue"), "local flat overrides grid");
+        assert_eq!(c.debug_box, Some(true));
+        assert_eq!(c.debug_align, Some(true));
+        assert_eq!(c.aromatic, Some(AromaticStyle::Kekule));
+    }
+
+    #[test]
+    fn cascade_aromatic_global_inherits_local_overrides() {
+        let spec: DepictSpec = serde_json::from_str(
+            r##"{
+              "type": "group",
+              "aromatic": "kekule",
+              "opts": [{"aromatic": "kekule"}],
+              "children": [
+                {"type": "mol", "id": "a", "smiles": "c1ccccc1"},
+                {"type": "mol", "id": "b", "smiles": "c1ccccc1", "aromatic": "circle"},
+                {
+                  "type": "mol",
+                  "id": "c",
+                  "smiles": "c1ccccc1",
+                  "opts": {"type": "mol", "aromatic": "circle"}
+                }
+              ]
+            }"##,
+        )
+        .unwrap();
+        assert_eq!(
+            spec.resolve_mol_chrome(0).aromatic,
+            Some(AromaticStyle::Kekule),
+            "global group aromatic inherits"
+        );
+        assert_eq!(
+            spec.resolve_mol_chrome(1).aromatic,
+            Some(AromaticStyle::Circle),
+            "local flat aromatic overrides group"
+        );
+        assert_eq!(
+            spec.resolve_mol_chrome(2).aromatic,
+            Some(AromaticStyle::Circle),
+            "local typed mol opts override group"
+        );
+    }
+
+    #[test]
+    fn render_doc_stamps_cascaded_aromatic_onto_molecule() {
+        let spec: DepictSpec = serde_json::from_str(
+            r##"{
+              "type": "group",
+              "aromatic": "kekule",
+              "children": [{"type": "mol", "id": "e", "smiles": "CCO"}]
+            }"##,
+        )
+        .unwrap();
+        let edge = EdgeResult::new_v1(vec![EdgeTaskResult::CoordGen {
+            ok: true,
+            molecules: vec![CoordGenMoleculeResult {
+                id: "e".into(),
+                ok: true,
+                method: CoordMethod::Free,
+                used_map: None,
+                molecule: Some(ethanol_mol("e")),
+                error: None,
+            }],
+        }]);
+        let painted = render_doc(&spec, &edge).unwrap();
+        assert_eq!(painted[0].molecule.aromatic, AromaticStyle::Kekule);
     }
 
     #[test]

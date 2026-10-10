@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from helpers import layout_backend
 
 import re
 
@@ -45,7 +44,6 @@ def test_compile_shapes_shared_engine():
 def test_svg_emits_glyph_paths_not_text():
     svg = render(
         {"molecules": [{"smiles": "CCO", "label": r"$\alpha$-**EtOH**"}]},
-        backend=layout_backend(),
     )
     assert "<text" not in svg
     assert "<tspan" not in svg
@@ -67,7 +65,6 @@ def test_edge_label_markup_as_shapes():
                 "edges": [{"source": "a", "target": "b", "label": r"\Delta E"}],
             },
         },
-        backend=layout_backend(),
     )
     assert 'data-text="ΔE"' in svg or 'data-text="Δ E"' in svg
     assert "\\Delta" not in svg

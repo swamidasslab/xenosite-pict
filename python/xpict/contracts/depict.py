@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Literal, Any
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel, model_validator
 
@@ -27,6 +27,9 @@ class AlignToSpec(StrictModel):
 
 
 AlignTo = str | AlignToSpec
+
+
+AromaticStyle = Literal['circle', 'kekule']
 
 
 LabelPos = Literal['above', 'below', 'left', 'right']
@@ -62,7 +65,10 @@ class ShadeStyle(StrictModel):
 class MolOptsPatch(StrictModel):
     """Mol cascading paint opts — what a mol leaf consumes from the cascade."""
     type: Literal['mol'] = 'mol'
+    aromatic: Annotated[AromaticStyle | None, Field(description='Aromatic ring paint: ``circle`` (default) or ``kekule``.')] = None
     color: str | None = None
+    debug_align: Annotated[bool | None, Field(description='Paint alignment correspondence (matched atom tags + mol role badge).')] = None
+    debug_box: Annotated[bool | None, Field(description='Paint dashed debug rectangles for layout boxes (labels / mol / scene).')] = None
     halo: bool | None = None
     scale: float | None = None
     shade: ShadeStyle | None = None
@@ -72,28 +78,40 @@ class MolOptsPatch(StrictModel):
 class GroupOptsPatch(StrictModel):
     """Universal cascading keys (any node kind)."""
     type: Literal['group'] = 'group'
+    aromatic: Annotated[AromaticStyle | None, Field(description='Aromatic ring paint: ``circle`` (default) or ``kekule``.')] = None
     color: str | None = None
+    debug_align: Annotated[bool | None, Field(description='Paint alignment correspondence (matched atom tags + mol role badge).')] = None
+    debug_box: Annotated[bool | None, Field(description='Paint dashed debug rectangles for layout boxes (labels / mol / scene).')] = None
     scale: float | None = None
 
 
 class ReactionSchemeOptsPatch(StrictModel):
     """Universal cascading keys (any node kind)."""
     type: Literal['reaction_scheme'] = 'reaction_scheme'
+    aromatic: Annotated[AromaticStyle | None, Field(description='Aromatic ring paint: ``circle`` (default) or ``kekule``.')] = None
     color: str | None = None
+    debug_align: Annotated[bool | None, Field(description='Paint alignment correspondence (matched atom tags + mol role badge).')] = None
+    debug_box: Annotated[bool | None, Field(description='Paint dashed debug rectangles for layout boxes (labels / mol / scene).')] = None
     scale: float | None = None
 
 
 class EdgeOptsPatch(StrictModel):
     """Universal cascading keys (any node kind)."""
     type: Literal['edge'] = 'edge'
+    aromatic: Annotated[AromaticStyle | None, Field(description='Aromatic ring paint: ``circle`` (default) or ``kekule``.')] = None
     color: str | None = None
+    debug_align: Annotated[bool | None, Field(description='Paint alignment correspondence (matched atom tags + mol role badge).')] = None
+    debug_box: Annotated[bool | None, Field(description='Paint dashed debug rectangles for layout boxes (labels / mol / scene).')] = None
     scale: float | None = None
 
 
 class TextOptsPatch(StrictModel):
     """Universal cascading keys (any node kind)."""
     type: Literal['text'] = 'text'
+    aromatic: Annotated[AromaticStyle | None, Field(description='Aromatic ring paint: ``circle`` (default) or ``kekule``.')] = None
     color: str | None = None
+    debug_align: Annotated[bool | None, Field(description='Paint alignment correspondence (matched atom tags + mol role badge).')] = None
+    debug_box: Annotated[bool | None, Field(description='Paint dashed debug rectangles for layout boxes (labels / mol / scene).')] = None
     scale: float | None = None
 
 
@@ -106,13 +124,19 @@ NodeType = Literal['mol', 'group', 'reaction_scheme', 'edge', 'text']
 class ForTypesPatch(StrictModel):
     """Multi-kind patch: `{ "for_types": ["mol","group"], …common opts }`."""
     for_types: list[NodeType]
+    aromatic: Annotated[AromaticStyle | None, Field(description='Aromatic ring paint: ``circle`` (default) or ``kekule``.')] = None
     color: str | None = None
+    debug_align: Annotated[bool | None, Field(description='Paint alignment correspondence (matched atom tags + mol role badge).')] = None
+    debug_box: Annotated[bool | None, Field(description='Paint dashed debug rectangles for layout boxes (labels / mol / scene).')] = None
     scale: float | None = None
 
 
 class CommonOpts(StrictModel):
     """Universal cascading keys (any node kind)."""
+    aromatic: Annotated[AromaticStyle | None, Field(description='Aromatic ring paint: ``circle`` (default) or ``kekule``.')] = None
     color: str | None = None
+    debug_align: Annotated[bool | None, Field(description='Paint alignment correspondence (matched atom tags + mol role badge).')] = None
+    debug_box: Annotated[bool | None, Field(description='Paint dashed debug rectangles for layout boxes (labels / mol / scene).')] = None
     scale: float | None = None
 
 
@@ -138,8 +162,11 @@ class MolNode(StrictModel):
     """Mol node — [`MolOpts`] fields + non-cascading identity / scores / align."""
     type: Literal['mol'] = 'mol'
     align_to: Annotated[AlignTo | None, Field(description='Template id string, or `{ "ref", "atom_map"?, "min_atoms"? }`.')] = None
+    aromatic: Annotated[AromaticStyle | None, Field(description='Aromatic ring paint: ``circle`` (default) or ``kekule``.')] = None
     color: str | None = None
     cxsmiles: str | None = None
+    debug_align: Annotated[bool | None, Field(description='Paint alignment correspondence (matched atom tags + mol role badge).')] = None
+    debug_box: Annotated[bool | None, Field(description='Paint dashed debug rectangles for layout boxes (labels / mol / scene).')] = None
     halo: bool | None = None
     id: str | None = None
     label: Annotated[Label | None, Field(description='Caption: [`Label`] (string id, list, or `{id, pos?}` — text-node refs).')] = None
@@ -179,7 +206,7 @@ class EdgeNode(StrictModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _coerce_endpoints(cls, data: Any) -> Any:
+    def _coerce_endpoints(cls, data: object) -> object:
         if not isinstance(data, dict):
             return data
         out = dict(data)
@@ -212,8 +239,11 @@ Node = MolNode | EdgeNode | TextNode
 class GroupNode(StrictModel):
     type: Literal['group'] = 'group'
     align: bool = Field(default=False, description='When true, later children align onto the first (or each `align_to`).')
+    aromatic: AromaticStyle | None = None
     children: list[Node] = Field(default_factory=list, description='Child **nodes** — mol | text (no edges).')
     color: str | None = None
+    debug_align: Annotated[bool | None, Field(description='Paint alignment correspondence (matched atom tags + mol role badge).')] = None
+    debug_box: bool | None = None
     id: str | None = None
     opts: Annotated[Opts | None, Field(description='Group-level cascade bag (list container for child inheritance).')] = None
     scale: float | None = None
@@ -237,18 +267,34 @@ class LayoutOpts(StrictModel):
 class ReactionSchemeNode(StrictModel):
     """Reaction / pathway scheme: mixed **node** children (`mol` | `edge` | `text`)."""
     type: Literal['reaction_scheme'] = 'reaction_scheme'
+    aromatic: AromaticStyle | None = None
     children: list[Node] = Field(default_factory=list, description='Child **nodes** — mols, edges, and text (any order).')
     color: str | None = None
+    debug_align: Annotated[bool | None, Field(description='Paint alignment correspondence (matched atom tags + mol role badge).')] = None
+    debug_box: bool | None = None
     id: str | None = None
     layout: Annotated[LayoutOpts | None, Field(description='Scheme layout (direction, edge routing); backend maps these.')] = None
     opts: Annotated[Opts | None, Field(description='Scheme-level cascade bag for child mol inheritance.')] = None
     scale: float | None = None
 
 
-DepictSpecRoot = Annotated[MolNode | GroupNode | ReactionSchemeNode, Field(discriminator='type')]
+class GridNode(StrictModel):
+    """Grid root — each child is one row (`mol` / `group` / `reaction_scheme` / nested `grid`)."""
+    type: Literal['grid'] = 'grid'
+    aromatic: AromaticStyle | None = None
+    children: list[DepictSpecRoot] = Field(default_factory=list, description='Row roots (nested grids flatten in document order when walking mols).')
+    color: str | None = None
+    debug_align: Annotated[bool | None, Field(description='Paint alignment correspondence (matched atom tags + mol role badge).')] = None
+    debug_box: bool | None = None
+    id: str | None = None
+    opts: Annotated[Opts | None, Field(description='Grid-level cascade bag (inherits onto every row / mol).')] = None
+    scale: float | None = None
+
+
+DepictSpecRoot = Annotated[MolNode | GroupNode | ReactionSchemeNode | GridNode, Field(discriminator='type')]
 
 class DepictSpec(RootModel[DepictSpecRoot]):
-    """Declarative document (`mol`, `group`, or `reaction_scheme` root)."""
+    """Declarative document (`mol`, `group`, `reaction_scheme`, or `grid` root)."""
 
     def model_dump(self, *args, **kwargs):
         kwargs.setdefault('exclude_none', True)

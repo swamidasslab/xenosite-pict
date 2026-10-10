@@ -2,18 +2,27 @@
 
 PRs and bug reports are welcome.
 
-## Language alignment (hard rule)
+## One Rust core — zero wrapper drift (hard rule)
 
-**JS, Python, and Rust ship the same public APIs.** When you add or change a
-customer-facing surface (`mol` / `render` / `to_svg` / `depict`, options like
-`align_to` / `star_labels`, paint behaviour), update **all three** languages
-plus docs and tests in the same change. Do not leave a language on a stub or
-“not yet” note.
+**JS, Python, and Rust wrappers expose the same APIs and the same behavior
+because they all use `xpict-core`.** There is no expected per-language drift
+to maintain by hand. If two wrappers disagree, a host has duplicated logic —
+fix by routing through Rust, not by patching a second implementation.
+
+When you add or change a customer-facing surface (`mol` / `render` /
+`to_svg` / `depict`, options, paint), update the **Rust core** and the thin
+bindings/types for each language in the same change. Do not leave a language
+on a stub or a parallel engine.
 
 | Surface | JS | Python | Rust |
 | --- | --- | --- | --- |
 | Single molecule | `xpict.mol` / `render` / `toSvg` | `mol` / `render` / `to_svg` | `mol` / `render` / `to_svg` |
 | Declarative document | `xpict.depict` | `depict` / `render(doc)` | `depict` |
+
+| Layer | Owns |
+| --- | --- |
+| `xpict-core` (Rust) | All product semantics (paint, layout, align, cascade, compose, edge plan, …) |
+| Python / JS | Generated types + adapters only (bindings, IPython/DOM, host I/O, packaging) |
 
 ## Where to file what
 

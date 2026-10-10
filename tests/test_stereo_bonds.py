@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from helpers import layout_backend
 
 import math
 import re
@@ -19,9 +18,6 @@ from xpict.draw.bonds import (
 )
 from xpict.draw.metrics import OFFSET_PX
 
-
-def _backend() -> str:
-    return layout_backend()
 
 
 def test_skeleton_then_offset_for_double():
@@ -86,8 +82,7 @@ def test_stereo_up_replaces_skeleton():
 
 
 def test_layout_sets_wedge_stereo():
-    backend = _backend()
-    layout = Pict(backend=backend).layout({"molecules": [{"smiles": "C[C@H](O)Cl"}]})[0]
+    layout = Pict().layout({"molecules": [{"smiles": "C[C@H](O)Cl"}]})[0]
     stereos = {b.stereo for b in layout.bonds if b.stereo and b.stereo != "none"}
     assert stereos & {"up", "down"}, (
         f"expected wedge stereo, got {[b.stereo for b in layout.bonds]}"
@@ -95,8 +90,7 @@ def test_layout_sets_wedge_stereo():
 
 
 def test_chiral_molecule_svg_contains_wedge_or_hash():
-    backend = _backend()
-    svg = render({"molecules": [{"smiles": "C[C@H](O)Cl"}]}, backend=backend)
+    svg = render({"molecules": [{"smiles": "C[C@H](O)Cl"}]})
     assert "<svg" in svg
     assert "bond-wedge" in svg, "expected solid or hashed wedge class in SVG"
     assert "bond-skeleton" in svg

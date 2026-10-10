@@ -8,7 +8,7 @@ The live integration is:
 
 ```text
 crates/coordgen-sys/   # corrected C ABI + safe Rust
-python/xpict/layout2d.py
+xpict._native.generate_2d_coordinates  # Python binding (depict path uses core)
 ```
 
 ## Real options we wire

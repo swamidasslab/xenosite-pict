@@ -48,7 +48,7 @@ Captured while implementing own-SVG drawing, marks/shade, and ELK placement. The
 
 10. **CoordGen coords+align on Python; JS language-edge layout temporary**  
     Depiction is hard — always review CDK / RDKit / CoordGen before changing layout or draw code.  
-    **Focus:** Python uses **CoordGen** (`layout2d`) for 2D coords and cost-based constrained align; Rust gets numbers only. Own the SVG.  
+    **Focus:** Rust **CoordGen** (`depict`) owns 2D coords and cost-based constrained align; hosts build DepictSpec. Own the SVG.  
     Shared ink algorithms move into **`xpict-core`** (Python + WASM). See `docs/dev/layout-notes.md`.
 
 11. **Ring / chain / stereo algorithms are depictor-owned practice**  

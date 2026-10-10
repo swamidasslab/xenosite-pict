@@ -20,6 +20,61 @@
     }
   },
   "definitions": {
+    "AlignDebug": {
+      "description": "Stamped alignment correspondence for [`MoleculeIn::debug_align`] paint.",
+      "type": "object",
+      "required": [
+        "role"
+      ],
+      "properties": {
+        "peer_id": {
+          "description": "Peer mol id(s): template lists queries; query names its template.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "role": {
+          "$ref": "#/definitions/AlignDebugRole"
+        },
+        "tags": {
+          "description": "`(atom_index_on_this_mol, tag)` — tag is the **template atom index**.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": [
+              {
+                "type": "integer",
+                "format": "int32"
+              },
+              {
+                "type": "integer",
+                "format": "int32"
+              }
+            ],
+            "maxItems": 2,
+            "minItems": 2
+          }
+        }
+      }
+    },
+    "AlignDebugRole": {
+      "description": "Role of a molecule in an alignment debug overlay.",
+      "type": "string",
+      "enum": [
+        "template",
+        "query"
+      ]
+    },
+    "AromaticStyle": {
+      "description": "How fully aromatic rings are drawn.\n\n``circle`` (default): skeleton singles + stroked ring circle for CTAB ``4`` / RDKit ``1.5`` rings. ``kekule``: alternating double/single strokes for paint only (stored bond orders on the molecule are unchanged).",
+      "type": "string",
+      "enum": [
+        "circle",
+        "kekule"
+      ]
+    },
     "AtomIn": {
       "description": "Atom input for a molecule depict call (SVG-space coords from the caller).\n\nIdentity: pass ``element`` and/or atomic number ``z``. If only ``z`` is set, the symbol comes from [`crate::element_symbol`].",
       "type": "object",
@@ -240,6 +295,25 @@
         "bonds"
       ],
       "properties": {
+        "align_debug": {
+          "description": "Stamped match tags from the host/core align step (not cascading).",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AlignDebug"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "aromatic": {
+          "description": "Aromatic ring paint: circle (default) or Kekulé doubles.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/AromaticStyle"
+            }
+          ]
+        },
         "atom_shade": {
           "description": "Per-atom shade scores (same order as [`Self::atoms`]); omit if unshaded.",
           "type": [
@@ -280,6 +354,14 @@
             "string",
             "null"
           ]
+        },
+        "debug_align": {
+          "description": "When true, paint alignment correspondence overlays (needs [`Self::align_debug`]).",
+          "type": "boolean"
+        },
+        "debug_box": {
+          "description": "When true, paint dashed debug rectangles for label / mol / scene boxes.",
+          "type": "boolean"
         },
         "id": {
           "type": [

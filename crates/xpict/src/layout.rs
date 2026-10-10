@@ -146,6 +146,10 @@ fn layout_out_to_molecule(
         mark_bonds: Vec::new(),
         weight: 1.0,
         scale: 1.0,
+        aromatic: Default::default(),
+        debug_box: false,
+        debug_align: false,
+        align_debug: None,
     }
 }
 

@@ -4,17 +4,9 @@ from __future__ import annotations
 
 import json
 
-import pytest
-
 from xpict import depict, depict_svg, render
 from xpict.contracts.scene import PathPrim, TextPrim
 from xpict.native_bridge import compose_scheme
-
-_HOST_GONE = pytest.mark.xfail(
-    reason="Python host coord_gen removed; awaiting native CoordGen SMILES bridge",
-    strict=True,
-    raises=NotImplementedError,
-)
 
 
 def _scheme(a="CCO", b="CC=O", *, label="ADH", arrow="forward", **layout):
@@ -41,7 +33,6 @@ def _scheme(a="CCO", b="CC=O", *, label="ADH", arrow="forward", **layout):
     return out
 
 
-@_HOST_GONE
 def test_live_scheme_composes_overlays():
     rows = depict(_scheme())
     assert len(rows) == 1
@@ -54,20 +45,17 @@ def test_live_scheme_composes_overlays():
     ) or any(getattr(p, "cls", None) and "label" in (p.cls or "") for p in scene.overlays)
 
 
-@_HOST_GONE
 def test_scheme_svg_has_arrow_paths():
     svg = depict_svg(_scheme(arrow="forward"))
     assert "<svg" in svg
     assert "edge" in svg or "M " in svg
 
 
-@_HOST_GONE
 def test_render_routes_live_reaction_scheme():
     svg = render(_scheme(dashed=True, color="#06c"))
     assert "<svg" in svg
 
 
-@_HOST_GONE
 def test_render_routes_legacy_reaction_doc():
     """Legacy flat reaction docs still render via Rust compose."""
     svg = render(
@@ -93,14 +81,12 @@ def test_render_routes_legacy_reaction_doc():
     assert len(svg) > 100
 
 
-@_HOST_GONE
 def test_equilibrium_and_open_arrows():
     for arrow in ("equilibrium", "open", "line"):
         scene = depict(_scheme(arrow=arrow, label=None))[0].scene
         assert scene.overlays, f"expected overlays for {arrow}"
 
 
-@_HOST_GONE
 def test_orthogonal_stays_axis_aligned():
     scene = depict(
         _scheme(label=None, edge_routing="orthogonal", algorithm="layered")
@@ -115,7 +101,7 @@ def test_orthogonal_stays_axis_aligned():
 
 def test_compose_scheme_native_json():
     """Direct native compose_scheme on synthetic DocPaint boxes."""
-    from xpict.contracts import DepictSpec
+    from xpict.spec import DepictSpec
 
     spec = {
         "type": "reaction_scheme",
@@ -168,7 +154,6 @@ def test_compose_scheme_native_json():
     assert scene["width"] > 60
 
 
-@_HOST_GONE
 def test_multi_endpoint_edge_uses_first_pair():
     spec = {
         "type": "reaction_scheme",
@@ -189,7 +174,6 @@ def test_multi_endpoint_edge_uses_first_pair():
     assert scene.overlays
 
 
-@_HOST_GONE
 def test_spacing_knobs_accepted():
     svg = depict_svg(
         _scheme(label=None, node_spacing=8, layer_spacing=4, algorithm="layered")

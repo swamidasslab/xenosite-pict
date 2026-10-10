@@ -9,12 +9,17 @@ use crate::metrics::{
 };
 use crate::scene::Primitive;
 
-/// Normalize engine bond orders for 2D depiction.
+/// True for aromatic bond encodings: RDKit-style ``1.5`` or CTAB/Chematic ``4``.
+pub fn is_aromatic_order(order: f64) -> bool {
+    order >= 3.5 || (1.4..1.6).contains(&order)
+}
+
+/// Normalize engine bond orders for 2D *stroke multiplicity*.
 ///
-/// Aromatic encodings: 1.5 (RDKit-style) or 4 (legacy). Prefer Kekulé from backends;
-/// this is a safety net so aromatics never become triple lines.
+/// Aromatic encodings collapse to a single skeleton stroke (never a triple).
+/// Ring aromaticity is drawn separately (circle) via [`is_aromatic_order`].
 pub fn depict_order(order: f64) -> f64 {
-    if order >= 3.5 || (1.4..1.6).contains(&order) {
+    if is_aromatic_order(order) {
         1.0
     } else {
         order
@@ -1130,6 +1135,15 @@ mod tests {
         assert!((depict_order(1.5) - 1.0).abs() < 1e-12);
         assert!((depict_order(4.0) - 1.0).abs() < 1e-12);
         assert!((depict_order(2.0) - 2.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn is_aromatic_order_detects_encodings() {
+        assert!(is_aromatic_order(1.5));
+        assert!(is_aromatic_order(4.0));
+        assert!(!is_aromatic_order(1.0));
+        assert!(!is_aromatic_order(2.0));
+        assert!(!is_aromatic_order(3.0));
     }
 
     #[test]

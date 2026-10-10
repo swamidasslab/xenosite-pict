@@ -43,6 +43,21 @@ pub enum LayerName {
     Overlay,
 }
 
+/// How fully aromatic rings are drawn.
+///
+/// ``circle`` (default): skeleton singles + stroked ring circle for CTAB ``4`` /
+/// RDKit ``1.5`` rings. ``kekule``: alternating double/single strokes for paint
+/// only (stored bond orders on the molecule are unchanged).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
+pub enum AromaticStyle {
+    #[default]
+    Circle,
+    Kekule,
+}
+
 /// One drawable primitive in SVG space (+Y down).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
@@ -276,6 +291,44 @@ pub struct MoleculeIn {
     /// may go down to ~``2/3`` (Regular stem); typical thicken up to ~2.
     #[serde(default = "default_mol_weight", skip_serializing_if = "is_default_mol_weight")]
     pub weight: f64,
+    /// Aromatic ring paint: circle (default) or Kekulé doubles.
+    #[serde(default, skip_serializing_if = "is_default_aromatic")]
+    pub aromatic: AromaticStyle,
+    /// When true, paint dashed debug rectangles for label / mol / scene boxes.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub debug_box: bool,
+    /// When true, paint alignment correspondence overlays (needs [`Self::align_debug`]).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub debug_align: bool,
+    /// Stamped match tags from the host/core align step (not cascading).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub align_debug: Option<AlignDebug>,
+}
+
+/// Role of a molecule in an alignment debug overlay.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
+pub enum AlignDebugRole {
+    Template,
+    Query,
+}
+
+/// Stamped alignment correspondence for [`MoleculeIn::debug_align`] paint.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
+pub struct AlignDebug {
+    pub role: AlignDebugRole,
+    /// Peer mol id(s): template lists queries; query names its template.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub peer_id: Option<String>,
+    /// `(atom_index_on_this_mol, tag)` — tag is the **template atom index**.
+    #[serde(default)]
+    pub tags: Vec<(i32, i32)>,
 }
 
 fn default_mol_scale() -> f64 {
@@ -292,6 +345,10 @@ fn default_mol_weight() -> f64 {
 
 fn is_default_mol_weight(s: &f64) -> bool {
     (*s - 1.0).abs() < 1e-12
+}
+
+fn is_default_aromatic(s: &AromaticStyle) -> bool {
+    *s == AromaticStyle::Circle
 }
 
 impl MoleculeIn {

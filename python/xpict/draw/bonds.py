@@ -33,15 +33,18 @@ _STROKE = STROKE_PX
 _WEDGE_HALF = WEDGE_HALF_PX
 
 
-def depict_order(order: float) -> float:
-    """Normalize engine bond orders for 2D depiction.
+def is_aromatic_order(order: float) -> bool:
+    """True for aromatic bond encodings: RDKit-style ``1.5`` or CTAB/Chematic ``4``."""
+    return order >= 3.5 or 1.4 <= order < 1.6
 
-    Aromatic encodings: 1.5 (RDKit-style) or 4 (legacy). Prefer Kekulé from backends;
-    this is a safety net so aromatics never become triple lines.
+
+def depict_order(order: float) -> float:
+    """Normalize engine bond orders for 2D *stroke multiplicity*.
+
+    Aromatic encodings collapse to a single skeleton stroke (never a triple).
+    Ring aromaticity is drawn separately (circle) via ``is_aromatic_order``.
     """
-    if order >= 3.5:
-        return 1.0
-    if 1.4 <= order < 1.6:
+    if is_aromatic_order(order):
         return 1.0
     return order
 

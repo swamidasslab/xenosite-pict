@@ -1,7 +1,7 @@
-"""Backend-agnostic layout types for the legacy Python Pict/draw path.
+"""Layout snapshot types for the legacy Python Pict/draw path.
 
-Not a live cross-language ABI (that is ``MoleculeIn`` / EdgePlan). These remain
-as internal plumbing until the flat ``Pict`` render stack is retired.
+Not a live cross-language ABI (that is ``MoleculeIn`` / EdgePlan). Produced by
+native Rust ``depict`` via ``Pict.layout`` — no layout-backend switch.
 """
 
 from __future__ import annotations
@@ -45,5 +45,5 @@ class MoleculeLayout(StrictModel):
     id: str | None = None
     atoms: list[AtomLayout]
     bonds: list[BondLayout]
-    backend: str
+    backend: str = "native"
     warnings: list[str] = Field(default_factory=list)

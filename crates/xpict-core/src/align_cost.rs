@@ -92,10 +92,13 @@ impl MolGraph {
     }
 }
 
-pub const COST_ELEMENT: i32 = 3;
+/// Element mismatch must cost more than leaving both atoms unmatched
+/// (`2 * COST_UNMATCHED`); otherwise MCS pads matches with O→C style pairs
+/// and beats a clean aromatic-ring map (e.g. anisole onto o-cresol).
+pub const COST_ELEMENT: i32 = 11;
 pub const COST_CHARGE_RADICAL: i32 = 2;
 pub const COST_BOND_ORDER: i32 = 3;
-/// Unmatched atom/bond vertices — strictly above any pair-mismatch cost.
+/// Unmatched atom/bond vertices.
 pub const COST_UNMATCHED: i32 = 5;
 
 /// Incidence graph: vertices `[0..n_atoms)` atoms, `[n_atoms..n_atoms+n_bonds)` bonds.
@@ -664,6 +667,76 @@ mod tests {
         let res = cost_mapping(&chain(2), &a).expect("map");
         assert_eq!(res.map.len(), 2);
         assert!(res.cost >= COST_ELEMENT);
+    }
+
+    fn aromatic(a: u16, b: u16) -> BondFeat {
+        BondFeat {
+            begin: a,
+            end: b,
+            order: 4,
+            aromatic: true,
+            stereo: EzStereo::None,
+            stereo_atom1: None,
+            stereo_atom2: None,
+        }
+    }
+
+    #[test]
+    fn aromatic_ring_beats_substituent_element_mismatch() {
+        // o-cresol-like: ring 0..5, OH on 0, Me on 1.
+        let mut cresol_atoms = vec![c(); 8];
+        cresol_atoms[6].atomic_number = 8; // OH
+        // 7 = Me carbon
+        let cresol = MolGraph::new(
+            cresol_atoms,
+            vec![
+                aromatic(0, 1),
+                aromatic(1, 2),
+                aromatic(2, 3),
+                aromatic(3, 4),
+                aromatic(4, 5),
+                aromatic(5, 0),
+                single(0, 6),
+                single(1, 7),
+            ],
+        );
+        // anisole-like: Me(6)-O(7)-ring 0..5
+        let mut anisole_atoms = vec![c(); 8];
+        anisole_atoms[7].atomic_number = 8;
+        let anisole = MolGraph::new(
+            anisole_atoms,
+            vec![
+                aromatic(0, 1),
+                aromatic(1, 2),
+                aromatic(2, 3),
+                aromatic(3, 4),
+                aromatic(4, 5),
+                aromatic(5, 0),
+                single(0, 7),
+                single(7, 6),
+            ],
+        );
+        let res = cost_mapping(&cresol, &anisole).expect("map");
+        // Ring carbons must map C→C; oxygen must not map onto carbon.
+        for (&q, &r) in &res.map {
+            let zq = anisole.atoms[q as usize].atomic_number;
+            let zr = cresol.atoms[r as usize].atomic_number;
+            assert_eq!(
+                zq, zr,
+                "element mismatch in map q{q}(Z={zq})→r{r}(Z={zr}); map={:?}",
+                res.map
+            );
+        }
+        let ring_pairs = res
+            .map
+            .iter()
+            .filter(|(&q, _)| q < 6)
+            .count();
+        assert!(
+            ring_pairs >= 6,
+            "expected full aromatic ring map, got {ring_pairs}; map={:?}",
+            res.map
+        );
     }
 
     #[test]

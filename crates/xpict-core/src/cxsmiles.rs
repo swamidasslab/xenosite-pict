@@ -165,6 +165,10 @@ mod tests {
             mark_bonds: vec![],
             scale: 1.0,
             weight: 1.0,
+            aromatic: Default::default(),
+            debug_box: false,
+            debug_align: false,
+            align_debug: None,
         };
         let out = apply_cx_by_index(mol, "*C* |$;;R2;$|");
         assert_eq!(out.atoms[0].label.as_deref(), Some("*"));

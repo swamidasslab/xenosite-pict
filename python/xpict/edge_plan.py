@@ -6,8 +6,6 @@ Python RDKit processor and free-layout fallbacks were removed.
 
 from __future__ import annotations
 
-from typing import Any
-
 from xpict.contracts.edge import (
     AlignOpts,
     CoordGenTask,
@@ -15,9 +13,12 @@ from xpict.contracts.edge import (
     EdgeResult,
     MolTemplate,
 )
+from xpict.contracts.edge_dict import EdgePlanDict
+
+EdgePlanLike = EdgePlan | EdgePlanDict | str
 
 
-def validate_edge_plan(plan: EdgePlan | dict[str, Any]) -> EdgePlan:
+def validate_edge_plan(plan: EdgePlanLike) -> EdgePlan:
     """Structural checks via Rust core (unique ids, roots, structure fields)."""
     from xpict.native_bridge import validate_edge_plan as _core_validate
 
@@ -58,7 +59,7 @@ def build_align_plan(
     )
 
 
-def process_edge_plan(plan: EdgePlan | dict[str, Any]) -> EdgeResult:
+def process_edge_plan(plan: EdgePlanLike) -> EdgeResult:
     """Removed: Python RDKit ``coord_gen`` processor.
 
     Use the Rust crate / JS host processor, or CoordGen + ``align`` once the
@@ -72,7 +73,7 @@ def process_edge_plan(plan: EdgePlan | dict[str, Any]) -> EdgeResult:
 
 
 def process_edge_plan_with_frames(
-    plan: EdgePlan | dict[str, Any],
+    plan: EdgePlanLike,
 ) -> tuple[EdgeResult, dict[str, str]]:
     """Removed with :func:`process_edge_plan`."""
     _ = plan

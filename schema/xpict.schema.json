@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "DepictSpec",
-  "description": "Declarative document (`mol`, `group`, or `reaction_scheme` root).",
+  "description": "Declarative document (`mol`, `group`, `reaction_scheme`, or `grid` root).",
   "oneOf": [
     {
       "type": "object",
@@ -19,6 +19,16 @@
             }
           ]
         },
+        "aromatic": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AromaticStyle"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "color": {
           "type": [
             "string",
@@ -28,6 +38,19 @@
         "cxsmiles": {
           "type": [
             "string",
+            "null"
+          ]
+        },
+        "debug_align": {
+          "description": "Paint alignment correspondence (matched atom tags + mol role badge).",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "debug_box": {
+          "type": [
+            "boolean",
             "null"
           ]
         },
@@ -131,6 +154,16 @@
           "default": false,
           "type": "boolean"
         },
+        "aromatic": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AromaticStyle"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "children": {
           "description": "Child **nodes** — mol | text (no edges).",
           "default": [],
@@ -142,6 +175,19 @@
         "color": {
           "type": [
             "string",
+            "null"
+          ]
+        },
+        "debug_align": {
+          "description": "Paint alignment correspondence (matched atom tags + mol role badge).",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "debug_box": {
+          "type": [
+            "boolean",
             "null"
           ]
         },
@@ -184,6 +230,16 @@
         "type"
       ],
       "properties": {
+        "aromatic": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AromaticStyle"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "children": {
           "description": "Child **nodes** — mols, edges, and text (any order).",
           "default": [],
@@ -195,6 +251,19 @@
         "color": {
           "type": [
             "string",
+            "null"
+          ]
+        },
+        "debug_align": {
+          "description": "Paint alignment correspondence (matched atom tags + mol role badge).",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "debug_box": {
+          "type": [
+            "boolean",
             "null"
           ]
         },
@@ -237,6 +306,82 @@
           "type": "string",
           "enum": [
             "reaction_scheme"
+          ]
+        }
+      }
+    },
+    {
+      "description": "Grid root — each child is one row (`mol` / `group` / `reaction_scheme` / nested `grid`).",
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "aromatic": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AromaticStyle"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "children": {
+          "description": "Row roots (nested grids flatten in document order when walking mols).",
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/DepictSpec"
+          }
+        },
+        "color": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "debug_align": {
+          "description": "Paint alignment correspondence (matched atom tags + mol role badge).",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "debug_box": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "opts": {
+          "description": "Grid-level cascade bag (inherits onto every row / mol).",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Opts"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "scale": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "grid"
           ]
         }
       }
@@ -301,13 +446,46 @@
         }
       }
     },
+    "AromaticStyle": {
+      "description": "How fully aromatic rings are drawn.\n\n``circle`` (default): skeleton singles + stroked ring circle for CTAB ``4`` / RDKit ``1.5`` rings. ``kekule``: alternating double/single strokes for paint only (stored bond orders on the molecule are unchanged).",
+      "type": "string",
+      "enum": [
+        "circle",
+        "kekule"
+      ]
+    },
     "CommonOpts": {
       "description": "Universal cascading keys (any node kind).",
       "type": "object",
       "properties": {
+        "aromatic": {
+          "description": "Aromatic ring paint: ``circle`` (default) or ``kekule``.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AromaticStyle"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "color": {
           "type": [
             "string",
+            "null"
+          ]
+        },
+        "debug_align": {
+          "description": "Paint alignment correspondence (matched atom tags + mol role badge).",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "debug_box": {
+          "description": "Paint dashed debug rectangles for layout boxes (labels / mol / scene).",
+          "type": [
+            "boolean",
             "null"
           ]
         },
@@ -319,6 +497,394 @@
           "format": "double"
         }
       }
+    },
+    "DepictSpec": {
+      "description": "Declarative document (`mol`, `group`, `reaction_scheme`, or `grid` root).",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "align_to": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/AlignTo"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "aromatic": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/AromaticStyle"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "color": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "cxsmiles": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "debug_align": {
+              "description": "Paint alignment correspondence (matched atom tags + mol role badge).",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "debug_box": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "halo": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "label": {
+              "description": "Caption: [`Label`] (string id / list / `{id, pos?}` — text-node refs).",
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/Label"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "molfile": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "opts": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/Opts"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "scale": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "format": "double"
+            },
+            "shade": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/ShadeSpec"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "smiles": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "star_labels": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "mol"
+              ]
+            },
+            "weight": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "format": "double"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "align": {
+              "description": "When true, later children align onto the first (or each `align_to`).",
+              "default": false,
+              "type": "boolean"
+            },
+            "aromatic": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/AromaticStyle"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "children": {
+              "description": "Child **nodes** — mol | text (no edges).",
+              "default": [],
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Node"
+              }
+            },
+            "color": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "debug_align": {
+              "description": "Paint alignment correspondence (matched atom tags + mol role badge).",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "debug_box": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "opts": {
+              "description": "Group-level cascade bag (list container for child inheritance).",
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/Opts"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "scale": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "format": "double"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "group"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Reaction / pathway scheme: mixed **node** children (`mol` | `edge` | `text`).",
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "aromatic": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/AromaticStyle"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "children": {
+              "description": "Child **nodes** — mols, edges, and text (any order).",
+              "default": [],
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Node"
+              }
+            },
+            "color": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "debug_align": {
+              "description": "Paint alignment correspondence (matched atom tags + mol role badge).",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "debug_box": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "layout": {
+              "description": "Scheme layout (direction, edge routing); backend maps these.",
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/LayoutOpts"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "opts": {
+              "description": "Scheme-level cascade bag for child mol inheritance.",
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/Opts"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "scale": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "format": "double"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "reaction_scheme"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Grid root — each child is one row (`mol` / `group` / `reaction_scheme` / nested `grid`).",
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "aromatic": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/AromaticStyle"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "children": {
+              "description": "Row roots (nested grids flatten in document order when walking mols).",
+              "default": [],
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/DepictSpec"
+              }
+            },
+            "color": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "debug_align": {
+              "description": "Paint alignment correspondence (matched atom tags + mol role badge).",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "debug_box": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "opts": {
+              "description": "Grid-level cascade bag (inherits onto every row / mol).",
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/Opts"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "scale": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "format": "double"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "grid"
+              ]
+            }
+          }
+        }
+      ]
     },
     "EdgeArrow": {
       "description": "Arrow head / shaft style for diagram edges.",
@@ -465,9 +1031,34 @@
         "for_types"
       ],
       "properties": {
+        "aromatic": {
+          "description": "Aromatic ring paint: ``circle`` (default) or ``kekule``.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AromaticStyle"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "color": {
           "type": [
             "string",
+            "null"
+          ]
+        },
+        "debug_align": {
+          "description": "Paint alignment correspondence (matched atom tags + mol role badge).",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "debug_box": {
+          "description": "Paint dashed debug rectangles for layout boxes (labels / mol / scene).",
+          "type": [
+            "boolean",
             "null"
           ]
         },
@@ -698,6 +1289,17 @@
             }
           ]
         },
+        "aromatic": {
+          "description": "Aromatic ring paint: ``circle`` (default) or ``kekule``.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AromaticStyle"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "color": {
           "type": [
             "string",
@@ -707,6 +1309,20 @@
         "cxsmiles": {
           "type": [
             "string",
+            "null"
+          ]
+        },
+        "debug_align": {
+          "description": "Paint alignment correspondence (matched atom tags + mol role badge).",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "debug_box": {
+          "description": "Paint dashed debug rectangles for layout boxes (labels / mol / scene).",
+          "type": [
+            "boolean",
             "null"
           ]
         },
@@ -1032,9 +1648,34 @@
             "type"
           ],
           "properties": {
+            "aromatic": {
+              "description": "Aromatic ring paint: ``circle`` (default) or ``kekule``.",
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/AromaticStyle"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "color": {
               "type": [
                 "string",
+                "null"
+              ]
+            },
+            "debug_align": {
+              "description": "Paint alignment correspondence (matched atom tags + mol role badge).",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "debug_box": {
+              "description": "Paint dashed debug rectangles for layout boxes (labels / mol / scene).",
+              "type": [
+                "boolean",
                 "null"
               ]
             },
@@ -1083,9 +1724,34 @@
             "type"
           ],
           "properties": {
+            "aromatic": {
+              "description": "Aromatic ring paint: ``circle`` (default) or ``kekule``.",
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/AromaticStyle"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "color": {
               "type": [
                 "string",
+                "null"
+              ]
+            },
+            "debug_align": {
+              "description": "Paint alignment correspondence (matched atom tags + mol role badge).",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "debug_box": {
+              "description": "Paint dashed debug rectangles for layout boxes (labels / mol / scene).",
+              "type": [
+                "boolean",
                 "null"
               ]
             },
@@ -1111,9 +1777,34 @@
             "type"
           ],
           "properties": {
+            "aromatic": {
+              "description": "Aromatic ring paint: ``circle`` (default) or ``kekule``.",
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/AromaticStyle"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "color": {
               "type": [
                 "string",
+                "null"
+              ]
+            },
+            "debug_align": {
+              "description": "Paint alignment correspondence (matched atom tags + mol role badge).",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "debug_box": {
+              "description": "Paint dashed debug rectangles for layout boxes (labels / mol / scene).",
+              "type": [
+                "boolean",
                 "null"
               ]
             },
@@ -1139,9 +1830,34 @@
             "type"
           ],
           "properties": {
+            "aromatic": {
+              "description": "Aromatic ring paint: ``circle`` (default) or ``kekule``.",
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/AromaticStyle"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "color": {
               "type": [
                 "string",
+                "null"
+              ]
+            },
+            "debug_align": {
+              "description": "Paint alignment correspondence (matched atom tags + mol role badge).",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "debug_box": {
+              "description": "Paint dashed debug rectangles for layout boxes (labels / mol / scene).",
+              "type": [
+                "boolean",
                 "null"
               ]
             },
@@ -1167,9 +1883,34 @@
             "type"
           ],
           "properties": {
+            "aromatic": {
+              "description": "Aromatic ring paint: ``circle`` (default) or ``kekule``.",
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/AromaticStyle"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "color": {
               "type": [
                 "string",
+                "null"
+              ]
+            },
+            "debug_align": {
+              "description": "Paint alignment correspondence (matched atom tags + mol role badge).",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "debug_box": {
+              "description": "Paint dashed debug rectangles for layout boxes (labels / mol / scene).",
+              "type": [
+                "boolean",
                 "null"
               ]
             },

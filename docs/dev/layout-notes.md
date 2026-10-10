@@ -23,7 +23,7 @@ test of quality — not benzene.
 **marks** (circles), atom/bond **shading**, backbone/label **color**, plus
 **alignment**. Multi-mol diagrams / ELK are post-MVP.
 
-**Focus (current):** **CoordGen** (via `layout2d` / Rust) for Python 2D coords and
+**Focus (current):** **CoordGen** (via Rust `depict` / `_native`) for Python 2D coords and
 cost-based constrained align. JS may still use RDKit temporarily.
 
 **Do not** link RDKit into `xpict-core` (no Rust RDKit / no WASM chem wrapper).
@@ -58,7 +58,7 @@ exports so the browser matches Python labels without a JS font stack.
 
 | Layer | Who | Job |
 | --- | --- | --- |
-| 2D layout | **Python** CoordGen (`layout2d`) / **JS** language-edge | free + constrained coords |
+| 2D layout | **Rust** CoordGen (`depict` / `_native`) / **JS** language-edge | free + constrained coords |
 | Template align | cost MCS + soft-constrained CoordGen (Python) | maps into Rust |
 | Common math | **`xpict-core`** | Cost MCS, constrained CoordGen, apply maps |
 
@@ -67,7 +67,7 @@ Rust draw.
 
 ### Layout path
 
-1. **coordgen** — Python product path (`layout2d` / `_native`).
+1. **coordgen** — product path (Rust `depict` / `_native`).
 2. Legacy Pict `backends` registry is empty until a SMILES→`MoleculeLayout` bridge lands.
 
 CDK / RDKit remain **algorithm references** for drawing quality.
@@ -117,7 +117,7 @@ Sources: `Depictor/EmbeddedFrag.cpp`, `DepictUtils.cpp` (`embedRing`).
 
 | Stage | Owner | Role of SSSR |
 | --- | --- | --- |
-| Atom coordinates | CoordGen free + soft-constrained align (`layout2d`) | Regular / fused / bridged / template |
+| Atom coordinates | CoordGen free + soft-constrained align (Rust) | Regular / fused / bridged / template |
 | Kekulé offsets, aromatic circle | Drawer (`draw/rings.py`, `scene_builder`) | Interior normals; optional circle |
 | “Can all faces be regular?” | Classifier in `draw/rings.py` | FUSED/SPIRO/BRIDGED + cage (atom in ≥3 rings) |
 

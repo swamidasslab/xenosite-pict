@@ -37,7 +37,12 @@ def _layout_to_flat(layout: MoleculeLayout) -> dict:
             continue
         bond_from.append(index_of[b.begin])
         bond_to.append(index_of[b.end])
-        bond_orders.append(max(1, min(3, int(round(b.order or 1.0)))))
+        # Keep aromatic encodings (CTAB 4 / RDKit 1.5). Do not clamp 4→3.
+        order = float(b.order or 1.0)
+        if order >= 3.5 or 1.4 <= order < 1.6:
+            bond_orders.append(4)
+        else:
+            bond_orders.append(max(1, min(3, int(round(order)))))
     return {
         "atomic_numbers": atomic_numbers,
         "formal_charges": formal_charges,
@@ -121,14 +126,16 @@ def align_to_reference(
     other: MoleculeLayout,
     *,
     smiles: str | None = None,
-) -> MoleculeLayout:
+) -> tuple[MoleculeLayout, dict[int, int] | None]:
     """Soft-constrained CoordGen align of ``other`` onto ``ref``.
 
-    Returns ``other`` unchanged when CoordGen is unavailable or mapping/layout fails.
+    Returns ``(layout, query_to_ref)``. ``query_to_ref`` maps query atom index →
+    template atom index when alignment ran; otherwise ``None``. Layout is
+    ``other`` unchanged when CoordGen is unavailable or mapping/layout fails.
     """
     _ = smiles
     if not getattr(_rust, "HAS_COORDGEN", False):
-        return other
+        return other, None
     rf = _layout_to_flat(ref)
     of = _layout_to_flat(other)
     to_cg = _COORDGEN_BOND / max(_mean_bond_length(ref), 1e-6)
@@ -150,9 +157,9 @@ def align_to_reference(
             query_bond_stereos=of["bond_stereos"],
         )
     except Exception:
-        return other
+        return other, None
     if not pairs:
-        return other
+        return other, None
     inv = 1.0 / to_cg
     laid = _apply_xy(
         other,
@@ -160,7 +167,12 @@ def align_to_reference(
         [float(v) * inv for v in qy],
         dense_atoms=of["atoms"],
     )
-    return _with_warning(laid, "alignment: coordgen constrained")
+    ref_atoms = rf["atoms"]
+    oth_atoms = of["atoms"]
+    mapping = {
+        int(oth_atoms[qi].index): int(ref_atoms[ri].index) for qi, ri in pairs
+    }
+    return _with_warning(laid, "alignment: coordgen constrained"), mapping
 
 
 def align_layouts(
@@ -172,4 +184,4 @@ def align_layouts(
     if not enabled or len(layouts) < 2:
         return list(layouts)
     ref = layouts[0]
-    return [ref, *[align_to_reference(ref, lay) for lay in layouts[1:]]]
+    return [ref, *[align_to_reference(ref, lay)[0] for lay in layouts[1:]]]

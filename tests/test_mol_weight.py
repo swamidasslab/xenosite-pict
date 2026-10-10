@@ -5,7 +5,6 @@ from __future__ import annotations
 import re
 
 import pytest
-from helpers import layout_backend
 
 from xpict import DepictSpec, render
 from xpict.draw.metrics import STROKE_PX, WEIGHT_AT_ONE, WEIGHT_MIN
@@ -41,17 +40,15 @@ def test_weight_below_min_is_accepted_by_model():
 
 
 def test_weight_one_matches_omitted():
-    be = layout_backend()
-    a = render({"type": "mol", "smiles": "CCO"}, backend=be)
-    b = render({"type": "mol", "smiles": "CCO", "weight": 1.0}, backend=be)
+    a = render({"type": "mol", "smiles": "CCO"})
+    b = render({"type": "mol", "smiles": "CCO", "weight": 1.0})
     assert _bond_strokes(a)[:2] == pytest.approx(_bond_strokes(b)[:2], rel=1e-6)
 
 
 def test_house_weight_is_one_point_five_times_regular_stem():
-    be = layout_backend()
-    house = render({"type": "mol", "smiles": "CCO"}, backend=be)
-    light = render({"type": "mol", "smiles": "CCO", "weight": WEIGHT_MIN}, backend=be)
-    heavy = render({"type": "mol", "smiles": "CCO", "weight": 2.0}, backend=be)
+    house = render({"type": "mol", "smiles": "CCO"})
+    light = render({"type": "mol", "smiles": "CCO", "weight": WEIGHT_MIN})
+    heavy = render({"type": "mol", "smiles": "CCO", "weight": 2.0})
     house_sw = _bond_strokes(house)
     light_sw = _bond_strokes(light)
     heavy_sw = _bond_strokes(heavy)
@@ -73,9 +70,8 @@ def _shade_radii(svg: str) -> list[float]:
 
 
 def test_weight_does_not_change_shade_radii():
-    be = layout_backend()
     doc = {"type": "mol", "smiles": "CCO", "shade": {"atoms": [0.1, 0.5, 0.9]}}
-    a = render(doc, backend=be)
-    b = render({**doc, "weight": 2.0}, backend=be)
+    a = render(doc)
+    b = render({**doc, "weight": 2.0})
     assert _shade_radii(a)
     assert _shade_radii(a) == pytest.approx(_shade_radii(b), rel=1e-9)

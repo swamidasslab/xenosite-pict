@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from helpers import layout_backend
 
 import math
 
@@ -19,7 +18,6 @@ def _line_mol(bond_len: float, *, mol_id: str = "m") -> MoleculeLayout:
     """Two-atom molecule with a single bond of ``bond_len`` layout units."""
     return MoleculeLayout(
         id=mol_id,
-        backend=layout_backend(),
         atoms=[
             AtomLayout(index=0, element="C", x=0.0, y=0.0),
             AtomLayout(index=1, element="C", x=bond_len, y=0.0),
@@ -84,7 +82,7 @@ def test_codisplayed_unlabeled_bonds_match_length():
             "diagram": {"kind": "grid", "columns": 2},
         }
     )
-    pict = Pict(backend=layout_backend())
+    pict = Pict()
     layouts = pict.layout(doc)
     scale = shared_coord_scale(layouts)
     sizes = [

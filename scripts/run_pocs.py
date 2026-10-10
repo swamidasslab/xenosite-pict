@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run derisk POCs and write SVG artifacts.
+"""Run derisk POCs via native Rust ``depict`` and write SVG artifacts.
 
 Usage:
   uv run python scripts/run_pocs.py [all|svg|shade|elk|pipeline|compare]
@@ -9,13 +9,10 @@ from __future__ import annotations
 
 import json
 import sys
-import warnings
 from pathlib import Path
 
 from xpict import Pict, depict, render
-from xpict.future.nodes import PictSpec
 from xpict.draw.svg import svg_to_img_tag
-from xpict.warnings import PictBackendWarning
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT_DIRS = [
@@ -39,32 +36,33 @@ def _out_dir() -> Path:
     return d
 
 
-def _pick_backend() -> str:
-    raise SystemExit(
-        "Legacy Pict layout backends were removed. "
-        "POC scripts need a registered native CoordGen backend; "
-        "use xpict.layout2d.generate_2d_coordinates until then."
-    )
-
-
-def poc_svg(out: Path, backend: str) -> Path:
-    """POC A: chem-engine coords → own SVG."""
-    spec = {
-        "molecules": [
-            {"id": "asa", "smiles": "CC(=O)Oc1ccccc1C(=O)O", "title": "aspirin"},
-            {"id": "indole", "smiles": "c1ccc2[nH]ccc2c1", "title": "indole"},
-        ],
-        "diagram": {"kind": "grid", "columns": 2},
+def _grid(mols: list[dict], *, columns: int) -> dict:
+    """Legacy-shaped grid → live DepictSpec via ``Pict`` lift."""
+    return {
+        "molecules": mols,
+        "diagram": {"kind": "grid", "columns": columns},
     }
-    svg = render(spec, backend=backend)
-    path = out / f"poc-a-own-svg-{backend}.svg"
+
+
+def poc_svg(out: Path) -> Path:
+    """POC A: native layout → SVG."""
+    svg = render(
+        _grid(
+            [
+                {"id": "asa", "smiles": "CC(=O)Oc1ccccc1C(=O)O", "title": "aspirin"},
+                {"id": "indole", "smiles": "c1ccc2[nH]ccc2c1", "title": "indole"},
+            ],
+            columns=2,
+        )
+    )
+    path = out / "poc-a-own-svg.svg"
     path.write_text(svg, encoding="utf-8")
     return path
 
 
-def poc_shade(out: Path, backend: str) -> Path:
-    """POC B: marks + plot-dot shading on a real layout."""
-    pict = Pict(backend=backend)
+def poc_shade(out: Path) -> Path:
+    """POC B: shade scores on a real layout."""
+    pict = Pict()
     base = {"id": "asa", "smiles": "CC(=O)Oc1ccccc1C(=O)O"}
     layout = pict.layout({"molecules": [base]})[0]
     n = len(layout.atoms)
@@ -74,39 +72,26 @@ def poc_shade(out: Path, backend: str) -> Path:
             shade[i] = 0.95
         elif a.element == "C" and a.label is None:
             shade[i] = 0.35
-    ringish = [i for i, a in enumerate(layout.atoms) if a.element == "C"][:6]
-    oxygens = [i for i, a in enumerate(layout.atoms) if a.element == "O"]
-    spec = {
-        "molecules": [
-            {
-                **base,
-                "shade": {"atoms": shade, "vmin": 0.0, "vmax": 1.0},
-                "marks": [
-                    {"kind": "atoms", "atoms": oxygens, "color": "#0a7"},
-                    {
-                        "kind": "substructure",
-                        "atoms": ringish,
-                        "color": "#36c",
-                        "label": "ring",
-                    },
-                ],
-            }
-        ]
-    }
-    svg = pict.render(spec)
-    path = out / f"poc-b-marks-shade-{backend}.svg"
+    svg = pict.render(
+        {
+            "molecules": [
+                {
+                    **base,
+                    "shade": {"atoms": shade, "vmin": 0.0, "vmax": 1.0},
+                }
+            ]
+        }
+    )
+    path = out / "poc-b-marks-shade.svg"
     path.write_text(svg, encoding="utf-8")
-    (out / f"poc-b-marks-shade-{backend}.json").write_text(
-        json.dumps(
-            {"backend": backend, "n_atoms": n, "shade": shade, "ringish": ringish},
-            indent=2,
-        ),
+    (out / "poc-b-marks-shade.json").write_text(
+        json.dumps({"n_atoms": n, "shade": shade}, indent=2),
         encoding="utf-8",
     )
     return path
 
 
-def poc_elk(out: Path, backend: str) -> Path:
+def poc_elk(out: Path) -> Path:
     """POC C: network diagram via Rust compose_scheme (ELK)."""
     spec = {
         "type": "reaction_scheme",
@@ -128,23 +113,17 @@ def poc_elk(out: Path, backend: str) -> Path:
         json.dumps({"positions": positions}, indent=2),
         encoding="utf-8",
     )
-    svg = render(spec)
-    path = out / f"poc-c-network-{backend}.svg"
-    path.write_text(svg, encoding="utf-8")
+    path = out / "poc-c-network.svg"
+    path.write_text(render(spec), encoding="utf-8")
     return path
 
 
-def poc_pipeline(out: Path, backend: str) -> Path:
-    """POC D: full pipeline collage — hard molecules, stereo, shade, pathway.
+def poc_pipeline(out: Path) -> Path:
+    """POC D: hard molecules, stereo, shade, pathway — native Rust only."""
+    pict = Pict()
 
-    One document that exercises layout → own skeleton/offset/wedge draw →
-    marks/shade → ELK network in a single regeneratable artifact set.
-    """
-    pict = Pict(backend=backend)
-
-    # D1 — non-trivial molecule grid (fused, charged, macro-ish, drug-like)
-    hard = {
-        "molecules": [
+    hard = _grid(
+        [
             {"id": "caffeine", "smiles": "CN1C=NC2=C1C(=O)N(C(=O)N2C)C", "title": "caffeine"},
             {"id": "indole", "smiles": "c1ccc2[nH]ccc2c1", "title": "indole"},
             {"id": "norbornane", "smiles": "C1CC2CCC1C2", "title": "norbornane"},
@@ -152,20 +131,19 @@ def poc_pipeline(out: Path, backend: str) -> Path:
             {"id": "nitrobenzene", "smiles": "c1ccc(cc1)[N+](=O)[O-]", "title": "nitrobenzene"},
             {"id": "proline", "smiles": "O=C(O)[C@@H]1CCCN1", "title": "L-proline"},
         ],
-        "diagram": {"kind": "grid", "columns": 3},
-    }
-    hard_svg = pict.render(hard)
-    hard_path = out / f"poc-d1-hard-grid-{backend}.svg"
-    hard_path.write_text(hard_svg, encoding="utf-8")
-
-    # D2 — stereo wedges on a chiral center
-    stereo_svg = pict.render(
-        {"molecules": [{"id": "alanine", "smiles": "C[C@H](N)C(=O)O", "title": "L-alanine"}]}
+        columns=3,
     )
-    stereo_path = out / f"poc-d2-stereo-{backend}.svg"
-    stereo_path.write_text(stereo_svg, encoding="utf-8")
+    hard_path = out / "poc-d1-hard-grid.svg"
+    hard_path.write_text(pict.render(hard), encoding="utf-8")
 
-    # D3 — aspirin site-of-metabolism style shade + marks
+    stereo_path = out / "poc-d2-stereo.svg"
+    stereo_path.write_text(
+        pict.render(
+            {"molecules": [{"id": "alanine", "smiles": "C[C@H](N)C(=O)O", "title": "L-alanine"}]}
+        ),
+        encoding="utf-8",
+    )
+
     asa = {"id": "asa", "smiles": "CC(=O)Oc1ccccc1C(=O)O", "title": "aspirin SoM"}
     layout = pict.layout({"molecules": [asa]})[0]
     n = len(layout.atoms)
@@ -175,31 +153,18 @@ def poc_pipeline(out: Path, backend: str) -> Path:
             shade[i] = 0.95
         elif a.label is None and a.element == "C":
             shade[i] = 0.4
-    oxygens = [i for i, a in enumerate(layout.atoms) if a.element == "O"]
-    ring = [i for i, a in enumerate(layout.atoms) if a.element == "C"][:6]
-    som_svg = pict.render(
-        {
-            "molecules": [
-                {
-                    **asa,
-                    "shade": {"atoms": shade, "vmin": 0.0, "vmax": 1.0},
-                    "marks": [
-                        {"kind": "atoms", "atoms": oxygens, "color": "#0a7", "label": "O"},
-                        {
-                            "kind": "substructure",
-                            "atoms": ring,
-                            "color": "#36c",
-                            "label": "aryl",
-                        },
-                    ],
-                }
-            ]
-        }
+    som_path = out / "poc-d3-som-shade.svg"
+    som_path.write_text(
+        pict.render(
+            {
+                "molecules": [
+                    {**asa, "shade": {"atoms": shade, "vmin": 0.0, "vmax": 1.0}}
+                ]
+            }
+        ),
+        encoding="utf-8",
     )
-    som_path = out / f"poc-d3-som-shade-{backend}.svg"
-    som_path.write_text(som_svg, encoding="utf-8")
 
-    # D4 — mini ethanol→acetate + aromatic sink pathway (ELK via elkrs)
     pathway = {
         "molecules": [
             {"id": "etoh", "smiles": "CCO", "title": "ethanol"},
@@ -234,14 +199,11 @@ def poc_pipeline(out: Path, backend: str) -> Path:
                     "role": "enzyme",
                 },
             ],
-            "elk_options": {"elk.direction": "RIGHT"},
         },
     }
-    path_svg = pict.render(pathway)
-    path_path = out / f"poc-d4-pathway-{backend}.svg"
-    path_path.write_text(path_svg, encoding="utf-8")
+    path_path = out / "poc-d4-pathway.svg"
+    path_path.write_text(pict.render(pathway), encoding="utf-8")
 
-    # D5 — branched / cross-linked metabolic scheme (ELK orthogonal routes)
     branched = {
         "molecules": [
             {"id": "etoh", "smiles": "CCO", "title": "ethanol"},
@@ -279,32 +241,29 @@ def poc_pipeline(out: Path, backend: str) -> Path:
             ],
         },
     }
-    branch_svg = pict.render(branched)
-    branch_path = out / f"poc-d5-branched-{backend}.svg"
-    branch_path.write_text(branch_svg, encoding="utf-8")
+    branch_path = out / "poc-d5-branched.svg"
+    branch_path.write_text(pict.render(branched), encoding="utf-8")
 
-    manifest = {
-        "backend": backend,
-        "artifacts": [
-            hard_path.name,
-            stereo_path.name,
-            som_path.name,
-            path_path.name,
-            branch_path.name,
-        ],
-        "notes": [
-            "Layout coords → own skeleton/offset/wedge SVG",
-            "ELK pathway placement via elkrs",
-            "Branched scheme uses ELK orthogonal edge routes → overlay arrows",
-            "Shade/marks on aspirin as site-of-metabolism annotation",
-        ],
-    }
-    (out / "poc-d-pipeline.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-    # Return the hard grid as the primary path for gallery wiring.
+    (out / "poc-d-pipeline.json").write_text(
+        json.dumps(
+            {
+                "engine": "native",
+                "artifacts": [
+                    hard_path.name,
+                    stereo_path.name,
+                    som_path.name,
+                    path_path.name,
+                    branch_path.name,
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
     return hard_path
 
 
-def poc_compare(out: Path, backend: str) -> Path:
+def poc_compare(out: Path) -> Path:
     """POC E: layout grid on shared SMILES."""
     cases = [
         ("benzene", "c1ccccc1"),
@@ -321,22 +280,18 @@ def poc_compare(out: Path, backend: str) -> Path:
         ("pyrrole", "c1ccc[nH]1"),
         ("hexylcyclohexane", "C1CCCCC1CCOCCCCCC"),
     ]
-    spec = {
-        "molecules": [
-            {"id": f"p-{cid}", "smiles": smi, "title": f"{cid} ({backend})"}
-            for cid, smi in cases
-        ],
-        "diagram": {"kind": "grid", "columns": 3},
-    }
-    primary_path = out / f"poc-e-grid-{backend}.svg"
-    primary_path.write_text(render(spec, backend=backend), encoding="utf-8")
-
+    spec = _grid(
+        [{"id": f"p-{cid}", "smiles": smi, "title": cid} for cid, smi in cases],
+        columns=3,
+    )
+    primary_path = out / "poc-e-grid.svg"
+    primary_path.write_text(render(spec), encoding="utf-8")
     (out / "poc-e-compare.json").write_text(
         json.dumps(
             {
                 "cases": [{"id": c, "smiles": s} for c, s in cases],
                 "primary": primary_path.name,
-                "primary_backend": backend,
+                "engine": "native",
             },
             indent=2,
         ),
@@ -345,92 +300,49 @@ def poc_compare(out: Path, backend: str) -> Path:
     return primary_path
 
 
-def main(argv: list[str]) -> int:
-    which = (argv[1] if len(argv) > 1 else "all").lower()
-    out = _out_dir()
-    backend = _pick_backend()
-    print(f"backend={backend} out={out}")
-    runners = {
-        "svg": poc_svg,
-        "shade": poc_shade,
-        "elk": poc_elk,
-        "pipeline": poc_pipeline,
-        "native": poc_compare,
-        "compare": poc_compare,
-    }
-    keys = list(runners) if which == "all" else [which]
-    written: list[Path] = []
-    for key in keys:
-        if key not in runners:
-            print(f"unknown poc: {key}", file=sys.stderr)
-            return 2
-        path = runners[key](out, backend)
-        written.append(path)
-        print(f"wrote {path}")
-        # pipeline/compare write multiple files — list extras
-        if key == "pipeline":
-            for name in sorted(out.glob(f"poc-d*-{backend}.svg")):
-                if name not in written:
-                    print(f"wrote {name}")
-        if key in {"native", "compare"}:
-            for name in sorted(out.glob("poc-e-*.svg")):
-                print(f"wrote {name}")
-    gallery = write_gallery(out, backend, written if which != "all" else None)
-    print(f"gallery {gallery}")
-    docs_gallery = ROOT / "docs" / "pocs" / "gallery.html"
-    if docs_gallery.parent.is_dir() and which == "all":
-        docs_gallery.write_text(gallery.read_text(encoding="utf-8"), encoding="utf-8")
-        print(f"gallery {docs_gallery}")
-    return 0
-
-
-def write_gallery(out: Path, backend: str, only: list[Path] | None = None) -> Path:
-    """Build a self-contained HTML page embedding POC SVGs for visual iteration."""
+def write_gallery(out: Path, only: list[Path] | None = None) -> Path:
+    """Build a self-contained HTML page embedding POC SVGs."""
     cards = [
+        ("A — Own SVG", "Native CoordGen → scene → SVG.", out / "poc-a-own-svg.svg"),
         (
-            "A — Own SVG",
-            "Layout coords → our scene → SVG (no engine SVG mutation).",
-            out / f"poc-a-own-svg-{backend}.svg",
-        ),
-        (
-            "B — Marks + plot-dot shade",
-            "Per-atom scores as concentric plot-dots, atom marks, substructure hull.",
-            out / f"poc-b-marks-shade-{backend}.svg",
+            "B — Shade",
+            "Per-atom shade scores on aspirin.",
+            out / "poc-b-marks-shade.svg",
         ),
         (
             "C — ELK network",
-            "Multi-mol network placement via elkjs (row fallback if ELK fails).",
-            out / f"poc-c-network-{backend}.svg",
+            "Multi-mol network via Rust compose_scheme.",
+            out / "poc-c-network.svg",
         ),
         (
             "D1 — Hard-molecule grid",
-            "Full pipeline collage: fused, bridged, charged, chiral drug-like set.",
-            out / f"poc-d1-hard-grid-{backend}.svg",
+            "Fused, bridged, charged, chiral set.",
+            out / "poc-d1-hard-grid.svg",
         ),
         (
-            "D2 — Stereo wedges",
-            "Chiral center with solid/hashed wedges from layout stereo → own draw.",
-            out / f"poc-d2-stereo-{backend}.svg",
+            "D2 — Stereo",
+            "Chiral center via native layout.",
+            out / "poc-d2-stereo.svg",
         ),
         (
             "D3 — SoM shade",
-            "Aspirin with site-of-metabolism style shade + oxygen/aryl marks.",
-            out / f"poc-d3-som-shade-{backend}.svg",
+            "Aspirin shade annotation.",
+            out / "poc-d3-som-shade.svg",
         ),
         (
             "D4 — Pathway (ELK)",
-            "Ethanol oxidation + aspirin hydrolysis pathway laid out by elkrs.",
-            out / f"poc-d4-pathway-{backend}.svg",
+            "Ethanol oxidation + aspirin hydrolysis.",
+            out / "poc-d4-pathway.svg",
         ),
         (
-            "D5 — Branched scheme (ELK routes)",
-            "Forked metabolic network with orthogonal ELK edge routes and styled arrows.",
-            out / f"poc-d5-branched-{backend}.svg",
+            "D5 — Branched scheme",
+            "Forked network with overlay arrows.",
+            out / "poc-d5-branched.svg",
         ),
         (
             "E — Layout grid",
-            "Shared SMILES laid out with the registered layout backend.",
-            out / f"poc-e-grid-{backend}.svg",
+            "Shared SMILES laid out with native CoordGen.",
+            out / "poc-e-grid.svg",
         ),
     ]
     if only is not None:
@@ -453,7 +365,7 @@ def write_gallery(out: Path, backend: str, only: list[Path] | None = None) -> Pa
   <header>
     <h2>{title}</h2>
     <p>{blurb}</p>
-    <p class="meta"><code>{path.name}</code> · backend=<code>{backend}</code></p>
+    <p class="meta"><code>{path.name}</code> · engine=<code>native</code></p>
   </header>
   {body}
 </article>"""
@@ -538,12 +450,6 @@ def write_gallery(out: Path, backend: str, only: list[Path] | None = None) -> Pa
     height: auto;
     background: #fff !important;
   }}
-  .frame .xpict-row {{
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 1rem;
-  }}
   .missing {{ color: #a33; }}
   footer {{
     margin-top: 2rem;
@@ -557,9 +463,8 @@ def write_gallery(out: Path, backend: str, only: list[Path] | None = None) -> Pa
 <main>
   <h1>xpict derisk POCs</h1>
   <p class="lede">
-    Visual canvas for the hard paths while the schema stays alpha.
+    Native Rust <code>depict</code> only — no layout-backend switch.
     Regenerate with <code>uv run python scripts/run_pocs.py</code>.
-    SVG backgrounds are clear by default so the host page shows through.
   </p>
   {"".join(sections)}
   <footer>Schema feedback: <code>docs/pocs/schema-feedback.md</code></footer>
@@ -570,6 +475,43 @@ def write_gallery(out: Path, backend: str, only: list[Path] | None = None) -> Pa
     path = out / "gallery.html"
     path.write_text(html, encoding="utf-8")
     return path
+
+
+def main(argv: list[str]) -> int:
+    which = (argv[1] if len(argv) > 1 else "all").lower()
+    out = _out_dir()
+    print(f"engine=native out={out}")
+    runners = {
+        "svg": poc_svg,
+        "shade": poc_shade,
+        "elk": poc_elk,
+        "pipeline": poc_pipeline,
+        "native": poc_compare,
+        "compare": poc_compare,
+    }
+    keys = list(runners) if which == "all" else [which]
+    written: list[Path] = []
+    for key in keys:
+        if key not in runners:
+            print(f"unknown poc: {key}", file=sys.stderr)
+            return 2
+        path = runners[key](out)
+        written.append(path)
+        print(f"wrote {path}")
+        if key == "pipeline":
+            for name in sorted(out.glob("poc-d*.svg")):
+                if name not in written:
+                    print(f"wrote {name}")
+        if key in {"native", "compare"}:
+            for name in sorted(out.glob("poc-e-*.svg")):
+                print(f"wrote {name}")
+    gallery = write_gallery(out, written if which != "all" else None)
+    print(f"gallery {gallery}")
+    docs_gallery = ROOT / "docs" / "pocs" / "gallery.html"
+    if docs_gallery.parent.is_dir() and which == "all":
+        docs_gallery.write_text(gallery.read_text(encoding="utf-8"), encoding="utf-8")
+        print(f"gallery {docs_gallery}")
+    return 0
 
 
 if __name__ == "__main__":

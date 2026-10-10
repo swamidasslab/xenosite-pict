@@ -33,7 +33,9 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-all = []
+# SMILES parse for Python mol()/render() until the native bridge lands.
+chematic = ["chematic>=1.0"]
+all = ["xpict[chematic]"]
 
 [project.urls]
 Homepage = "https://swamidasslab.github.io/xenosite-pict/"
@@ -64,6 +66,7 @@ dev = [
   "pyright>=1.1.414",
   "coverage>=7.16.2",
   "vulture>=2.16",
+  "basedpyright>=1.40.2",
 ]
 docs = [
   "mkdocs>=1.6,<2",
@@ -84,14 +87,23 @@ target-version = "py311"
 select = ["E", "F", "I", "UP"]
 ignore = ["E501"]
 
-[tool.pyright]
-include = ["python"]
+# basedpyright only (cannot coexist with [tool.pyright]).
+[tool.basedpyright]
+include = ["python/xpict"]
+exclude = [
+  "python/xpict/future",
+  "python/xpict/export_schema.py",
+  "python/xpict/api.py",
+  "python/xpict/draw",
+  "**/__pycache__",
+]
 # Typecheck against the oldest supported runtime.
 pythonVersion = "3.11"
 typeCheckingMode = "strict"
 venvPath = "."
 venv = ".venv"
-# Gradual typing: keep other strict rules.
+failOnWarnings = false
+# Gradual typing on generated / dynamic edges; ban explicit Any.
 reportUnknownVariableType = false
 reportUnknownMemberType = false
 reportUnknownArgumentType = false
@@ -99,3 +111,9 @@ reportUnknownParameterType = false
 reportUnknownLambdaType = false
 reportMissingTypeStubs = false
 reportMissingParameterType = false
+reportAny = false
+reportExplicitAny = "error"
+reportImplicitStringConcatenation = false
+reportImplicitOverride = false
+reportUnannotatedClassAttribute = false
+reportUnnecessaryIsInstance = false

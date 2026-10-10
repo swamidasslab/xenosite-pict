@@ -12,6 +12,7 @@ use crate::arrows::{
     edge_anchors, edge_primitives as paint_edge, simplify_route, EdgePaintIn, EdgePrim, ANCHOR_GAP,
     KINK_PX,
 };
+use crate::debug_box::scene_debug_rect;
 use crate::scene::{Primitive, Scene, TextAnchor, Viewport};
 
 use super::{
@@ -26,27 +27,61 @@ const ROW_GAP: f64 = 0.0; // ≈ LayoutOpts::DEFAULT_LAYER_SPACING
 ///
 /// Non-scheme roots return the first paint scene (or an empty scene).
 pub fn compose_scheme(spec: &DepictSpec, paints: &[DocPaint]) -> Result<Scene, String> {
-    match spec {
+    let scene = match spec {
         DepictSpec::ReactionScheme { layout, .. } => {
-            compose_reaction(spec, paints, layout.as_ref().unwrap_or(&LayoutOpts::default()))
+            compose_reaction(spec, paints, layout.as_ref().unwrap_or(&LayoutOpts::default()))?
         }
-        DepictSpec::Mol { .. } | DepictSpec::Group { .. } => {
+        DepictSpec::Mol { .. } | DepictSpec::Group { .. } | DepictSpec::Grid { .. } => {
             if paints.len() == 1 {
-                Ok(paints[0].scene.clone())
+                paints[0].scene.clone()
             } else if paints.is_empty() {
-                Ok(Scene {
+                Scene {
                     width: 0.0,
                     height: 0.0,
                     viewports: vec![],
                     overlays: vec![],
                     halo: vec![],
-                })
+                }
             } else {
-                // Multi-mol group: simple row (no edges).
-                Ok(place_row(paints, 16.0))
+                // Multi-mol group / flat grid: simple row (no edges).
+                place_row(paints, 16.0)
             }
         }
+    };
+    Ok(with_scene_debug_box(spec, paints, scene))
+}
+
+/// Document-level debug rectangle when any mol or the root asks for ``debug_box``.
+///
+/// Skips when the scene already has a ``debug-box-scene`` overlay (single-mol
+/// depict). Multi-mol layouts always get a fresh outer box in document space.
+fn with_scene_debug_box(spec: &DepictSpec, paints: &[DocPaint], mut scene: Scene) -> Scene {
+    if !spec_wants_debug_box(spec, paints) {
+        return scene;
     }
+    let already = scene.overlays.iter().any(|p| match p {
+        Primitive::Path {
+            class: Some(c), ..
+        } => c.contains("debug-box-scene"),
+        _ => false,
+    });
+    if already {
+        return scene;
+    }
+    if scene.width > 0.0 && scene.height > 0.0 {
+        scene
+            .overlays
+            .push(scene_debug_rect(scene.width, scene.height));
+    }
+    scene
+}
+
+fn spec_wants_debug_box(spec: &DepictSpec, paints: &[DocPaint]) -> bool {
+    if paints.iter().any(|p| p.molecule.debug_box) {
+        return true;
+    }
+    let n = spec.mols().len();
+    (0..n).any(|i| spec.resolve_mol_chrome(i).debug_box.unwrap_or(false))
 }
 
 fn compose_reaction(
@@ -771,6 +806,7 @@ mod tests {
     fn paint(id: &str, w: f64, h: f64) -> DocPaint {
         DocPaint {
             id: id.into(),
+            frame_json: String::new(),
             molecule: MoleculeIn {
                 id: Some(id.into()),
                 atoms: vec![AtomIn {
@@ -792,6 +828,10 @@ mod tests {
                 mark_bonds: vec![],
                 scale: 1.0,
                 weight: 1.0,
+                aromatic: Default::default(),
+                debug_box: false,
+                debug_align: false,
+                align_debug: None,
             },
             scene: Scene {
                 width: w,
@@ -832,6 +872,9 @@ mod tests {
                     scale: None,
                     weight: None,
                     halo: None,
+                    aromatic: None,
+                    debug_box: None,
+                    debug_align: None,
                     shade: None,
                 }),
                 Node::Text(TextNode {
@@ -868,6 +911,9 @@ mod tests {
                     scale: None,
                     weight: None,
                     halo: None,
+                    aromatic: None,
+                    debug_box: None,
+                    debug_align: None,
                     shade: None,
                 }),
             ],
@@ -878,6 +924,9 @@ mod tests {
             opts: None,
             color: None,
             scale: None,
+            aromatic: None,
+            debug_box: None,
+            debug_align: None,
         };
         let paints = vec![paint("A", 80.0, 60.0), paint("B", 80.0, 60.0)];
         let scene = compose_scheme(&spec, &paints).expect("compose");
@@ -899,6 +948,9 @@ mod tests {
                 opts: None,
                 color: None,
                 scale: None,
+                aromatic: None,
+                debug_box: None,
+                debug_align: None,
             },
             &[],
         )
@@ -922,6 +974,9 @@ mod tests {
                     scale: None,
                     weight: None,
                     halo: None,
+                    aromatic: None,
+                    debug_box: None,
+                    debug_align: None,
                     shade: None,
                 }),
                 Node::Mol(MolNode {
@@ -938,6 +993,9 @@ mod tests {
                     scale: None,
                     weight: None,
                     halo: None,
+                    aromatic: None,
+                    debug_box: None,
+                    debug_align: None,
                     shade: None,
                 }),
             ],
@@ -945,6 +1003,9 @@ mod tests {
             opts: None,
             color: None,
             scale: None,
+            aromatic: None,
+            debug_box: None,
+            debug_align: None,
         };
         let scene = compose_scheme(&group, &[paint("a", 40.0, 30.0), paint("b", 50.0, 30.0)]).unwrap();
         assert_eq!(scene.viewports.len(), 2);
@@ -1086,6 +1147,7 @@ mod tests {
         // Empty viewports → scene_size uses scene width/height.
         let bare = DocPaint {
             id: "Z".into(),
+            frame_json: String::new(),
             molecule: a.molecule.clone(),
             scene: Scene {
                 width: 30.0,
@@ -1114,6 +1176,9 @@ mod tests {
                     scale: None,
                     weight: None,
                     halo: None,
+                    aromatic: None,
+                    debug_box: None,
+                    debug_align: None,
                     shade: None,
                 }),
                 Node::Mol(MolNode {
@@ -1130,6 +1195,9 @@ mod tests {
                     scale: None,
                     weight: None,
                     halo: None,
+                    aromatic: None,
+                    debug_box: None,
+                    debug_align: None,
                     shade: None,
                 }),
                 Node::Text(TextNode {
@@ -1179,6 +1247,9 @@ mod tests {
             opts: None,
             color: None,
             scale: None,
+            aromatic: None,
+            debug_box: None,
+            debug_align: None,
         };
         let scene = compose_scheme(&spec, &[a, paint("B", 50.0, 40.0)]).unwrap();
         assert!(!scene.halo.is_empty());
@@ -1255,6 +1326,9 @@ mod tests {
             scale: None,
             weight: None,
             halo: None,
+            aromatic: None,
+            debug_box: None,
+            debug_align: None,
             shade: None,
         };
         let empty = compose_scheme(&mol, &[]).unwrap();
@@ -1320,6 +1394,9 @@ mod tests {
                 opts: None,
                 color: None,
                 scale: None,
+                aromatic: None,
+                debug_box: None,
+                debug_align: None,
             },
             &EdgeNode {
                 type_: EdgeNodeKind::Edge,
@@ -1362,6 +1439,9 @@ mod tests {
             scale: None,
             weight: None,
             halo: None,
+            aromatic: None,
+            debug_box: None,
+            debug_align: None,
             shade: None,
         };
         let scene = compose_scheme(&spec, &paints).unwrap();

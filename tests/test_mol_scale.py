@@ -5,7 +5,6 @@ from __future__ import annotations
 import re
 
 import pytest
-from helpers import layout_backend
 
 from xpict import DepictSpec, render
 
@@ -32,16 +31,14 @@ def test_scale_omitted_is_none_on_wire():
 
 
 def test_scale_one_matches_omitted():
-    be = layout_backend()
-    a = render({"type": "mol", "smiles": "CCO"}, backend=be)
-    b = render({"type": "mol", "smiles": "CCO", "scale": 1.0}, backend=be)
+    a = render({"type": "mol", "smiles": "CCO"})
+    b = render({"type": "mol", "smiles": "CCO", "scale": 1.0})
     assert _root_wh(a) == pytest.approx(_root_wh(b), rel=1e-6)
 
 
 def test_scale_two_doubles_intrinsic_size():
-    be = layout_backend()
-    base = render({"type": "mol", "smiles": "CCO"}, backend=be)
-    scaled = render({"type": "mol", "smiles": "CCO", "scale": 2.0}, backend=be)
+    base = render({"type": "mol", "smiles": "CCO"})
+    scaled = render({"type": "mol", "smiles": "CCO", "scale": 2.0})
     bw, bh = _root_wh(base)
     sw, sh = _root_wh(scaled)
     assert sw == pytest.approx(2.0 * bw, rel=1e-4)

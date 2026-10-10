@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from helpers import layout_backend
 
 import math
 import re
@@ -30,9 +29,6 @@ from xpict.draw.metrics import (
 )
 from xpict.draw.scene_builder import normalize_coords
 
-
-def _backend() -> str:
-    return layout_backend()
 
 
 def _path_ys(d: str) -> list[float]:
@@ -131,7 +127,7 @@ def test_hash_count_scales_with_length():
 
 
 def test_svg_uses_reference_font_and_butt_bonds():
-    svg = render({"molecules": [{"smiles": "CC(=O)C"}]}, backend=layout_backend())
+    svg = render({"molecules": [{"smiles": "CC(=O)C"}]})
     # Labels are glyph paths from Liberation Sans (data-text carries the run).
     assert "data-text=" in svg
     assert 'stroke-linecap="round"' in svg
@@ -140,42 +136,38 @@ def test_svg_uses_reference_font_and_butt_bonds():
 
 
 def test_hetero_labels_include_implicit_h():
-    backend = _backend()
-    lay = Pict(backend=backend).layout({"molecules": [{"smiles": "CCO"}]})[0]
+    lay = Pict().layout({"molecules": [{"smiles": "CCO"}]})[0]
     oxy = next(a for a in lay.atoms if a.element == "O")
     assert oxy.label == "OH"
     nitro = (
-        Pict(backend=backend).layout({"molecules": [{"smiles": "C[C@H](N)C(=O)O"}]})[0]
+        Pict().layout({"molecules": [{"smiles": "C[C@H](N)C(=O)O"}]})[0]
     )
     nitrogen = next(a for a in nitro.atoms if a.element == "N")
     assert nitrogen.label == "NH2"
-    svg = render({"molecules": [{"smiles": "CCO"}]}, backend=backend)
+    svg = render({"molecules": [{"smiles": "CCO"}]})
     assert "OH" in svg
 
 
 def test_anion_is_not_a_radical_dot():
-    backend = _backend()
     # Hydroxide — use [OH-]; bare [O-] is a radical anion in RDKit.
-    lay = Pict(backend=backend).layout({"molecules": [{"smiles": "[OH-]"}]})[0]
+    lay = Pict().layout({"molecules": [{"smiles": "[OH-]"}]})[0]
     assert lay.atoms[0].charge == -1
     assert lay.atoms[0].radical == 0
-    svg = render({"molecules": [{"smiles": "[OH-]"}]}, backend=backend)
+    svg = render({"molecules": [{"smiles": "[OH-]"}]})
     assert "radical" not in svg
     assert "−" in svg or "-" in svg
 
 
 def test_ammonium_label_has_hydrogens_and_charge():
-    backend = _backend()
-    svg = render({"molecules": [{"smiles": "[NH4+]"}]}, backend=backend)
+    svg = render({"molecules": [{"smiles": "[NH4+]"}]})
     assert "NH4" in svg or "NH₄" in svg
     assert "+" in svg or "⁺" in svg or "＋" in svg
 
 
 def test_wedge_and_hash_and_wavy_and_crossed_in_svg():
-    backend = _backend()
-    up = render({"molecules": [{"smiles": "C[C@H](O)Cl"}]}, backend=backend)
+    up = render({"molecules": [{"smiles": "C[C@H](O)Cl"}]})
     assert "bond-wedge" in up
-    ala = render({"molecules": [{"smiles": "C[C@H](N)C(=O)O"}]}, backend=backend)
+    ala = render({"molecules": [{"smiles": "C[C@H](N)C(=O)O"}]})
     assert "wedge-up" in ala or "wedge-down" in ala
     wavy = wavy_bond(0, 0, BOND_PX, 0)
     assert "bond-either" in (wavy.cls or "")
@@ -185,14 +177,13 @@ def test_wedge_and_hash_and_wavy_and_crossed_in_svg():
 
 
 def test_radical_dot_still_drawn():
-    svg = render({"molecules": [{"smiles": "[CH3]"}]}, backend=layout_backend())
+    svg = render({"molecules": [{"smiles": "[CH3]"}]})
     assert "radical" in svg
     assert "CH3" in svg or "C" in svg
 
 
 def test_mean_bond_scale():
-    backend = _backend()
-    lay = Pict(backend=backend).layout({"molecules": [{"smiles": "c1ccccc1"}]})[0]
+    lay = Pict().layout({"molecules": [{"smiles": "c1ccccc1"}]})[0]
     coords, _, _ = normalize_coords(lay)
     # Benzene C–C should be ~BOND_PX after scaling.
     dists = []

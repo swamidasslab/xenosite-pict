@@ -7,10 +7,10 @@ Two first-class APIs (same paint as JS / Rust):
     from xpict import mol, render, to_svg
 
     benzene = mol("c1ccccc1")
-    rendered = render(benzene, {"color": "#0b6e4f"})
+    rendered = render(benzene, MolRenderOptions(color="#0b6e4f"))
     svg = to_svg(rendered.scene)
 
-**Declarative document** — nested ``DepictSpec`` via Rust two-pass ``depict``::
+**Declarative document** — nested ``DepictSpec`` via Rust ``depict``::
 
     from xpict import depict, to_svg
 
@@ -20,53 +20,40 @@ Two first-class APIs (same paint as JS / Rust):
 
 from __future__ import annotations
 
-from typing import Any, overload
+from typing import overload
 
 from xpict.api import OutputFormat, Pict
+from xpict.base import PictBase
 from xpict.client import (
     Mol,
     MolRenderOptions,
-    Rendered,
-    SvgAtom,
-    SvgBond,
     mol,
     render as render_mol,
     to_svg,
 )
-from xpict.contracts import DepictSpec, MolSpec
+from xpict.contracts import DepictSpecDict, MolSpec
+from xpict.contracts.edge import EdgePlan, EdgeResult, MolTemplate
 from xpict.contracts.scene import Scene
 from xpict.depict_spec import depict, depict_svg, is_live_depict_spec
-from xpict.warnings import PictBackendWarning
-
-# Lab / future nested document.
 from xpict.edge_plan import build_align_plan, validate_edge_plan
-from xpict.contracts.edge import EdgePlan, EdgeResult, MolTemplate
 from xpict.future import PictSpec
 from xpict.native_bridge import plan_edge, render_doc
-from xpict.layout2d import (
-    Layout2DAtom,
-    Layout2DBond,
-    Layout2DRequest,
-    Layout2DResult,
-    generate_2d_coordinates,
-)
+from xpict.rendered import Rendered, SvgAtom, SvgBond
+from xpict.spec import DepictSpec
 
 __version__ = "0.3.0"
 
 __all__ = [
     "DepictSpec",
+    "DepictSpecDict",
     "EdgePlan",
     "EdgeResult",
-    "Layout2DAtom",
-    "Layout2DBond",
-    "Layout2DRequest",
-    "Layout2DResult",
     "Mol",
     "MolRenderOptions",
     "MolSpec",
     "MolTemplate",
     "Pict",
-    "PictBackendWarning",
+    "PictBase",
     "PictSpec",  # future nested document — use DepictSpec for the shipped subset
     "Rendered",
     "Scene",
@@ -75,7 +62,6 @@ __all__ = [
     "build_align_plan",
     "depict",
     "depict_svg",
-    "generate_2d_coordinates",
     "mol",
     "plan_edge",
     "render",
@@ -87,37 +73,39 @@ __all__ = [
 
 
 @overload
-def render(input: Mol | str, opts: MolRenderOptions | dict[str, Any] | None = None) -> Rendered: ...
+def render(
+    input: Mol | str,
+    opts: MolRenderOptions | None = None,
+) -> Rendered: ...
 
 
 @overload
 def render(
-    input: DepictSpec | PictSpec | dict[str, Any],
+    input: DepictSpec | DepictSpecDict | PictSpec,
     opts: None = None,
     *,
-    backend: str | None = None,
     format: OutputFormat = "svg",
 ) -> str: ...
 
 
 def render(
-    input: Any, opts: Any = None, *, backend: str | None = None, format: OutputFormat = "svg"
-) -> Any:
-    """Single-mol ``render(mol, opts)`` or document ``render(doc)``.
-
-    Live nested ``DepictSpec`` (``type: mol|group|reaction_scheme``) uses the
-    Rust two/three-pass (``depict`` → SVG). Legacy flat / future docs still go
-    through ``Pict`` (schemes convert to live ``reaction_scheme``).
-    """
+    input: Mol | str | DepictSpec | DepictSpecDict | PictSpec,
+    opts: MolRenderOptions | None = None,
+    *,
+    format: OutputFormat = "svg",
+) -> Rendered | str:
+    """Single-mol ``render(mol, opts)`` or document ``render(doc)`` via Rust."""
     if isinstance(input, (Mol, str)):
         return render_mol(input, opts)
     if opts is not None:
         raise TypeError(
             "document render() does not take a second positional opts; "
-            "use backend=/format= keywords, or mol()/render(mol, opts) for single-mol"
+            "use format= keywords, or mol()/render(mol, opts) for single-mol"
         )
-    if is_live_depict_spec(input):
+    if isinstance(input, DepictSpec) or (
+        isinstance(input, dict) and is_live_depict_spec(input)
+    ):
         if format != "svg":
-            raise ValueError("live DepictSpec render() only supports format='svg' today")
+            return Pict(format=format).render(input)
         return depict_svg(input)
-    return Pict(backend=backend, format=format).render(input)
+    return Pict(format=format).render(input)

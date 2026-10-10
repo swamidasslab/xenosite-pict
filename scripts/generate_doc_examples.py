@@ -104,7 +104,7 @@ CASES: dict[str, dict] = {
 
 
 def _render(doc: dict) -> str:
-    return render(doc, backend="rdkit")
+    return render(doc)
 
 
 def main() -> None:

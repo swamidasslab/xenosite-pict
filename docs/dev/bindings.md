@@ -91,7 +91,7 @@ align. **Never** put RDKit inside `xpict-core` (won't WASM cleanly).
 
 | Runtime | 2D coords | Template align | Then |
 | --- | --- | --- | --- |
-| Python | `layout2d` / CoordGen (SMILES bridge pending) | cost MCS + soft-constrained CoordGen | `_native.depict_molecule` |
+| Python | Rust `depict` (in-core CoordGen) | cost MCS + soft-constrained CoordGen | `_native.depict_molecule` |
 | Browser | `xpict.mol` / `render` / `toSvg` | language-edge align | `scene` JSON → string |
 | Native Rust | crates.io `rdkit` + `crates/xpict` Depictor FFI | `generateDepictionMatching2DStructure` | `xpict-core` paint → SVG |
 

@@ -52,6 +52,19 @@ class EdgePlan(StrictModel):
 CoordMethod = Literal['free', 'atom_map', 'mcs', 'none']
 
 
+AlignDebugRole = Literal['template', 'query']
+
+
+class AlignDebug(StrictModel):
+    """Stamped alignment correspondence for [`MoleculeIn::debug_align`] paint."""
+    role: AlignDebugRole
+    peer_id: Annotated[str | None, Field(description='Peer mol id(s): template lists queries; query names its template.')] = None
+    tags: list[tuple[int, int]] = Field(default_factory=list, description='`(atom_index_on_this_mol, tag)` — tag is the **template atom index**.')
+
+
+AromaticStyle = Literal['circle', 'kekule']
+
+
 class AtomIn(StrictModel):
     """Atom input for a molecule depict call (SVG-space coords from the caller)."""
     index: int
@@ -77,9 +90,13 @@ class MoleculeIn(StrictModel):
     """One molecule ready to paint (coords already in SVG / ``SCALE`` space)."""
     atoms: list[AtomIn]
     bonds: list[BondIn]
+    align_debug: Annotated[AlignDebug | None, Field(description='Stamped match tags from the host/core align step (not cascading).')] = None
+    aromatic: Annotated[AromaticStyle | None, Field(description='Aromatic ring paint: circle (default) or Kekulé doubles.')] = None
     atom_shade: Annotated[list[float] | None, Field(description='Per-atom shade scores (same order as [`Self::atoms`]); omit if unshaded.')] = None
     bond_shade: Annotated[list[float] | None, Field(description='Per-bond shade scores (same order as [`Self::bonds`]).')] = None
     color: Annotated[str | None, Field(description='Ink color for backbone bonds and atom labels (CSS). Default ``#111``.')] = None
+    debug_align: Annotated[bool | None, Field(description='When true, paint alignment correspondence overlays (needs [`Self::align_debug`]).')] = None
+    debug_box: Annotated[bool | None, Field(description='When true, paint dashed debug rectangles for label / mol / scene boxes.')] = None
     id: str | None = None
     mark_atoms: list[int] = Field(default_factory=list, description='Atom indices to circle (publication marks).')
     mark_bonds: list[tuple[int, int]] = Field(default_factory=list, description='Bond endpoint index pairs to circle/stroke-mark.')

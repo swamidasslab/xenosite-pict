@@ -114,6 +114,12 @@ export type MolRenderOptions = {
   weight?: number;
   /** Uniform diagram scale (`1` = house size). */
   scale?: number;
+  /** Aromatic rings: `circle` (default) or `kekule`. */
+  aromatic?: "circle" | "kekule";
+  /** Dashed layout boxes for labels / mol / scene (default off). */
+  debug_box?: boolean;
+  /** Alignment correspondence overlays (template atom index tags; default off). */
+  debug_align?: boolean;
   align_to?: AlignTarget;
   /** Pairs `[queryAtom, templateAtom]`. Requires `align_to`; skips MCS. */
   atom_map?: Array<[number, number]>;
@@ -302,6 +308,9 @@ function applyOpts(
   if (opts.mark_bonds !== undefined) out.mark_bonds = opts.mark_bonds;
   if (opts.weight !== undefined) out.weight = opts.weight;
   if (opts.scale !== undefined) out.scale = opts.scale;
+  if (opts.aromatic !== undefined) out.aromatic = opts.aromatic;
+  if (opts.debug_box !== undefined) out.debug_box = opts.debug_box;
+  if (opts.debug_align !== undefined) out.debug_align = opts.debug_align;
   // Explicit star_labels (encounter order) wins; otherwise CX by atom index.
   if (opts.star_labels !== undefined) {
     out = applyStarLabels(out, opts.star_labels);

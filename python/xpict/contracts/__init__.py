@@ -1,24 +1,29 @@
-"""Live package contracts — implemented public surface only.
+"""Live package contracts — generated wire types (pydantic + TypedDict).
 
-Full nested ``PictSpec`` / shorthand / diagram chrome lives under
-``xpict.future`` for design review until those features ship.
+Host ``DepictSpec`` (operators / ``PictBase``) lives in ``xpict.spec``.
 """
 
 from __future__ import annotations
 
 from xpict.contracts.depict import (
     AlignToSpec,
+    CommonOpts,
     EdgeNode,
+    ForTypesPatch,
+    GridNode,
     GroupNode,
     Label,
     LabelLanes,
     LabelPlacement,
     LayoutOpts,
     MolNode,
+    MolOptsPatch,
+    Opts,
+    OptsPatch,
     ReactionSchemeNode,
     TextNode,
 )
-from xpict.contracts.depict import DepictSpec as _DepictSpec
+from xpict.contracts.depict_dict import DepictSpecDict, OptsPatchDict
 from xpict.contracts.edge import (
     AlignOpts,
     AtomIn,
@@ -32,11 +37,9 @@ from xpict.contracts.edge import (
     MoleculeIn,
     MolTemplate,
 )
-from xpict.contracts.layout import (
-    AtomLayout,
-    BondLayout,
-    MoleculeLayout,
-)
+from xpict.contracts.edge_dict import EdgePlanDict, EdgeResultDict
+from xpict.contracts.layout import AtomLayout, BondLayout, MoleculeLayout
+from xpict.contracts.rendered_dict import DocPaintDict, RenderedDict
 from xpict.contracts.scene import (
     CirclePrim,
     Layer,
@@ -46,22 +49,10 @@ from xpict.contracts.scene import (
     TextPrim,
     Viewport,
 )
+from xpict.contracts.scene_dict import SceneDict
 
 # Public alias (Rust ``type MolSpec = MolNode``); not on the wire schema.
 MolSpec = MolNode
-
-
-class DepictSpec(_DepictSpec):
-    """Live document root — generated wire model + host ``mols()`` helper."""
-
-    def mols(self) -> list[MolNode]:
-        """Flatten mol nodes in document order (skips edge children)."""
-        root = self.root
-        if isinstance(root, MolNode):
-            return [root]
-        if isinstance(root, ReactionSchemeNode):
-            return [c for c in root.children if isinstance(c, MolNode)]
-        return [c for c in root.children if isinstance(c, MolNode)]
 
 
 __all__ = [
@@ -72,14 +63,20 @@ __all__ = [
     "BondIn",
     "BondLayout",
     "CirclePrim",
+    "CommonOpts",
     "CoordGenMoleculeResult",
     "CoordGenTask",
     "CoordGenTaskResult",
     "CoordMethod",
-    "DepictSpec",
+    "DepictSpecDict",
+    "DocPaintDict",
     "EdgeNode",
     "EdgePlan",
+    "EdgePlanDict",
     "EdgeResult",
+    "EdgeResultDict",
+    "ForTypesPatch",
+    "GridNode",
     "GroupNode",
     "Label",
     "LabelLanes",
@@ -87,14 +84,20 @@ __all__ = [
     "Layer",
     "LayoutOpts",
     "MolNode",
+    "MolOptsPatch",
     "MolSpec",
     "MolTemplate",
     "MoleculeIn",
     "MoleculeLayout",
+    "Opts",
+    "OptsPatch",
+    "OptsPatchDict",
     "PathPrim",
     "Primitive",
     "ReactionSchemeNode",
+    "RenderedDict",
     "Scene",
+    "SceneDict",
     "TextNode",
     "TextPrim",
     "Viewport",

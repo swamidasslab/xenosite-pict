@@ -193,6 +193,12 @@ pub struct MolRenderOptions {
     pub scale: Option<f64>,
     /// Ink weight relative to house (``1.0``); min ~``2/3``.
     pub weight: Option<f64>,
+    /// Aromatic rings: circle (default) or Kekulé doubles.
+    pub aromatic: Option<xpict_core::AromaticStyle>,
+    /// Dashed layout boxes for labels / mol / scene (default off).
+    pub debug_box: Option<bool>,
+    /// Alignment correspondence overlays (default off).
+    pub debug_align: Option<bool>,
     /// Template molblock for RDKit depiction matching.
     pub align_to: Option<String>,
     /// Pairs ``(query_atom, template_atom)``. Requires ``align_to``; skips MCS.
@@ -229,6 +235,15 @@ fn apply_opts(mut molecule: MoleculeIn, opts: &MolRenderOptions, source: &str) -
     }
     if let Some(weight) = opts.weight {
         molecule.weight = weight;
+    }
+    if let Some(aromatic) = opts.aromatic {
+        molecule.aromatic = aromatic;
+    }
+    if let Some(debug_box) = opts.debug_box {
+        molecule.debug_box = debug_box;
+    }
+    if let Some(debug_align) = opts.debug_align {
+        molecule.debug_align = debug_align;
     }
     if let Some(ref labels) = opts.star_labels {
         apply_star_labels(&mut molecule, labels);

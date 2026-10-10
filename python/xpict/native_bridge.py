@@ -4,7 +4,14 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, cast
+
+from xpict.contracts.depict import DepictSpec as WireDepictSpec
+from xpict.contracts.depict_dict import DepictSpecDict, MolOptsPatchDict
+from xpict.contracts.edge import EdgePlan, EdgeResult
+from xpict.contracts.edge_dict import EdgePlanDict, EdgeResultDict
+from xpict.contracts.rendered_dict import DocPaintDict, RenderedDict
+from xpict.contracts.scene_dict import SceneDict
 
 try:
     from xpict import _native as _rust
@@ -20,6 +27,10 @@ if TYPE_CHECKING:
     from xpict._native import Shape as Shape
 else:
     Shape = _rust.Shape
+
+DepictSpecLike = WireDepictSpec | DepictSpecDict | str
+EdgePlanLike = EdgePlan | EdgePlanDict | str
+EdgeResultLike = EdgeResult | EdgeResultDict | str
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,7 +53,7 @@ class DiskInk:
     radius: float
 
 
-InkGeometry = Any  # Shape | CapsuleInk | DiskInk
+InkGeometry = Shape | CapsuleInk | DiskInk
 
 
 def multi_bond_offset(length: float) -> float:
@@ -72,7 +83,7 @@ def elk_layout_json(graph_json: str) -> str | None:
     return str(fn(graph_json))
 
 
-def _as_json(obj: Any) -> str:
+def _as_json(obj: DepictSpecLike | EdgePlanLike | EdgeResultLike) -> str:
     if isinstance(obj, str):
         return obj
     dump = getattr(obj, "model_dump", None)
@@ -81,40 +92,60 @@ def _as_json(obj: Any) -> str:
     return json.dumps(obj)
 
 
-def validate_edge_plan(plan: dict[str, Any] | str | Any) -> dict[str, Any]:
+def validate_edge_plan(plan: EdgePlanLike) -> EdgePlanDict:
     """Structural checks via Rust core."""
-    return json.loads(_rust.validate_edge_plan(_as_json(plan)))
+    return cast(EdgePlanDict, json.loads(_rust.validate_edge_plan(_as_json(plan))))
 
 
-def plan_edge(spec: dict[str, Any] | str | Any) -> dict[str, Any] | None:
+def plan_edge(spec: DepictSpecLike) -> EdgePlanDict | None:
     """Pass 1: DepictSpec → EdgePlan (Rust core). ``None`` when empty."""
     raw = _rust.plan_edge(_as_json(spec))
-    return json.loads(raw)
+    return cast(EdgePlanDict | None, json.loads(raw))
 
 
-def render_doc(
-    spec: dict[str, Any] | str | Any, edge: dict[str, Any] | str | Any
-) -> list[dict[str, Any]]:
+def resolve_depict_chrome(spec: DepictSpecLike) -> list[MolOptsPatchDict]:
+    """Resolve cascading mol opts in document order (Rust DepictSpec semantics)."""
+    return cast(
+        list[MolOptsPatchDict],
+        json.loads(_rust.resolve_depict_chrome(_as_json(spec))),
+    )
+
+
+def render_doc(spec: DepictSpecLike, edge: EdgeResultLike) -> list[RenderedDict]:
     """Pass 2: DepictSpec + EdgeResult → DocPaint rows (Rust core).
 
-    Chrome (CX / star_labels / shade / color) is applied in core — callers
-    only process the EdgePlan between passes.
+    Prefer :func:`depict` for the product path (plan + edge + paint in one call).
     """
-    return json.loads(_rust.render_doc(_as_json(spec), _as_json(edge)))
+    return cast(
+        list[RenderedDict],
+        json.loads(_rust.render_doc(_as_json(spec), _as_json(edge))),
+    )
+
+
+def depict(spec: DepictSpecLike) -> list[RenderedDict]:
+    """DepictSpec → ``Rendered`` rows (plan + Chematic/CoordGen edge + paint in Rust)."""
+    fn = getattr(_rust, "depict", None)
+    if fn is None:
+        raise RuntimeError(
+            "xpict._native.depict requires CoordGen (rebuild with coordgen feature)"
+        )
+    return cast(list[RenderedDict], json.loads(fn(_as_json(spec))))
 
 
 def compose_scheme(
-    spec: dict[str, Any] | str | Any, paints: list[dict[str, Any]] | str
-) -> dict[str, Any]:
+    spec: DepictSpecLike, paints: list[DocPaintDict] | str
+) -> SceneDict:
     """Pass 3: DepictSpec + DocPaint rows → composed Scene (ELK + overlays)."""
     paints_json = paints if isinstance(paints, str) else json.dumps(paints)
-    return json.loads(_rust.compose_scheme(_as_json(spec), paints_json))
+    return cast(SceneDict, json.loads(_rust.compose_scheme(_as_json(spec), paints_json)))
 
 
 def halo_path_d_for_ink(ink: InkGeometry, dist: float) -> str | None:
     """Rust fast path for tagged ink; ``None`` → caller uses Shape.halo."""
     if isinstance(ink, CapsuleInk):
-        return capsule_halo_path_d(ink.x1, ink.y1, ink.x2, ink.y2, ink.radius, dist)
+        return capsule_halo_path_d(
+            ink.x1, ink.y1, ink.x2, ink.y2, ink.radius, dist
+        )
     if isinstance(ink, DiskInk):
         return disk_halo_path_d(ink.cx, ink.cy, ink.radius, dist)
     return None

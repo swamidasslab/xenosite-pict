@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from helpers import layout_backend
 
 import math
 import re
@@ -51,7 +50,6 @@ def test_svg_shade_uses_xenosite_not_homemade_pink():
                 }
             ]
         },
-        backend=layout_backend(),
     )
     fills = re.findall(
         r'class="shade"[^>]*fill="(rgb\([^"]+\))"|fill="(rgb\([^"]+\))"[^>]*class="shade"', svg
@@ -70,7 +68,6 @@ def test_svg_shade_uses_xenosite_not_homemade_pink():
 def test_svg_layer_order_shading_before_halo():
     svg = render(
         {"molecules": [{"smiles": "CCO", "shade": {"atoms": [0.2, 0.5, 0.9]}}]},
-        backend=layout_backend(),
     )
     i_shade = svg.index('class="layer-shading"')
     i_halo = svg.index('class="xpict-halo"')
@@ -101,17 +98,13 @@ def test_ring_double_offset_distance_is_full_offset_px():
     assert y == pytest.approx(-OFFSET_PX, abs=0.05)
 
 
-def _backend() -> str:
-    return layout_backend()
-
 
 def test_rendered_ring_doubles_sit_inside():
-    backend = _backend()
     from xpict.draw.drawable import normalize_coords
     from xpict.draw.rings import bond_interior_normals, find_sssr
 
     for smiles in ("c1ccccc1", "O=C1C=CC(=O)C=C1", "c1ccc2ccccc2c1"):
-        lay = Pict(backend=backend).layout({"molecules": [{"smiles": smiles}]})[0]
+        lay = Pict().layout({"molecules": [{"smiles": smiles}]})[0]
         coords, _, _ = normalize_coords(lay)
         rings = find_sssr(lay)
         cbi = {a.index: coords[i] for i, a in enumerate(lay.atoms)}
