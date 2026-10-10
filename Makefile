@@ -110,6 +110,10 @@ js-test-api: ## JS API smoke scripts; assumes build
 .PHONY: js-ci
 js-ci: js-check build-js js-test-api ## CI JS job body (after js-deps + wasm-pack)
 
+.PHONY: host-py-loc
+host-py-loc: ## Line counts for hand-written python/xpict (largest first)
+	cd "$(ROOT)" && python3 scripts/host_py_loc.py
+
 .PHONY: check
 check: check-pyright check-versions ## pyright + version policy
 
