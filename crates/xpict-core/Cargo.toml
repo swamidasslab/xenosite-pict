@@ -29,8 +29,11 @@ font = ["dep:ttf-parser", "geom"]
 # Export live JSON Schema (schemars) + TypeScript (ts-rs). Dev/CI only —
 # not on the crates.io default feature set.
 codegen = ["dep:schemars", "dep:ts-rs"]
+# Static Schrödinger CoordGen (C++); keep off for wasm32-unknown-unknown.
+coordgen = ["dep:coordgen-sys"]
 
 [dependencies]
+coordgen-sys = { path = "../coordgen-sys", version = "0.3.0", optional = true }
 elkrs = { version = "0.1.1", optional = true }
 i_overlay = { version = "9.0.0", optional = true }
 ttf-parser = { version = "0.25", optional = true }

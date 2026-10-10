@@ -48,6 +48,13 @@ from xpict.edge_plan import (
 from xpict.contracts.edge import EdgePlan, EdgeResult, MolTemplate
 from xpict.future import PictSpec
 from xpict.native_bridge import plan_edge, render_doc
+from xpict.layout2d import (
+    Layout2DAtom,
+    Layout2DBond,
+    Layout2DRequest,
+    Layout2DResult,
+    generate_2d_coordinates,
+)
 
 __version__ = "0.3.0"
 
@@ -55,6 +62,10 @@ __all__ = [
     "DepictSpec",
     "EdgePlan",
     "EdgeResult",
+    "Layout2DAtom",
+    "Layout2DBond",
+    "Layout2DRequest",
+    "Layout2DResult",
     "Mol",
     "MolRenderOptions",
     "MolSpec",
@@ -69,6 +80,7 @@ __all__ = [
     "build_align_plan",
     "depict",
     "depict_svg",
+    "generate_2d_coordinates",
     "mol",
     "plan_edge",
     "process_edge_plan",

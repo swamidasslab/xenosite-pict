@@ -3,6 +3,7 @@ resolver = "2"
 # xpict (RDKit-backed public API) is a member but not a default-member so
 # `cargo test` / CI coverage on xpict-core does not require system RDKit.
 members = [
+    "crates/coordgen-sys",
     "crates/xpict-core",
     "crates/xpict-py",
     "crates/xpict-wasm",

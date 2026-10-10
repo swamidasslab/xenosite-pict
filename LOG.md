@@ -1,5 +1,38 @@
 # Lab log
 
+## 2026-10-10
+
+- Promoted CoordGen from `poc/` + draft `coordgen/ffi.*` into workspace
+  `crates/coordgen-sys` (fixed C ABI against real `sketcherMinimizer`).
+  Feature `coordgen` on xpict-core; default-on for xpict-py + xpict; optional
+  off for xpict-wasm (emscripten/JS checks postponed). Vendor at
+  `vendor/coordgenlibs` (v3.0.2).
+- Audited draft FFI vs upstream: dropped fictional
+  `template_strength` / `overlap_penalty` / `extra_box` / `collision_score` /
+  `setForcePlanar`. Mapped real knobs — `setEvenAngles`,
+  `setForceOpenMacrocycles`, precision ctor, metal ZOBs, skip minimization;
+  bond stereo via `setStereoChemistry` + stereo-atom neighbors.
+- Validation before any RDKit cut: expanded `tests/test_coordgen_native.py`
+  (flags, charged, stereo, phenol→anisole constrained); Rust multi-atom
+  constrained unit test; notebook
+  `notebooks/coordgen_aligned_depiction.ipynb` (native free/constrained vs
+  RDKit `GenerateDepictionMatching2DStructure`). `cargo test -p coordgen-sys`
+  + pytest green; notebook cells smoke-run. Scale note: CoordGen ~50 vs
+  paint `SCALE=20`.
+- Interactive playground notebook
+  `notebooks/coordgen_playground.ipynb`: edit ref/query SMILES, MATCH pairs,
+  constraint mode, and layout FLAGS; view numbered maps + native depictions.
+
+## 2026-10-07
+
+- CoordGen POC wheel size (release, macOS arm64 abi3; not wired into xpict):
+  PyO3 baseline **147 KiB** wheel / **298 KiB** `.so` → with static CoordGen
+  **302 KiB** wheel / **629 KiB** `.so` (**+155 KiB** / **+330 KiB**).
+- Tree-shake path: Cargo `opt-level=z` + `lto` + `strip`; C++
+  `-ffunction-sections -fdata-sections` + `-Wl,-dead_strip`. Static
+  `libcoordgen_sys.a` is **1.5 MiB**; only ~22% of that lands in the linked
+  `.so` text growth (~267 KiB `__text` delta).
+
 ## 2026-10-01
 
 - Default 2D coords: enable Schrödinger **CoordGen** for free layout when available (Python `prefer_coordgen`, JS `set_new_coords(true)`, native `RDDepict::preferCoordGen`). Constrained align tries CoordGen then `forceRDKit` if the core won’t lock; MinimalLib stays `useCoordGen:false`. Rigid phenol/anisole tolerance loosened to 1e-3 (CoordGen ~5e-5 RMSD).

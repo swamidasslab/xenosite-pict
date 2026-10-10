@@ -58,6 +58,14 @@ pub use xpict_core::{
     apply_cx_by_index, apply_star_labels, depict_molecule, plan_edge, render_doc, SCALE,
 };
 
+#[cfg(feature = "coordgen")]
+pub use xpict_core::layout_coordgen::{
+    generate_2d_coordinates, CoordGenError, LayoutMolecule, LayoutResult, BOND_STEREO_CIS,
+    BOND_STEREO_NONE, BOND_STEREO_TRANS, FLAG_BEST_PRECISION, FLAG_EVEN_ANGLES,
+    FLAG_FORCE_OPEN_MACROCYCLES, FLAG_FORCE_PLANAR, FLAG_MACROCYCLE_MODE, FLAG_METAL_BONDS_AS_ZOB,
+    FLAG_QUICK_PRECISION, FLAG_SKIP_MINIMIZATION,
+};
+
 use xpict_core::scene::AtomIn as CoreAtom;
 
 /// Errors from parse / layout / render.

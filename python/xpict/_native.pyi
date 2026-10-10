@@ -9,6 +9,24 @@ SHADE_FRAC: float
 HAS_ELK: bool
 HAS_GEOM: bool
 HAS_FONT: bool
+HAS_COORDGEN: bool
+
+LAYOUT_FLAG_EVEN_ANGLES: int
+LAYOUT_FLAG_QUICK_PRECISION: int
+LAYOUT_FLAG_FORCE_OPEN_MACROCYCLES: int
+LAYOUT_FLAG_BEST_PRECISION: int
+LAYOUT_FLAG_METAL_BONDS_AS_ZOB: int
+LAYOUT_FLAG_SKIP_MINIMIZATION: int
+LAYOUT_FLAG_FORCE_PLANAR: int
+LAYOUT_FLAG_MACROCYCLE_MODE: int
+BOND_STEREO_NONE: int
+BOND_STEREO_CIS: int
+BOND_STEREO_TRANS: int
+
+class Layout2DResult:
+    x: list[float]
+    y: list[float]
+    def coords(self) -> list[tuple[float, float]]: ...
 
 class Shape:
     @staticmethod
@@ -133,3 +151,19 @@ def label_ink_shape(
     side: str,
     font_size: float | None = None,
 ) -> Shape | None: ...
+def generate_2d_coordinates(
+    atomic_numbers: list[int],
+    bond_from: list[int],
+    bond_to: list[int],
+    bond_orders: list[int],
+    *,
+    formal_charges: list[int] | None = None,
+    bond_stereos: list[int] | None = None,
+    bond_stereo_atom1: list[int] | None = None,
+    bond_stereo_atom2: list[int] | None = None,
+    has_template_match: list[int] | None = None,
+    is_atom_fixed: list[int] | None = None,
+    input_x: list[float] | None = None,
+    input_y: list[float] | None = None,
+    layout_flags: int | None = None,
+) -> Layout2DResult: ...

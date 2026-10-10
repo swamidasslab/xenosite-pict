@@ -679,6 +679,89 @@ impl PyShape {
     }
 }
 
+#[cfg(feature = "coordgen")]
+#[pyclass(module = "xpict._native", name = "Layout2DResult")]
+#[derive(Clone)]
+struct PyLayout2DResult {
+    #[pyo3(get)]
+    x: Vec<f32>,
+    #[pyo3(get)]
+    y: Vec<f32>,
+}
+
+#[cfg(feature = "coordgen")]
+#[pymethods]
+impl PyLayout2DResult {
+    /// Packed ``[(x, y), ...]`` view of the layout.
+    fn coords(&self) -> Vec<(f32, f32)> {
+        self.x.iter().copied().zip(self.y.iter().copied()).collect()
+    }
+
+    fn __repr__(&self) -> String {
+        format!("Layout2DResult(n={})", self.x.len())
+    }
+}
+
+#[cfg(feature = "coordgen")]
+#[pyfunction]
+#[pyo3(signature = (
+    atomic_numbers,
+    bond_from,
+    bond_to,
+    bond_orders,
+    *,
+    formal_charges=None,
+    bond_stereos=None,
+    bond_stereo_atom1=None,
+    bond_stereo_atom2=None,
+    has_template_match=None,
+    is_atom_fixed=None,
+    input_x=None,
+    input_y=None,
+    layout_flags=None,
+))]
+#[allow(clippy::too_many_arguments)]
+fn generate_2d_coordinates(
+    atomic_numbers: Vec<i32>,
+    bond_from: Vec<i32>,
+    bond_to: Vec<i32>,
+    bond_orders: Vec<i32>,
+    formal_charges: Option<Vec<i32>>,
+    bond_stereos: Option<Vec<i32>>,
+    bond_stereo_atom1: Option<Vec<i32>>,
+    bond_stereo_atom2: Option<Vec<i32>>,
+    has_template_match: Option<Vec<i32>>,
+    is_atom_fixed: Option<Vec<i32>>,
+    input_x: Option<Vec<f32>>,
+    input_y: Option<Vec<f32>>,
+    layout_flags: Option<i32>,
+) -> PyResult<PyLayout2DResult> {
+    use xpict_core::layout_coordgen::{generate_2d_coordinates as layout, LayoutMolecule};
+
+    let n = atomic_numbers.len();
+    let nb = bond_from.len();
+    let mol = LayoutMolecule {
+        formal_charges: formal_charges.unwrap_or_else(|| vec![0; n]),
+        bond_stereos: bond_stereos.unwrap_or_else(|| vec![0; nb]),
+        atomic_numbers,
+        bond_from,
+        bond_to,
+        bond_orders,
+        bond_stereo_atom1,
+        bond_stereo_atom2,
+        has_template_match,
+        is_atom_fixed,
+        input_x,
+        input_y,
+        layout_flags: layout_flags.unwrap_or(0),
+    };
+    let res = layout(&mol).map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+    Ok(PyLayout2DResult {
+        x: res.x,
+        y: res.y,
+    })
+}
+
 #[pymodule]
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(multi_bond_offset, m)?)?;
@@ -711,6 +794,27 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(split_atom_label, m)?)?;
     m.add_function(wrap_pyfunction!(compose_atom_label, m)?)?;
     m.add_function(wrap_pyfunction!(label_ink_shape, m)?)?;
+    #[cfg(feature = "coordgen")]
+    {
+        use xpict_core::layout_coordgen as cg;
+        m.add_function(wrap_pyfunction!(generate_2d_coordinates, m)?)?;
+        m.add_class::<PyLayout2DResult>()?;
+        m.add("LAYOUT_FLAG_EVEN_ANGLES", cg::FLAG_EVEN_ANGLES)?;
+        m.add("LAYOUT_FLAG_QUICK_PRECISION", cg::FLAG_QUICK_PRECISION)?;
+        m.add(
+            "LAYOUT_FLAG_FORCE_OPEN_MACROCYCLES",
+            cg::FLAG_FORCE_OPEN_MACROCYCLES,
+        )?;
+        m.add("LAYOUT_FLAG_BEST_PRECISION", cg::FLAG_BEST_PRECISION)?;
+        m.add("LAYOUT_FLAG_METAL_BONDS_AS_ZOB", cg::FLAG_METAL_BONDS_AS_ZOB)?;
+        m.add("LAYOUT_FLAG_SKIP_MINIMIZATION", cg::FLAG_SKIP_MINIMIZATION)?;
+        // Draft aliases
+        m.add("LAYOUT_FLAG_FORCE_PLANAR", cg::FLAG_FORCE_PLANAR)?;
+        m.add("LAYOUT_FLAG_MACROCYCLE_MODE", cg::FLAG_MACROCYCLE_MODE)?;
+        m.add("BOND_STEREO_NONE", cg::BOND_STEREO_NONE)?;
+        m.add("BOND_STEREO_CIS", cg::BOND_STEREO_CIS)?;
+        m.add("BOND_STEREO_TRANS", cg::BOND_STEREO_TRANS)?;
+    }
     m.add_class::<PyShape>()?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     m.add("BOND_PX", metrics::BOND_PX)?;
@@ -724,5 +828,6 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("DEFAULT_NODE_SPACING", xpict_core::LayoutOpts::DEFAULT_NODE_SPACING)?;
     m.add("DEFAULT_LAYER_SPACING", xpict_core::LayoutOpts::DEFAULT_LAYER_SPACING)?;
     m.add("HAS_FONT", true)?;
+    m.add("HAS_COORDGEN", cfg!(feature = "coordgen"))?;
     Ok(())
 }

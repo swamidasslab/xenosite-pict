@@ -113,6 +113,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "coordgen-sys"
+version = "0.3.0"
+dependencies = [
+ "cc",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "crc32fast"
 version = "1.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1025,6 +1033,7 @@ dependencies = [
 name = "xpict-core"
 version = "0.3.0"
 dependencies = [
+ "coordgen-sys",
  "elkrs",
  "i_overlay",
  "schemars",

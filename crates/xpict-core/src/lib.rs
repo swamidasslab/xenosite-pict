@@ -29,6 +29,9 @@ pub mod plotdot;
 pub mod rings;
 pub mod scene;
 
+#[cfg(feature = "coordgen")]
+pub mod layout_coordgen;
+
 pub use align::{kabsch_2d, rigid_align_coords, RigidTransform};
 pub use arrows::{
     axis_aligned, clip_box_edge, edge_anchors, edge_primitives as arrow_edge_primitives,
