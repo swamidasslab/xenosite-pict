@@ -17,8 +17,6 @@ to the layout backend — not a post-hoc snap in the SVG drawer. Quality engines
   stitched by shared atoms. Complex / cage systems prefer **ring templates**
   or **CoordGen**; when stitching conflicts (bridged cages), neighbors are
   left alone rather than over-constrained into regular *n*-gons.
-* **Indigo** ``layout()`` / ``iterateSSSR``: publication layout owns coords;
-  we consume SSSR for drawing decisions.
 
 This module therefore:
 
@@ -29,7 +27,7 @@ This module therefore:
    drawer (Kekulé offsets / optional aromatic circle *after* layout).
 
 Do **not** independently lerp every SSSR ring toward a regular polygon after
-the backend has laid out a bridged cage — that fights RDKit/CDK/Indigo.
+the backend has laid out a bridged cage — that fights RDKit/CDK/CoordGen.
 """
 
 from __future__ import annotations

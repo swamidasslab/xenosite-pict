@@ -360,22 +360,6 @@ fn element_helpers_match_common_symbols() {
 }
 
 #[test]
-fn kabsch_identity_and_rigid_align_smoke() {
-    let pts = [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)];
-    let xf = xpict_core::kabsch_2d(&pts, &pts, true);
-    assert!((xf.cos - 1.0).abs() < 1e-9);
-    assert!(xf.sin.abs() < 1e-9);
-    let template = vec![(0, 0.0, 0.0), (1, 10.0, 0.0)];
-    let other = vec![(0, 5.0, 5.0), (1, 15.0, 5.0)];
-    let mapping = vec![(0, 0), (1, 1)];
-    let (out, _xf) = xpict_core::rigid_align_coords(&template, &other, &mapping);
-    assert_eq!(out.len(), 2);
-    // After align, first mapped point lands on template.
-    assert!((out[0].1 - 0.0).abs() < 1e-6);
-    assert!((out[0].2 - 0.0).abs() < 1e-6);
-}
-
-#[test]
 fn west_oh_flips_to_ho_in_scene() {
     // Neighbor east of O → West orientation → "HO".
     let mol = MoleculeIn {

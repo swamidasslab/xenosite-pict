@@ -4,7 +4,7 @@
 //! circles) and shade disks are layers on that viewport. Multi-mol diagrams /
 //! ELK are out of scope for the first shared paint path.
 //!
-//! 1. Language edge supplies **coords + chem metadata** (RDKit/Indigo/native
+//! 1. Language edge supplies **coords + chem metadata** (CoordGen / native
 //!    layout + align stay outside this crate).
 //! 2. Rust builds a [`Scene`] of typed primitives (paths, circles, …).
 //! 3. Thin Python / JS serializers emit SVG / data-URI `<img>`.

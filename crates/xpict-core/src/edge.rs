@@ -303,6 +303,37 @@ mod tests {
     }
 
     #[test]
+    fn template_source_accepts_cxsmiles_and_molfile() {
+        let cx = MolTemplate {
+            id: "c".into(),
+            smiles: None,
+            cxsmiles: Some("*C |$R;$|".into()),
+            molfile: None,
+            align: None,
+            template_for: vec![],
+        };
+        assert_eq!(cx.source().unwrap(), "*C |$R;$|");
+        let mf = MolTemplate {
+            id: "m".into(),
+            smiles: None,
+            cxsmiles: None,
+            molfile: Some("molblock".into()),
+            align: None,
+            template_for: vec![],
+        };
+        assert_eq!(mf.source().unwrap(), "molblock");
+        let bad = MolTemplate {
+            id: "b".into(),
+            smiles: Some("C".into()),
+            cxsmiles: Some("CC".into()),
+            molfile: None,
+            align: None,
+            template_for: vec![],
+        };
+        assert!(bad.validate_structure().unwrap_err().contains("exactly one"));
+    }
+
+    #[test]
     fn fallback_result_lists_all_ids() {
         let result = EdgeResult::new_v1(vec![EdgeTaskResult::CoordGen {
             ok: true,

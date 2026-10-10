@@ -17,20 +17,6 @@ def _backend() -> str:
     return layout_backend()
 
 
-def test_rdkit_parses_star_and_charge():
-    pytest.importorskip("rdkit")
-    from rdkit import Chem
-
-    mol = Chem.MolFromSmiles("*C")
-    assert mol.GetAtomWithIdx(0).GetAtomicNum() == 0
-    mol2 = Chem.MolFromSmiles("[NH4+]")
-    assert mol2.GetAtomWithIdx(0).GetFormalCharge() == 1
-    mol3 = Chem.MolFromSmiles("[O-]")
-    assert mol3.GetAtomWithIdx(0).GetFormalCharge() == -1
-    mol4 = Chem.MolFromSmiles("[CH3]")
-    assert mol4.GetAtomWithIdx(0).GetNumRadicalElectrons() == 1
-
-
 def test_charge_label_in_svg():
     svg = render({"molecules": [{"smiles": "[NH4+]"}]}, backend=layout_backend())
     assert "N" in svg
@@ -67,25 +53,6 @@ def test_star_name_from_cxsmiles():
     assert star.label == "R1"
     svg = render({"molecules": [{"cxsmiles": "*C |$R1;$|"}]}, backend=layout_backend())
     assert "R1" in svg
-
-
-@pytest.mark.skip(reason="indigo not in MVP")
-def test_indigo_star_and_charge():
-    lay = Pict(backend="indigo").layout({"molecules": [{"smiles": "*C"}]})[0]
-    assert any(a.element == "*" and a.label for a in lay.atoms)
-    lay2 = Pict(backend="indigo").layout({"molecules": [{"smiles": "[NH4+]"}]})[0]
-    assert lay2.atoms[0].charge == 1
-    svg = render({"molecules": [{"smiles": "C[O]"}]}, backend="indigo")
-    assert "radical" in svg
-
-
-@pytest.mark.skip(reason="indigo not in MVP")
-def test_indigo_cx_star_name():
-    lay = Pict(backend="indigo").layout(
-        {"molecules": [{"cxsmiles": "*C1ccccc1 |$R1;;;;;$|"}]}
-    )[0]
-    star = next(a for a in lay.atoms if a.element == "*")
-    assert star.label == "R1"
 
 
 def test_align_mcs_maps_phenol_scaffold():

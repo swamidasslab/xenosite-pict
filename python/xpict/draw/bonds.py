@@ -36,7 +36,7 @@ _WEDGE_HALF = WEDGE_HALF_PX
 def depict_order(order: float) -> float:
     """Normalize engine bond orders for 2D depiction.
 
-    Indigo aromatic = 4; RDKit aromatic = 1.5. Prefer Kekulé from backends;
+    Aromatic encodings: 1.5 (RDKit-style) or 4 (legacy). Prefer Kekulé from backends;
     this is a safety net so aromatics never become triple lines.
     """
     if order >= 3.5:
@@ -145,7 +145,7 @@ def hashed_wedge(
 def wavy_bond(
     x1: float, y1: float, x2: float, y2: float, *, amp: float | None = None, waves: int = 5
 ) -> PathPrim:
-    """Wiggly single for unspecified stereo (RDKit UNKNOWN / Indigo EITHER)."""
+    """Wiggly single for unspecified stereo (e.g. RDKit UNKNOWN)."""
     ux, uy, nx, ny, length = _unit(x1, y1, x2, y2)
     if amp is None:
         amp = 0.055 * BOND_PX
@@ -439,7 +439,7 @@ def bond_strokes(
     if stereo == "none":
         stereo = ""
 
-    # Stereo singles replace the skeleton (RDKit/Indigo).
+    # Stereo singles replace the skeleton.
     if stereo == "up" and order < 1.5:
         return BondStrokes(stereo=[solid_wedge(x1, y1, x2, y2)])
     if stereo == "down" and order < 1.5:

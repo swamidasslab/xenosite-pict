@@ -11,7 +11,7 @@ use crate::scene::Primitive;
 
 /// Normalize engine bond orders for 2D depiction.
 ///
-/// Indigo aromatic = 4; RDKit aromatic = 1.5. Prefer Kekulé from backends;
+/// Aromatic encodings: 1.5 (RDKit-style) or 4 (legacy). Prefer Kekulé from backends;
 /// this is a safety net so aromatics never become triple lines.
 pub fn depict_order(order: f64) -> f64 {
     if order >= 3.5 || (1.4..1.6).contains(&order) {
@@ -251,7 +251,7 @@ fn hashed_wedge_sw(
     paths
 }
 
-/// Wiggly single for unspecified stereo (RDKit UNKNOWN / Indigo EITHER).
+/// Wiggly single for unspecified stereo (e.g. RDKit UNKNOWN).
 pub fn wavy_bond(
     x1: f64,
     y1: f64,
@@ -1126,7 +1126,7 @@ mod tests {
     }
 
     #[test]
-    fn depict_order_maps_aromatic_and_indigo() {
+    fn depict_order_maps_aromatic_encodings() {
         assert!((depict_order(1.5) - 1.0).abs() < 1e-12);
         assert!((depict_order(4.0) - 1.0).abs() < 1e-12);
         assert!((depict_order(2.0) - 2.0).abs() < 1e-12);

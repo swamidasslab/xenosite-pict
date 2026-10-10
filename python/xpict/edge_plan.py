@@ -1,4 +1,8 @@
-"""EdgePlan build + host ``coord_gen`` processor (Python / RDKit)."""
+"""EdgePlan helpers — structural validate/build only on Python.
+
+Host ``coord_gen`` (SMILES → coords + align) runs in Rust / JS. The former
+Python RDKit processor and free-layout fallbacks were removed.
+"""
 
 from __future__ import annotations
 
@@ -6,16 +10,11 @@ from typing import Any
 
 from xpict.contracts.edge import (
     AlignOpts,
-    CoordGenMoleculeResult,
     CoordGenTask,
-    CoordGenTaskResult,
     EdgePlan,
     EdgeResult,
     MolTemplate,
 )
-
-# Keep in sync with ``xpict_core::edge::MIN_MCS_ATOMS``.
-_MIN_MCS_ATOMS = 3
 
 
 def validate_edge_plan(plan: EdgePlan | dict[str, Any]) -> EdgePlan:
@@ -55,174 +54,29 @@ def build_align_plan(
                     )
                 ]
             )
-        ]
+        ],
     )
-
-
-def _source_of(node: MolTemplate) -> str:
-    for v in (node.smiles, node.cxsmiles, node.molfile):
-        if v is not None and str(v).strip():
-            return str(v)
-    raise ValueError(f"MolTemplate {node.id}: empty structure")
-
-
-def _layout(
-    source: str,
-    *,
-    template: str | None,
-    atom_map: list[tuple[int, int]] | None,
-    id: str | None,
-    min_atoms: int,
-) -> tuple[dict[str, Any], str, str, list[tuple[int, int]] | None]:
-    """Returns molecule, pose_molblock, method, used_map."""
-    from xpict.client import layout_with_rdkit
-
-    molecule, pose, meta = layout_with_rdkit(
-        source,
-        template=template,
-        id=id,
-        atom_map=atom_map,
-        min_atoms=min_atoms,
-    )
-    return molecule, pose, meta["method"], meta.get("used_map")
 
 
 def process_edge_plan(plan: EdgePlan | dict[str, Any]) -> EdgeResult:
-    """Run all ``coord_gen`` tasks; always return a flat molecule list.
+    """Removed: Python RDKit ``coord_gen`` processor.
 
-    Align failure → automatic free (unaligned) layout for that mol; ``method``
-    is ``none`` and ``ok`` stays true when coords were produced.
+    Use the Rust crate / JS host processor, or CoordGen + ``align`` once the
+    native SMILES bridge lands.
     """
-    return process_edge_plan_with_frames(plan)[0]
+    _ = plan
+    raise NotImplementedError(
+        "Python process_edge_plan was removed (no RDKit / free-layout fallback). "
+        "Use the Rust or JS EdgePlan processor."
+    )
 
 
 def process_edge_plan_with_frames(
     plan: EdgePlan | dict[str, Any],
 ) -> tuple[EdgeResult, dict[str, str]]:
-    """Like :func:`process_edge_plan`, plus pose molblocks keyed by mol id."""
-    from xpict.contracts.edge import MoleculeIn
-
-    p = validate_edge_plan(plan)
-    task_results: list[CoordGenTaskResult] = []
-    all_frames: dict[str, str] = {}
-
-    for task in p.tasks:
-        rows: list[CoordGenMoleculeResult] = []
-        poses: dict[str, str] = {}
-
-        def _mol(molecule: dict[str, Any] | None) -> MoleculeIn | None:
-            if molecule is None:
-                return None
-            return MoleculeIn.model_validate(molecule)
-
-        def visit(node: MolTemplate, parent_id: str | None) -> None:
-            source = _source_of(node)
-            min_atoms = _MIN_MCS_ATOMS
-            atom_map = None
-            if node.align is not None:
-                if node.align.min_atoms is not None:
-                    min_atoms = int(node.align.min_atoms)
-                atom_map = node.align.atom_map
-
-            template_pose = poses.get(parent_id) if parent_id else None
-
-            def free_layout() -> tuple[dict[str, Any], str]:
-                molecule, pose, _method, _used = _layout(
-                    source,
-                    template=None,
-                    atom_map=None,
-                    id=node.id,
-                    min_atoms=min_atoms,
-                )
-                return molecule, pose
-
-            try:
-                if parent_id is None:
-                    molecule, pose = free_layout()
-                    rows.append(
-                        CoordGenMoleculeResult(
-                            id=node.id,
-                            ok=True,
-                            method="free",
-                            used_map=None,
-                            molecule=_mol(molecule),
-                            error=None,
-                        )
-                    )
-                    poses[node.id] = pose
-                else:
-                    if template_pose is None:
-                        raise RuntimeError(f"missing parent pose {parent_id}")
-                    molecule, pose, method, used = _layout(
-                        source,
-                        template=template_pose,
-                        atom_map=atom_map,
-                        id=node.id,
-                        min_atoms=min_atoms,
-                    )
-                    if method in ("atom_map", "mcs"):
-                        rows.append(
-                            CoordGenMoleculeResult(
-                                id=node.id,
-                                ok=True,
-                                method=method,  # type: ignore[arg-type]
-                                used_map=used,
-                                molecule=_mol(molecule),
-                                error=None,
-                            )
-                        )
-                    else:
-                        molecule, pose = free_layout()
-                        rows.append(
-                            CoordGenMoleculeResult(
-                                id=node.id,
-                                ok=True,
-                                method="none",
-                                used_map=None,
-                                molecule=_mol(molecule),
-                                error="align failed; fell back to unaligned coord gen",
-                            )
-                        )
-                    poses[node.id] = pose
-            except Exception as e:  # noqa: BLE001 — try free fallback, then record
-                try:
-                    molecule, pose = free_layout()
-                    rows.append(
-                        CoordGenMoleculeResult(
-                            id=node.id,
-                            ok=True,
-                            method="none" if parent_id is not None else "free",
-                            used_map=None,
-                            molecule=_mol(molecule),
-                            error=(
-                                f"align/layout error ({e}); fell back to unaligned coord gen"
-                                if parent_id is not None
-                                else None
-                            ),
-                        )
-                    )
-                    poses[node.id] = pose
-                except Exception as e2:  # noqa: BLE001
-                    rows.append(
-                        CoordGenMoleculeResult(
-                            id=node.id,
-                            ok=False,
-                            method="none",
-                            used_map=None,
-                            molecule=None,
-                            error=str(e2),
-                        )
-                    )
-                    return
-
-            for child in node.template_for:
-                visit(child, node.id)
-
-        for root in task.roots:
-            visit(root, None)
-
-        all_frames.update(poses)
-        task_ok = all(r.ok for r in rows)
-        task_results.append(CoordGenTaskResult(ok=task_ok, molecules=rows))
-
-    return EdgeResult(version=1, results=task_results), all_frames
+    """Removed with :func:`process_edge_plan`."""
+    _ = plan
+    raise NotImplementedError(
+        "Python process_edge_plan_with_frames was removed "
+        "(no RDKit / free-layout fallback)."
+    )

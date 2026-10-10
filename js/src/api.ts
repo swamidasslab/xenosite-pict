@@ -104,7 +104,7 @@ export type MolRenderOptions = {
    * Labels for ``*`` atoms in layout encounter order.
    * ``null`` / ``"*"`` → bare star glyph; other strings (e.g. ``R1``) replace it.
    * When omitted, CXSMILES ``|$alias;…$|`` trailers are applied by **atom
-   * index** (parity with Python ``cx_atom_labels`` / native backend).
+   * index** (parity with ``xpict_core::cx_atom_labels``).
    */
   star_labels?: Array<string | null>;
   /**

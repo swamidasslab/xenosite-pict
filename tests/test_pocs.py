@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from helpers import layout_backend
 
 from xpict import Pict, depict, render
@@ -41,6 +42,11 @@ def test_shade_and_marks_layers():
     assert "substructure-mark" in svg or "mark" in svg
 
 
+@pytest.mark.xfail(
+    reason="Python host coord_gen removed; awaiting native CoordGen SMILES bridge",
+    strict=True,
+    raises=NotImplementedError,
+)
 def test_network_scheme_places_distinct_viewports():
     rows = depict(
         {

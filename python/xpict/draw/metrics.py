@@ -10,13 +10,12 @@ the label stem (``FONT_STEM_EM × FONT_FRAC``), not xenopict's thicker
 
 Geometry that xenopict does not override comes from the engines it sits on:
 
-- double/triple offset ``0.15 × bond`` (RDKit ``multipleBondOffset``;
-  Indigo SVG measured ~0.167)
+- double/triple offset ``0.15 × bond`` (RDKit ``multipleBondOffset``)
 - wedge fat-end ~``0.30 × bond`` so the triangle still reads against the
-  bond stroke (Indigo’s thin-stroke wedges were ~0.17)
+  bond stroke
 
-``coord_scale`` maps layout units onto ``SCALE`` so Indigo (bond ≈ 1)
-and RDKit (bond ≈ 1.5) depict at the same size. SVG roots use those
+``coord_scale`` maps layout units onto ``SCALE`` so CoordGen (bond ≈ 50)
+and RDKit-style (bond ≈ 1.5) depict at the same size. SVG roots use those
 drawing units as ``width``/``height`` (same as viewBox), matching
 xenosite.org’s data-URI ``<img>`` intrinsic-size pattern.
 """
@@ -114,7 +113,7 @@ CHAIN_END_GAP_FRAC = 0.0
 HASH_PER_BOND = 8
 HALO_FRAC = 2 * STROKE_FRAC  # knockout stays twice the ink, as in xenopict
 # Air between label ink and bond ends, and the Rust buffer on the glyph
-# halo. Tuned against RDKit MolDraw2D and Indigo terminal-hetero depictions.
+# halo. Tuned against RDKit MolDraw2D terminal-hetero depictions.
 LABEL_GAP_FRAC = 0.05  # × bond → 1.0 px at BOND_PX=20
 # Molecule caption (MoleculeSpec.label): default center-bottom band.
 TITLE_FONT_FRAC = 0.40  # slightly smaller than atom labels

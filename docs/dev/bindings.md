@@ -84,19 +84,16 @@ Crates to prefer when filling stubs: **`ttf-parser`/`skrifa`** (fonts),
 `crates/xpict-core/fonts/` (packaged with crates.io) and
 `python/xpict/data/fonts/` (Python wheel data) — keep the copies in sync.
 
-## Coords + alignment (RDKit at the edges, Rust for shared math)
+## Coords + alignment (CoordGen on Python; language edges elsewhere)
 
-**Focus:** each language calls **RDKit** for 2D layout and template alignment.
-**Never** put RDKit inside `xpict-core` (won't WASM cleanly).
+**Focus:** Python uses **CoordGen** for 2D layout and cost-based constrained
+align. **Never** put RDKit inside `xpict-core` (won't WASM cleanly).
 
 | Runtime | 2D coords | Template align | Then |
 | --- | --- | --- | --- |
-| Python | `backend="rdkit"` (`xpict[rdkit]`) | `align_rdkit.RdkitAligner` | Draw / rigid helpers via `_native` |
-| Browser | `xpict.mol` / `render` / `toSvg` | RDKit align (hidden) | `scene` JSON → string |
+| Python | `layout2d` / CoordGen (SMILES bridge pending) | cost MCS + soft-constrained CoordGen | `_native.depict_molecule` |
+| Browser | `xpict.mol` / `render` / `toSvg` | language-edge align | `scene` JSON → string |
 | Native Rust | crates.io `rdkit` + `crates/xpict` Depictor FFI | `generateDepictionMatching2DStructure` | `xpict-core` paint → SVG |
-
-**Indigo alternate:** `backend="indigo"` + **fake/rigid align** in Rust only
-(no RDKit template). Rigid-only also when RDKit is absent.
 
 See [`layout-notes.md`](layout-notes.md).
 
@@ -117,10 +114,10 @@ Python synthesizes the ELK graph in `diagram/elk.py` and calls native only
 
 **MVP:** single-molecule depiction with **marks** (circle atoms/bonds),
 **shading** (plot-dot disks), backbone/label **color**, and **alignment**
-(RDKit at edges; Rust rigid helpers). Not multi-mol / ELK scenes.
+(CoordGen / language-edge). Multi-mol / ELK via `compose_scheme`.
 
 ```
-  RDKit / Indigo / native  (+ align)
+  CoordGen / native  (+ align)
            │  atoms, bonds, SVG-space coords, shade/marks
            ▼
      xpict-core  (paint → Scene, one viewport)

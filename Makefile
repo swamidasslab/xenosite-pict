@@ -34,12 +34,12 @@ help: ## Show documented targets
 ##@ Setup
 
 .PHONY: sync
-sync: ## Python venv: uv sync --group dev --extra rdkit
-	cd "$(ROOT)" && uv sync --group dev --extra rdkit
+sync: ## Python venv: uv sync --group dev
+	cd "$(ROOT)" && uv sync --group dev
 
 .PHONY: sync-docs
-sync-docs: ## Python venv: docs + dev + rdkit (Pages / MkDocs)
-	cd "$(ROOT)" && uv sync --group docs --group dev --extra rdkit
+sync-docs: ## Python venv: docs + dev (Pages / MkDocs)
+	cd "$(ROOT)" && uv sync --group docs --group dev
 
 .PHONY: js-deps
 js-deps: ## npm ci in js/
@@ -127,8 +127,7 @@ cov: ## llvm-cov on xpict-core (fails under RUST_COV_MIN)
 
 .PHONY: cov-lcov
 cov-lcov: ## llvm-cov → lcov.info (CI artifact shape)
-	cd "$(ROOT)" && cargo llvm-cov -p xpict-core --lcov --output-path lcov.info \
-		--fail-under-lines "$(RUST_COV_MIN)"
+	cd "$(ROOT)" && RUST_COV_MIN="$(RUST_COV_MIN)" LCOV_OUT=lcov.info bash scripts/rust_coverage.sh
 
 ##@ Schema / version / publish helpers
 

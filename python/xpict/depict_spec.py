@@ -1,7 +1,7 @@
 """Declarative DepictSpec — Rust-first two/three-pass (parity with JS / Rust).
 
 Pass 1: core ``plan_edge`` → EdgePlan
-Host:   ``process_edge_plan_with_frames`` (RDKit)
+Host:   language-edge ``coord_gen`` (Rust/JS today; Python host removed)
 Pass 2: core ``render_doc`` → per-mol scenes
 Pass 3: core ``compose_scheme`` → one Scene (reaction_scheme only)
 """
@@ -101,10 +101,12 @@ def _rendered_from_row(
 
 
 def depict(spec: DepictSpec | dict[str, Any] | str) -> list[Rendered]:
-    """Declarative document → ``list[Rendered]`` via core plan/paint + RDKit edge.
+    """Declarative document → ``list[Rendered]`` via core plan/paint + host edge.
 
     ``reaction_scheme`` roots are composed into **one** ``Rendered`` (ELK layout
     + edge overlays in Rust). ``mol`` / ``group`` stay one row per molecule.
+
+    Python host ``coord_gen`` was removed (no RDKit / free-layout fallback).
     """
     doc = _as_depict_spec(spec)
     plan = plan_edge(doc)

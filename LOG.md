@@ -2,6 +2,30 @@
 
 ## 2026-10-10
 
+- Coverage pass (Python `coverage` + Rust `llvm-cov`): deleted 0% modules
+  `model`/`render`/`scene`/`schema`/`structure`/`perception`, empty
+  `backends/`, draft `coordgen/ffi.*`, obsolete
+  `rdkit_vs_chematic_layout.ipynb`, RDKit-only edge/wedge test files; slimmed
+  `client`/`api` (no dead layout helpers); fixed `make sync` (dropped
+  `--extra rdkit`) and `rust_coverage.sh` llvm-tools path.
+- Cut rigid/Kabsch fallback and Python RDKit host surface: deleted
+  `xpict-core` `align.rs` + PyO3 `kabsch_2d`/`rigid_align_coords`; slimmed
+  `align.py` to CoordGen-only (no `Aligner`/`RigidAligner`); stubbed
+  `client.render` / `process_edge_plan` (no free-layout fallback); dropped
+  those from the public `__init__` exports; removed `test_align.py` /
+  `test_rdkit_backend.py`.
+- Removed all Indigo references: deleted `backends/indigo.py` and
+  `js/.../indigo-wasm.ts`, dropped `xpict[indigo]` / `epam-indigo` from
+  `pyproject.toml`, emptied the Python layout-backend registry, and rewrote
+  docs/POC captions that named Indigo. Legacy Pict tests that needed a
+  chem-engine backend now `pytest.xfail` pending a native CoordGen Pict path.
+- Cost align (no Python MCS): Rust atom–bond incidence graph mapper in
+  `align_cost.rs` (unmatched atom/bond cost 5 > pair mismatches; element
+  mismatch allowed; E/Z substituent sides hard-disallowed; tetrahedral free).
+  Constrained CoordGen align in `align_layout.rs` + PyO3
+  `cost_mapping` / `align_molecule_constrained`. `align.py` is a thin
+  CoordGen-only wrapper (no rigid fallback).
+  Key case: hexane→cyclohexane full map, soft-constrained ring stays hexagonal.
 - Promoted CoordGen from `poc/` + draft `coordgen/ffi.*` into workspace
   `crates/coordgen-sys` (fixed C ABI against real `sketcherMinimizer`).
   Feature `coordgen` on xpict-core; default-on for xpict-py + xpict; optional
@@ -22,6 +46,18 @@
 - Interactive playground notebook
   `notebooks/coordgen_playground.ipynb`: edit ref/query SMILES, MATCH pairs,
   constraint mode, and layout FLAGS; view numbered maps + native depictions.
+- Alignment notebooks were misleading: independent `a1aaaaa1` maps on fused
+  pairs (naphthalene↔quinoline) locked the wrong ring; side-by-side auto-fit
+  SVGs also hide true overlap. Fixed mapper to MCS (`CompareAny`); shared
+  helpers in `notebooks/_coordgen_align.py` + `tests/test_coordgen_align_notebook.py`
+  (hard RMS≈0, fused map ≥9 atoms).
+- RDKit baseline overlay: `preferCoordGen` left ~0.005 matched-atom residual
+  (looked unaligned). Now `ConstrainedDepictionParams.forceRDKit=True` and seed
+  ref from native CoordGen coords so baseline shares the template frame; RMS=0.
+- Stereo cases in notebooks/tests: E/Z from RDKit `GetStereoAtoms` →
+  `stereo`/`stereo_atom1`/`stereo_atom2`; geometry asserts same-side for cis.
+  Chiral SMILES layout smoke (no wedge API in CoordGen FFI). `even_angles` =
+  equal neighbor spacing vs default organic 120°/tetrahedral preferences.
 
 ## 2026-10-07
 

@@ -1,4 +1,4 @@
-"""Depiction proportions vs xenopict, Indigo SVG, and RDKit MolDrawOptions."""
+"""Depiction proportions vs xenopict and RDKit MolDrawOptions."""
 
 from __future__ import annotations
 

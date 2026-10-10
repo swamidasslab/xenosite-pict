@@ -46,8 +46,10 @@ def _rdkit_to_request(
     """Test-only helper: RDKit parse → Layout2DRequest (not a public API)."""
     mol = Chem.MolFromSmiles(smiles)
     assert mol is not None, smiles
-    mol = Chem.AddHs(mol, explicitOnly=False, addCoords=False)
-    # Drop Hs for depiction graph parity with typical 2D layouts.
+    try:
+        Chem.Kekulize(mol, clearAromaticFlags=True)
+    except Chem.KekulizeException:
+        pass
     mol = Chem.RemoveHs(mol)
 
     atoms: list[Layout2DAtom] = []
@@ -69,17 +71,38 @@ def _rdkit_to_request(
     for bond in mol.GetBonds():
         order = int(round(bond.GetBondTypeAsDouble()))
         order = max(1, min(3, order)) if order else 1
-        # Aromatic → single for CoordGen (caller can Kekulize if needed).
-        if bond.GetIsAromatic():
-            order = 1
-        bonds.append(
-            Layout2DBond(
-                begin=bond.GetBeginAtomIdx(),
-                end=bond.GetEndAtomIdx(),
-                order=order,
+        bkw: dict = {
+            "begin": bond.GetBeginAtomIdx(),
+            "end": bond.GetEndAtomIdx(),
+            "order": order,
+        }
+        st = bond.GetStereo()
+        stereo_atoms = list(bond.GetStereoAtoms())
+        if len(stereo_atoms) == 2 and st in (
+            Chem.BondStereo.STEREOZ,
+            Chem.BondStereo.STEREOCIS,
+            Chem.BondStereo.STEREOE,
+            Chem.BondStereo.STEREOTRANS,
+        ):
+            bkw["stereo"] = (
+                "cis"
+                if st in (Chem.BondStereo.STEREOZ, Chem.BondStereo.STEREOCIS)
+                else "trans"
             )
-        )
+            bkw["stereo_atom1"] = int(stereo_atoms[0])
+            bkw["stereo_atom2"] = int(stereo_atoms[1])
+        bonds.append(Layout2DBond(**bkw))
     return Layout2DRequest(atoms=atoms, bonds=bonds, layout_flags=layout_flags)
+
+
+def _same_side(
+    res: Layout2DResult, begin: int, end: int, s1: int, s2: int
+) -> bool:
+    ax, ay = res.x[begin], res.y[begin]
+    bx, by = res.x[end], res.y[end]
+    cross1 = (bx - ax) * (res.y[s1] - ay) - (by - ay) * (res.x[s1] - ax)
+    cross2 = (bx - ax) * (res.y[s2] - by) - (by - ay) * (res.x[s2] - bx)
+    return cross1 * cross2 > 0.0
 
 
 def _assert_finite(res: Layout2DResult, n: int) -> None:
@@ -186,6 +209,49 @@ def test_stereo_with_neighbor_atoms():
     )
     res = generate_2d_coordinates(req)
     _assert_finite(res, 4)
+    assert _same_side(res, 0, 1, 2, 3)
+
+
+@pytest.mark.parametrize(
+    "smiles,expect_cis",
+    [
+        (r"C/C=C\C", True),
+        (r"C/C=C/C", False),
+        (r"OC(=O)/C=C\C(=O)O", True),
+        (r"OC(=O)/C=C/C(=O)O", False),
+        (r"Cl/C=C\Br", True),
+        (r"Cl/C=C/Br", False),
+    ],
+)
+def test_ez_stereo_from_smiles_honored(smiles: str, expect_cis: bool):
+    req = _rdkit_to_request(smiles)
+    stereo_bonds = [b for b in req.bonds if b.stereo in ("cis", "trans")]
+    assert stereo_bonds, f"no E/Z parsed from {smiles!r}"
+    res = generate_2d_coordinates(req)
+    _assert_finite(res, len(req.atoms))
+    for b in stereo_bonds:
+        assert b.stereo_atom1 is not None and b.stereo_atom2 is not None
+        same = _same_side(res, b.begin, b.end, b.stereo_atom1, b.stereo_atom2)
+        if expect_cis:
+            assert same, (smiles, b, res.coords)
+        else:
+            assert not same, (smiles, b, res.coords)
+
+
+@pytest.mark.parametrize(
+    "smiles",
+    [
+        "C[C@H](O)C(=O)O",
+        "C[C@@H](N)C(=O)O",
+        "C[C@H](O)[C@@H](C)NC",
+        "C[C@H](O)[C@H](C)NC",  # diastereomer — layout only (no wedge API)
+        r"C/C=C/[C@H](C)O",  # E alkene + chiral
+    ],
+)
+def test_chiral_and_mixed_stereo_layout_finite(smiles: str):
+    req = _rdkit_to_request(smiles)
+    res = generate_2d_coordinates(req)
+    _assert_finite(res, len(req.atoms))
 
 
 def test_skip_minimization_and_metal_flags_do_not_error():

@@ -10,40 +10,32 @@ that as the guide:
 | --- | --- |
 | Rings (regular / fused / spiro / bridged) | CDK `RingPlacer`, RDKit `EmbeddedFrag` / `embedRing`, CoordGen templates |
 | Chains (120° zig-zag, longest chain, partner distribution) | CDK `AtomPlacer` (`placeLinearChain`, `distributePartners`), RDKit non-ring expand + collision flips |
-| Bond drawing | Skeleton centerlines first; double/triple as shortened offsets (RDKit MolDraw2D, Indigo render) |
-| Stereo | RDKit `WedgeMolBonds` + solid/hashed wedges; Indigo `UP`/`DOWN`/`EITHER`; E/Z via layout + crossed “either” doubles |
-| Collisions / polish | RDKit flip/openAngles/shorten; CoordGen; Indigo `smart-layout` |
+| Bond drawing | Skeleton centerlines first; double/triple as shortened offsets (RDKit MolDraw2D) |
+| Stereo | RDKit `WedgeMolBonds` + solid/hashed wedges; E/Z via layout + crossed “either” doubles |
+| Collisions / polish | RDKit flip/openAngles/shorten; CoordGen |
 
 Hard cases (bridged cages, congested chains, stereo centers, macrocycles) are the
 test of quality — not benzene.
 
-## Strategic target: RDKit for coords+align; Indigo alternate
+## Strategic target: CoordGen for coords+align on Python
 
 **MVP (shared Rust paint):** one molecule — Kekulé depiction, atom/bond
 **marks** (circles), atom/bond **shading**, backbone/label **color**, plus
 **alignment**. Multi-mol diagrams / ELK are post-MVP.
 
-**Focus (current):** call **RDKit at each language edge** for:
-
-1. **2D coordinates** — `backend="rdkit"` (Python `rdkit` / JS `@rdkit/rdkit`); **CoordGen on by default** for free layout when the build includes it
-2. **Template alignment** — `align_rdkit` tries CoordGen then Depictor (`forceRDKit`) if the core won’t lock; MinimalLib stays `useCoordGen:false`; pass maps into Rust
+**Focus (current):** **CoordGen** (via `layout2d` / Rust) for Python 2D coords and
+cost-based constrained align. JS may still use RDKit temporarily.
 
 **Do not** link RDKit into `xpict-core` (no Rust RDKit / no WASM chem wrapper).
 
-**Alternate path:** **Indigo** layout + **fake/rigid align** implemented in Rust
-(Kabsch / shared transforms only — no template depict).
-
-There is **no in-house SMILES layout backend** — experimental native layout was
-removed after it failed hard cases (long ring substituents curling into false
-rings). Own the **drawing** path in Rust; leave 2D coords to RDKit/Indigo.
-**Chematic is out.**
+Own the **drawing** path in Rust; leave 2D coords to CoordGen (Python) /
+language-edge layout (JS).
 
 Until drawing owns the hard-case gallery:
 
-1. Learn algorithms from RDKit / Indigo / CoordGen / CDK (read their sources).
+1. Learn algorithms from RDKit / CoordGen / CDK (read their sources).
 2. Own the **drawing** path (skeleton → offsets → wedges; our SVG), migrating into Rust.
-3. Prefer **RDKit** for production-ish coords and alignment on both Python and JS.
-4. Keep **Indigo** as optional alternate layout for comparison / environments without RDKit.
+3. Prefer **CoordGen** for production coords and constrained align on Python.
 
 Shipping shared ink (fonts, geometry, bond math) as **Rust** (`xpict-core` + PyO3 +
 WASM) is the dual-language path — prove in Python, then port.
@@ -57,28 +49,28 @@ unify JS):
 | `geom` | **Done** — `i_overlay` Shape | buffer / union / xor / halo | Halos, glyph counters, annotate |
 | `font` | **Done** — `ttf-parser` + Liberation | outlines / advances / Shape | Atom labels / captions → SVG paths |
 | `metrics` / `plotdot` / `bonds` | Done (partial) | — | Already in core + bindings |
-| `align` (rigid) | Python Kabsch | pure Rust | Indigo / no-RDKit fake align |
+| `align` (cost + CoordGen) | Python wrappers | `align_cost` / `align_layout` | No rigid/Kabsch fallback |
 
 Capsule/disk halos and glyph outlines already call Rust. Next: WASM font
 exports so the browser matches Python labels without a JS font stack.
 
-### Alignment + coords: RDKit at the edges — never in Rust
+### Alignment + coords: CoordGen / language edges — never RDKit in Rust
 
 | Layer | Who | Job |
 | --- | --- | --- |
-| 2D layout | **Python** `rdkit` / **JS** `@rdkit/rdkit` | `Compute2DCoords`, wedges, kekulize |
-| Template align | same RDKit packages | MCS / `coordMap` template depict |
-| Common math | **`xpict-core`** | Rigid Kabsch, score embeddings, apply maps — pure numbers |
+| 2D layout | **Python** CoordGen (`layout2d`) / **JS** language-edge | free + constrained coords |
+| Template align | cost MCS + soft-constrained CoordGen (Python) | maps into Rust |
+| Common math | **`xpict-core`** | Cost MCS, constrained CoordGen, apply maps |
 
-Flow: language edge asks RDKit → gets atoms/bonds/coords (and align maps) →
-Rust draw + optional rigid-align helpers. Indigo skip RDKit align → Rust fake align.
+Flow: language edge / CoordGen → atoms/bonds/coords (and align maps) →
+Rust draw.
 
-### Layout backends
+### Layout path
 
-1. **rdkit** — default when installed (required for trustworthy coords).
-2. **indigo** — alternate; pair with Rust rigid/fake align.
+1. **coordgen** — Python product path (`layout2d` / `_native`).
+2. Legacy Pict `backends` registry is empty until a SMILES→`MoleculeLayout` bridge lands.
 
-CoordGen / CDK remain **algorithm references**, not installed layout backends.
+CDK / RDKit remain **algorithm references** for drawing quality.
 
 ## Drawing model (own SVG)
 
@@ -125,7 +117,7 @@ Sources: `Depictor/EmbeddedFrag.cpp`, `DepictUtils.cpp` (`embedRing`).
 
 | Stage | Owner | Role of SSSR |
 | --- | --- | --- |
-| Atom coordinates | RDKit+CoordGen free layout (default when available); constrained align CoordGen→Depictor fallback / Indigo (alternate) | Regular / fused / bridged / template |
+| Atom coordinates | CoordGen free + soft-constrained align (`layout2d`) | Regular / fused / bridged / template |
 | Kekulé offsets, aromatic circle | Drawer (`draw/rings.py`, `scene_builder`) | Interior normals; optional circle |
 | “Can all faces be regular?” | Classifier in `draw/rings.py` | FUSED/SPIRO/BRIDGED + cage (atom in ≥3 rings) |
 
@@ -154,7 +146,7 @@ Native layout must implement these before claiming chain quality.
 
 ## Stereochemistry
 
-Guide: RDKit MolDraw2D wedges + `WedgeMolBonds`; Indigo `UP`/`DOWN`/`EITHER`.
+Guide: RDKit MolDraw2D wedges + `WedgeMolBonds`.
 
 - Tetrahedral: solid wedge (up) / hashed wedge (down); **narrow end at the
   stereocenter** (`begin` of the bond in layout).
@@ -170,12 +162,12 @@ glyphs; document ``baseFontSize`` is 0.6 but drawn caps read smaller).
 Stroke tracks the Liberation stem (``≈0.042 × bond``). Double-bond offset
 stays RDKit’s ``0.15``. See ``draw/metrics.py``.
 ``normalize_coords`` scales each layout so the mean bond is that pixel
-length (Indigo bonds are 1.0; RDKit bonds are typically ~1.5 before scale).
+length (CoordGen bonds ≈ 50; RDKit-style bonds ≈ 1.5 before scale).
 
-`BondLayout.stereo` carries `up`/`down`/`either`/`none`. RDKit (`WedgeMolBonds`)
-and Indigo backends populate it; `draw.bonds` renders solid/hashed wedges, wavy
-either singles, and crossed either doubles (thin end at `begin` = stereocenter).
-CIP-accurate tetrahedral wedges remain open for edge cases.
+`BondLayout.stereo` carries `up`/`down`/`either`/`none`. Layout edges populate
+it; `draw.bonds` renders solid/hashed wedges, wavy either singles, and crossed
+either doubles (thin end at `begin` = stereocenter). CIP-accurate tetrahedral
+wedges remain open for edge cases.
 
 ## ELK for multi-mol diagrams
 

@@ -1,4 +1,4 @@
-"""Gallery example regressions — markup, nested docs, shade."""
+"""Gallery example regressions — schema + committed SVG assets."""
 
 from __future__ import annotations
 
@@ -13,37 +13,33 @@ from xpict import DepictSpec, render
 ROOT = Path(__file__).resolve().parents[1]
 EXAMPLES = ROOT / "docs" / "assets" / "examples"
 
+_HOST_GONE = pytest.mark.xfail(
+    reason="Python host coord_gen removed; awaiting native CoordGen SMILES bridge",
+    strict=True,
+    raises=NotImplementedError,
+)
+
 
 def _texts(svg: str) -> list[str]:
     return re.findall(r'data-text="([^"]*)"', svg)
 
 
-def _require_rdkit() -> None:
-    pytest.importorskip("rdkit")
-
-
+@_HOST_GONE
 def test_gallery_markush_cx_r1():
-    _require_rdkit()
-    svg = render(
-        {"type": "mol", "cxsmiles": "*c1ccccc1Cl |$R1;;;;;$|"},
-        backend="rdkit",
-    )
+    svg = render({"type": "mol", "cxsmiles": "*c1ccccc1Cl |$R1;;;;;$|"})
     texts = _texts(svg)
     assert "R1" in texts, f"expected literal R1 from CX alias, got {texts}"
 
 
+@_HOST_GONE
 def test_gallery_phenol_star_cx_r1():
-    _require_rdkit()
-    svg = render(
-        {"type": "mol", "cxsmiles": "*c1ccc(O)cc1 |$R1;;;;;$|"},
-        backend="rdkit",
-    )
+    svg = render({"type": "mol", "cxsmiles": "*c1ccc(O)cc1 |$R1;;;;;$|"})
     texts = _texts(svg)
     assert "R1" in texts, f"expected literal R1 from CX alias, got {texts}"
 
 
+@_HOST_GONE
 def test_shade_does_not_flood_disks():
-    _require_rdkit()
     doc = {
         "type": "mol",
         "smiles": "c1ccccc1O",
@@ -54,7 +50,7 @@ def test_shade_does_not_flood_disks():
         },
     }
     DepictSpec.model_validate(doc)
-    svg = render(doc, backend="rdkit")
+    svg = render(doc)
     n_shade = len(re.findall(r'class="shade"', svg))
     assert n_shade > 0
     assert n_shade < 12, f"shade should stay readable, not flood disks ({n_shade})"
@@ -63,7 +59,7 @@ def test_shade_does_not_flood_disks():
 def test_committed_markush_svg_has_r1():
     path = EXAMPLES / "markush.svg"
     if not path.is_file():
-        pytest.skip("gallery assets not generated yet")
+        pytest.xfail("gallery assets not generated yet")
     texts = _texts(path.read_text(encoding="utf-8"))
     assert "R1" in texts, f"{path.name} missing R1 — regenerate gallery SVGs"
 
@@ -71,7 +67,7 @@ def test_committed_markush_svg_has_r1():
 def test_committed_star_r1_svg_has_subscript():
     path = EXAMPLES / "star_r1.svg"
     if not path.is_file():
-        pytest.skip("gallery assets not generated yet")
+        pytest.xfail("gallery assets not generated yet")
     texts = _texts(path.read_text(encoding="utf-8"))
     assert "R₁" in texts, f"{path.name} missing R₁ — regenerate gallery SVGs"
 
@@ -90,25 +86,23 @@ def test_live_doc_accepts_star_labels():
     assert doc.mols()[0].star_labels == ["$R_1$"]
 
 
+@_HOST_GONE
 def test_gallery_star_labels_subscript():
-    _require_rdkit()
     svg = render(
         {"type": "mol", "smiles": "*C", "star_labels": ["$R_1$"]},
-        backend="rdkit",
     )
     texts = _texts(svg)
     assert "R₁" in texts, f"expected R₁ from document star_labels, got {texts}"
 
 
+@_HOST_GONE
 def test_star_labels_wins_over_cx_on_document():
-    _require_rdkit()
     svg = render(
         {
             "type": "mol",
             "cxsmiles": "*C |$R1;$|",
             "star_labels": ["X"],
         },
-        backend="rdkit",
     )
     texts = _texts(svg)
     assert "X" in texts, f"star_labels should override CX alias, got {texts}"

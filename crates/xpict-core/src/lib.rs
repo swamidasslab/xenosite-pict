@@ -7,7 +7,7 @@
 
 #![forbid(unsafe_code)]
 
-pub mod align;
+pub mod align_cost;
 pub mod arrows;
 pub mod bonds;
 pub mod colormap;
@@ -30,9 +30,19 @@ pub mod rings;
 pub mod scene;
 
 #[cfg(feature = "coordgen")]
+pub mod align_layout;
+#[cfg(feature = "coordgen")]
 pub mod layout_coordgen;
 
-pub use align::{kabsch_2d, rigid_align_coords, RigidTransform};
+pub use align_cost::{
+    cost_mapping, mapping_cost, signed_side, substituents_same_side, AtomChirality, AtomFeat,
+    BondFeat, EzStereo, MappingResult, MolGraph, COST_BOND_ORDER, COST_CHARGE_RADICAL,
+    COST_ELEMENT, COST_UNMATCHED,
+};
+#[cfg(feature = "coordgen")]
+pub use align_layout::{
+    align_molecule_constrained, hexagon_fit_max_dev, mol_graph_from_layout, ConstrainedAlignResult,
+};
 pub use arrows::{
     axis_aligned, clip_box_edge, edge_anchors, edge_primitives as arrow_edge_primitives,
     filleted_path_d, shaft_path_d, should_fillet, simplify_route, EdgePaintIn, EdgePrim,

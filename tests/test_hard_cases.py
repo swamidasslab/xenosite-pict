@@ -1,7 +1,7 @@
 """Hard-case regression tests grown from depiction failures.
 
 Each case encodes a concrete bug we hit while derisking:
-- Indigo aromatic order=4 drawn as triple bonds
+- Legacy aromatic order=4 drawn as single (not triple)
 - Double-bond offsets on the outside of rings
 - Shade min/max remapping that turned zeros into full blue
 - Plot-dot disks for near-zero scores

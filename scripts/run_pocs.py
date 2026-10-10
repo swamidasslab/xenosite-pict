@@ -40,20 +40,11 @@ def _out_dir() -> Path:
 
 
 def _pick_backend() -> str:
-    try:
-        import rdkit  # noqa: F401
-
-        return "rdkit"
-    except Exception:
-        pass
-    try:
-        Pict(backend="indigo").layout({"molecules": [{"smiles": "C"}]})
-        return "indigo"
-    except Exception as e:
-        raise SystemExit(
-            "No layout backend available. Install xpict[rdkit] (preferred) "
-            f"or xpict[indigo]. ({e})"
-        ) from e
+    raise SystemExit(
+        "Legacy Pict layout backends were removed. "
+        "POC scripts need a registered native CoordGen backend; "
+        "use xpict.layout2d.generate_2d_coordinates until then."
+    )
 
 
 def poc_svg(out: Path, backend: str) -> Path:
@@ -146,7 +137,7 @@ def poc_elk(out: Path, backend: str) -> Path:
 def poc_pipeline(out: Path, backend: str) -> Path:
     """POC D: full pipeline collage — hard molecules, stereo, shade, pathway.
 
-    One document that exercises Indigo layout → own skeleton/offset/wedge draw →
+    One document that exercises layout → own skeleton/offset/wedge draw →
     marks/shade → ELK network in a single regeneratable artifact set.
     """
     pict = Pict(backend=backend)
@@ -302,7 +293,7 @@ def poc_pipeline(out: Path, backend: str) -> Path:
             branch_path.name,
         ],
         "notes": [
-            "Indigo layout → own skeleton/offset/wedge SVG",
+            "Layout coords → own skeleton/offset/wedge SVG",
             "ELK pathway placement via elkrs",
             "Branched scheme uses ELK orthogonal edge routes → overlay arrows",
             "Shade/marks on aspirin as site-of-metabolism annotation",
@@ -314,7 +305,7 @@ def poc_pipeline(out: Path, backend: str) -> Path:
 
 
 def poc_compare(out: Path, backend: str) -> Path:
-    """POC E: RDKit layout grid on shared SMILES (optional Indigo twin)."""
+    """POC E: layout grid on shared SMILES."""
     cases = [
         ("benzene", "c1ccccc1"),
         ("naphthalene", "c1ccc2ccccc2c1"),
@@ -330,40 +321,22 @@ def poc_compare(out: Path, backend: str) -> Path:
         ("pyrrole", "c1ccc[nH]1"),
         ("hexylcyclohexane", "C1CCCCC1CCOCCCCCC"),
     ]
-    primary = backend if backend in {"rdkit", "indigo"} else "rdkit"
     spec = {
         "molecules": [
-            {"id": f"p-{cid}", "smiles": smi, "title": f"{cid} ({primary})"}
+            {"id": f"p-{cid}", "smiles": smi, "title": f"{cid} ({backend})"}
             for cid, smi in cases
         ],
         "diagram": {"kind": "grid", "columns": 3},
     }
-    primary_path = out / f"poc-e-grid-{primary}.svg"
-    primary_path.write_text(render(spec, backend=primary), encoding="utf-8")
-
-    twin = "indigo" if primary == "rdkit" else "rdkit"
-    twin_path = None
-    try:
-        twin_spec = {
-            "molecules": [
-                {"id": f"t-{cid}", "smiles": smi, "title": f"{cid} ({twin})"}
-                for cid, smi in cases
-            ],
-            "diagram": {"kind": "grid", "columns": 3},
-        }
-        twin_path = out / f"poc-e-grid-{twin}.svg"
-        twin_path.write_text(render(twin_spec, backend=twin), encoding="utf-8")
-    except Exception as e:
-        print(f"skip twin backend {twin}: {e}")
+    primary_path = out / f"poc-e-grid-{backend}.svg"
+    primary_path.write_text(render(spec, backend=backend), encoding="utf-8")
 
     (out / "poc-e-compare.json").write_text(
         json.dumps(
             {
                 "cases": [{"id": c, "smiles": s} for c, s in cases],
                 "primary": primary_path.name,
-                "primary_backend": primary,
-                "twin": twin_path.name if twin_path else None,
-                "twin_backend": twin if twin_path else None,
+                "primary_backend": backend,
             },
             indent=2,
         ),
@@ -416,7 +389,7 @@ def write_gallery(out: Path, backend: str, only: list[Path] | None = None) -> Pa
     cards = [
         (
             "A — Own SVG",
-            "Indigo coords → our scene → SVG (no engine SVG mutation).",
+            "Layout coords → our scene → SVG (no engine SVG mutation).",
             out / f"poc-a-own-svg-{backend}.svg",
         ),
         (
@@ -436,7 +409,7 @@ def write_gallery(out: Path, backend: str, only: list[Path] | None = None) -> Pa
         ),
         (
             "D2 — Stereo wedges",
-            "Chiral center with solid/hashed wedges from Indigo stereo → own draw.",
+            "Chiral center with solid/hashed wedges from layout stereo → own draw.",
             out / f"poc-d2-stereo-{backend}.svg",
         ),
         (
@@ -455,14 +428,9 @@ def write_gallery(out: Path, backend: str, only: list[Path] | None = None) -> Pa
             out / f"poc-d5-branched-{backend}.svg",
         ),
         (
-            "E — RDKit layout grid",
-            "Shared SMILES laid out with RDKit (default) at the language edge.",
+            "E — Layout grid",
+            "Shared SMILES laid out with the registered layout backend.",
             out / f"poc-e-grid-{backend}.svg",
-        ),
-        (
-            "E — Twin backend grid",
-            "Same SMILES with the alternate layout backend when available.",
-            out / f"poc-e-grid-{'indigo' if backend == 'rdkit' else 'rdkit'}.svg",
         ),
     ]
     if only is not None:

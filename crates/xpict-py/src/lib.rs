@@ -7,7 +7,6 @@
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 use pyo3::types::PyModule;
-use xpict_core::align;
 use xpict_core::bonds;
 use xpict_core::depict;
 use xpict_core::geom::{self, Shape as CoreShape};
@@ -115,34 +114,6 @@ fn element_symbol(z: u32) -> &'static str {
 #[pyfunction]
 fn atomic_number(symbol: &str) -> Option<u32> {
     xpict_core::atomic_number(symbol)
-}
-
-/// Kabsch 2D: paired ``src`` → ``dst``. Returns ``(cos, sin, tx, ty, det)``.
-#[pyfunction]
-#[pyo3(signature = (src, dst, allow_reflect=true))]
-fn kabsch_2d(
-    src: Vec<(f64, f64)>,
-    dst: Vec<(f64, f64)>,
-    allow_reflect: bool,
-) -> PyResult<(f64, f64, f64, f64, f64)> {
-    if src.len() != dst.len() {
-        return Err(PyRuntimeError::new_err("src/dst length mismatch"));
-    }
-    let xf = align::kabsch_2d(&src, &dst, allow_reflect);
-    Ok((xf.cos, xf.sin, xf.tx, xf.ty, xf.det))
-}
-
-/// Rigid-align ``other`` coords onto a template.
-///
-/// ``template`` / ``other`` are ``(index, x, y)``. ``mapping`` is
-/// ``(other_index, template_index)``. Returns transformed ``(index, x, y)``.
-#[pyfunction]
-fn rigid_align_coords(
-    template: Vec<(i32, f64, f64)>,
-    other: Vec<(i32, f64, f64)>,
-    mapping: Vec<(i32, i32)>,
-) -> Vec<(i32, f64, f64)> {
-    align::rigid_align_coords(&template, &other, &mapping).0
 }
 
 /// PlotDot rings for one normalized score `z`.
@@ -762,6 +733,187 @@ fn generate_2d_coordinates(
     })
 }
 
+#[cfg(feature = "coordgen")]
+fn layout_mol_from_parts(
+    atomic_numbers: Vec<i32>,
+    bond_from: Vec<i32>,
+    bond_to: Vec<i32>,
+    bond_orders: Vec<i32>,
+    formal_charges: Option<Vec<i32>>,
+    bond_stereos: Option<Vec<i32>>,
+    bond_stereo_atom1: Option<Vec<i32>>,
+    bond_stereo_atom2: Option<Vec<i32>>,
+    input_x: Option<Vec<f32>>,
+    input_y: Option<Vec<f32>>,
+    layout_flags: Option<i32>,
+) -> xpict_core::layout_coordgen::LayoutMolecule {
+    use xpict_core::layout_coordgen::LayoutMolecule;
+    let n = atomic_numbers.len();
+    let nb = bond_from.len();
+    LayoutMolecule {
+        formal_charges: formal_charges.unwrap_or_else(|| vec![0; n]),
+        bond_stereos: bond_stereos.unwrap_or_else(|| vec![0; nb]),
+        atomic_numbers,
+        bond_from,
+        bond_to,
+        bond_orders,
+        bond_stereo_atom1,
+        bond_stereo_atom2,
+        has_template_match: None,
+        is_atom_fixed: None,
+        input_x,
+        input_y,
+        layout_flags: layout_flags.unwrap_or(0),
+    }
+}
+
+/// Minimum-cost atom map (query→ref). Returns ``(pairs, cost)`` with
+/// ``pairs`` as ``[(query_idx, ref_idx), ...]``.
+#[cfg(feature = "coordgen")]
+#[pyfunction]
+#[pyo3(signature = (
+    ref_atomic_numbers, ref_bond_from, ref_bond_to, ref_bond_orders,
+    query_atomic_numbers, query_bond_from, query_bond_to, query_bond_orders,
+    *,
+    ref_formal_charges=None, ref_bond_stereos=None,
+    ref_bond_stereo_atom1=None, ref_bond_stereo_atom2=None,
+    query_formal_charges=None, query_bond_stereos=None,
+    query_bond_stereo_atom1=None, query_bond_stereo_atom2=None,
+))]
+#[allow(clippy::too_many_arguments)]
+fn cost_mapping(
+    ref_atomic_numbers: Vec<i32>,
+    ref_bond_from: Vec<i32>,
+    ref_bond_to: Vec<i32>,
+    ref_bond_orders: Vec<i32>,
+    query_atomic_numbers: Vec<i32>,
+    query_bond_from: Vec<i32>,
+    query_bond_to: Vec<i32>,
+    query_bond_orders: Vec<i32>,
+    ref_formal_charges: Option<Vec<i32>>,
+    ref_bond_stereos: Option<Vec<i32>>,
+    ref_bond_stereo_atom1: Option<Vec<i32>>,
+    ref_bond_stereo_atom2: Option<Vec<i32>>,
+    query_formal_charges: Option<Vec<i32>>,
+    query_bond_stereos: Option<Vec<i32>>,
+    query_bond_stereo_atom1: Option<Vec<i32>>,
+    query_bond_stereo_atom2: Option<Vec<i32>>,
+) -> PyResult<(Vec<(u16, u16)>, i32)> {
+    use xpict_core::align_layout::mol_graph_from_layout;
+    use xpict_core::cost_mapping as map_fn;
+
+    let reference = layout_mol_from_parts(
+        ref_atomic_numbers,
+        ref_bond_from,
+        ref_bond_to,
+        ref_bond_orders,
+        ref_formal_charges,
+        ref_bond_stereos,
+        ref_bond_stereo_atom1,
+        ref_bond_stereo_atom2,
+        None,
+        None,
+        None,
+    );
+    let query = layout_mol_from_parts(
+        query_atomic_numbers,
+        query_bond_from,
+        query_bond_to,
+        query_bond_orders,
+        query_formal_charges,
+        query_bond_stereos,
+        query_bond_stereo_atom1,
+        query_bond_stereo_atom2,
+        None,
+        None,
+        None,
+    );
+    let res = map_fn(&mol_graph_from_layout(&reference), &mol_graph_from_layout(&query))
+        .ok_or_else(|| PyRuntimeError::new_err("cost_mapping: empty molecule"))?;
+    let mut pairs: Vec<(u16, u16)> = res.map.into_iter().collect();
+    pairs.sort_unstable();
+    Ok((pairs, res.cost))
+}
+
+/// Cost-map + soft-constrained CoordGen layout of query onto reference.
+///
+/// Returns ``(pairs, cost, ref_x, ref_y, query_x, query_y)``.
+#[cfg(feature = "coordgen")]
+#[pyfunction]
+#[pyo3(signature = (
+    ref_atomic_numbers, ref_bond_from, ref_bond_to, ref_bond_orders,
+    query_atomic_numbers, query_bond_from, query_bond_to, query_bond_orders,
+    *,
+    ref_formal_charges=None, ref_bond_stereos=None,
+    ref_bond_stereo_atom1=None, ref_bond_stereo_atom2=None,
+    ref_x=None, ref_y=None,
+    query_formal_charges=None, query_bond_stereos=None,
+    query_bond_stereo_atom1=None, query_bond_stereo_atom2=None,
+    layout_flags=None,
+))]
+#[allow(clippy::too_many_arguments)]
+fn align_molecule_constrained(
+    ref_atomic_numbers: Vec<i32>,
+    ref_bond_from: Vec<i32>,
+    ref_bond_to: Vec<i32>,
+    ref_bond_orders: Vec<i32>,
+    query_atomic_numbers: Vec<i32>,
+    query_bond_from: Vec<i32>,
+    query_bond_to: Vec<i32>,
+    query_bond_orders: Vec<i32>,
+    ref_formal_charges: Option<Vec<i32>>,
+    ref_bond_stereos: Option<Vec<i32>>,
+    ref_bond_stereo_atom1: Option<Vec<i32>>,
+    ref_bond_stereo_atom2: Option<Vec<i32>>,
+    ref_x: Option<Vec<f32>>,
+    ref_y: Option<Vec<f32>>,
+    query_formal_charges: Option<Vec<i32>>,
+    query_bond_stereos: Option<Vec<i32>>,
+    query_bond_stereo_atom1: Option<Vec<i32>>,
+    query_bond_stereo_atom2: Option<Vec<i32>>,
+    layout_flags: Option<i32>,
+) -> PyResult<(Vec<(u16, u16)>, i32, Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>)> {
+    use xpict_core::align_molecule_constrained as align_fn;
+
+    let reference = layout_mol_from_parts(
+        ref_atomic_numbers,
+        ref_bond_from,
+        ref_bond_to,
+        ref_bond_orders,
+        ref_formal_charges,
+        ref_bond_stereos,
+        ref_bond_stereo_atom1,
+        ref_bond_stereo_atom2,
+        ref_x,
+        ref_y,
+        layout_flags,
+    );
+    let query = layout_mol_from_parts(
+        query_atomic_numbers,
+        query_bond_from,
+        query_bond_to,
+        query_bond_orders,
+        query_formal_charges,
+        query_bond_stereos,
+        query_bond_stereo_atom1,
+        query_bond_stereo_atom2,
+        None,
+        None,
+        layout_flags,
+    );
+    let res = align_fn(&reference, &query).map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+    let mut pairs: Vec<(u16, u16)> = res.mapping.map.into_iter().collect();
+    pairs.sort_unstable();
+    Ok((
+        pairs,
+        res.mapping.cost,
+        res.ref_coords.x,
+        res.ref_coords.y,
+        res.query_coords.x,
+        res.query_coords.y,
+    ))
+}
+
 #[pymodule]
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(multi_bond_offset, m)?)?;
@@ -773,8 +925,6 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(compose_scheme, m)?)?;
     m.add_function(wrap_pyfunction!(element_symbol, m)?)?;
     m.add_function(wrap_pyfunction!(atomic_number, m)?)?;
-    m.add_function(wrap_pyfunction!(kabsch_2d, m)?)?;
-    m.add_function(wrap_pyfunction!(rigid_align_coords, m)?)?;
     m.add_function(wrap_pyfunction!(plotdot_rings, m)?)?;
     m.add_function(wrap_pyfunction!(plotdot_disks, m)?)?;
     m.add_function(wrap_pyfunction!(capsule_halo_path_d, m)?)?;
@@ -798,6 +948,8 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     {
         use xpict_core::layout_coordgen as cg;
         m.add_function(wrap_pyfunction!(generate_2d_coordinates, m)?)?;
+        m.add_function(wrap_pyfunction!(cost_mapping, m)?)?;
+        m.add_function(wrap_pyfunction!(align_molecule_constrained, m)?)?;
         m.add_class::<PyLayout2DResult>()?;
         m.add("LAYOUT_FLAG_EVEN_ANGLES", cg::FLAG_EVEN_ANGLES)?;
         m.add("LAYOUT_FLAG_QUICK_PRECISION", cg::FLAG_QUICK_PRECISION)?;

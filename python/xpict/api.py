@@ -1,41 +1,19 @@
-"""Public Pict / render API."""
+"""Public Pict / render API.
+
+Legacy chem-engine backends were removed. Live nested ``DepictSpec`` still
+paints via Rust; molecule layout awaits the CoordGen SMILES bridge.
+"""
 
 from __future__ import annotations
 
 from typing import Any, Literal
 
-from xpict.align import align_layouts
-from xpict.backends import get_backend
 from xpict.contracts.layout import MoleculeLayout
 from xpict.depict_spec import depict_svg, is_live_depict_spec
 from xpict.future.nodes import PictSpec, expand_pict
 from xpict.future.spec import DiagramKind, LegacyPictSpec
-from xpict.draw.scene_builder import build_scene
-from xpict.draw.svg import scene_to_html, scene_to_svg
 
 OutputFormat = Literal["svg", "html"]
-
-
-def _resolve_backend_name(requested: str | None) -> str:
-    """Default: RDKit when installed. Indigo only if explicitly requested."""
-    if requested:
-        key = requested.lower()
-        if key == "native":
-            raise ValueError(
-                "layout backend 'native' was removed; use 'rdkit' (default) or 'indigo'"
-            )
-        return key
-    try:
-        import importlib.util
-
-        if importlib.util.find_spec("rdkit") is not None:
-            return "rdkit"
-    except (ImportError, ValueError, ModuleNotFoundError):
-        pass
-    raise ImportError(
-        "No layout backend available. Install RDKit: pip install 'xpict[rdkit]' "
-        "(or pass backend='indigo' with xpict[indigo])."
-    )
 
 
 def _to_legacy(spec: PictSpec | LegacyPictSpec | dict[str, Any]) -> LegacyPictSpec:
@@ -103,6 +81,14 @@ def _legacy_scheme_to_live(doc: LegacyPictSpec) -> dict[str, Any]:
     return out
 
 
+def _layout_unavailable() -> None:
+    raise NotImplementedError(
+        "Legacy Pict layout backends were removed. "
+        "Use layout2d.generate_2d_coordinates / native CoordGen, "
+        "or live DepictSpec via the Rust/JS host."
+    )
+
+
 class Pict:
     """Configured depiction engine.
 
@@ -116,7 +102,7 @@ class Pict:
         *,
         format: OutputFormat = "svg",
     ) -> None:
-        self.backend = _resolve_backend_name(backend)
+        self.backend = backend
         self.format: OutputFormat = format
 
     def render(
@@ -138,49 +124,15 @@ class Pict:
                 raise ValueError("reaction_scheme render() only supports format='svg'")
             return depict_svg(_legacy_scheme_to_live(doc))
 
-        backend = get_backend(self.backend)
-        layouts: list[MoleculeLayout] = [backend.layout(m) for m in doc.molecules]
-        layouts = align_layouts(layouts, enabled=doc.diagram.align, specs=doc.molecules)
-        # Row / grid only — scheme compose lives in Rust ``compose_scheme``.
-        positions = None
-        if doc.diagram.kind == DiagramKind.grid:
-            from xpict.draw.scene_builder import grid_positions, viewport_size
-            from xpict.draw.metrics import shared_coord_scale
-
-            scale = shared_coord_scale(layouts)
-            sizes = [
-                viewport_size(
-                    layout,
-                    doc.molecules[i] if i < len(doc.molecules) else None,
-                    scale=scale,
-                )
-                for i, layout in enumerate(layouts)
-            ]
-            cols = doc.diagram.columns or max(1, int(len(layouts) ** 0.5 + 0.5))
-            positions = grid_positions(layouts, cols, sizes)
-
-        scene = build_scene(
-            layouts,
-            doc.molecules,
-            doc,
-            positions=positions,
-        )
-        if out == "html":
-            return scene_to_html(scene)
-        return scene_to_svg(scene)
+        _layout_unavailable()
 
     def layout(
         self, spec: PictSpec | LegacyPictSpec | dict[str, Any]
     ) -> list[MoleculeLayout]:
-        """Lay out molecules for the legacy Pict/draw path (internal helper)."""
-        doc = _to_legacy(spec)
-        backend = get_backend(self.backend)
-        layouts = align_layouts(
-            [backend.layout(m) for m in doc.molecules],
-            enabled=doc.diagram.align,
-            specs=doc.molecules,
-        )
-        return layouts
+        """Lay out molecules for the legacy Pict/draw path (removed)."""
+        _ = spec
+        _layout_unavailable()
+        return []  # pragma: no cover
 
 
 def render(

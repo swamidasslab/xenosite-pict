@@ -13,7 +13,7 @@ Captured while implementing own-SVG drawing, marks/shade, and ELK placement. The
    → Validator or `PictBackendWarning` when `len(shade.atoms) != n_atoms` (same for bonds).
 
 3. **Mark atom indices are backend-order dependent**  
-   Indices follow the layout backend’s atom ordering (SMILES parse order). Indigo vs RDKit can differ for the same SMILES.  
+   Indices follow the layout backend’s atom ordering (SMILES parse order). Different parsers can differ for the same SMILES.  
    → Document as “indices refer to `LayoutResult` for the chosen backend”; later: optional map keys / SMARTS / E-SMILES anchors.
 
 4. **Substructure marks need a geometry hint**  
@@ -46,9 +46,9 @@ Captured while implementing own-SVG drawing, marks/shade, and ELK placement. The
 
 ## Drawing / scene (trickle-back)
 
-10. **RDKit coords+align at edges; Indigo alternate; native long-term; no Chematic**  
-    Depiction is hard — always review CDK / RDKit / Indigo / CoordGen before changing layout or draw code.  
-    **Focus:** Python/JS call **RDKit** for 2D coords and template alignment; Rust gets numbers only. **Indigo** = alternate layout + Rust fake/rigid align. Grow **native** toward the hard-case gallery. Chematic is not used. Own the SVG.  
+10. **CoordGen coords+align on Python; JS language-edge layout temporary**  
+    Depiction is hard — always review CDK / RDKit / CoordGen before changing layout or draw code.  
+    **Focus:** Python uses **CoordGen** (`layout2d`) for 2D coords and cost-based constrained align; Rust gets numbers only. Own the SVG.  
     Shared ink algorithms move into **`xpict-core`** (Python + WASM). See `docs/dev/layout-notes.md`.
 
 11. **Ring / chain / stereo algorithms are depictor-owned practice**  

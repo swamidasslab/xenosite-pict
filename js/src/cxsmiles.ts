@@ -1,6 +1,6 @@
 /**
- * ChemAxon CXSMILES atom-label helpers (parity with Python
- * ``xpict.structure.cx_atom_labels``).
+ * ChemAxon CXSMILES atom-label helpers (parity with Rust
+ * ``xpict_core::cx_atom_labels``).
  *
  * The JS RDKit layout path does not surface CX aliases; ``api.ts`` uses these
  * to derive ``star_labels`` automatically from the input string.

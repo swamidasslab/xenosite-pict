@@ -39,12 +39,7 @@ from xpict.depict_spec import depict, depict_svg, is_live_depict_spec
 from xpict.warnings import PictBackendWarning
 
 # Lab / future nested document.
-from xpict.edge_plan import (
-    build_align_plan,
-    process_edge_plan,
-    process_edge_plan_with_frames,
-    validate_edge_plan,
-)
+from xpict.edge_plan import build_align_plan, validate_edge_plan
 from xpict.contracts.edge import EdgePlan, EdgeResult, MolTemplate
 from xpict.future import PictSpec
 from xpict.native_bridge import plan_edge, render_doc
@@ -83,8 +78,6 @@ __all__ = [
     "generate_2d_coordinates",
     "mol",
     "plan_edge",
-    "process_edge_plan",
-    "process_edge_plan_with_frames",
     "render",
     "render_doc",
     "to_svg",

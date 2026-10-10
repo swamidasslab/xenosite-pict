@@ -1,4 +1,4 @@
-"""Stereo + skeleton-first bond drawing tests (RDKit/Indigo conventions)."""
+"""Stereo + skeleton-first bond drawing tests."""
 
 from __future__ import annotations
 
@@ -166,36 +166,16 @@ def test_two_singles_meet_and_clip_the_double():
 
 
 def test_two_singles_double_ends_lie_on_singles_acetone():
-    """Acetone: each C=O stroke end sits on a methyl single."""
-    from xpict.backends import get_backend
-    from xpict.future.nodes import expand_pict
-    from xpict.draw.drawable import normalize_coords
-    from xpict.draw.metrics import shared_coord_scale
-
-    doc = expand_pict({"molecules": [{"smiles": "CC(=O)C"}]}).to_legacy()
-    layout = get_backend(layout_backend()).layout(doc.molecules[0])
-    coords, _, _ = normalize_coords(layout, scale=shared_coord_scale([layout]))
-    bonds = []
-    for b in layout.bonds:
-        x1, y1 = coords[b.begin]
-        x2, y2 = coords[b.end]
-        bonds.append(
-            DrawnBond(
-                b.index,
-                b.begin,
-                b.end,
-                x1,
-                y1,
-                x2,
-                y2,
-                b.order,
-                begin_labeled=layout.atoms[b.begin].element != "C",
-                end_labeled=layout.atoms[b.end].element != "C",
-            )
-        )
+    """Acetone-like Y: each C=O stroke end sits on a methyl single."""
+    # Carbonyl C at origin, O to +x, methyls at ±120° (no layout backend).
+    bonds = [
+        DrawnBond(0, 0, 1, 0.0, 0.0, 20.0, 0.0, 2.0),
+        DrawnBond(1, 0, 2, 0.0, 0.0, -10.0, 17.32, 1.0),
+        DrawnBond(2, 0, 3, 0.0, 0.0, -10.0, -17.32, 1.0),
+    ]
     join_centered_multibonds(bonds)
-    dbl = next(b for b in bonds if b.order >= 1.5)
-    singles = [b for b in bonds if b.order < 1.5]
+    dbl = bonds[0]
+    singles = bonds[1:]
     assert dbl.trims is not None
     strokes = bond_strokes(dbl.x1, dbl.y1, dbl.x2, dbl.y2, 2.0, trims=dbl.trims)
     for path in strokes.offsets:

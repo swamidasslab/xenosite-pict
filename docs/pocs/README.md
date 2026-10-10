@@ -5,11 +5,11 @@ back into `PictSpec` / layout / scene contracts.
 
 | POC | Hard question | Entry |
 | --- | --- | --- |
-| **A — Own SVG** | Can Indigo layouts feed a publication SVG we own (no SVG mutation)? | `uv run python scripts/run_pocs.py svg` |
+| **A — Own SVG** | Can layout coords feed a publication SVG we own (no SVG mutation)? | `uv run python scripts/run_pocs.py svg` |
 | **B — Marks + shade** | Do atom/bond/substructure marks and plot-dot shading work on real layouts? | `uv run python scripts/run_pocs.py shade` |
 | **C — ELK multi-mol** | Can **elkrs** place network viewports via `_native`? | `uv run python scripts/run_pocs.py elk` |
 | **D — Full pipeline** | Hard grid + stereo wedges + SoM shade + ELK pathway + branched routes? | `uv run python scripts/run_pocs.py pipeline` |
-| **E — Native vs Indigo** | Does experimental native ring/chain layout look plausible beside Indigo? | `uv run python scripts/run_pocs.py native` |
+| **E — Layout grid** | Does the registered layout path look plausible on a hard-case set? | `uv run python scripts/run_pocs.py native` |
 
 Artifacts land in `artifacts/pocs/` (gitignored) or `/opt/cursor/artifacts/` in cloud.
 
@@ -20,7 +20,7 @@ quality improves.
 ```bash
 uv run python scripts/run_pocs.py          # all POCs + gallery
 uv run python scripts/run_pocs.py pipeline # hard molecules + stereo + SoM + pathway
-uv run python scripts/run_pocs.py native   # native vs indigo grids
+uv run python scripts/run_pocs.py native   # layout grid
 # then open docs/pocs/gallery.html
 ```
 
