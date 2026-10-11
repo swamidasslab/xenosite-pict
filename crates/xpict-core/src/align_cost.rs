@@ -100,12 +100,18 @@ pub const COST_CHARGE_RADICAL: i32 = 2;
 pub const COST_BOND_ORDER: i32 = 3;
 /// Unmatched atom/bond vertices.
 pub const COST_UNMATCHED: i32 = 5;
+/// Ring atom matched to a non-ring atom. Without it, hexane→ring and
+/// hexane→chain maps of butylcyclohexane tie and seed order (i.e. atom order)
+/// picks the winner.
+pub const COST_RING: i32 = 1;
 
 /// Incidence graph: vertices `[0..n_atoms)` atoms, `[n_atoms..n_atoms+n_bonds)` bonds.
 #[derive(Debug, Clone)]
 struct AbGraph {
     mol: MolGraph,
     adj: Vec<Vec<u16>>,
+    /// Per atom: lies on a cycle.
+    in_ring: Vec<bool>,
 }
 
 impl AbGraph {
@@ -122,7 +128,8 @@ impl AbGraph {
             adj[bv as usize].push(a);
             adj[bv as usize].push(c);
         }
-        Self { mol, adj }
+        let in_ring = ring_atoms(&mol);
+        Self { mol, adj, in_ring }
     }
 
     fn n_atoms(&self) -> usize {
@@ -148,6 +155,35 @@ impl AbGraph {
     }
 }
 
+/// Atoms incident to a cycle bond (bond whose endpoints stay connected without it).
+fn ring_atoms(mol: &MolGraph) -> Vec<bool> {
+    let n = mol.n_atoms();
+    let mut nbrs: Vec<Vec<(u16, usize)>> = vec![Vec::new(); n];
+    for (bi, b) in mol.bonds.iter().enumerate() {
+        nbrs[b.begin as usize].push((b.end, bi));
+        nbrs[b.end as usize].push((b.begin, bi));
+    }
+    let mut in_ring = vec![false; n];
+    for (bi, b) in mol.bonds.iter().enumerate() {
+        let mut seen = vec![false; n];
+        let mut stack = vec![b.begin];
+        seen[b.begin as usize] = true;
+        while let Some(v) = stack.pop() {
+            for &(w, wi) in &nbrs[v as usize] {
+                if wi != bi && !seen[w as usize] {
+                    seen[w as usize] = true;
+                    stack.push(w);
+                }
+            }
+        }
+        if seen[b.end as usize] {
+            in_ring[b.begin as usize] = true;
+            in_ring[b.end as usize] = true;
+        }
+    }
+    in_ring
+}
+
 fn atom_cost(a: &AtomFeat, b: &AtomFeat) -> i32 {
     let mut c = 0;
     if a.atomic_number != b.atomic_number {
@@ -171,13 +207,26 @@ fn bond_cost(a: &BondFeat, b: &BondFeat) -> i32 {
 
 fn pair_cost(q: &AbGraph, r: &AbGraph, qv: u16, rv: u16) -> i32 {
     match (q.bond_index(qv), r.bond_index(rv)) {
-        (None, None) => atom_cost(
-            &q.mol.atoms[qv as usize],
-            &r.mol.atoms[rv as usize],
-        ),
+        (None, None) => {
+            let ring = if q.in_ring[qv as usize] != r.in_ring[rv as usize] {
+                COST_RING
+            } else {
+                0
+            };
+            atom_cost(&q.mol.atoms[qv as usize], &r.mol.atoms[rv as usize]) + ring
+        }
         (Some(qi), Some(ri)) => bond_cost(&q.mol.bonds[qi], &r.mol.bonds[ri]),
         _ => i32::MAX / 4, // type mismatch — should not be proposed
     }
+}
+
+/// True when both atom endpoints of a bond vertex are in ``mapping`` (atom keys).
+fn bond_endpoints_mapped(g: &AbGraph, mapping: &HashMap<u16, u16>, bond_v: u16) -> bool {
+    let Some(bi) = g.bond_index(bond_v) else {
+        return true;
+    };
+    let b = &g.mol.bonds[bi];
+    mapping.contains_key(&b.begin) && mapping.contains_key(&b.end)
 }
 
 /// Required query stereo-atom → ref stereo-atom when both ends of a stereo
@@ -317,12 +366,21 @@ fn compatible(q: &AbGraph, r: &AbGraph, mapping: &HashMap<u16, u16>, qv: u16, rv
 }
 
 fn mapping_cost_ab(q: &AbGraph, r: &AbGraph, mapping: &HashMap<u16, u16>) -> i32 {
+    // A bond match only counts when both atom endpoints are mapped. Otherwise the
+    // bond stays unmatched (same rule as [`mapping_cost`]). Without this, the
+    // search can "match" a bond from one endpoint alone and avoid COST_UNMATCHED,
+    // making a shifted methyl→ring map look cheaper than a full ring map.
     let mut cost = 0i32;
+    let mut matched = std::collections::HashSet::new();
     for (&qv, &rv) in mapping {
+        if !q.is_atom(qv) && !bond_endpoints_mapped(q, mapping, qv) {
+            continue;
+        }
         cost = cost.saturating_add(pair_cost(q, r, qv, rv));
+        matched.insert(qv);
     }
     for qv in 0..q.n_verts() as u16 {
-        if !mapping.contains_key(&qv) {
+        if !matched.contains(&qv) {
             cost += COST_UNMATCHED;
         }
     }
@@ -331,7 +389,6 @@ fn mapping_cost_ab(q: &AbGraph, r: &AbGraph, mapping: &HashMap<u16, u16>) -> i32
 
 const NODE_BUDGET: usize = 12_000;
 const MAP_KEEP: usize = 32;
-const SEED_CAP: usize = 48;
 
 fn grow_from_seed(
     q: &AbGraph,
@@ -460,7 +517,7 @@ pub fn cost_mapping(reference: &MolGraph, query: &MolGraph) -> Option<MappingRes
 
     let mut budget = NODE_BUDGET;
     let mut best: Option<MappingResult> = None;
-    for (sq, sr) in seeds.into_iter().take(SEED_CAP.max(q.n_atoms() * 2)) {
+    for (sq, sr) in seeds {
         if budget == 0 {
             break;
         }
@@ -652,12 +709,84 @@ mod tests {
         out
     }
 
+    /// C1CCCCC1CCCC: ring atoms 0..5, butyl chain 6..9 on atom 5.
+    fn butylcyclohexane_ring_first() -> MolGraph {
+        let mut bonds: Vec<_> = (0..5).map(|i| single(i, i + 1)).collect();
+        bonds.push(single(0, 5));
+        bonds.extend((5..9).map(|i| single(i, i + 1)));
+        MolGraph::new(vec![c(); 10], bonds)
+    }
+
+    /// CCCCC1CCCCC1: butyl chain 0..3, ring atoms 4..9.
+    fn butylcyclohexane_chain_first() -> MolGraph {
+        let mut bonds: Vec<_> = (0..9).map(|i| single(i, i + 1)).collect();
+        bonds.push(single(4, 9));
+        MolGraph::new(vec![c(); 10], bonds)
+    }
+
+    #[test]
+    fn hexane_onto_butylcyclohexane_atom_order_invariant() {
+        let a = cost_mapping(&chain(6), &butylcyclohexane_ring_first()).expect("map");
+        let b = cost_mapping(&chain(6), &butylcyclohexane_chain_first()).expect("map");
+        assert_eq!(a.map.len(), 6, "ring-first map={:?}", a.map);
+        assert_eq!(b.map.len(), 6, "chain-first map={:?}", b.map);
+        assert_eq!(a.cost, b.cost, "a={a:?} b={b:?}");
+        // Hexane must land on the chain + ring attachment, never the ring
+        // itself (ring atoms are 0..5 in ring-first order, 4..9 in chain-first).
+        let ring_hits = |m: &HashMap<u16, u16>, ring: std::ops::Range<u16>| {
+            m.keys().filter(|k| ring.contains(k)).count()
+        };
+        assert!(ring_hits(&a.map, 0..6) < 6, "ring-first map={:?}", a.map);
+        assert!(ring_hits(&b.map, 4..10) < 6, "chain-first map={:?}", b.map);
+        // Reverse direction too.
+        let a = cost_mapping(&butylcyclohexane_ring_first(), &chain(6)).expect("map");
+        let b = cost_mapping(&butylcyclohexane_chain_first(), &chain(6)).expect("map");
+        assert_eq!(a.map.len(), 6, "ring-first map={:?}", a.map);
+        assert_eq!(a.cost, b.cost, "a={a:?} b={b:?}");
+        assert!(a.map.values().filter(|v| (0..6).contains(*v)).count() < 6, "{:?}", a.map);
+        assert!(b.map.values().filter(|v| (4..10).contains(*v)).count() < 6, "{:?}", b.map);
+    }
+
+    /// Deterministic pseudo-random permutations (no rand dep).
+    fn lcg_perms(n: usize, count: usize) -> Vec<Vec<u16>> {
+        let mut state: u64 = 0x9E37_79B9_7F4A_7C15;
+        (0..count)
+            .map(|_| {
+                let mut p: Vec<u16> = (0..n as u16).collect();
+                for i in (1..n).rev() {
+                    state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                    p.swap(i, (state >> 33) as usize % (i + 1));
+                }
+                p
+            })
+            .collect()
+    }
+
+    #[test]
+    fn cost_mapping_cost_invariant_under_atom_permutation() {
+        let cases = [
+            (chain(6), butylcyclohexane_ring_first()),
+            (butylcyclohexane_ring_first(), chain(6)),
+            (chain(6), cyclohexane()),
+            (cyclohexane(), butylcyclohexane_chain_first()),
+        ];
+        for (r, q) in cases {
+            let base = cost_mapping(&r, &q).expect("map").cost;
+            for pq in lcg_perms(q.n_atoms(), 40) {
+                for pr in lcg_perms(r.n_atoms(), 3) {
+                    let got = cost_mapping(&r.permute(&pr), &q.permute(&pq)).expect("map").cost;
+                    assert_eq!(got, base, "pq={pq:?} pr={pr:?}");
+                }
+            }
+        }
+    }
+
     #[test]
     fn hexane_maps_all_cyclohexane_atoms() {
         let res = cost_mapping(&chain(6), &cyclohexane()).expect("map");
         assert_eq!(res.map.len(), 6, "map={:?}", res.map);
         // One unmatched ring-closure bond (cost > any pair mismatch).
-        assert_eq!(res.cost, COST_UNMATCHED, "cost={}", res.cost);
+        assert_eq!(res.cost, COST_UNMATCHED + 6 * COST_RING, "cost={}", res.cost);
     }
 
     #[test]
@@ -740,6 +869,76 @@ mod tests {
     }
 
     #[test]
+    fn toluene_anisole_ring_map_is_cheaper_than_shifted_methyl() {
+        // Chematic-like: anisole Me(0)-O(1)-ring 2..7; toluene Me(0)-ring 1..6.
+        let mut anisole_atoms = vec![c(); 8];
+        anisole_atoms[1].atomic_number = 8;
+        let anisole = MolGraph::new(
+            anisole_atoms,
+            vec![
+                single(0, 1),
+                single(1, 2),
+                aromatic(2, 3),
+                aromatic(3, 4),
+                aromatic(4, 5),
+                aromatic(5, 6),
+                aromatic(6, 7),
+                aromatic(7, 2),
+            ],
+        );
+        let toluene = MolGraph::new(
+            vec![c(); 7],
+            vec![
+                single(0, 1),
+                aromatic(1, 2),
+                aromatic(2, 3),
+                aromatic(3, 4),
+                aromatic(4, 5),
+                aromatic(5, 6),
+                aromatic(6, 1),
+            ],
+        );
+
+        // Good: full ring + pendant Me↔O (both exo to ipso). Bad: methyl steals a ring slot.
+        let good: HashMap<u16, u16> = [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (5, 6), (6, 7)]
+            .into_iter()
+            .collect();
+        let bad: HashMap<u16, u16> =
+            [(0, 3), (1, 2), (2, 7), (3, 6), (4, 5), (5, 4)].into_iter().collect();
+        let good_c = mapping_cost(&toluene, &anisole, &good);
+        let bad_c = mapping_cost(&toluene, &anisole, &bad);
+        assert!(
+            good_c < bad_c,
+            "ring+Me↔O map should beat shifted map: good={good_c} bad={bad_c}"
+        );
+
+        let res = cost_mapping(&anisole, &toluene).expect("map");
+        assert!(
+            res.cost <= good_c,
+            "search returned worse than known Me↔O ring map: got {} (map={:?}) vs good {good_c}",
+            res.cost,
+            res.map
+        );
+        // Toluene methyl (0) lands on anisole O (1), not a ring carbon.
+        assert_eq!(
+            res.map.get(&0),
+            Some(&1),
+            "toluene methyl should map to anisole oxygen; map={:?}",
+            res.map
+        );
+        let ring_pairs = res
+            .map
+            .iter()
+            .filter(|(&q, &r)| q >= 1 && q <= 6 && r >= 2 && r <= 7)
+            .count();
+        assert!(
+            ring_pairs >= 6,
+            "expected full aromatic ring map, got {ring_pairs}; map={:?}",
+            res.map
+        );
+    }
+
+    #[test]
     fn ez_self_all_orderings_zero_cost() {
         for g in [alkene(true), alkene(false), hetero_alkene(true), branched_alkene(true)] {
             for perm in all_perms(g.n_atoms()) {
@@ -800,3 +999,4 @@ mod tests {
         }
     }
 }
+

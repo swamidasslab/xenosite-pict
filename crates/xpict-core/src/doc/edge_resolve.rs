@@ -489,7 +489,58 @@ fn visit(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::align_cost::{cost_mapping, mapping_cost};
+    use crate::align_layout::mol_graph_from_layout;
     use crate::edge::EdgeTask;
+    use std::collections::HashMap;
+
+    #[test]
+    fn toluene_anisole_real_smiles_mcs_costs() {
+        let anisole = parse_source("COc1ccccc1").unwrap();
+        let toluene = parse_source("Cc1ccccc1").unwrap();
+        eprintln!(
+            "anisole bond_orders={:?} n_arom4={}",
+            anisole.layout.bond_orders,
+            anisole.layout.bond_orders.iter().filter(|&&o| o >= 4).count()
+        );
+        eprintln!(
+            "toluene bond_orders={:?} n_arom4={}",
+            toluene.layout.bond_orders,
+            toluene.layout.bond_orders.iter().filter(|&&o| o >= 4).count()
+        );
+        let ref_g = mol_graph_from_layout(&anisole.layout);
+        let query_g = mol_graph_from_layout(&toluene.layout);
+        eprintln!(
+            "anisole bond.aromatic={:?}",
+            ref_g.bonds.iter().map(|b| b.aromatic).collect::<Vec<_>>()
+        );
+        eprintln!(
+            "toluene bond.aromatic={:?}",
+            query_g.bonds.iter().map(|b| b.aromatic).collect::<Vec<_>>()
+        );
+
+        // Production shifted map (methyl → ring).
+        let bad: HashMap<u16, u16> = [(0, 3), (1, 2), (2, 7), (3, 6), (4, 5), (5, 4)]
+            .into_iter()
+            .collect();
+        let bad_c = mapping_cost(&query_g, &ref_g, &bad);
+        let res = cost_mapping(&ref_g, &query_g).expect("map");
+        eprintln!("cost_mapping cost={} map={:?}", res.cost, res.map);
+        eprintln!("bad_map cost={}", bad_c);
+        assert!(
+            res.cost <= bad_c,
+            "search should not prefer shifted map: got {} > bad {}",
+            res.cost,
+            bad_c
+        );
+        // Pendant Me maps to O (exo atom on the ring ipso), not a ring carbon.
+        assert_eq!(
+            res.map.get(&0),
+            Some(&1),
+            "toluene methyl should map to anisole oxygen; map={:?}",
+            res.map
+        );
+    }
 
     #[test]
     fn process_free_ethanol() {
