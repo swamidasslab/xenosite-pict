@@ -5,6 +5,7 @@
 //! [`render_doc`]). Hosts may still call [`plan_edge`] / [`render_doc`]
 //! separately. Reaction schemes use [`compose_scheme`].
 
+mod caption;
 mod compose;
 #[cfg(feature = "coordgen")]
 mod depict_doc;
@@ -368,7 +369,7 @@ pub fn render_doc(spec: &DepictSpec, edge: &EdgeResult) -> Result<Vec<DocPaint>,
             .ok_or_else(|| format!("EdgeResult {id} missing molecule"))?;
         let chrome = spec.resolve_mol_chrome(i);
         let molecule = apply_doc_chrome(base, node, id, &chrome);
-        let scene = depict_molecule(&molecule);
+        let scene = caption::apply_mol_captions(spec, node, depict_molecule(&molecule));
         out.push(DocPaint {
             id: id.clone(),
             molecule,
