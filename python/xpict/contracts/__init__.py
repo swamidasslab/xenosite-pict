@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from xpict.contracts.depict import (
     AlignToSpec,
-    CommonOpts,
     EdgeNode,
     ForTypesPatch,
     GridNode,
@@ -17,6 +16,7 @@ from xpict.contracts.depict import (
     LabelPlacement,
     LayoutOpts,
     MolNode,
+    MolOpts,
     MolOptsPatch,
     Opts,
     OptsPatch,
@@ -38,7 +38,6 @@ from xpict.contracts.edge import (
     MolTemplate,
 )
 from xpict.contracts.edge_dict import EdgePlanDict, EdgeResultDict
-from xpict.contracts.layout import AtomLayout, BondLayout, MoleculeLayout
 from xpict.contracts.rendered_dict import DocPaintDict, RenderedDict
 from xpict.contracts.scene import (
     CirclePrim,
@@ -59,11 +58,8 @@ __all__ = [
     "AlignOpts",
     "AlignToSpec",
     "AtomIn",
-    "AtomLayout",
     "BondIn",
-    "BondLayout",
     "CirclePrim",
-    "CommonOpts",
     "CoordGenMoleculeResult",
     "CoordGenTask",
     "CoordGenTaskResult",
@@ -84,11 +80,11 @@ __all__ = [
     "Layer",
     "LayoutOpts",
     "MolNode",
+    "MolOpts",
     "MolOptsPatch",
     "MolSpec",
     "MolTemplate",
     "MoleculeIn",
-    "MoleculeLayout",
     "Opts",
     "OptsPatch",
     "OptsPatchDict",

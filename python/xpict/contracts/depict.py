@@ -122,25 +122,31 @@ NodeType = Literal['mol', 'group', 'reaction_scheme', 'edge', 'text']
 
 
 class ForTypesPatch(StrictModel):
-    """Multi-kind patch: `{ "for_types": ["mol","group"], …common opts }`."""
+    """Multi-kind patch: `{ "for_types": ["mol","group"], …mol opts }`."""
     for_types: list[NodeType]
     aromatic: Annotated[AromaticStyle | None, Field(description='Aromatic ring paint: ``circle`` (default) or ``kekule``.')] = None
     color: str | None = None
     debug_align: Annotated[bool | None, Field(description='Paint alignment correspondence (matched atom tags + mol role badge).')] = None
     debug_box: Annotated[bool | None, Field(description='Paint dashed debug rectangles for layout boxes (labels / mol / scene).')] = None
+    halo: bool | None = None
     scale: float | None = None
+    shade: ShadeStyle | None = None
+    weight: float | None = None
 
 
-class CommonOpts(StrictModel):
-    """Universal cascading keys (any node kind)."""
+class MolOpts(StrictModel):
+    """Mol cascading paint opts — what a mol leaf consumes from the cascade."""
     aromatic: Annotated[AromaticStyle | None, Field(description='Aromatic ring paint: ``circle`` (default) or ``kekule``.')] = None
     color: str | None = None
     debug_align: Annotated[bool | None, Field(description='Paint alignment correspondence (matched atom tags + mol role badge).')] = None
     debug_box: Annotated[bool | None, Field(description='Paint dashed debug rectangles for layout boxes (labels / mol / scene).')] = None
+    halo: bool | None = None
     scale: float | None = None
+    shade: ShadeStyle | None = None
+    weight: float | None = None
 
 
-OptsPatch = TypedOptsPatch | ForTypesPatch | CommonOpts
+OptsPatch = TypedOptsPatch | ForTypesPatch | MolOpts
 
 
 Opts = OptsPatch | list[OptsPatch]

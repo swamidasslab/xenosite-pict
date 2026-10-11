@@ -1,6 +1,6 @@
 //! Depiction proportions (xenopict / RDKit house style).
 //!
-//! Keep in sync with `python/xpict/draw/metrics.py`.
+//! Python host draw stack removed; this module is SoT.
 
 /// xenopict `Xenopict.scale` / xenosite depiction `"scale": 20`.
 pub const SCALE: f64 = 20.0;

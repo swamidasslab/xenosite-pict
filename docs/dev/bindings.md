@@ -76,13 +76,12 @@ of fontTools/Shapely.
 | 1 | Capsule / disk halo SVG paths | Done (`geom` + bindings) |
 | 2 | Polygon buffer + difference (glyph counters) | `halo_from_shapes` / `O` hole tests via `_native` |
 | 3 | Liberation Sans outlines → path `d` + advances | **Done** (`ttf-parser` + `_native`) |
-| 4 | Python draw calls only `native_bridge` for ink/text | Shapely + fontTools **gone**; deps ≈ pydantic |
+| 4 | Python host is thin Scene→SVG only (`rendered.scene_to_svg`) | Paint/glyphs live in Rust `depict` |
 | 5 | JS paint uses Rust glyph/halo via `depictMolecule` | Browser labels match Python gallery |
 
 Crates to prefer when filling stubs: **`ttf-parser`/`skrifa`** (fonts),
 **`geo` + `i_overlay`** (boolean + buffer). Liberation files live under
-`crates/xpict-core/fonts/` (packaged with crates.io) and
-`python/xpict/data/fonts/` (Python wheel data) — keep the copies in sync.
+`crates/xpict-core/fonts/` (packaged with crates.io).
 
 ## Coords + alignment (CoordGen on Python; language edges elsewhere)
 

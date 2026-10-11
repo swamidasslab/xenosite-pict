@@ -10,8 +10,8 @@ Pydantic under ``xpict.contracts`` — **strict subset** of future nested
 | ``DepictSpec`` / ``MolNode`` | Declarative document: ``type: "mol"`` or ``type: "group"`` + ``children`` |
 | ``Scene`` (+ primitives) | Paint ABI (Rust / JS / Python serializers) |
 
-``MoleculeLayout`` remains **Python-internal** for the legacy ``Pict`` draw
-stack only — not a shipped contract. The old ``LayoutResult`` wrapper and
+``Pict.layout`` returns painted ``MoleculeIn`` rows (same ABI as Rust paint).
+The old ``MoleculeLayout`` / ``LayoutResult`` Python types and
 ``schema/layout.schema.json`` are removed.
 
 Live **EdgePlan / EdgeResult**, **Scene**, and **DepictSpec** are defined in Rust

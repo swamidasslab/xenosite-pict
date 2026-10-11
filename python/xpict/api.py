@@ -4,12 +4,11 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from xpict.contracts.layout import AtomLayout, BondLayout, MoleculeLayout
+from xpict.contracts.edge import MoleculeIn
 from xpict.depict_spec import as_depict_spec, depict, depict_svg, is_live_depict_spec
-from xpict.draw.svg import scene_to_html
 from xpict.future.nodes import PictSpec, expand_pict
 from xpict.future.spec import DiagramKind, LegacyPictSpec
-from xpict.rendered import Rendered
+from xpict.rendered import scene_to_html
 
 OutputFormat = Literal["svg", "html"]
 
@@ -135,32 +134,6 @@ def to_live_depict(spec: DepictInput) -> dict[str, Any]:
     return _legacy_flat_to_live(doc)
 
 
-def _rendered_to_layout(row: Rendered) -> MoleculeLayout:
-    mol = row.molecule
-    atoms = [
-        AtomLayout(
-            index=a.index,
-            element=a.element or "C",
-            x=float(a.x),
-            y=float(a.y),
-            charge=int(a.charge or 0),
-            label=a.label,
-        )
-        for a in mol.atoms
-    ]
-    bonds = [
-        BondLayout(
-            index=b.index,
-            begin=b.begin,
-            end=b.end,
-            order=float(b.order or 1.0),
-            stereo=b.stereo if b.stereo in ("up", "down", "either", "none") else None,
-        )
-        for b in mol.bonds
-    ]
-    return MoleculeLayout(id=mol.id, atoms=atoms, bonds=bonds, backend="native")
-
-
 class Pict:
     """Native Rust depiction engine (no layout-backend switch)."""
 
@@ -184,9 +157,9 @@ class Pict:
             return scene_to_html(rows[0].scene)
         raise ValueError(f"unsupported format: {out!r}")
 
-    def layout(self, spec: DepictInput) -> list[MoleculeLayout]:
-        """Lay out molecules via Rust ``depict`` (coords from painted rows)."""
-        return [_rendered_to_layout(r) for r in depict(to_live_depict(spec))]
+    def layout(self, spec: DepictInput) -> list[MoleculeIn]:
+        """Lay out molecules via Rust ``depict`` (``MoleculeIn`` from painted rows)."""
+        return [r.molecule for r in depict(to_live_depict(spec))]
 
 
 def render(

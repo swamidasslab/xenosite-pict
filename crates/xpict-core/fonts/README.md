@@ -11,4 +11,4 @@ with Arial; good coverage of Latin scientific symbols and Greek used in labels.
 Drawn label ink is glyph outlines (Rust `ttf-parser` → SVG paths). Bold/italic
 markup selects the matching face. Halos are Rust Shape buffers of the same outlines.
 
-Keep in sync with `python/xpict/data/fonts/` (same files for the Python package).
+Python hosts no longer ship a font copy — paint outlines glyphs in Rust.

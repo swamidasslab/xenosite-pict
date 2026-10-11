@@ -1,6 +1,6 @@
 //! Bond strokes: skeleton centerlines, multi-bond offsets, stereo, joins.
 //!
-//! Keep in sync with `python/xpict/draw/bonds.py`.
+//! Python host draw stack removed; this module is SoT.
 
 use std::collections::HashMap;
 

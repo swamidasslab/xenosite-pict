@@ -2,6 +2,15 @@
 
 ## 2026-10-10
 
+- Mol captions in Rust: `render_doc` folds text-node refs into the mol scene (`mol-caption` glyph paths, default below, font 1.15× atom labels). Host sugar only emits text+label; notebook HTML stays a thin row/cell packer.
+- Align MCS bug: AbGraph search scored a bond match when only one endpoint was mapped, so a shifted methyl→ring map undercut the ring+Me↔O map (toluene ← anisole; chain `+` hop-2). Fix: `mapping_cost_ab` only charges bond `pair_cost` when both atom endpoints are mapped (same rule as `mapping_cost`). Ideal pendant pair is Me↔O (exo to ipso), not unmatched methyl.
+- Nested scheme compose: `depict` / `iter_cells` run Rust `compose_scheme` for every `reaction_scheme` cell (not only document root). Notebook HTML paints the full doc once, finds rows in the spec tree, SVGs cells — no per-row re-depict / opts injection.
+- Host prune: `Mol.to_spec` identity on leaf + cascade only via `.opts` bag (no dual-write). Notebook `display` uses composed scheme cells; dropped Unicode HTML arrows.
+- Wire fix: `OptsPatch::Universal` (and `ForTypesPatch`) are [`MolOpts`], not `CommonOpts` — untyped `{weight,halo,shade}` on group/grid bags cascade. Host `.opts(**kwargs)` appends `MolOpts`.
+- `PictBase.opts`: shallow-copy root + append cascade patches only. Dropped dual field/`MolOptsPatch` host routing — Rust chrome resolve owns inheritance.
+- Host stray cleanup: dropped draw-era `native_bridge` ink/halo/elk wrappers; deleted unused `contracts/layout.py` (`Pict.layout` now returns `list[MoleculeIn]`); removed duplicate `DepictSpec` operator overrides + dead `row_as_spec`; notebook `_repr_*` live on `PictBase` (Rendered keeps its own SVG path).
+- Deleted obsolete host modules: `align.py`, `edge_plan.py`, `client.py`, `svg.py`, `data/`. Mol/render live in `spec.py`; Scene→SVG in `rendered.py`; EdgePlan validate via `native_bridge`.
+- Deleted obsolete `python/xpict/draw/` (+ `data/fonts`). Ship path uses thin Scene→SVG in `rendered.py` (parity with JS `scene-svg.ts`); paint/glyphs stay in Rust.
 - Removed layout-backend swapping: `Pict` / `render(doc)` are native Rust `depict` only (`backend=` gone, `PictBackendWarning` deleted). Legacy flat docs lift to live DepictSpec; `Pict.layout` reads coords from painted rows.
 - Deleted obsolete `python/xpict/layout2d.py`; CoordGen tests call `_native.generate_2d_coordinates` directly. Product path remains Rust `depict`.
 - Host cleanup finished: `contracts/__init__` is re-exports only (no lazy host DepictSpec); `MolRenderOptions` stays a dataclass (avoids pydantic `Mol`/`Rendered` rebuild); basedpyright-only config (`failOnWarnings=false`, `reportExplicitAny=error`). Reaction-scheme xfails removed — native CoordGen path XPASS→pass.

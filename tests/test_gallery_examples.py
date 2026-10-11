@@ -13,32 +13,23 @@ from xpict import DepictSpec, render
 ROOT = Path(__file__).resolve().parents[1]
 EXAMPLES = ROOT / "docs" / "assets" / "examples"
 
-_HOST_GONE = pytest.mark.xfail(
-    reason="Python host coord_gen removed; awaiting native CoordGen SMILES bridge",
-    strict=True,
-    raises=NotImplementedError,
-)
-
 
 def _texts(svg: str) -> list[str]:
     return re.findall(r'data-text="([^"]*)"', svg)
 
 
-@_HOST_GONE
 def test_gallery_markush_cx_r1():
     svg = render({"type": "mol", "cxsmiles": "*c1ccccc1Cl |$R1;;;;;$|"})
     texts = _texts(svg)
     assert "R1" in texts, f"expected literal R1 from CX alias, got {texts}"
 
 
-@_HOST_GONE
 def test_gallery_phenol_star_cx_r1():
     svg = render({"type": "mol", "cxsmiles": "*c1ccc(O)cc1 |$R1;;;;;$|"})
     texts = _texts(svg)
     assert "R1" in texts, f"expected literal R1 from CX alias, got {texts}"
 
 
-@_HOST_GONE
 def test_shade_does_not_flood_disks():
     doc = {
         "type": "mol",
@@ -86,7 +77,6 @@ def test_live_doc_accepts_star_labels():
     assert doc.mols()[0].star_labels == ["$R_1$"]
 
 
-@_HOST_GONE
 def test_gallery_star_labels_subscript():
     svg = render(
         {"type": "mol", "smiles": "*C", "star_labels": ["$R_1$"]},
@@ -95,7 +85,6 @@ def test_gallery_star_labels_subscript():
     assert "R₁" in texts, f"expected R₁ from document star_labels, got {texts}"
 
 
-@_HOST_GONE
 def test_star_labels_wins_over_cx_on_document():
     svg = render(
         {

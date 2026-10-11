@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 from xpict import Pict, depict, render
-from xpict.draw.svg import svg_to_img_tag
+from xpict.rendered import svg_to_img_tag
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT_DIRS = [

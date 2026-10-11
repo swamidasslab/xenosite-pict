@@ -108,25 +108,31 @@ NodeType = Literal['mol', 'group', 'reaction_scheme', 'edge', 'text']
 
 
 class ForTypesPatchDict(TypedDict, total=False):
-    """Multi-kind patch: `{ "for_types": ["mol","group"], …common opts }`."""
+    """Multi-kind patch: `{ "for_types": ["mol","group"], …mol opts }`."""
     for_types: Required[list[NodeType]]
     aromatic: NotRequired[AromaticStyle]
     color: NotRequired[str]
     debug_align: NotRequired[bool]
     debug_box: NotRequired[bool]
+    halo: NotRequired[bool]
     scale: NotRequired[float]
+    shade: NotRequired[ShadeStyleDict]
+    weight: NotRequired[float]
 
 
-class CommonOptsDict(TypedDict, total=False):
-    """Universal cascading keys (any node kind)."""
+class MolOptsDict(TypedDict, total=False):
+    """Mol cascading paint opts — what a mol leaf consumes from the cascade."""
     aromatic: NotRequired[AromaticStyle]
     color: NotRequired[str]
     debug_align: NotRequired[bool]
     debug_box: NotRequired[bool]
+    halo: NotRequired[bool]
     scale: NotRequired[float]
+    shade: NotRequired[ShadeStyleDict]
+    weight: NotRequired[float]
 
 
-OptsPatchDict = TypedOptsPatchDict | ForTypesPatchDict | CommonOptsDict
+OptsPatchDict = TypedOptsPatchDict | ForTypesPatchDict | MolOptsDict
 
 
 OptsDict = OptsPatchDict | list[OptsPatchDict]

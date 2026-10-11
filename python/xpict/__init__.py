@@ -24,22 +24,14 @@ from typing import overload
 
 from xpict.api import OutputFormat, Pict
 from xpict.base import PictBase
-from xpict.client import (
-    Mol,
-    MolRenderOptions,
-    mol,
-    render as render_mol,
-    to_svg,
-)
 from xpict.contracts import DepictSpecDict, MolSpec
 from xpict.contracts.edge import EdgePlan, EdgeResult, MolTemplate
 from xpict.contracts.scene import Scene
 from xpict.depict_spec import depict, depict_svg, is_live_depict_spec
-from xpict.edge_plan import build_align_plan, validate_edge_plan
 from xpict.future import PictSpec
-from xpict.native_bridge import plan_edge, render_doc
-from xpict.rendered import Rendered, SvgAtom, SvgBond
-from xpict.spec import DepictSpec
+from xpict.native_bridge import plan_edge, render_doc, validate_edge_plan
+from xpict.rendered import Rendered, SvgAtom, SvgBond, to_svg
+from xpict.spec import DepictSpec, Mol, MolRenderOptions, mol, render_mol
 
 __version__ = "0.3.0"
 
@@ -59,7 +51,6 @@ __all__ = [
     "Scene",
     "SvgAtom",
     "SvgBond",
-    "build_align_plan",
     "depict",
     "depict_svg",
     "mol",

@@ -6,9 +6,18 @@ import math
 from dataclasses import dataclass, field
 
 import pytest
-from rdkit import Chem
 
 from xpict import _native
+
+try:
+    from rdkit import Chem
+except ImportError:  # pragma: no cover — optional graph source for fixtures
+    Chem = None  # type: ignore[assignment]
+
+
+def _require_rdkit() -> None:
+    if Chem is None:
+        pytest.xfail("rdkit required for CoordGen graph fixtures")
 
 
 def test_has_coordgen_linked():
@@ -174,6 +183,7 @@ def test_generate_2d_coordinates_ethanol():
 
 
 def test_free_layout_benzene_and_flags():
+    _require_rdkit()
     for flags in (
         0,
         _native.LAYOUT_FLAG_QUICK_PRECISION,
@@ -188,6 +198,7 @@ def test_free_layout_benzene_and_flags():
 
 
 def test_free_layout_charged_atom():
+    _require_rdkit()
     # Multi-atom charged species (single-atom layouts sit at origin).
     g = _rdkit_to_graph("C[NH3+]")
     assert any(c != 0 for c in g.formal_charges)
@@ -213,6 +224,7 @@ def test_fixed_atom_and_flags():
 
 
 def test_constrained_phenol_anisole_ring():
+    _require_rdkit()
     """Lay out phenol free; constrain anisole ring atoms to phenol coords."""
     phenol = _rdkit_to_graph("c1ccccc1O")
     phenol_res = phenol.layout()
@@ -271,6 +283,7 @@ def test_stereo_with_neighbor_atoms():
     ],
 )
 def test_ez_stereo_from_smiles_honored(smiles: str, expect_cis: bool):
+    _require_rdkit()
     g = _rdkit_to_graph(smiles)
     stereo_ix = [
         i
@@ -301,12 +314,14 @@ def test_ez_stereo_from_smiles_honored(smiles: str, expect_cis: bool):
     ],
 )
 def test_chiral_and_mixed_stereo_layout_finite(smiles: str):
+    _require_rdkit()
     g = _rdkit_to_graph(smiles)
     res = g.layout()
     _assert_finite(res, g.n_atoms)
 
 
 def test_skip_minimization_and_metal_flags_do_not_error():
+    _require_rdkit()
     g = _rdkit_to_graph(
         "c1ccccc1",
         layout_flags=_native.LAYOUT_FLAG_SKIP_MINIMIZATION

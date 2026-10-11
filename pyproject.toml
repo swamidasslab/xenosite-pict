@@ -94,7 +94,6 @@ exclude = [
   "python/xpict/future",
   "python/xpict/export_schema.py",
   "python/xpict/api.py",
-  "python/xpict/draw",
   "**/__pycache__",
 ]
 # Typecheck against the oldest supported runtime.

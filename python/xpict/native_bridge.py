@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
 from xpict.contracts.depict import DepictSpec as WireDepictSpec
 from xpict.contracts.depict_dict import DepictSpecDict, MolOptsPatchDict
@@ -21,66 +20,9 @@ except ImportError as e:  # pragma: no cover
         "Build with: maturin develop --manifest-path crates/xpict-py/Cargo.toml"
     ) from e
 
-HAS_RUST_CORE: bool = True
-
-if TYPE_CHECKING:
-    from xpict._native import Shape as Shape
-else:
-    Shape = _rust.Shape
-
 DepictSpecLike = WireDepictSpec | DepictSpecDict | str
 EdgePlanLike = EdgePlan | EdgePlanDict | str
 EdgeResultLike = EdgeResult | EdgeResultDict | str
-
-
-@dataclass(frozen=True, slots=True)
-class CapsuleInk:
-    """Tagged ink for a line capsule — halo via Rust when available."""
-
-    x1: float
-    y1: float
-    x2: float
-    y2: float
-    radius: float
-
-
-@dataclass(frozen=True, slots=True)
-class DiskInk:
-    """Tagged ink for a filled disk."""
-
-    cx: float
-    cy: float
-    radius: float
-
-
-InkGeometry = Shape | CapsuleInk | DiskInk
-
-
-def multi_bond_offset(length: float) -> float:
-    return float(_rust.multi_bond_offset(length))
-
-
-def capsule_halo_path_d(
-    x1: float,
-    y1: float,
-    x2: float,
-    y2: float,
-    ink_radius: float,
-    grow: float,
-) -> str | None:
-    return _rust.capsule_halo_path_d(x1, y1, x2, y2, ink_radius, grow)
-
-
-def disk_halo_path_d(cx: float, cy: float, ink_radius: float, grow: float) -> str | None:
-    return _rust.disk_halo_path_d(cx, cy, ink_radius, grow)
-
-
-def elk_layout_json(graph_json: str) -> str | None:
-    """Native elkrs layout."""
-    fn = getattr(_rust, "elk_layout_json", None)
-    if fn is None:
-        return None
-    return str(fn(graph_json))
 
 
 def _as_json(obj: DepictSpecLike | EdgePlanLike | EdgeResultLike) -> str:
@@ -138,14 +80,3 @@ def compose_scheme(
     """Pass 3: DepictSpec + DocPaint rows → composed Scene (ELK + overlays)."""
     paints_json = paints if isinstance(paints, str) else json.dumps(paints)
     return cast(SceneDict, json.loads(_rust.compose_scheme(_as_json(spec), paints_json)))
-
-
-def halo_path_d_for_ink(ink: InkGeometry, dist: float) -> str | None:
-    """Rust fast path for tagged ink; ``None`` → caller uses Shape.halo."""
-    if isinstance(ink, CapsuleInk):
-        return capsule_halo_path_d(
-            ink.x1, ink.y1, ink.x2, ink.y2, ink.radius, dist
-        )
-    if isinstance(ink, DiskInk):
-        return disk_halo_path_d(ink.cx, ink.cy, ink.radius, dist)
-    return None

@@ -18,10 +18,8 @@ Invariant: every live document must still validate as future `PictSpec`.
 The ``LayoutResult`` wrapper and ``schema/layout.schema.json`` are **gone**.
 They were never a live cross-language ABI.
 
-| Still exists | Role |
-| --- | --- |
-| ``MoleculeLayout`` / ``AtomLayout`` / ``BondLayout`` | **Python-internal** only — legacy ``Pict`` → backends → ``draw/*`` until that stack is retired |
-| JS type formerly named ``LayoutResult`` in ``rdkit-layout.ts`` | Renamed ``HostLayoutResult`` (unrelated single-mol host result) |
+``MoleculeLayout`` / ``AtomLayout`` / ``BondLayout`` are **gone** (retired with the
+Python draw stack). ``Pict.layout`` returns painted ``MoleculeIn`` rows.
 
 Live wire types remain ``MoleculeIn`` / ``EdgePlan`` / ``EdgeResult``.
 
@@ -56,8 +54,7 @@ xpict-core (serde types)
        (schema-driven only: MODULES maps files→output; titles become roots;
         kind→*Prim, type+FooBar→{Val}Bar, Spec→*Node, reuse matching defs;
         RootModel for tagged roots)
-python/xpict/contracts/__init__.py  hand: DepictSpec.mols() + MolSpec alias
-python/xpict/contracts/layout.py    hand (Python-internal MoleculeLayout only)
+python/xpict/contracts/__init__.py  hand: re-exports + MolSpec alias
 xpict.future                        unchanged Pydantic SoT → schema/future/
 ```
 
@@ -72,14 +69,13 @@ Commands:
 1. ~~**Infra + EdgePlan/EdgeResult**~~ — annotate edge + `MoleculeIn` inputs; generate TS + schema; JS imports generated types  
 2. ~~**Scene** paint ABI~~ — generated TS + schema; JS `scene-svg` on `scene-abi`  
 3. ~~**DepictSpec / MolNode / AlignTo**~~ — generated TS + schema; JS `depict-abi`  
-4. ~~**Python live contracts**~~ — `scripts/generate_live_python.py` from schemars (`edge`/`scene`/`depict`); `layout.py` stays hand (internal)  
+4. ~~**Python live contracts**~~ — `scripts/generate_live_python.py` from schemars (`edge`/`scene`/`depict`); internal `layout.py` retired  
 5. Revisit emitter polish (validators, nicer field order) as needed  
 
 ## What stays hand-written
 
 - Host logic (`process_edge_plan`, SVG serializers, single-mol `Mol` / `Rendered`)  
-- `python/xpict/contracts/__init__.py` — `DepictSpec.mols()` + `MolSpec` alias  
-- `python/xpict/contracts/layout.py` (Python-internal MoleculeLayout)  
+- `python/xpict/contracts/__init__.py` — re-exports + `MolSpec` alias  
 - Future PictSpec (Python + `schema/future/` only — no JS mirror)  
 - Wasm still stringly JSON FFI; generated TS/Python type the payloads  
 - JS `GroupNode.align?` remapped optional (ts-rs cannot optional-ize non-`Option` serde defaults)

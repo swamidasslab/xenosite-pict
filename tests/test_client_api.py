@@ -64,7 +64,7 @@ def test_plus_chain_aligns_aromatics_onto_previous():
     import json
     import math
 
-    from xpict.client import render_depict_mols
+    from xpict.display import render_depict_mols
 
     fig = mol("c1ccc(O)c(C)c1") + mol("COc1ccccc1") + mol("Cc1ccccc1")
     nodes = fig.mols()
@@ -78,10 +78,74 @@ def test_plus_chain_aligns_aromatics_onto_previous():
         dbg = cur.molecule.align_debug
         tags = list(dbg.tags) if dbg is not None else []
         assert len(tags) >= 5, f"expected ring MCS tags, got {tags}"
-    # First hop (anisole ← o-cresol): matched atoms sit on the template pose.
-    # (Later hops can get noisier MCS on tiny aromatics; wiring is enough.)
-    prev, cur = rows[0], rows[1]
-    assert cur.molecule.align_debug is not None
+
+    def _frame_median(prev, cur) -> float:
+        tags = cur.molecule.align_debug.tags
+        pref = {int(a["index"]): a for a in json.loads(prev.frame_molblock)["atoms"]}
+        cref = {int(a["index"]): a for a in json.loads(cur.frame_molblock)["atoms"]}
+        dists = [
+            math.hypot(
+                cref[int(q)]["x"] - pref[int(r)]["x"],
+                cref[int(q)]["y"] - pref[int(r)]["y"],
+            )
+            for q, r in tags
+            if int(q) in cref and int(r) in pref
+        ]
+        assert dists
+        return sorted(dists)[len(dists) // 2]
+
+    # Both hops: anisole ← cresol, then toluene ← anisole (not a shifted methyl→ring map).
+    assert _frame_median(rows[0], rows[1]) < 0.5
+    assert _frame_median(rows[1], rows[2]) < 0.5
+
+
+def test_mol_label_sugar_paints_caption_in_svg():
+    """``mol(..., label=)`` → text node; Rust paints caption into the mol SVG."""
+    from xpict.contracts.depict import GroupNode, LabelPlacement, TextNode
+    from xpict.display import render_depict_mols
+
+    one = mol("CCO", label="ethanol")
+    assert isinstance(one.to_spec().root, GroupNode)
+    kids = one.to_spec().root.children
+    assert any(isinstance(c, TextNode) and c.text == "ethanol" for c in kids)
+    lab = one.to_spec().mols()[0].label
+    assert isinstance(lab, LabelPlacement)
+    assert lab.pos == "below"
+
+    rows = render_depict_mols(one.to_spec())
+    svg = rows[0].to_svg()
+    assert 'data-text="ethanol"' in svg
+    assert "mol-caption" in svg
+
+    fig = (
+        mol("c1ccccc1")
+        | mol("c1ccc(O)c(CC)c1").opts(label="C2")
+        + mol("COc1ccccc1", label="C3")
+        + mol("Cc1ccccc1").with_label("C4", pos="above")
+    )
+    html = fig._repr_html_()
+    # Captions are in SVGs, not a host HTML figcaption overlay.
+    assert "C2" in html and "C3" in html and "C4" in html
+    assert "mol-caption" in html
+
+
+def test_grid_plus_chain_aligns_fourth_onto_third():
+    """``a | b + c + d`` — fourth mol chain-aligns onto third (toluene ← anisole)."""
+    import json
+    import math
+
+    from xpict.display import render_depict_mols
+
+    fig = (
+        mol("c1ccccc1")
+        | mol("c1ccc(O)c(CC)c1") + mol("COc1ccccc1") + mol("Cc1ccccc1")
+    )
+    nodes = fig.mols()
+    assert len(nodes) == 4
+    assert nodes[2].align_to == nodes[1].id
+    assert nodes[3].align_to == nodes[2].id
+    rows = render_depict_mols(fig)
+    prev, cur = rows[2], rows[3]
     tags = cur.molecule.align_debug.tags
     pref = {int(a["index"]): a for a in json.loads(prev.frame_molblock)["atoms"]}
     cref = {int(a["index"]): a for a in json.loads(cur.frame_molblock)["atoms"]}
@@ -99,7 +163,7 @@ def test_plus_chain_aligns_aromatics_onto_previous():
 
 def test_grid_opts_cascade_color_and_debug_box():
     """``.opts`` on a ``|`` grid must reach every row via Rust chrome resolve."""
-    from xpict.client import render_depict_mols
+    from xpict.display import render_depict_mols
     from xpict.native_bridge import resolve_depict_chrome
 
     fig = (
@@ -107,8 +171,9 @@ def test_grid_opts_cascade_color_and_debug_box():
         | (mol("c1ccc(O)c(C)c1") + mol("COc1ccccc1") + mol("Cc1ccccc1"))
     ).opts(debug_box=True, color="red")
     assert fig.root.type == "grid"
-    assert fig.root.debug_box is True
-    assert fig.root.color == "red"
+    assert fig.root.opts is not None
+    assert fig.root.opts.debug_box is True
+    assert fig.root.opts.color == "red"
 
     chromes = resolve_depict_chrome(fig)
     assert len(chromes) == 4
@@ -133,14 +198,15 @@ def test_grid_opts_cascade_color_and_debug_box():
 
 def test_aromatic_opts_global_and_local_resolve_and_print():
     """Group/global ``aromatic`` inherits; local mol overrides; SVG matches."""
-    from xpict.client import render_depict_mols
+    from xpict.display import render_depict_mols
     from xpict.spec import DepictSpec
 
     # Global kekule on the group → both mols print without aromatic circles.
     group = (mol("c1ccccc1", id="a") + mol("c1ccccc1", id="b")).opts(
         aromatic="kekule"
     )
-    assert group.root.aromatic == "kekule"
+    assert group.root.opts is not None
+    assert group.root.opts.aromatic == "kekule"
     painted = render_depict_mols(group)
     assert len(painted) == 2
     for r in painted:
@@ -163,7 +229,8 @@ def test_aromatic_opts_global_and_local_resolve_and_print():
 
     # Single-mol ``.opts(aromatic=...)`` resolves and prints.
     local = mol("c1ccccc1").opts(aromatic="kekule")
-    assert local.root.aromatic == "kekule"
+    assert local.root.opts is not None
+    assert local.root.opts.aromatic == "kekule"
     assert "aromatic" not in local._repr_svg_()
     assert "aromatic" in mol("c1ccccc1").opts(aromatic="circle")._repr_svg_()
 
@@ -241,8 +308,9 @@ def test_rshift_builds_reaction_scheme():
     assert children[1].arrow == "forward"
     assert children[2].id == "b"
     html = doc._repr_html_()
-    assert html.count("<svg") == 2
-    assert "→" in html
+    # One composed scheme scene (Rust ELK edges), not per-mol + Unicode arrows.
+    assert html.count("<svg") == 1
+    assert 'class="edge' in html
 
 
 def test_lshift_swaps_edge_endpoints():
@@ -250,7 +318,9 @@ def test_lshift_swaps_edge_endpoints():
     edge = next(c for c in doc.root.children if c.type == "edge")
     assert edge.sources == "b"
     assert edge.targets == "a"
-    assert "←" in doc._repr_html_()
+    html = doc._repr_html_()
+    assert html.count("<svg") == 1
+    assert 'class="edge' in html
 
 
 def test_rshift_with_plus_co_reactants():
@@ -281,15 +351,23 @@ def test_pict_base_to_spec_and_display():
 
 
 def test_opts_returns_new_spec():
+    from xpict.native_bridge import resolve_depict_chrome
+
     base = mol("CCO", id="a")
-    styled = base.opts(color="#0b6e4f", scale=1.2)
+    styled = base.opts(color="#0b6e4f", scale=1.2, weight=1.5)
     assert isinstance(styled, DepictSpec)
-    assert styled.root.color == "#0b6e4f"
-    assert styled.root.scale == 1.2
-    assert base.to_spec().root.color is None
-    group = (mol("CCO") + mol("CC")).opts(color="#333")
+    assert styled.root.opts is not None
+    assert styled.root.opts.color == "#0b6e4f"
+    assert styled.root.opts.scale == 1.2
+    assert styled.root.opts.weight == 1.5
+    assert base.to_spec().root.opts is None
+    group = (mol("CCO") + mol("CC")).opts(color="#333", weight=1.25)
     assert group.root.type == "group"
-    assert group.root.color == "#333"
+    assert group.root.opts is not None
+    assert group.root.opts.color == "#333"
+    assert group.root.opts.weight == 1.25
+    chromes = resolve_depict_chrome(group)
+    assert all(c.get("weight") == 1.25 for c in chromes)
     assert "<svg" in group._repr_html_()
 
 
@@ -306,4 +384,5 @@ def test_or_builds_grid_rows():
     assert doc.root.children[2].type == "reaction_scheme"
     html = doc._repr_html_()
     assert "flex-direction:column" in html
-    assert html.count("<svg") == 6
+    # Two group rows (2+2 mols) + one composed reaction_scheme scene.
+    assert html.count("<svg") == 5

@@ -6,8 +6,12 @@ import re
 
 import pytest
 
-from xpict import DepictSpec, render
-from xpict.draw.metrics import STROKE_PX, WEIGHT_AT_ONE, WEIGHT_MIN
+from xpict import DepictSpec, _native, render
+
+# Match ``xpict_core::metrics`` (only ``STROKE_PX`` is exported on ``_native`` today).
+STROKE_PX = float(_native.STROKE_PX)
+WEIGHT_AT_ONE = 1.5
+WEIGHT_MIN = 1.0 / WEIGHT_AT_ONE
 
 _ROOT = re.compile(r"<svg\b([^>]*)>", re.DOTALL)
 _ATTR = re.compile(r'([\w:-]+)="([^"]*)"')

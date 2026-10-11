@@ -117,6 +117,154 @@ def as_mol_nodes(other: Operand) -> list[MolNode]:
     raise TypeError(f"cannot add {type(other)!r} to DepictSpec")
 
 
+def as_group_children(other: Operand) -> list[MolNode | TextNode]:
+    """Flatten mol + text children for ``+`` (preserves caption text nodes)."""
+    if isinstance(other, _HasToSpec):
+        other = other.to_spec()
+    if isinstance(other, (MolNode, TextNode)):
+        return [other]
+    if isinstance(other, WireDepictSpec):
+        root = other.root
+        if isinstance(root, MolNode):
+            return [root]
+        if isinstance(root, GroupNode):
+            return [c for c in root.children if isinstance(c, (MolNode, TextNode))]
+        if isinstance(root, ReactionSchemeNode):
+            return [c for c in root.children if isinstance(c, (MolNode, TextNode))]
+    raise TypeError(f"cannot add {type(other)!r} to DepictSpec")
+
+
+def _label_ref_ids(label: object) -> list[str]:
+    from xpict.contracts.depict import LabelLanes, LabelPlacement
+
+    if label is None:
+        return []
+    if isinstance(label, str):
+        return [label] if label.strip() else []
+    if isinstance(label, LabelPlacement):
+        return [label.id] if label.id.strip() else []
+    if isinstance(label, list):
+        out: list[str] = []
+        for item in label:
+            out.extend(_label_ref_ids(item))
+        return out
+    if isinstance(label, LabelLanes):
+        return [
+            *label.above,
+            *label.below,
+            *label.left,
+            *label.right,
+        ]
+    return []
+
+
+def _remap_label(label: object, remap: dict[str, str]) -> object:
+    from xpict.contracts.depict import LabelLanes, LabelPlacement
+
+    if label is None or not remap:
+        return label
+    if isinstance(label, str):
+        return remap.get(label, label)
+    if isinstance(label, LabelPlacement):
+        nid = remap.get(label.id, label.id)
+        return label if nid == label.id else label.model_copy(update={"id": nid})
+    if isinstance(label, list):
+        return [_remap_label(item, remap) for item in label]
+    if isinstance(label, LabelLanes):
+        def _map_ids(ids: list[str]) -> list[str]:
+            return [remap.get(x, x) for x in ids]
+
+        return LabelLanes(
+            above=_map_ids(label.above),
+            below=_map_ids(label.below),
+            left=_map_ids(label.left),
+            right=_map_ids(label.right),
+        )
+    return label
+
+
+def with_group_ids(children: list[MolNode | TextNode]) -> list[MolNode | TextNode]:
+    """Unique mol ids; re-pair ``text``+``mol`` caption pairs as ``{mol_id}__lbl``."""
+    used_mol: set[str] = set()
+    used_text: set[str] = set()
+    counter = [0]
+    out: list[MolNode | TextNode] = []
+    i = 0
+    n = len(children)
+    while i < n:
+        child = children[i]
+        nxt = children[i + 1] if i + 1 < n else None
+        # Sugar order: TextNode then MolNode whose label refs that text.
+        if (
+            isinstance(child, TextNode)
+            and isinstance(nxt, MolNode)
+            and (child.id or "").strip() in _label_ref_ids(nxt.label)
+        ):
+            mid = _unique_mol_id(nxt.id or "", used_mol, counter=counter)
+            tid = f"{mid}__lbl"
+            base = tid
+            k = 1
+            while tid in used_text:
+                tid = f"{base}_{k}"
+                k += 1
+            used_text.add(tid)
+            old_tid = (child.id or "").strip()
+            mol = nxt.model_copy(
+                update={
+                    "id": mid,
+                    "label": _remap_label(nxt.label, {old_tid: tid} if old_tid else {}),
+                }
+            )
+            text = (
+                child
+                if child.id == tid
+                else child.model_copy(update={"id": tid})
+            )
+            out.extend([text, mol])
+            i += 2
+            continue
+        if isinstance(child, MolNode):
+            mid = _unique_mol_id(child.id or "", used_mol, counter=counter)
+            out.append(
+                child if child.id == mid else child.model_copy(update={"id": mid})
+            )
+            i += 1
+            continue
+        # Free text node.
+        tid = (child.id or "").strip()
+        if not tid:
+            while f"t_{counter[0]}" in used_text:
+                counter[0] += 1
+            tid = f"t_{counter[0]}"
+            counter[0] += 1
+        base = tid
+        k = 1
+        while tid in used_text:
+            tid = f"{base}_{k}"
+            k += 1
+        used_text.add(tid)
+        out.append(
+            child if child.id == tid else child.model_copy(update={"id": tid})
+        )
+        i += 1
+    return out
+
+
+def chain_align_group(children: list[MolNode | TextNode]) -> list[MolNode | TextNode]:
+    """Stamp unset ``align_to`` on mols to the previous mol id."""
+    out: list[MolNode | TextNode] = []
+    prev_mol_id: str | None = None
+    for child in children:
+        if isinstance(child, MolNode):
+            if child.align_to is None and prev_mol_id is not None:
+                child = child.model_copy(update={"align_to": prev_mol_id})
+            prev_mol_id = child.id
+            out.append(child)
+        else:
+            out.append(child)
+    return out
+
+
 def as_scheme_children(other: Operand) -> list[SchemeChild]:
     if isinstance(other, _HasToSpec):
         other = other.to_spec()
@@ -233,35 +381,40 @@ def uniquify_grid_rows(rows: list[RowRoot]) -> list[RowRoot]:
                         used.add((n.id or "").strip())
             continue
 
-        nodes = (
-            [row]
-            if isinstance(row, MolNode)
-            else [c for c in row.children if isinstance(c, MolNode)]
-        )
-        remap: dict[str, str] = {}
-        new_nodes: list[MolNode] = []
-        counter = [0]
-        for node in nodes:
-            old = (node.id or "").strip()
-            nid = _unique_mol_id(old, used, counter=counter)
-            if old and old != nid:
-                remap[old] = nid
-            if node.id != nid:
-                node = node.model_copy(update={"id": nid})
-            ref = node.align_to
-            if isinstance(ref, str) and ref in remap:
-                node = node.model_copy(update={"align_to": remap[ref]})
-            new_nodes.append(node)
-
         if isinstance(row, MolNode):
-            out.append(new_nodes[0])
+            nid = _unique_mol_id(row.id or "", used, counter=[0])
+            out.append(row if row.id == nid else row.model_copy(update={"id": nid}))
             continue
 
-        mol_iter = iter(new_nodes)
-        children: list[SchemeChild] = []
+        # Avoid id clashes with prior rows: pre-rename colliding mol ids, then
+        # run caption-aware uniquify on mol+text children.
+        local_used = set(used)
+        counter = [0]
+        remap: dict[str, str] = {}
+        pre: list[SchemeChild] = []
         for child in row.children:
             if isinstance(child, MolNode):
-                children.append(next(mol_iter))
+                old = (child.id or "").strip()
+                nid = _unique_mol_id(old, local_used, counter=counter)
+                if old and old != nid:
+                    remap[old] = nid
+                node = child if child.id == nid else child.model_copy(update={"id": nid})
+                ref = node.align_to
+                if isinstance(ref, str) and ref in remap:
+                    node = node.model_copy(update={"align_to": remap[ref]})
+                pre.append(node)
+            else:
+                pre.append(child)
+
+        mt = with_group_ids(
+            [c for c in pre if isinstance(c, (MolNode, TextNode))]
+        )
+        mt_i = 0
+        children: list[SchemeChild] = []
+        for child in pre:
+            if isinstance(child, (MolNode, TextNode)):
+                children.append(mt[mt_i])
+                mt_i += 1
             elif isinstance(child, EdgeNode) and remap:
                 children.append(
                     child.model_copy(
@@ -273,6 +426,9 @@ def uniquify_grid_rows(rows: list[RowRoot]) -> list[RowRoot]:
                 )
             else:
                 children.append(child)
+        for c in children:
+            if isinstance(c, MolNode) and (c.id or "").strip():
+                used.add((c.id or "").strip())
         out.append(row.model_copy(update={"children": children}))
     return out
 
@@ -283,7 +439,7 @@ def grid_join(left: Operand, right: Operand) -> WireDepictSpec:
 
 
 def group_add(left: Operand, right: Operand) -> WireDepictSpec:
-    children = chain_align_previous(
-        with_mol_ids([*as_mol_nodes(left), *as_mol_nodes(right)])
+    children = chain_align_group(
+        with_group_ids([*as_group_children(left), *as_group_children(right)])
     )
     return _wire(GroupNode(type="group", align=False, children=list(children)))

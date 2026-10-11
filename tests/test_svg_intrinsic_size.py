@@ -7,8 +7,10 @@ import re
 from urllib.parse import unquote
 
 from xpict import Pict
-from xpict.draw.metrics import SCALE
-from xpict.draw.svg import svg_to_data_uri, svg_to_img_tag
+from xpict.rendered import svg_to_data_uri, svg_to_img_tag
+
+# Drawing units ≈ CSS px for data-URI <img> (Rust SCALE is 20).
+SCALE = 20.0
 
 _ROOT = re.compile(r"<svg\b([^>]*)>", re.DOTALL)
 _ATTR = re.compile(r'([\w:-]+)="([^"]*)"')

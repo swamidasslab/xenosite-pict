@@ -117,17 +117,15 @@ host-py-loc: ## Line counts for hand-written python/xpict (largest first)
 .PHONY: check
 check: check-pyright check-versions ## pyright + version policy
 
-# Live host surface typechecked here (not future/draw/api/tests).
+# Live host surface typechecked here (not future/api/tests).
 HOST_PY := \
 	python/xpict/base.py \
-	python/xpict/client.py \
 	python/xpict/sugar.py \
 	python/xpict/spec.py \
 	python/xpict/display.py \
 	python/xpict/rendered.py \
 	python/xpict/depict_spec.py \
 	python/xpict/native_bridge.py \
-	python/xpict/edge_plan.py \
 	python/xpict/contracts/__init__.py \
 	python/xpict/contracts/depict.py \
 	python/xpict/contracts/depict_dict.py \
@@ -135,13 +133,12 @@ HOST_PY := \
 	python/xpict/contracts/edge_dict.py \
 	python/xpict/contracts/scene.py \
 	python/xpict/contracts/scene_dict.py \
-	python/xpict/contracts/rendered_dict.py \
-	python/xpict/contracts/layout.py
+	python/xpict/contracts/rendered_dict.py
 
 .PHONY: check-pyright
 check-pyright: ## Strict basedpyright on live host + ban weak Any/object annotations
 	cd "$(ROOT)" && uv run basedpyright $(HOST_PY)
-	@# Ban escape-hatch annotations in the live host (not generated / future / draw).
+	@# Ban escape-hatch annotations in the live host (not generated / future).
 	@! rg -n --glob '*.py' \
 		-e ':[[:space:]]*Any\b' -e '->[[:space:]]*Any\b' \
 		-e '[[:space:]]Any[[:space:]]*\|' -e '\|[[:space:]]*Any\b' \
@@ -149,9 +146,9 @@ check-pyright: ## Strict basedpyright on live host + ban weak Any/object annotat
 		-e ':[[:space:]]*object\b' -e '->[[:space:]]*object\b' \
 		-e '[[:space:]]object[[:space:]]*\|' -e '\|[[:space:]]*object\b' \
 		-e 'dict\[str,[[:space:]]*object\]' -e 'list\[object\]' \
-		python/xpict/base.py python/xpict/client.py python/xpict/sugar.py \
+		python/xpict/base.py python/xpict/sugar.py \
 		python/xpict/depict_spec.py python/xpict/native_bridge.py \
-		python/xpict/edge_plan.py python/xpict/spec.py \
+		python/xpict/spec.py \
 		python/xpict/display.py python/xpict/rendered.py \
 		python/xpict/contracts/__init__.py \
 		|| { echo "error: weak Any/object annotation in live host — use TypedDict/pydantic unions" >&2; exit 1; }
