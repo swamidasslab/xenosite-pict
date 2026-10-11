@@ -1002,10 +1002,13 @@ mod tests {
 
     #[test]
     fn opts_patch_json_discriminated_and_list() {
-        // Universal singleton
-        let u: Opts = serde_json::from_str(r##"{"color":"#111"}"##).unwrap();
+        // Universal singleton (MolOpts — mol-only keys allowed without type tag)
+        let u: Opts = serde_json::from_str(r##"{"color":"#111","weight":1.2}"##).unwrap();
         match &u {
-            Opts::One(OptsPatch::Universal(c)) => assert_eq!(c.color.as_deref(), Some("#111")),
+            Opts::One(OptsPatch::Universal(m)) => {
+                assert_eq!(m.color.as_deref(), Some("#111"));
+                assert_eq!(m.weight, Some(1.2));
+            }
             _ => panic!("expected universal"),
         }
         // Typed mol patch
@@ -1033,6 +1036,29 @@ mod tests {
         )
         .unwrap();
         assert!(matches!(list, Opts::Many(ref v) if v.len() == 3));
+    }
+
+    #[test]
+    fn cascade_universal_mol_opts_from_group_bag() {
+        // Untyped bag entry carries weight/halo — no `{ "type": "mol", … }` needed.
+        let spec: DepictSpec = serde_json::from_str(
+            r##"{
+              "type": "group",
+              "align": false,
+              "opts": {"color": "#333", "weight": 1.5, "halo": true},
+              "children": [
+                {"type": "mol", "id": "a", "smiles": "CCO"},
+                {"type": "mol", "id": "b", "smiles": "CCC"}
+              ]
+            }"##,
+        )
+        .unwrap();
+        for i in 0..2 {
+            let c = spec.resolve_mol_chrome(i);
+            assert_eq!(c.color.as_deref(), Some("#333"));
+            assert_eq!(c.weight, Some(1.5));
+            assert_eq!(c.halo, Some(true));
+        }
     }
 
     #[test]

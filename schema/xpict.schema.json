@@ -454,50 +454,6 @@
         "kekule"
       ]
     },
-    "CommonOpts": {
-      "description": "Universal cascading keys (any node kind).",
-      "type": "object",
-      "properties": {
-        "aromatic": {
-          "description": "Aromatic ring paint: ``circle`` (default) or ``kekule``.",
-          "anyOf": [
-            {
-              "$ref": "#/definitions/AromaticStyle"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "color": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "debug_align": {
-          "description": "Paint alignment correspondence (matched atom tags + mol role badge).",
-          "type": [
-            "boolean",
-            "null"
-          ]
-        },
-        "debug_box": {
-          "description": "Paint dashed debug rectangles for layout boxes (labels / mol / scene).",
-          "type": [
-            "boolean",
-            "null"
-          ]
-        },
-        "scale": {
-          "type": [
-            "number",
-            "null"
-          ],
-          "format": "double"
-        }
-      }
-    },
     "DepictSpec": {
       "description": "Declarative document (`mol`, `group`, `reaction_scheme`, or `grid` root).",
       "oneOf": [
@@ -1025,7 +981,7 @@
       ]
     },
     "ForTypesPatch": {
-      "description": "Multi-kind patch: `{ \"for_types\": [\"mol\",\"group\"], …common opts }`.\n\nOnly [`CommonOpts`] keys are allowed here (intersection of kind bags).",
+      "description": "Multi-kind patch: `{ \"for_types\": [\"mol\",\"group\"], …mol opts }`.\n\nCarries full [`MolOpts`] so mol-only keys (`weight` / `halo` / `shade`) can target mols via `for_types` without a separate typed mol patch.",
       "type": "object",
       "required": [
         "for_types"
@@ -1068,7 +1024,30 @@
             "$ref": "#/definitions/NodeType"
           }
         },
+        "halo": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
         "scale": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "shade": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ShadeStyle"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "weight": {
           "type": [
             "number",
             "null"
@@ -1426,6 +1405,73 @@
         "mol"
       ]
     },
+    "MolOpts": {
+      "description": "Mol cascading paint opts — what a mol leaf consumes from the cascade.\n\n[`MolNode`] carries the same fields at the top level (local leaf opts) plus non-cascading identity keys.",
+      "type": "object",
+      "properties": {
+        "aromatic": {
+          "description": "Aromatic ring paint: ``circle`` (default) or ``kekule``.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AromaticStyle"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "color": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "debug_align": {
+          "description": "Paint alignment correspondence (matched atom tags + mol role badge).",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "debug_box": {
+          "description": "Paint dashed debug rectangles for layout boxes (labels / mol / scene).",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "halo": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "scale": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "shade": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ShadeStyle"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "weight": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        }
+      }
+    },
     "Node": {
       "description": "Document **node**: mol, edge, or text.\n\nUntagged so each variant keeps its own `\"type\"` field. - [`DepictSpec::Group`]: mol | text (no edges). - [`DepictSpec::ReactionScheme`]: mol | edge | text.",
       "anyOf": [
@@ -1507,10 +1553,10 @@
           ]
         },
         {
-          "description": "`{ \"color\": \"#111\" }` — applies to every kind.",
+          "description": "`{ \"color\": \"#111\", \"weight\": 1.2 }` — applies to every kind ([`MolOpts`]).\n\nUniversal is [`MolOpts`] (not [`CommonOpts`]) so container bags can stamp mol-only keys without wrapping `{ \"type\": \"mol\", … }`.",
           "allOf": [
             {
-              "$ref": "#/definitions/CommonOpts"
+              "$ref": "#/definitions/MolOpts"
             }
           ]
         }

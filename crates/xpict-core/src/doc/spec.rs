@@ -5,7 +5,8 @@
 //! - [`Opts`] is a **list** (or singleton) of [`OptsPatch`] rules.
 //! - Patches are discriminated by document node `type` (`TypedOptsPatch`) or
 //!   multi-select via reserved meta key `for_types` ([`ForTypesPatch`]).
-//!   Omitting both = universal (applies to every kind).
+//!   Omitting both = universal [`MolOpts`] (applies to every kind, including
+//!   mol-only keys like `weight` / `halo` / `shade`).
 //! - Meta keys (`type`, `for_types`) are selectors — not paint options.
 //! - Resolve: walk ancestors → node; apply matching patches in order; child
 //!   wins; nested objects (`shade`) deep-merge.
@@ -330,16 +331,17 @@ pub enum TypedOptsPatch {
     },
 }
 
-/// Multi-kind patch: `{ "for_types": ["mol","group"], …common opts }`.
+/// Multi-kind patch: `{ "for_types": ["mol","group"], …mol opts }`.
 ///
-/// Only [`CommonOpts`] keys are allowed here (intersection of kind bags).
+/// Carries full [`MolOpts`] so mol-only keys (`weight` / `halo` / `shade`) can
+/// target mols via `for_types` without a separate typed mol patch.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
 #[cfg_attr(feature = "codegen", ts(export))]
 pub struct ForTypesPatch {
     pub for_types: Vec<NodeType>,
     #[serde(flatten)]
-    pub opts: CommonOpts,
+    pub opts: MolOpts,
 }
 
 /// One cascade rule. Untagged order: typed → for_types → universal.
@@ -352,8 +354,11 @@ pub enum OptsPatch {
     Typed(TypedOptsPatch),
     /// `{ "for_types": ["mol","group"], "color": "#111" }`.
     ForTypes(ForTypesPatch),
-    /// `{ "color": "#111" }` — applies to every kind.
-    Universal(CommonOpts),
+    /// `{ "color": "#111", "weight": 1.2 }` — applies to every kind ([`MolOpts`]).
+    ///
+    /// Universal is [`MolOpts`] (not [`CommonOpts`]) so container bags can stamp
+    /// mol-only keys without wrapping `{ "type": "mol", … }`.
+    Universal(MolOpts),
 }
 
 impl OptsPatch {
@@ -379,8 +384,8 @@ impl OptsPatch {
             OptsPatch::Typed(TypedOptsPatch::ReactionScheme { .. }) => {}
             OptsPatch::Typed(TypedOptsPatch::Edge { .. }) => {}
             OptsPatch::Typed(TypedOptsPatch::Text { .. }) => {}
-            OptsPatch::ForTypes(p) => out.merge_common(&p.opts),
-            OptsPatch::Universal(c) => out.merge_common(c),
+            OptsPatch::ForTypes(p) => out.merge_from(&p.opts),
+            OptsPatch::Universal(m) => out.merge_from(m),
         }
     }
 }
