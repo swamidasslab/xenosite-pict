@@ -2,6 +2,7 @@
 
 ## 2026-10-19
 
+- Formal charge is no longer a fake superscript: `charge_glyphs` emits Normal `+`/`−` (and magnitude digits) on the element baseline. N/S stacking already offsets the charge; the extra script lift made top charges float and bottom charges crowd quaternary N⁺. Explicit caret markup (`R^{2+}`) still superscripts.
 - Heteroatom H drop: Chematic `edge_resolve::to_molecule_in` labeled bare `O`/`N`. Fix: store `implicit_hcount` on parse and build via shared `atom_display_label` (OH/NH2/NH4). Tests: chematic SMILES labels + `depict` ethanol/aniline paint.
 - Charge size/overlap: superscripts shared `SCRIPT_SCALE=0.66` with H-counts and bond insets cleared only the center glyph. Split `SUPERSCRIPT_SCALE=0.90` vs `SUBSCRIPT_SCALE=0.66`; bond clearance uses full label ink AABB so `+`/`−` clear bond ends.
 

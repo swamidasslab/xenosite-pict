@@ -94,8 +94,8 @@ fn doc_and_backend_labels_compose() {
         ("**R**", "R"),
         ("OH", "OH"),
         ("NH2", "NH₂"),
-        ("NH4+", "NH₄⁺"),
-        ("O-", "O⁻"),
+        ("NH4+", "NH₄+"),
+        ("O-", "O-"),
         ("*", "*"),
     ];
 
@@ -215,7 +215,7 @@ fn charge_outside_math_dollars() {
     let parts = split_label("$R$+");
     assert_eq!(parts.center, "$R$");
     assert_eq!(parts.charge, 1);
-    assert_eq!(compose_label(&parts, LabelSide::East), "R⁺");
+    assert_eq!(compose_label(&parts, LabelSide::East), "R+");
 }
 
 #[test]

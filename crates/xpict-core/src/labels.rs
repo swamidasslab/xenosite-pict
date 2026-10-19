@@ -322,13 +322,26 @@ fn charge_glyphs(charge: i32, style: FaceStyle) -> Vec<ChemGlyph> {
     }
     let mag = charge.unsigned_abs();
     let sign = if charge > 0 { '+' } else { '-' };
-    // Single pathway: charge → ``^`` / ``^{…}`` → parse_label_markup.
-    let marked = if mag == 1 {
-        format!("^{sign}")
-    } else {
-        format!("^{{{mag}{sign}}}")
-    };
-    markup::parse_label_markup(&marked, style)
+    // Formal charge stays on the element baseline (not a fake superscript).
+    // N/S orientation already stacks travel+charge on a second line; raising
+    // the glyph again made top charges float and bottom charges crowd the N.
+    // Explicit caret markup (`R^{2+}`) still goes through parse_label_markup.
+    let mut out = Vec::new();
+    if mag != 1 {
+        for ch in mag.to_string().chars() {
+            out.push(ChemGlyph {
+                ch,
+                role: ScriptRole::Normal,
+                face: style,
+            });
+        }
+    }
+    out.push(ChemGlyph {
+        ch: sign,
+        role: ScriptRole::Normal,
+        face: style,
+    });
+    out
 }
 
 fn h_travel_glyphs(parts: &LabelParts, style: FaceStyle) -> Vec<ChemGlyph> {
@@ -371,7 +384,7 @@ fn glyphs_for_side(parts: &LabelParts, side: LabelSide, style: FaceStyle) -> Vec
     }
 }
 
-/// Plain display string after orientation (``OH`` / ``HO`` / ``NH₂⁺``).
+/// Plain display string after orientation (``OH`` / ``HO`` / ``NH₂+``).
 pub fn compose_label(parts: &LabelParts, side: LabelSide) -> String {
     let glyphs = glyphs_for_side(parts, side, FaceStyle::Regular);
     glyphs_to_data_text(&glyphs)
@@ -967,9 +980,94 @@ mod tests {
     }
 
     #[test]
-    fn charge_is_superscript() {
+    fn charge_is_plain_not_superscript() {
+        // Formal charge rides the same baseline as the element (not a raised
+        // script). N/S stacking already moves the charge off the atom; a
+        // second superscript lift made top too high and bottom crowded.
         let parts = split_label("NH4+");
-        assert_eq!(compose_label(&parts, LabelSide::East), "NH₄⁺");
+        assert_eq!(compose_label(&parts, LabelSide::East), "NH₄+");
+        assert_eq!(
+            compose_label(&split_label("N+"), LabelSide::East),
+            "N+"
+        );
+        assert_eq!(
+            compose_label(&split_label("Fe2+"), LabelSide::East),
+            "Fe2+"
+        );
+        // Explicit caret markup still superscripts.
+        assert_eq!(
+            compose_label(&split_label("R^{2+}"), LabelSide::East),
+            "R²⁺"
+        );
+    }
+
+    #[test]
+    fn charge_shares_element_baseline_east() {
+        let style = FaceStyle::Regular;
+        let n = place_label("N", 0.0, 0.0, LabelSide::East, FONT_PX, style);
+        let np = place_label("N+", 0.0, 0.0, LabelSide::East, FONT_PX, style);
+        let (_nx0, ny0, _nx1, _ny1) = label_ink_shape(&n, FONT_PX, style)
+            .expect("N")
+            .bounds()
+            .expect("N ink");
+        let (_px0, py0, _px1, _py1) = label_ink_shape(&np, FONT_PX, style)
+            .expect("N+")
+            .bounds()
+            .expect("N+ ink");
+        // Superscript would lift the label top by ~0.5×cap (~0.35×FONT_PX).
+        assert!(
+            py0 > ny0 - 0.12 * FONT_PX,
+            "N+ top {py0} rose too far above N top {ny0} (still superscript?)"
+        );
+    }
+
+    #[test]
+    fn north_south_charge_stack_without_script_lift() {
+        let style = FaceStyle::Regular;
+        let face = font::face_metrics(style);
+        let line_gap = 1.1 * (face.cap_height / face.upem) * FONT_PX;
+
+        let north_n = place_label("N", 0.0, 0.0, LabelSide::North, FONT_PX, style);
+        let north_np = place_label("N+", 0.0, 0.0, LabelSide::North, FONT_PX, style);
+        let (_, n_top, _, _) = label_ink_shape(&north_n, FONT_PX, style)
+            .unwrap()
+            .bounds()
+            .unwrap();
+        let (_, np_top, _, _) = label_ink_shape(&north_np, FONT_PX, style)
+            .unwrap()
+            .bounds()
+            .unwrap();
+        let rise = n_top - np_top; // SVG +Y down: smaller y is higher
+        assert!(
+            rise > 0.45 * line_gap,
+            "north charge should stack above N; rise={rise}, line_gap={line_gap}"
+        );
+        assert!(
+            rise < line_gap + 0.55 * FONT_PX,
+            "north charge rose {rise} (line_gap={line_gap}); script lift on top of stack?"
+        );
+
+        let south_n = place_label("N", 0.0, 0.0, LabelSide::South, FONT_PX, style);
+        let south_np = place_label("N+", 0.0, 0.0, LabelSide::South, FONT_PX, style);
+        let (_, _, _, n_bot) = label_ink_shape(&south_n, FONT_PX, style)
+            .unwrap()
+            .bounds()
+            .unwrap();
+        let (_, _, _, np_bot) = label_ink_shape(&south_np, FONT_PX, style)
+            .unwrap()
+            .bounds()
+            .unwrap();
+        let drop = np_bot - n_bot;
+        assert!(
+            drop > 0.45 * line_gap,
+            "south charge should stack below N; drop={drop}, line_gap={line_gap}"
+        );
+        // Without script lift the charge sits fully on the lower baseline —
+        // drop reaches ~line_gap + charge height, not a cramped half-step.
+        assert!(
+            drop > line_gap * 0.85,
+            "south charge crowded against N: drop={drop}, line_gap={line_gap}"
+        );
     }
 
     #[test]
@@ -1279,7 +1377,7 @@ mod tests {
         assert!(ink.is_some());
 
         let parts = split_label("Fe2+");
-        assert_eq!(compose_label(&parts, LabelSide::East), "Fe²⁺");
+        assert_eq!(compose_label(&parts, LabelSide::East), "Fe2+");
         let west_abbr = place_label("GlcA", 0.0, 0.0, LabelSide::West, FONT_PX, FaceStyle::Regular);
         assert!(!west_abbr.path_d.is_empty());
     }
@@ -1334,36 +1432,35 @@ mod tests {
 
     #[test]
     fn script_digits_and_empty_place() {
-        // Charge magnitude 10 → superscript digits 1,0; NH9 → subscript 9.
+        // Charge magnitude is plain digits + sign; H-counts stay subscript.
         let fe = split_label("Fe10+");
         assert_eq!(fe.charge, 10);
-        let text = compose_label(&fe, LabelSide::East);
-        assert!(text.contains('¹') && text.contains('⁰') && text.contains('⁺'));
+        assert_eq!(compose_label(&fe, LabelSide::East), "Fe10+");
 
         let nh9 = compose_label(&split_label("NH9"), LabelSide::East);
         assert!(nh9.contains('₉'));
 
-        // Other script digits via high H-count / charge.
         let nh3 = compose_label(&split_label("NH3"), LabelSide::East);
         assert!(nh3.contains('₃'));
-        let fe4 = compose_label(&split_label("Fe4+"), LabelSide::East);
-        assert!(fe4.contains('⁴'));
+        assert_eq!(compose_label(&split_label("Fe4+"), LabelSide::East), "Fe4+");
 
-        // Sweep remaining script digit arms used by H-counts / charges.
+        // H-count subscripts (charges are plain, not raised digits).
         for (raw, needle) in [
             ("NH4", '₄'),
             ("NH5", '₅'),
             ("NH6", '₆'),
             ("NH7", '₇'),
             ("NH8", '₈'),
-            ("Fe5+", '⁵'),
-            ("Fe6+", '⁶'),
-            ("Fe7+", '⁷'),
-            ("Fe8+", '⁸'),
-            ("Fe9+", '⁹'),
         ] {
             let t = compose_label(&split_label(raw), LabelSide::East);
             assert!(t.contains(needle), "{raw} → {t}");
+        }
+        for mag in 5..=9 {
+            let raw = format!("Fe{mag}+");
+            assert_eq!(
+                compose_label(&split_label(&raw), LabelSide::East),
+                format!("Fe{mag}+")
+            );
         }
 
         let empty = place_label("", 0.0, 0.0, LabelSide::East, FONT_PX, FaceStyle::Regular);
