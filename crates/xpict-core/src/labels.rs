@@ -994,6 +994,10 @@ mod tests {
             compose_label(&split_label("Fe2+"), LabelSide::East),
             "Fe2+"
         );
+        assert_eq!(
+            compose_label(&split_label("O−"), LabelSide::East),
+            "O-"
+        );
         // Explicit caret markup still superscripts.
         assert_eq!(
             compose_label(&split_label("R^{2+}"), LabelSide::East),
@@ -1002,22 +1006,64 @@ mod tests {
     }
 
     #[test]
-    fn charge_shares_element_baseline_east() {
+    fn formal_charge_glyphs_are_normal_role() {
+        // Role-level guard: reintroducing ``^`` in charge_glyphs would pass
+        // loose ink tolerances but fail here.
+        for (raw, sign) in [("N+", '+'), ("O-", '-'), ("Fe3+", '+')] {
+            let g = charge_glyphs(split_label(raw).charge, FaceStyle::Regular);
+            assert!(
+                !g.is_empty() && g.iter().all(|x| x.role == ScriptRole::Normal),
+                "{raw}: expected Normal charge glyphs, got {g:?}"
+            );
+            assert_eq!(g.last().map(|x| x.ch), Some(sign));
+        }
+        let fe = charge_glyphs(split_label("Fe3+").charge, FaceStyle::Regular);
+        assert_eq!(
+            fe.iter().map(|x| x.ch).collect::<String>(),
+            "3+"
+        );
+        // Caret markup path still uses Superscript (contrast).
+        let caret = markup::parse_label_markup("^+", FaceStyle::Regular);
+        assert_eq!(caret.len(), 1);
+        assert_eq!(caret[0].role, ScriptRole::Superscript);
+    }
+
+    #[test]
+    fn charge_shares_element_baseline_east_and_west() {
         let style = FaceStyle::Regular;
-        let n = place_label("N", 0.0, 0.0, LabelSide::East, FONT_PX, style);
-        let np = place_label("N+", 0.0, 0.0, LabelSide::East, FONT_PX, style);
-        let (_nx0, ny0, _nx1, _ny1) = label_ink_shape(&n, FONT_PX, style)
-            .expect("N")
+        for side in [LabelSide::East, LabelSide::West] {
+            let n = place_label("N", 0.0, 0.0, side, FONT_PX, style);
+            let np = place_label("N+", 0.0, 0.0, side, FONT_PX, style);
+            let (_nx0, ny0, _nx1, _ny1) = label_ink_shape(&n, FONT_PX, style)
+                .expect("N")
+                .bounds()
+                .expect("N ink");
+            let (_px0, py0, _px1, _py1) = label_ink_shape(&np, FONT_PX, style)
+                .expect("N+")
+                .bounds()
+                .expect("N+ ink");
+            // Superscript would lift the label top by ~0.5×cap (~0.35×FONT_PX).
+            assert!(
+                py0 > ny0 - 0.12 * FONT_PX,
+                "{side:?}: N+ top {py0} rose too far above N top {ny0} (still superscript?)"
+            );
+        }
+
+        // Contrast: math-mode superscript + *does* lift ink above formal N+.
+        let formal = place_label("N+", 0.0, 0.0, LabelSide::East, FONT_PX, style);
+        let raised = place_label("$N^+$", 0.0, 0.0, LabelSide::East, FONT_PX, style);
+        assert_eq!(raised.text, "N⁺");
+        let (_, fy0, _, _) = label_ink_shape(&formal, FONT_PX, style)
+            .unwrap()
             .bounds()
-            .expect("N ink");
-        let (_px0, py0, _px1, _py1) = label_ink_shape(&np, FONT_PX, style)
-            .expect("N+")
+            .unwrap();
+        let (_, ry0, _, _) = label_ink_shape(&raised, FONT_PX, style)
+            .unwrap()
             .bounds()
-            .expect("N+ ink");
-        // Superscript would lift the label top by ~0.5×cap (~0.35×FONT_PX).
+            .unwrap();
         assert!(
-            py0 > ny0 - 0.12 * FONT_PX,
-            "N+ top {py0} rose too far above N top {ny0} (still superscript?)"
+            ry0 < fy0 - 0.15 * FONT_PX,
+            "$N^+$ should sit above formal N+ ({ry0} vs {fy0}); contrast probe broken?"
         );
     }
 
@@ -1068,6 +1114,61 @@ mod tests {
             drop > line_gap * 0.85,
             "south charge crowded against N: drop={drop}, line_gap={line_gap}"
         );
+    }
+
+    #[test]
+    fn quaternary_n_plus_north_south_orientation_keeps_charge_clear() {
+        // Me4N+-like: four neighbors; force N/S label side and require the
+        // charge stack to clear the element ink (the visual failure mode).
+        let style = FaceStyle::Regular;
+        for (side, neighbors) in [
+            (
+                LabelSide::North,
+                [(10.0, 12.0), (-10.0, 12.0), (8.0, -4.0), (-8.0, -4.0)],
+            ),
+            (
+                LabelSide::South,
+                [(10.0, -12.0), (-10.0, -12.0), (8.0, 4.0), (-8.0, 4.0)],
+            ),
+        ] {
+            let got = label_side((0.0, 0.0), &neighbors);
+            assert_eq!(got, side, "fixture neighbors should orient {side:?}");
+            let bare = place_label("N", 0.0, 0.0, side, FONT_PX, style);
+            let charged = place_label("N+", 0.0, 0.0, side, FONT_PX, style);
+            let (_, bn0, _, bn1) = label_ink_shape(&bare, FONT_PX, style)
+                .unwrap()
+                .bounds()
+                .unwrap();
+            let (_, cn0, _, cn1) = label_ink_shape(&charged, FONT_PX, style)
+                .unwrap()
+                .bounds()
+                .unwrap();
+            match side {
+                LabelSide::North => {
+                    // Charge above: full label top clears bare N top by a
+                    // real stack step (not a half-raised superscript).
+                    assert!(
+                        bn0 - cn0 > 0.35 * FONT_PX,
+                        "north N+ must extend above N: bare_top={bn0} charged_top={cn0}"
+                    );
+                    assert!(
+                        bn0 - cn0 < 1.4 * FONT_PX,
+                        "north N+ floated too far: bare_top={bn0} charged_top={cn0}"
+                    );
+                }
+                LabelSide::South => {
+                    assert!(
+                        cn1 - bn1 > 0.35 * FONT_PX,
+                        "south N+ must extend below N: bare_bot={bn1} charged_bot={cn1}"
+                    );
+                    assert!(
+                        cn1 - bn1 < 1.4 * FONT_PX,
+                        "south N+ dropped too far / odd: bare_bot={bn1} charged_bot={cn1}"
+                    );
+                }
+                _ => unreachable!(),
+            }
+        }
     }
 
     #[test]
