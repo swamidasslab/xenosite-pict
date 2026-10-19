@@ -507,6 +507,30 @@ fn prefix_before_center(
     }
 }
 
+/// Full oriented label ink AABB relative to the atom (SVG +Y down).
+///
+/// Used for bond shortening so traveling H and charge superscripts clear
+/// bond ends when a neighbor approaches from that side. Atom-center
+/// isotropic [`PlacedLabel::clearance`] still uses [`center_glyph_ink_rel`].
+fn label_clearance_ink_rel(
+    parts: &LabelParts,
+    side: LabelSide,
+    font_px: f64,
+    style: FaceStyle,
+) -> (f64, Option<(f64, f64, f64, f64)>) {
+    let (center_adv, _) = center_glyph_ink_rel(parts, side, font_px, style);
+    let prefix = prefix_before_center(parts, side, font_px, style);
+    let origin_x = -prefix - 0.5 * center_adv;
+    let baseline = baseline_offset(font_px, style);
+    // Atom at (0, 0); outline_placed uses atom_x for N/S centering.
+    let Some(shape) = outline_placed(parts, side, origin_x, baseline, 0.0, 0.0, font_px, style)
+    else {
+        return (center_adv, None);
+    };
+    let ink = shape.bounds().map(|(x0, y0, x1, y1)| (x0, x1, y0, y1));
+    (center_adv, ink)
+}
+
 /// Ink AABB of the center glyph relative to the atom (SVG +Y down).
 fn center_glyph_ink_rel(
     parts: &LabelParts,
@@ -797,7 +821,8 @@ pub fn place_backbone(
         let parts = split_label(raw);
         let elem = parts.center.as_str();
         let side = label_side_for((atom.x, atom.y), &nbrs[i], Some(elem));
-        metrics.push(Some(center_glyph_ink_rel(&parts, side, font_px, style)));
+        // Full label ink (H + charge) so bonds do not clip superscripts.
+        metrics.push(Some(label_clearance_ink_rel(&parts, side, font_px, style)));
         labels.push(Some(place_label_weighted(
             raw, atom.x, atom.y, side, font_px, style, weight,
         )));
@@ -945,6 +970,97 @@ mod tests {
     fn charge_is_superscript() {
         let parts = split_label("NH4+");
         assert_eq!(compose_label(&parts, LabelSide::East), "NH₄⁺");
+    }
+
+    #[test]
+    fn charge_extends_east_bond_clearance() {
+        // Center-only clearance ignores the superscript; full-label ink must
+        // push the bond end past the charge when approached from the east.
+        let style = FaceStyle::Regular;
+        let bare = split_label("O");
+        let charged = split_label("O+");
+        let (adv_o, ink_o) = label_clearance_ink_rel(&bare, LabelSide::East, FONT_PX, style);
+        let (adv_op, ink_op) = label_clearance_ink_rel(&charged, LabelSide::East, FONT_PX, style);
+        let east_o = clearance_toward(adv_o, ink_o, 1.0, 0.0, 0.0);
+        let east_op = clearance_toward(adv_op, ink_op, 1.0, 0.0, 0.0);
+        assert!(
+            east_op > east_o + 0.8,
+            "O+ east clearance {east_op} should exceed bare O {east_o} by charge width"
+        );
+        // West approach still clears the element (charge is on the east).
+        let west_o = clearance_toward(adv_o, ink_o, -1.0, 0.0, 0.0);
+        let west_op = clearance_toward(adv_op, ink_op, -1.0, 0.0, 0.0);
+        assert!(
+            (west_op - west_o).abs() < 0.5,
+            "west clearance should stay near the element: O={west_o} O+={west_op}"
+        );
+    }
+
+    #[test]
+    fn backbone_shortens_into_charge_from_charge_side() {
+        // Stronger west neighbor → East label (charge to the right); weaker
+        // east neighbor so a bond still approaches from the charge side.
+        let atoms = vec![
+            AtomIn {
+                x: -40.0,
+                y: 0.0,
+                label: None,
+            },
+            AtomIn {
+                x: 0.0,
+                y: 0.0,
+                label: Some("O+".into()),
+            },
+            AtomIn {
+                x: 25.0,
+                y: 0.0,
+                label: None,
+            },
+        ];
+        let bonds = vec![
+            BondIn { begin: 0, end: 1 },
+            BondIn { begin: 1, end: 2 },
+        ];
+        let (out, labels) = place_backbone(&atoms, &bonds, FONT_PX, FaceStyle::Regular, 1.0);
+        let lab = labels[1].as_ref().expect("O+");
+        assert_eq!(lab.side, LabelSide::East, "expected East charge side, got {:?}", lab.side);
+        assert!(
+            lab.text.contains('⁺') || lab.text.contains('+'),
+            "expected charge in label text, got {}",
+            lab.text
+        );
+        // Right-hand bond must stop short of the atom past the charge ink.
+        let o_adv = advance_px("O", FONT_PX, FaceStyle::Regular);
+        let gap_from_o = out[1].x1 - 0.0;
+        assert!(
+            gap_from_o > 0.5 * o_adv + LABEL_GAP_PX + 0.8,
+            "right bond must clear charge: gap={gap_from_o}, half_O={}",
+            0.5 * o_adv
+        );
+        // Bare O with the same skeleton shortens less on the charge side.
+        let atoms_bare = vec![
+            AtomIn {
+                x: -40.0,
+                y: 0.0,
+                label: None,
+            },
+            AtomIn {
+                x: 0.0,
+                y: 0.0,
+                label: Some("O".into()),
+            },
+            AtomIn {
+                x: 25.0,
+                y: 0.0,
+                label: None,
+            },
+        ];
+        let (out_bare, _) = place_backbone(&atoms_bare, &bonds, FONT_PX, FaceStyle::Regular, 1.0);
+        assert!(
+            gap_from_o > out_bare[1].x1 + 0.5,
+            "O+ gap {gap_from_o} should exceed bare O gap {}",
+            out_bare[1].x1
+        );
     }
 
     #[test]

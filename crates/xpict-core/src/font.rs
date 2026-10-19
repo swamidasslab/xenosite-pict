@@ -5,8 +5,9 @@
 //! assembled with even-odd fill into [`crate::geom::Shape`].
 //!
 //! Chem scripts (H-counts, charges) are **fake** sub/superscripts: scale by
-//! [`crate::metrics::SCRIPT_SCALE`], buffer the outline to restore stem weight,
-//! and cache the result. Dummy ``*`` uses a custom star at [`STAR_FRAC`].
+//! [`crate::metrics::SUBSCRIPT_SCALE`] / [`crate::metrics::SUPERSCRIPT_SCALE`],
+//! buffer the outline to restore stem weight, and cache the result. Dummy
+//! ``*`` uses a custom star at [`STAR_FRAC`].
 
 #![cfg(feature = "font")]
 
@@ -16,7 +17,7 @@ use std::sync::{Mutex, OnceLock};
 use ttf_parser::{Face, GlyphId, OutlineBuilder, Rect};
 
 use crate::geom::Shape;
-use crate::metrics::{SCRIPT_SCALE, STAR_FRAC};
+use crate::metrics::{STAR_FRAC, SUBSCRIPT_SCALE, SUPERSCRIPT_SCALE};
 
 const BEZIER_STEPS: usize = 8;
 
@@ -301,8 +302,8 @@ fn script_cache() -> &'static Mutex<HashMap<(char, FaceStyle, ScriptRole), (Opti
 
 /// Outline one character in em space (+Y up), optionally as a fake script.
 ///
-/// Scripts: scale by [`SCRIPT_SCALE`], then buffer so stem weight stays close
-/// to the full-size glyph. Results are memoized.
+/// Scripts: scale by [`SUBSCRIPT_SCALE`] / [`SUPERSCRIPT_SCALE`], then buffer
+/// so stem weight stays close to the full-size glyph. Results are memoized.
 pub fn outline_glyph_em(ch: char, style: FaceStyle, role: ScriptRole) -> (Option<Shape>, f64) {
     if let Ok(guard) = script_cache().lock() {
         if let Some(hit) = guard.get(&(ch, style, role)) {
@@ -314,6 +315,14 @@ pub fn outline_glyph_em(ch: char, style: FaceStyle, role: ScriptRole) -> (Option
         guard.insert((ch, style, role), built.clone());
     }
     built
+}
+
+fn script_scale_for(role: ScriptRole) -> f64 {
+    match role {
+        ScriptRole::Normal => 1.0,
+        ScriptRole::Subscript => SUBSCRIPT_SCALE,
+        ScriptRole::Superscript => SUPERSCRIPT_SCALE,
+    }
 }
 
 fn outline_glyph_em_uncached(
@@ -338,17 +347,18 @@ fn outline_glyph_em_uncached(
     match role {
         ScriptRole::Normal => (Some(shape), advance),
         ScriptRole::Subscript | ScriptRole::Superscript => {
+            let scale = script_scale_for(role);
             // Scale about the glyph origin; advance tracks the smaller width.
-            let scaled = shape.scale(SCRIPT_SCALE, SCRIPT_SCALE, 0.0, 0.0);
-            // Inflate so 0.66× glyphs keep roughly full stem weight.
+            let scaled = shape.scale(scale, scale, 0.0, 0.0);
+            // Inflate so reduced glyphs keep roughly full stem weight.
             let stem = face_metrics(style).stem_em;
-            let grow = 0.5 * (1.0 - SCRIPT_SCALE) * stem * upem;
+            let grow = 0.5 * (1.0 - scale) * stem * upem;
             let thick = if grow > 0.05 {
                 scaled.buffer(grow)
             } else {
                 scaled
             };
-            (Some(thick), advance * SCRIPT_SCALE)
+            (Some(thick), advance * scale)
         }
     }
 }
@@ -507,7 +517,7 @@ fn measure_stem_em(style: FaceStyle) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::metrics::{FONT_PX, FONT_STEM_EM, SCRIPT_SCALE, STAR_FRAC};
+    use crate::metrics::{FONT_PX, FONT_STEM_EM, STAR_FRAC, SUBSCRIPT_SCALE, SUPERSCRIPT_SCALE};
 
     #[test]
     fn liberation_face_metrics() {
@@ -559,7 +569,31 @@ mod tests {
         assert!(adv_sub < adv_full * 0.75);
         assert!(sub.area() > 0.0);
         // Buffered script should not collapse to a speck.
-        assert!(sub.area() > full.area() * SCRIPT_SCALE * SCRIPT_SCALE * 0.5);
+        assert!(sub.area() > full.area() * SUBSCRIPT_SCALE * SUBSCRIPT_SCALE * 0.5);
+    }
+
+    #[test]
+    fn charge_superscript_larger_than_h_subscript() {
+        let (_full, adv_full) = outline_glyph_em('+', FaceStyle::Regular, ScriptRole::Normal);
+        let (_plus, adv_plus) =
+            outline_glyph_em('+', FaceStyle::Regular, ScriptRole::Superscript);
+        let (_two, adv_sub) = outline_glyph_em('2', FaceStyle::Regular, ScriptRole::Subscript);
+        // Charges must stay readable (near base height), not RDKit's tiny 0.66.
+        assert!(
+            (adv_plus / adv_full - SUPERSCRIPT_SCALE).abs() < 0.05,
+            "superscript + advance should track SUPERSCRIPT_SCALE={SUPERSCRIPT_SCALE}, got {}",
+            adv_plus / adv_full
+        );
+        assert!(
+            adv_plus / adv_full > 0.80,
+            "charge + too small: ratio {}",
+            adv_plus / adv_full
+        );
+        assert!(
+            adv_plus / adv_full > adv_sub / outline_glyph_em('2', FaceStyle::Regular, ScriptRole::Normal).1 + 0.1,
+            "charge superscript should outsize H-count subscript"
+        );
+        let _ = SUBSCRIPT_SCALE;
     }
 
     #[test]

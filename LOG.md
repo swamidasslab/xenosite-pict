@@ -1,5 +1,10 @@
 # Lab log
 
+## 2026-10-19
+
+- Heteroatom H drop: Chematic `edge_resolve::to_molecule_in` labeled bare `O`/`N`. Fix: store `implicit_hcount` on parse and build via shared `atom_display_label` (OH/NH2/NH4). Tests: chematic SMILES labels + `depict` ethanol/aniline paint.
+- Charge size/overlap: superscripts shared `SCRIPT_SCALE=0.66` with H-counts and bond insets cleared only the center glyph. Split `SUPERSCRIPT_SCALE=0.90` vs `SUBSCRIPT_SCALE=0.66`; bond clearance uses full label ink AABB so `+`/`−` clear bond ends.
+
 ## 2026-10-10
 
 - Mol captions in Rust: `render_doc` folds text-node refs into the mol scene (`mol-caption` glyph paths, default below, font 1.15× atom labels). Host sugar only emits text+label; notebook HTML stays a thin row/cell packer.

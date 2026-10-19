@@ -56,8 +56,17 @@ pub const MARK_HALO_OPACITY: f64 = 0.45;
 /// that for host CSS on `.mark`). Xpict does not style by class: the visible
 /// ring is this baked halo attribute; ink stays uncolored.
 pub const MARK_HALO_COLOR: &str = "#555";
-/// RDKit ``DrawText::SUBS_SCALE`` / ``SUPER_SCALE`` for H-counts and charges.
-pub const SCRIPT_SCALE: f64 = 0.66;
+/// Fake-subscript scale for H-counts (RDKit ``DrawText::SUBS_SCALE``).
+pub const SUBSCRIPT_SCALE: f64 = 0.66;
+
+/// Fake-superscript scale for charges / caret markup.
+///
+/// Larger than RDKit's 0.66 so ``+`` / ``−`` stay readable on publication
+/// figures; H-count subscripts stay at [`SUBSCRIPT_SCALE`].
+pub const SUPERSCRIPT_SCALE: f64 = 0.90;
+
+/// Alias for [`SUBSCRIPT_SCALE`] (historical name used by older call sites).
+pub const SCRIPT_SCALE: f64 = SUBSCRIPT_SCALE;
 /// Dummy / R-group ``*`` height as a multiple of Liberation cap-height.
 ///
 /// Custom five-point star (not the Liberation asterisk); ~2× letter height so
