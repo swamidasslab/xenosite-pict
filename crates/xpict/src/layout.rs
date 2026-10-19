@@ -30,28 +30,7 @@ fn mean_bond_scale(atoms: &[(f64, f64)], bonds: &[(i32, i32)]) -> f64 {
 }
 
 fn atom_label(element: &str, imp_hs: u32, charge: i32) -> Option<String> {
-    if element == "C" && charge == 0 {
-        return None;
-    }
-    if element == "*" {
-        return Some("*".into());
-    }
-    let mut text = element.to_string();
-    if imp_hs == 1 {
-        text = format!("{element}H");
-    } else if imp_hs > 1 {
-        text = format!("{element}H{imp_hs}");
-    }
-    if charge != 0 {
-        let sign = if charge > 0 { "+" } else { "−" };
-        let mag = charge.unsigned_abs();
-        text = if mag == 1 {
-            format!("{text}{sign}")
-        } else {
-            format!("{text}{mag}{sign}")
-        };
-    }
-    Some(text)
+    xpict_core::atom_display_label(element, imp_hs, charge)
 }
 
 fn looks_like_molblock(source: &str) -> bool {

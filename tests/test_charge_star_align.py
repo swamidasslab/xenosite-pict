@@ -10,8 +10,17 @@ from xpict import Pict, render
 def test_charge_label_in_svg():
     svg = render({"molecules": [{"smiles": "[NH4+]"}]})
     assert "N" in svg
+    # Implicit H on ammonium must appear (NH₄⁺ / H₄N⁺), not bare N⁺.
+    assert "H" in svg or "₄" in svg
     assert "+" in svg or "⁺" in svg or "＋" in svg
     assert "²⁺" not in svg
+
+
+def test_heteroatom_implicit_h_in_svg():
+    ethanol = render({"molecules": [{"smiles": "CCO"}]})
+    assert 'data-text="OH"' in ethanol or 'data-text="HO"' in ethanol
+    aniline = render({"molecules": [{"smiles": "c1ccccc1N"}]})
+    assert "NH" in aniline or "H₂N" in aniline or "NH₂" in aniline
 
 
 @pytest.mark.xfail(

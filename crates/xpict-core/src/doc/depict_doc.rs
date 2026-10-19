@@ -154,6 +154,58 @@ mod tests {
     }
 
     #[test]
+    fn depict_ethanol_and_aniline_paint_implicit_h_labels() {
+        for (smiles, needle) in [("CCO", "OH"), ("c1ccccc1N", "NH₂")] {
+            let spec = DepictSpec::Mol {
+                smiles: Some(smiles.into()),
+                cxsmiles: None,
+                molfile: None,
+                id: None,
+                shade: None,
+                star_labels: None,
+                align_to: None,
+                label: None,
+                color: None,
+                scale: None,
+                weight: None,
+                halo: None,
+                aromatic: None,
+                debug_box: None,
+                debug_align: None,
+                opts: None,
+            };
+            let painted = depict(&spec).unwrap();
+            let scene = &painted[0].scene;
+            let texts: Vec<&str> = scene
+                .viewports
+                .iter()
+                .flat_map(|v| v.layers.iter())
+                .flat_map(|l| l.primitives.iter())
+                .filter_map(|p| match p {
+                    crate::scene::Primitive::Path {
+                        data_text: Some(t),
+                        ..
+                    } => Some(t.as_str()),
+                    _ => None,
+                })
+                .collect();
+            let ok = texts.iter().any(|t| {
+                t.contains(needle)
+                    || (needle == "OH" && (*t == "HO" || *t == "OH"))
+                    || (needle == "NH₂" && (t.contains("H₂N") || t.contains("NH₂")))
+            });
+            assert!(
+                ok,
+                "{smiles}: expected {needle:?} (or flipped) in label texts {texts:?}"
+            );
+            assert!(
+                !texts.iter().any(|t| *t == "O" || *t == "N"),
+                "{smiles}: bare O/N without H, got {texts:?}"
+            );
+        }
+    }
+
+    #[test]
     fn depict_aligned_pair() {
         let spec = DepictSpec::Group {
             id: None,

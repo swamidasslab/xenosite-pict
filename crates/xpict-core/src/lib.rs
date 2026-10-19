@@ -93,8 +93,8 @@ pub use elk::{
 pub use geom::{capsule_halo_path_d, disk_halo_path_d, polygon_to_svg_d};
 #[cfg(feature = "font")]
 pub use labels::{
-    compose_label, label_side, place_backbone, place_label, shorten_bond, split_label, AtomIn,
-    BondIn, BondOut, LabelParts, LabelSide, PlacedLabel,
+    atom_display_label, compose_label, label_side, place_backbone, place_label, shorten_bond,
+    split_label, AtomIn, BondIn, BondOut, LabelParts, LabelSide, PlacedLabel,
 };
 #[cfg(feature = "font")]
 pub use markup::parse_label_markup;

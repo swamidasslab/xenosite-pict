@@ -61,6 +61,37 @@ pub struct PlacedLabel {
     pub path_d: String,
 }
 
+/// Build a display label from element, implicit H count, and formal charge.
+///
+/// Silent carbons (`C` with charge 0) return `None`. Hydrogens become
+/// ``OH`` / ``NH2``; charge is left for [`crate::depict`] / callers that
+/// append via `AtomIn.charge`, or pass `charge` here to bake it in (RDKit
+/// host path).
+pub fn atom_display_label(element: &str, imp_hs: u32, charge: i32) -> Option<String> {
+    if element == "C" && charge == 0 {
+        return None;
+    }
+    if element == "*" {
+        return Some("*".into());
+    }
+    let mut text = element.to_string();
+    if imp_hs == 1 {
+        text = format!("{element}H");
+    } else if imp_hs > 1 {
+        text = format!("{element}H{imp_hs}");
+    }
+    if charge != 0 {
+        let sign = if charge > 0 { "+" } else { "−" };
+        let mag = charge.unsigned_abs();
+        text = if mag == 1 {
+            format!("{text}{sign}")
+        } else {
+            format!("{text}{mag}{sign}")
+        };
+    }
+    Some(text)
+}
+
 /// Split a raw label into center + traveling H + charge.
 ///
 /// Accepts backend strings like ``NH2``, ``OH``, ``NH4+``, ``O−``, ``*``,
@@ -824,6 +855,18 @@ mod tests {
         let glc = split_label("GlcA");
         assert_eq!(glc.center, "GlcA");
         assert!(glc.traveling.is_empty());
+    }
+
+    #[test]
+    fn atom_display_label_appends_implicit_h() {
+        assert_eq!(atom_display_label("O", 1, 0).as_deref(), Some("OH"));
+        assert_eq!(atom_display_label("N", 2, 0).as_deref(), Some("NH2"));
+        assert_eq!(atom_display_label("N", 4, 1).as_deref(), Some("NH4+"));
+        assert_eq!(atom_display_label("O", 0, -1).as_deref(), Some("O−"));
+        assert_eq!(atom_display_label("C", 3, 0), None);
+        // Charged carbon keeps H (RDKit): [CH3+] → CH3+.
+        assert_eq!(atom_display_label("C", 3, 1).as_deref(), Some("CH3+"));
+        assert_eq!(atom_display_label("*", 0, 0).as_deref(), Some("*"));
     }
 
     #[test]

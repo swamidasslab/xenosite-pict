@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 
-use chematic::core::{BondOrder, Molecule};
+use chematic::core::{implicit_hcount, AtomIdx, BondOrder, Molecule};
 use chematic::mol::{parse_mol, parse_mol_v3000};
 use chematic::smiles::{self, parse_cxsmiles};
 
@@ -15,6 +15,7 @@ use crate::edge::{
     MolTemplate, MIN_MCS_ATOMS,
 };
 use crate::elements::element_symbol;
+use crate::labels::atom_display_label;
 use crate::layout_coordgen::{LayoutMolecule, LayoutResult};
 use crate::metrics::SCALE;
 use crate::scene::{AtomIn, BondIn, MoleculeIn};
@@ -24,6 +25,8 @@ struct Parsed {
     layout: LayoutMolecule,
     atom_indices: Vec<i32>,
     paint_orders: Vec<f64>,
+    /// Chematic implicit (or bracket-stored) H counts per atom.
+    implicit_hs: Vec<u32>,
 }
 
 fn ctab_bond_order(order: BondOrder, a_arom: bool, b_arom: bool) -> i32 {
@@ -49,9 +52,11 @@ fn molecule_to_layout(mol: &Molecule) -> Result<Parsed, String> {
     }
     let mut atomic_numbers = Vec::with_capacity(n);
     let mut formal_charges = Vec::with_capacity(n);
+    let mut implicit_hs = Vec::with_capacity(n);
     let mut arom = Vec::with_capacity(n);
     for i in 0..n {
-        let atom = mol.atom(chematic::core::AtomIdx(i as u32));
+        let idx = AtomIdx(i as u32);
+        let atom = mol.atom(idx);
         let z = if atom.wildcard {
             0
         } else {
@@ -59,6 +64,7 @@ fn molecule_to_layout(mol: &Molecule) -> Result<Parsed, String> {
         };
         atomic_numbers.push(z);
         formal_charges.push(i32::from(atom.charge));
+        implicit_hs.push(u32::from(implicit_hcount(mol, idx)));
         arom.push(atom.aromatic);
     }
     let mut bond_from = Vec::new();
@@ -91,6 +97,7 @@ fn molecule_to_layout(mol: &Molecule) -> Result<Parsed, String> {
         },
         atom_indices: (0..n as i32).collect(),
         paint_orders,
+        implicit_hs,
     })
 }
 
@@ -162,11 +169,10 @@ fn to_molecule_in(id: &str, parsed: &Parsed, coords: &LayoutResult) -> MoleculeI
             let z = parsed.layout.atomic_numbers[i] as u32;
             let charge = parsed.layout.formal_charges[i];
             let element = element_symbol(z).to_string();
-            let label = if z == 6 && charge == 0 {
-                None
-            } else {
-                Some(element.clone())
-            };
+            let hs = parsed.implicit_hs.get(i).copied().unwrap_or(0);
+            // Charge stays on `AtomIn.charge`; `display_label` appends the
+            // suffix so we do not bake it into the string twice.
+            let label = atom_display_label(&element, hs, 0);
             AtomIn {
                 index: parsed.atom_indices.get(i).copied().unwrap_or(i as i32),
                 element: Some(element),
@@ -559,5 +565,40 @@ mod tests {
         assert!(ok);
         assert_eq!(molecules[0].molecule.as_ref().unwrap().atoms.len(), 3);
         assert!(frames.contains_key("m_0"));
+    }
+
+    /// Chematic→paint must append implicit H on heteroatoms (OH / NH2), not
+    /// bare element symbols — matches RDKit host `atom_label`.
+    #[test]
+    fn chematic_labels_include_implicit_h_on_n_and_o() {
+        let cases: &[(&str, &[&str])] = &[
+            ("CCO", &["OH"]),
+            ("CCN", &["NH2"]),
+            ("c1ccccc1O", &["OH"]),
+            ("c1ccccc1N", &["NH2"]),
+            ("[NH4+]", &["NH4"]),
+            ("[OH-]", &["OH"]),
+        ];
+        for &(smiles, want_labels) in cases {
+            let mol = free_layout(smiles, "m").unwrap().molecule;
+            let got: Vec<String> = mol
+                .atoms
+                .iter()
+                .filter_map(|a| a.label.clone())
+                .collect();
+            for want in want_labels {
+                assert!(
+                    got.iter().any(|g| g == *want),
+                    "{smiles}: expected label {want:?} among {got:?}"
+                );
+            }
+            // Bare heteroatom without H is wrong when H is present.
+            if want_labels.iter().any(|w| w.contains('H')) {
+                assert!(
+                    !got.iter().any(|g| g == "O" || g == "N"),
+                    "{smiles}: bare O/N label without H, got {got:?}"
+                );
+            }
+        }
     }
 }
