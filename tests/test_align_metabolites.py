@@ -5,7 +5,14 @@ from __future__ import annotations
 import json
 
 import pytest
-from xenosite.forest import ForestMol, hydroxylation
+from xenosite.forest import (
+    ForestMol,
+    dehydrogenation,
+    epoxidation,
+    epoxide_opening,
+    hydroxylation,
+    quinone_formation,
+)
 
 from xpict import mol
 from xpict.contracts.depict import DepictSpec
@@ -23,6 +30,13 @@ AZITHROMYCIN = (
     "CCC1CC(C)(O)C(O)C(C)N(C)CC(C)CC(C)(O)C(OC2OC(C)CC(N(C)C)C2O)C(C)C"
     "(OC2CC(C)(OC)C(O)C(C)O2)C(C)C(=O)O1"
 )
+HYDROQUINONE = "Oc1ccc(O)cc1"
+BENZOQUINONE = "O=C1C=CC(=O)C=C1"
+APAP = "CC(=O)Nc1ccc(O)cc1"
+NAPQI = "CC(=O)N=C1C=CC(=O)C=C1"
+BENZENE = "c1ccccc1"
+BENZENE_OXIDE = "C1=CC2OC2C=C1"
+PHENOL = "c1ccccc1O"
 
 
 def _align(parent: str, query: str) -> tuple[dict, dict, list[tuple[int, int]]]:
@@ -100,11 +114,34 @@ def test_testosterone_does_not_map_oxygen_onto_cholesterol_carbon() -> None:
     assert len(tags) == 20  # extra O unmatched; no O→C
 
 
+def _assert_parent_maps(parent: str, prod: str) -> None:
+    ref, qry, tags = _align(parent, prod)
+    assert len(tags) == len(ref["atoms"]), (parent, prod, tags)
+    assert all(_el(qry, q) == _el(ref, r) for q, r in tags)
+
+
+def _remodel_products(rule, parent: str, *, limit: int = 4) -> list[str]:
+    """Single-piece conjugate products that keep the parent heavy-atom count."""
+    out: list[str] = []
+    n_parent = len(_align(parent, parent)[0]["atoms"])
+    for em in rule.metabolize(ForestMol(parent)):
+        for prod in em.product_csmis():
+            if not prod or "." in prod or prod in out:
+                continue
+            n_prod = len(_align(parent, prod)[1]["atoms"])
+            if n_prod < n_parent - 1:
+                continue
+            out.append(prod)
+            if len(out) >= limit:
+                return out
+    return out
+
+
 @pytest.mark.parametrize(
     "parent",
     [
-        "c1ccccc1O",
-        "CC(=O)Nc1ccc(O)cc1",
+        PHENOL,
+        APAP,
         "Cn1cnc2n(C)c(=O)n(C)c(=O)c12",
     ],
 )
@@ -113,6 +150,42 @@ def test_hydroxylation_metabolite_maps_parent_atoms(parent: str) -> None:
     assert emissions, parent
     for em in emissions[:3]:
         prod = em.product_csmis()[0]
-        ref, qry, tags = _align(parent, prod)
-        assert len(tags) == len(ref["atoms"]), (parent, prod, tags)
-        assert all(_el(qry, q) == _el(ref, r) for q, r in tags)
+        _assert_parent_maps(parent, prod)
+
+
+def test_hydroquinone_maps_onto_benzoquinone() -> None:
+    _assert_parent_maps(HYDROQUINONE, BENZOQUINONE)
+
+
+def test_apap_maps_onto_napqi() -> None:
+    _assert_parent_maps(APAP, NAPQI)
+
+
+@pytest.mark.parametrize("parent", [HYDROQUINONE, APAP])
+def test_quinone_formation_maps_parent_ring(parent: str) -> None:
+    products = _remodel_products(quinone_formation(), parent)
+    assert products, parent
+    for prod in products:
+        _assert_parent_maps(parent, prod)
+
+
+def test_benzene_epoxide_maps_parent_carbons() -> None:
+    products = _remodel_products(epoxidation(), BENZENE)
+    assert products, BENZENE
+    for prod in products:
+        _assert_parent_maps(BENZENE, prod)
+
+
+def test_benzene_oxide_opening_maps_onto_phenol() -> None:
+    products = _remodel_products(epoxide_opening(), BENZENE_OXIDE)
+    assert products, BENZENE_OXIDE
+    for prod in products:
+        _assert_parent_maps(BENZENE_OXIDE, prod)
+
+
+def test_tetralin_dehydrogenation_maps_parent_atoms() -> None:
+    parent = "C1CCc2ccccc2C1"
+    products = _remodel_products(dehydrogenation(), parent)
+    assert products, parent
+    for prod in products:
+        _assert_parent_maps(parent, prod)

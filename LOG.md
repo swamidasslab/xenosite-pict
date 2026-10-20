@@ -2,6 +2,10 @@
 
 ## 2026-10-20
 
+- Align tests for conjugate remodeling: quinone formation (hydroquinone→benzoquinone, APAP→NAPQI), benzene epoxidation, benzene-oxide opening (NIH-shift/hydrate), tetralin dehydrogenation. Forest single-piece products that keep the parent heavy-atom count; house maps every parent atom with matching elements.
+
+## 2026-10-20
+
 - Erythromycin/azithromycin is a 14→15 ring expansion with the same sugars. House was locking the sugars (24 atoms) and leaving the lactone unmatched, so CoordGen drew a snake and could flip desosamine (NMe2 vs ring-methyl). Ring seeds now require matching *exocyclic* neighbor elements (blocks that flip). House may *grow* from an equal-size seed onto disjoint ring sizes; atom-pair seeds still refuse a bare 12-cycle on a 15-cycle. Result: 48/53 mapped, NMe2→NMe2, insertion N unmatched.
 
 ## 2026-10-20

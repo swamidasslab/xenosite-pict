@@ -79,6 +79,34 @@ PAIRS: list[tuple[str, str, str, str, str]] = [
         "cyclopentadecane",
         "C1CCCCCCCCCCCCCC1",
     ),
+    (
+        "hq_quinone",
+        "hydroquinone",
+        "Oc1ccc(O)cc1",
+        "benzoquinone",
+        "O=C1C=CC(=O)C=C1",
+    ),
+    (
+        "apap_napqi",
+        "APAP",
+        "CC(=O)Nc1ccc(O)cc1",
+        "NAPQI",
+        "CC(=O)N=C1C=CC(=O)C=C1",
+    ),
+    (
+        "benzene_oxide",
+        "benzene",
+        "c1ccccc1",
+        "benzene-oxide",
+        "C1=CC2OC2C=C1",
+    ),
+    (
+        "oxide_phenol",
+        "benzene-oxide",
+        "C1=CC2OC2C=C1",
+        "phenol",
+        "c1ccccc1O",
+    ),
 ]
 
 
