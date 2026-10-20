@@ -30,11 +30,7 @@ pub fn mol_graph_from_layout(mol: &LayoutMolecule) -> MolGraph {
             // CTAB / Chematic aromatic is order 4 — do not clamp to 3 (triple).
             let raw = mol.bond_orders.get(i).copied().unwrap_or(1);
             let aromatic = raw >= 4;
-            let order = if aromatic {
-                1
-            } else {
-                raw.clamp(0, 3) as u8
-            };
+            let order = if aromatic { 1 } else { raw.clamp(0, 3) as u8 };
             let stereo = match mol.bond_stereos.get(i).copied().unwrap_or(BOND_STEREO_NONE) {
                 x if x == BOND_STEREO_CIS => EzStereo::Cis,
                 x if x == BOND_STEREO_TRANS => EzStereo::Trans,
@@ -188,11 +184,7 @@ pub fn layout_or_align(
         None
     };
 
-    let res = align_molecule_constrained_with_map(
-        reference,
-        query,
-        dense.as_deref(),
-    )?;
+    let res = align_molecule_constrained_with_map(reference, query, dense.as_deref())?;
 
     let mut tags: Vec<(i32, i32)> = res
         .mapping
@@ -218,10 +210,7 @@ pub fn hexagon_fit_max_dev(xy: &[(f64, f64)]) -> f64 {
     }
     let cx = xy.iter().map(|p| p.0).sum::<f64>() / n as f64;
     let cy = xy.iter().map(|p| p.1).sum::<f64>() / n as f64;
-    let radii: Vec<f64> = xy
-        .iter()
-        .map(|(x, y)| (x - cx).hypot(y - cy))
-        .collect();
+    let radii: Vec<f64> = xy.iter().map(|(x, y)| (x - cx).hypot(y - cy)).collect();
     let r = radii.iter().sum::<f64>() / n as f64;
     if r < 1e-9 {
         return f64::INFINITY;
@@ -299,7 +288,10 @@ mod tests {
                 - ys.iter().cloned().fold(f64::INFINITY, f64::min);
             dx.max(dy)
         };
-        assert!(ref_span > 80.0, "hexane should be chain-like, span={ref_span}");
+        assert!(
+            ref_span > 80.0,
+            "hexane should be chain-like, span={ref_span}"
+        );
 
         let qxy: Vec<(f64, f64)> = res
             .query_coords

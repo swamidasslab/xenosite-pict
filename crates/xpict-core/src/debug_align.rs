@@ -15,8 +15,8 @@ pub const DEBUG_ALIGN_BADGE: &str = "#1565c0";
 
 /// Stable palette — index by ``tag.rem_euclid(N)``.
 pub const DEBUG_ALIGN_PALETTE: &[&str] = &[
-    "#e53935", "#8e24aa", "#3949ab", "#039be5", "#00897b", "#43a047", "#f9a825",
-    "#fb8c00", "#6d4c41", "#546e7a", "#c0ca33", "#d81b60",
+    "#e53935", "#8e24aa", "#3949ab", "#039be5", "#00897b", "#43a047", "#f9a825", "#fb8c00",
+    "#6d4c41", "#546e7a", "#c0ca33", "#d81b60",
 ];
 
 pub fn tag_color(tag: i32) -> &'static str {
@@ -49,10 +49,7 @@ pub fn align_debug_template(peer_ids: &[String], maps: &[Vec<(i32, i32)>]) -> Al
 
 /// Build query-side debug: each query atom tagged with the **template** atom index.
 pub fn align_debug_query(peer_id: &str, query_to_ref: &[(i32, i32)]) -> AlignDebug {
-    let mut tags: Vec<(i32, i32)> = query_to_ref
-        .iter()
-        .map(|&(q, r)| (q, r))
-        .collect();
+    let mut tags: Vec<(i32, i32)> = query_to_ref.iter().map(|&(q, r)| (q, r)).collect();
     tags.sort_by_key(|(a, _)| *a);
     AlignDebug {
         role: AlignDebugRole::Query,
@@ -70,8 +67,7 @@ pub fn paint_align_debug(
     font_px: f64,
 ) -> Vec<Primitive> {
     let mut out = Vec::new();
-    let by: std::collections::HashMap<i32, &AtomIn> =
-        atoms.iter().map(|a| (a.index, a)).collect();
+    let by: std::collections::HashMap<i32, &AtomIn> = atoms.iter().map(|a| (a.index, a)).collect();
     let matched: std::collections::HashSet<i32> = dbg.tags.iter().map(|(a, _)| *a).collect();
     let r = (font_px * 0.45).max(3.0);
 

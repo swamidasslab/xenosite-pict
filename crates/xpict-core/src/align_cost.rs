@@ -1,10 +1,38 @@
-//! Minimum-cost mapping on the atom–bond incidence graph.
+//! Exact connected molecular alignment with atom-only branch-and-bound.
 //!
-//! Atoms and bonds are both vertices; edges only join an atom to its incident
-//! bonds. Match atom↔atom and bond↔bond with a simple additive cost. The only
-//! hard rule is incompatible E/Z substituent side pairings. No phantom bonds.
+//! No seed, node, time, or result-count caps. Worst-case search remains exponential.
+//! Unmatched atoms and bonds are penalized on BOTH sides (query and reference).
+//! Bond correspondence is inferred from atom endpoints; missing bonds are allowed.
+//! Returns one optimum, not every symmetry-related map or a geometric tie-break.
+//! This is a standalone replacement module using the original public graph types.
+//! Minimum cost can omit an expensive terminal atom; two original tests requiring
+//! a more costly extension have been corrected accordingly.
+//!
+//! Entry points:
+//! ```ignore
+//! let result = cost_mapping(&reference, &query); // exact, without symmetry input
+//! let (result, stats) = cost_mapping_with_generators(
+//!     &reference, &query, &reference_generators,
+//! ).expect("valid graphs and automorphism generators");
+//! ```
+//! Each generator is `Vec<u16>` with `generator[old_atom] = new_atom`.
+//! Project Cannonaut incidence-vertex permutations onto atom vertices first.
+//! An empty generator list is valid and only disables symmetry acceleration.
+//! Generators need not generate the whole automorphism group: any valid subgroup
+//! is safe. Generators are checked against element, charge, radical, and exact
+//! bond order/aromaticity. Stereo-participating reference atoms are then fixed
+//! with Schreier stabilizers, conservatively preserving the supplied E/Z policy.
+//! No dependency on a particular Cannonaut crate API is assumed.
+//!
+//! E/Z follows the attachment's restrictive side-pairing policy, with every
+//! constraint checked independently (no overwritten HashMap requirements).
+//! It is not a new general chemical stereoisomorphism implementation.
+//! Tetrahedral chirality is intentionally ignored, as in the attachment.
+//!
+//! [`cost_mapping`] feeds reference automorphism generators from Canonaut
+//! (nauty port) on the colored atom–bond incidence graph.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet, VecDeque};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EzStereo {
@@ -12,14 +40,12 @@ pub enum EzStereo {
     Cis,
     Trans,
 }
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AtomChirality {
     None,
     R,
     S,
 }
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AtomFeat {
     pub atomic_number: u8,
@@ -27,7 +53,6 @@ pub struct AtomFeat {
     pub radical: u8,
     pub chirality: AtomChirality,
 }
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BondFeat {
     pub begin: u16,
@@ -38,26 +63,21 @@ pub struct BondFeat {
     pub stereo_atom1: Option<u16>,
     pub stereo_atom2: Option<u16>,
 }
-
 #[derive(Debug, Clone)]
 pub struct MolGraph {
     pub atoms: Vec<AtomFeat>,
     pub bonds: Vec<BondFeat>,
 }
-
 impl MolGraph {
     pub fn new(atoms: Vec<AtomFeat>, bonds: Vec<BondFeat>) -> Self {
         Self { atoms, bonds }
     }
-
     pub fn n_atoms(&self) -> usize {
         self.atoms.len()
     }
-
     pub fn n_bonds(&self) -> usize {
         self.bonds.len()
     }
-
     /// Relabel atoms by `perm` where `perm[old] = new`.
     pub fn permute(&self, perm: &[u16]) -> Self {
         assert_eq!(perm.len(), self.n_atoms());
@@ -91,243 +111,212 @@ impl MolGraph {
         Self { atoms, bonds }
     }
 }
-
-/// Element mismatch must cost more than leaving both atoms unmatched
-/// (`2 * COST_UNMATCHED`); otherwise MCS pads matches with O→C style pairs
-/// and beats a clean aromatic-ring map (e.g. anisole onto o-cresol).
 pub const COST_ELEMENT: i32 = 11;
 pub const COST_CHARGE_RADICAL: i32 = 2;
 pub const COST_BOND_ORDER: i32 = 3;
-/// Unmatched atom/bond vertices.
 pub const COST_UNMATCHED: i32 = 5;
-/// Ring atom matched to a non-ring atom. Without it, hexane→ring and
-/// hexane→chain maps of butylcyclohexane tie and seed order (i.e. atom order)
-/// picks the winner.
 pub const COST_RING: i32 = 1;
+const NONE: usize = usize::MAX;
+type AtomType = (u8, i8, u8, bool, usize, bool);
 
-/// Incidence graph: vertices `[0..n_atoms)` atoms, `[n_atoms..n_atoms+n_bonds)` bonds.
 #[derive(Debug, Clone)]
-struct AbGraph {
-    mol: MolGraph,
-    adj: Vec<Vec<u16>>,
-    /// Per atom: lies on a cycle.
-    in_ring: Vec<bool>,
+pub struct MappingResult {
+    pub map: HashMap<u16, u16>,
+    pub cost: i32,
 }
 
-impl AbGraph {
-    fn from_mol(mol: MolGraph) -> Self {
+#[derive(Debug, Default, Clone)]
+pub struct SearchStats {
+    pub seeds: u64,
+    pub states: u64,
+    pub bound_prunes: u64,
+    pub assignment_bounds: u64,
+    pub symmetry_alternatives_removed: u64,
+}
+
+struct Graph<'a> {
+    mol: &'a MolGraph,
+    n: usize,
+    // Flat endpoint lookup; NONE denotes a missing edge.
+    edge: Vec<usize>,
+    adj: Vec<Vec<(usize, usize)>>,
+    ring: Vec<bool>,
+    stereo_bonds: Vec<usize>,
+    stereo_designated: Vec<bool>,
+}
+impl<'a> Graph<'a> {
+    fn new(mol: &'a MolGraph) -> Result<Self, String> {
         let n = mol.n_atoms();
-        let m = mol.n_bonds();
-        let mut adj = vec![Vec::new(); n + m];
-        for (bi, b) in mol.bonds.iter().enumerate() {
-            let bv = (n + bi) as u16;
-            let a = b.begin;
-            let c = b.end;
-            adj[a as usize].push(bv);
-            adj[c as usize].push(bv);
-            adj[bv as usize].push(a);
-            adj[bv as usize].push(c);
+        if n > u16::MAX as usize {
+            return Err("atom count exceeds u16 indexing".into());
         }
-        let in_ring = ring_atoms(&mol);
-        Self { mol, adj, in_ring }
-    }
-
-    fn n_atoms(&self) -> usize {
-        self.mol.n_atoms()
-    }
-
-    fn n_verts(&self) -> usize {
-        self.mol.n_atoms() + self.mol.n_bonds()
-    }
-
-    fn is_atom(&self, v: u16) -> bool {
-        (v as usize) < self.n_atoms()
-    }
-
-    fn bond_index(&self, v: u16) -> Option<usize> {
-        let n = self.n_atoms();
-        let i = v as usize;
-        if i >= n {
-            Some(i - n)
-        } else {
-            None
-        }
-    }
-}
-
-/// Atoms incident to a cycle bond (bond whose endpoints stay connected without it).
-fn ring_atoms(mol: &MolGraph) -> Vec<bool> {
-    let n = mol.n_atoms();
-    let mut nbrs: Vec<Vec<(u16, usize)>> = vec![Vec::new(); n];
-    for (bi, b) in mol.bonds.iter().enumerate() {
-        nbrs[b.begin as usize].push((b.end, bi));
-        nbrs[b.end as usize].push((b.begin, bi));
-    }
-    let mut in_ring = vec![false; n];
-    for (bi, b) in mol.bonds.iter().enumerate() {
-        let mut seen = vec![false; n];
-        let mut stack = vec![b.begin];
-        seen[b.begin as usize] = true;
-        while let Some(v) = stack.pop() {
-            for &(w, wi) in &nbrs[v as usize] {
-                if wi != bi && !seen[w as usize] {
-                    seen[w as usize] = true;
-                    stack.push(w);
+        let mut edge = vec![NONE; n * n];
+        let mut adj = vec![Vec::new(); n];
+        let mut stereo_bonds = Vec::new();
+        let mut stereo_designated = vec![false; n];
+        for (i, b) in mol.bonds.iter().enumerate() {
+            let (a, c) = (b.begin as usize, b.end as usize);
+            if a >= n || c >= n || a == c || edge[a * n + c] != NONE {
+                return Err("requires a simple graph with valid distinct bond endpoints".into());
+            }
+            edge[a * n + c] = i;
+            edge[c * n + a] = i;
+            adj[a].push((c, i));
+            adj[c].push((a, i));
+            for s in [b.stereo_atom1, b.stereo_atom2].into_iter().flatten() {
+                if s as usize >= n {
+                    return Err("invalid stereo atom index".into());
+                }
+            }
+            if b.stereo != EzStereo::None {
+                stereo_bonds.push(i);
+                for s in [b.stereo_atom1, b.stereo_atom2].into_iter().flatten() {
+                    stereo_designated[s as usize] = true;
                 }
             }
         }
-        if seen[b.end as usize] {
-            in_ring[b.begin as usize] = true;
-            in_ring[b.end as usize] = true;
+        // Linear-time bridge detection, iterative to avoid graph-sized recursion.
+        let mut time = 0;
+        let mut tin = vec![NONE; n];
+        let mut low = vec![0; n];
+        let mut parent = vec![NONE; n];
+        let mut parent_edge = vec![NONE; n];
+        let mut next = vec![0; n];
+        let mut bridge = vec![false; mol.n_bonds()];
+        for root in 0..n {
+            if tin[root] != NONE {
+                continue;
+            }
+            tin[root] = time;
+            low[root] = time;
+            time += 1;
+            let mut stack = vec![root];
+            while let Some(&v) = stack.last() {
+                if next[v] < adj[v].len() {
+                    let (w, e) = adj[v][next[v]];
+                    next[v] += 1;
+                    if e == parent_edge[v] {
+                        continue;
+                    }
+                    if tin[w] == NONE {
+                        parent[w] = v;
+                        parent_edge[w] = e;
+                        tin[w] = time;
+                        low[w] = time;
+                        time += 1;
+                        stack.push(w);
+                    } else {
+                        low[v] = low[v].min(tin[w]);
+                    }
+                } else {
+                    stack.pop();
+                    if parent[v] != NONE {
+                        let p = parent[v];
+                        bridge[parent_edge[v]] = low[v] > tin[p];
+                        low[p] = low[p].min(low[v]);
+                    }
+                }
+            }
         }
-    }
-    in_ring
-}
-
-fn atom_cost(a: &AtomFeat, b: &AtomFeat) -> i32 {
-    let mut c = 0;
-    if a.atomic_number != b.atomic_number {
-        c += COST_ELEMENT;
-    }
-    if a.formal_charge != b.formal_charge || a.radical != b.radical {
-        c += COST_CHARGE_RADICAL;
-    }
-    c
-}
-
-fn bond_cost(a: &BondFeat, b: &BondFeat) -> i32 {
-    if a.aromatic && b.aromatic {
-        return 0;
-    }
-    if a.order == b.order {
-        return 0;
-    }
-    COST_BOND_ORDER
-}
-
-fn pair_cost(q: &AbGraph, r: &AbGraph, qv: u16, rv: u16) -> i32 {
-    match (q.bond_index(qv), r.bond_index(rv)) {
-        (None, None) => {
-            let ring = if q.in_ring[qv as usize] != r.in_ring[rv as usize] {
-                COST_RING
-            } else {
-                0
-            };
-            atom_cost(&q.mol.atoms[qv as usize], &r.mol.atoms[rv as usize]) + ring
+        let mut ring = vec![false; n];
+        for (i, b) in mol.bonds.iter().enumerate() {
+            if !bridge[i] {
+                ring[b.begin as usize] = true;
+                ring[b.end as usize] = true;
+            }
         }
-        (Some(qi), Some(ri)) => bond_cost(&q.mol.bonds[qi], &r.mol.bonds[ri]),
-        _ => i32::MAX / 4, // type mismatch — should not be proposed
+        Ok(Self {
+            mol,
+            n,
+            edge,
+            adj,
+            ring,
+            stereo_bonds,
+            stereo_designated,
+        })
+    }
+    /// Full atom type for seed rarity: element, charge, radical, ring
+    /// membership, degree, and aromatic incidence.
+    fn atom_type(&self, a: usize) -> AtomType {
+        let x = &self.mol.atoms[a];
+        let aromatic = self.adj[a].iter().any(|&(_, e)| self.mol.bonds[e].aromatic);
+        (
+            x.atomic_number,
+            x.formal_charge,
+            x.radical,
+            self.ring[a],
+            self.adj[a].len(),
+            aromatic,
+        )
+    }
+    fn bond(&self, a: usize, b: usize) -> usize {
+        self.edge[a * self.n + b]
     }
 }
-
-/// True when both atom endpoints of a bond vertex are in ``mapping`` (atom keys).
-fn bond_endpoints_mapped(g: &AbGraph, mapping: &HashMap<u16, u16>, bond_v: u16) -> bool {
-    let Some(bi) = g.bond_index(bond_v) else {
-        return true;
-    };
-    let b = &g.mol.bonds[bi];
-    mapping.contains_key(&b.begin) && mapping.contains_key(&b.end)
+fn atom_cost(q: &Graph<'_>, r: &Graph<'_>, a: usize, b: usize) -> i64 {
+    let (x, y) = (&q.mol.atoms[a], &r.mol.atoms[b]);
+    i64::from(COST_ELEMENT) * i64::from(x.atomic_number != y.atomic_number)
+        + i64::from(COST_CHARGE_RADICAL)
+            * i64::from(x.formal_charge != y.formal_charge || x.radical != y.radical)
+        + i64::from(COST_RING) * i64::from(q.ring[a] != r.ring[b])
+}
+/// Unmatched atoms and bonds cost on BOTH sides, so matching a pair saves
+/// two unmatched penalties (one query, one reference) minus its mismatch.
+const PAIR_GAIN: i64 = 2 * COST_UNMATCHED as i64;
+/// Cost when nothing maps: every query and reference atom and bond unmatched.
+fn unmatched_baseline(query: &MolGraph, reference: &MolGraph) -> i64 {
+    i64::from(COST_UNMATCHED)
+        * (query.n_atoms() + query.n_bonds() + reference.n_atoms() + reference.n_bonds()) as i64
+}
+fn bond_gain(a: &BondFeat, b: &BondFeat) -> i64 {
+    PAIR_GAIN
+        - if (a.aromatic && b.aromatic) || a.order == b.order {
+            0
+        } else {
+            i64::from(COST_BOND_ORDER)
+        }
 }
 
-/// Required query stereo-atom → ref stereo-atom when both ends of a stereo
-/// double bond are mapped. `u16::MAX` = must not land on any alkene substituent
-/// slot of the ref bond (cis vs trans).
-fn ez_required(q: &MolGraph, r: &MolGraph, atom_map: &HashMap<u16, u16>) -> HashMap<u16, u16> {
-    let mut req = HashMap::new();
-    for qb in &q.bonds {
-        if qb.stereo == EzStereo::None {
+/// All side constraints are conjunctive. Missing endpoints/substituents defer
+/// their constraints. Adding atoms cannot repair a violated constraint.
+fn stereo_ok(q: &Graph<'_>, r: &Graph<'_>, map: &[usize]) -> bool {
+    for &i in &q.stereo_bonds {
+        let qb = &q.mol.bonds[i];
+        let (a, b) = (map[qb.begin as usize], map[qb.end as usize]);
+        if a == NONE || b == NONE {
             continue;
         }
-        let (Some(&ra), Some(&rb)) = (atom_map.get(&qb.begin), atom_map.get(&qb.end)) else {
+        let e = r.bond(a, b);
+        if e == NONE {
             continue;
-        };
-        let Some(rbond) = r.bonds.iter().find(|b| {
-            (b.begin == ra && b.end == rb) || (b.begin == rb && b.end == ra)
-        }) else {
-            continue;
-        };
-        if rbond.stereo == EzStereo::None {
+        }
+        let rb = &r.mol.bonds[e];
+        if rb.stereo == EzStereo::None {
             continue;
         }
         let (Some(q1), Some(q2), Some(r1), Some(r2)) = (
             qb.stereo_atom1,
             qb.stereo_atom2,
-            rbond.stereo_atom1,
-            rbond.stereo_atom2,
+            rb.stereo_atom1,
+            rb.stereo_atom2,
         ) else {
             continue;
         };
-        let same = atom_map.get(&qb.begin) == Some(&rbond.begin)
-            && atom_map.get(&qb.end) == Some(&rbond.end);
-        let flip = atom_map.get(&qb.begin) == Some(&rbond.end)
-            && atom_map.get(&qb.end) == Some(&rbond.begin);
-        if !same && !flip {
-            continue;
-        }
-        if qb.stereo != rbond.stereo {
-            req.insert(q1, u16::MAX);
-            req.insert(q2, u16::MAX);
-        } else if flip {
-            req.insert(q1, r2);
-            req.insert(q2, r1);
+        let wants = if a == rb.begin as usize {
+            [r1, r2]
         } else {
-            req.insert(q1, r1);
-            req.insert(q2, r2);
-        }
-    }
-    req
-}
-
-fn alkene_slot(mol: &MolGraph, bond: &BondFeat, atom: u16) -> bool {
-    if atom == bond.begin || atom == bond.end {
-        return false;
-    }
-    mol.bonds.iter().any(|b| {
-        (b.begin == atom && (b.end == bond.begin || b.end == bond.end))
-            || (b.end == atom && (b.begin == bond.begin || b.begin == bond.end))
-    })
-}
-
-fn ez_ok(q: &MolGraph, r: &MolGraph, atom_map: &HashMap<u16, u16>, on: u16, rn: u16) -> bool {
-    let mut trial = atom_map.clone();
-    trial.insert(on, rn);
-    let req = ez_required(q, r, &trial);
-    for (qa, &want) in &req {
-        let Some(&got) = trial.get(qa) else {
-            continue;
+            [r2, r1]
         };
-        if want == u16::MAX {
-            // Cis≠trans: no landing on any substituent of the matched stereo bond.
-            let blocked = q.bonds.iter().any(|qb| {
-                if qb.stereo == EzStereo::None
-                    || (qb.stereo_atom1 != Some(*qa) && qb.stereo_atom2 != Some(*qa))
-                {
+        for (qa, want) in [q1, q2].into_iter().zip(wants) {
+            let got = map[qa as usize];
+            if got == NONE {
+                continue;
+            }
+            if qb.stereo != rb.stereo {
+                if got != a && got != b && (r.bond(got, a) != NONE || r.bond(got, b) != NONE) {
                     return false;
                 }
-                let (Some(&ra), Some(&rb)) = (trial.get(&qb.begin), trial.get(&qb.end)) else {
-                    return false;
-                };
-                r.bonds.iter().any(|rbond| {
-                    rbond.stereo != EzStereo::None
-                        && ((rbond.begin == ra && rbond.end == rb)
-                            || (rbond.begin == rb && rbond.end == ra))
-                        && alkene_slot(r, rbond, got)
-                })
-            });
-            if blocked {
-                return false;
-            }
-        } else if got != want {
-            // Wrong side of a compatible cis/cis or trans/trans pair.
-            let q_stereo = q.bonds.iter().any(|b| {
-                b.stereo != EzStereo::None
-                    && (b.stereo_atom1 == Some(*qa) || b.stereo_atom2 == Some(*qa))
-            });
-            let r_stereo = r.bonds.iter().any(|b| {
-                b.stereo != EzStereo::None
-                    && (b.stereo_atom1 == Some(got) || b.stereo_atom2 == Some(got))
-            });
-            if q_stereo && r_stereo {
+            } else if got != want as usize && r.stereo_designated[got] {
                 return false;
             }
         }
@@ -335,232 +324,693 @@ fn ez_ok(q: &MolGraph, r: &MolGraph, atom_map: &HashMap<u16, u16>, on: u16, rn: 
     true
 }
 
-fn atom_map_of(q: &AbGraph, mapping: &HashMap<u16, u16>) -> HashMap<u16, u16> {
-    mapping
+// Permutations act as p[old] = new. compose(a,b) means a after b.
+type Perm = Vec<usize>;
+fn compose(a: &[usize], b: &[usize]) -> Perm {
+    b.iter().map(|&v| a[v]).collect()
+}
+fn inverse(p: &[usize]) -> Perm {
+    let mut inv = vec![0; p.len()];
+    for (i, &v) in p.iter().enumerate() {
+        inv[v] = i;
+    }
+    inv
+}
+#[derive(Clone)]
+struct Group {
+    n: usize,
+    generators: Vec<Perm>,
+}
+impl Group {
+    fn new(n: usize, generators: Vec<Perm>) -> Self {
+        let mut seen = HashSet::new();
+        let generators = generators
+            .into_iter()
+            .filter(|p| p.iter().enumerate().any(|(i, &v)| i != v) && seen.insert(p.clone()))
+            .collect();
+        Self { n, generators }
+    }
+    fn orbit(&self, root: usize) -> Vec<usize> {
+        let mut seen = vec![false; self.n];
+        seen[root] = true;
+        let mut orbit = vec![root];
+        let mut i = 0;
+        while i < orbit.len() {
+            let v = orbit[i];
+            for p in &self.generators {
+                if !seen[p[v]] {
+                    seen[p[v]] = true;
+                    orbit.push(p[v]);
+                }
+            }
+            i += 1;
+        }
+        orbit
+    }
+    /// `rep[v]` = the representative (lowest index) of `v`'s orbit.
+    fn orbit_representative_of(&self) -> Vec<usize> {
+        let mut rep = vec![NONE; self.n];
+        for v in 0..self.n {
+            if rep[v] == NONE {
+                for w in self.orbit(v) {
+                    rep[w] = v;
+                }
+            }
+        }
+        rep
+    }
+    fn representatives(&self) -> Vec<usize> {
+        let mut seen = vec![false; self.n];
+        let mut reps = Vec::new();
+        for v in 0..self.n {
+            if !seen[v] {
+                reps.push(v);
+                for w in self.orbit(v) {
+                    seen[w] = true;
+                }
+            }
+        }
+        reps
+    }
+    // Schreier lemma: t[g(x)]^-1 * g * t[x] fixes root. This generates
+    // the FULL point stabilizer of the supplied subgroup, not just the subset
+    // of original generators that happen to fix root.
+    fn stabilizer(&self, root: usize) -> Self {
+        if self.generators.iter().all(|g| g[root] == root) {
+            return self.clone();
+        }
+        let mut transversal: Vec<Option<Perm>> = vec![None; self.n];
+        transversal[root] = Some((0..self.n).collect());
+        let mut queue = VecDeque::from([root]);
+        let mut orbit = Vec::new();
+        while let Some(x) = queue.pop_front() {
+            orbit.push(x);
+            for g in &self.generators {
+                let y = g[x];
+                if transversal[y].is_none() {
+                    transversal[y] = Some(compose(g, transversal[x].as_ref().unwrap()));
+                    queue.push_back(y);
+                }
+            }
+        }
+        let inverses: Vec<_> = transversal
+            .iter()
+            .map(|t| t.as_ref().map(|p| inverse(p)))
+            .collect();
+        let mut gens = Vec::new();
+        for x in orbit {
+            for g in &self.generators {
+                let p = compose(
+                    inverses[g[x]].as_ref().unwrap(),
+                    &compose(g, transversal[x].as_ref().unwrap()),
+                );
+                gens.push(p);
+            }
+        }
+        Self::new(self.n, gens)
+    }
+}
+fn reference_group(r: &Graph<'_>, generators: &[Vec<u16>]) -> Result<Group, String> {
+    let mut perms = Vec::new();
+    for g in generators {
+        if g.len() != r.n {
+            return Err("generator must permute reference atoms only".into());
+        }
+        let p: Perm = g.iter().map(|&v| v as usize).collect();
+        let mut seen = vec![false; r.n];
+        for (a, &b) in p.iter().enumerate() {
+            if b >= r.n || seen[b] {
+                return Err("generator is not a permutation".into());
+            }
+            seen[b] = true;
+            let (x, y) = (&r.mol.atoms[a], &r.mol.atoms[b]);
+            if (x.atomic_number, x.formal_charge, x.radical)
+                != (y.atomic_number, y.formal_charge, y.radical)
+            {
+                return Err("generator changes atom scoring features".into());
+            }
+        }
+        for b in &r.mol.bonds {
+            let e = r.bond(p[b.begin as usize], p[b.end as usize]);
+            if e == NONE {
+                return Err("generator changes connectivity".into());
+            }
+            let c = &r.mol.bonds[e];
+            if (b.order, b.aromatic) != (c.order, c.aromatic) {
+                return Err("generator changes bond scoring features".into());
+            }
+        }
+        perms.push(p);
+    }
+    let mut group = Group::new(r.n, perms);
+    let mut fixed = vec![false; r.n];
+    for &e in &r.stereo_bonds {
+        let b = &r.mol.bonds[e];
+        for v in [Some(b.begin), Some(b.end), b.stereo_atom1, b.stereo_atom2]
+            .into_iter()
+            .flatten()
+        {
+            fixed[v as usize] = true;
+        }
+    }
+    for (v, fix) in fixed.into_iter().enumerate() {
+        if fix {
+            group = group.stabilizer(v);
+        }
+    }
+    Ok(group)
+}
+
+// Maximum-weight optional matching. Real weights are nonnegative optimistic
+// scores; one zero-weight dummy column per row allows every row to be omitted.
+// Rectangular Hungarian algorithm, using negative weights as minimization costs.
+fn assignment_upper(w: &[Vec<i64>]) -> i64 {
+    let n = w.len();
+    if n == 0 {
+        return 0;
+    }
+    let real = w[0].len();
+    let m = real + n;
+    let mut u = vec![0i64; n + 1];
+    let mut v = vec![0i64; m + 1];
+    let mut p = vec![0usize; m + 1];
+    let mut way = vec![0usize; m + 1];
+    for i in 1..=n {
+        p[0] = i;
+        let mut j0 = 0;
+        let mut minv = vec![i64::MAX / 4; m + 1];
+        let mut used = vec![false; m + 1];
+        loop {
+            used[j0] = true;
+            let i0 = p[j0];
+            let (mut delta, mut j1) = (i64::MAX / 4, 0);
+            for j in 1..=m {
+                if used[j] {
+                    continue;
+                }
+                let cost = if j <= real { -w[i0 - 1][j - 1] } else { 0 };
+                let cur = cost - u[i0] - v[j];
+                if cur < minv[j] {
+                    minv[j] = cur;
+                    way[j] = j0;
+                }
+                if minv[j] < delta {
+                    delta = minv[j];
+                    j1 = j;
+                }
+            }
+            for j in 0..=m {
+                if used[j] {
+                    u[p[j]] += delta;
+                    v[j] -= delta;
+                } else {
+                    minv[j] -= delta;
+                }
+            }
+            j0 = j1;
+            if p[j0] == 0 {
+                break;
+            }
+        }
+        loop {
+            let j1 = way[j0];
+            p[j0] = p[j1];
+            j0 = j1;
+            if j0 == 0 {
+                break;
+            }
+        }
+    }
+    (1..=real)
+        .filter(|&j| p[j] != 0)
+        .map(|j| w[p[j] - 1][j - 1])
+        .sum()
+}
+
+struct Search<'a> {
+    q: Graph<'a>,
+    r: Graph<'a>,
+    atom_gain: Vec<i64>,
+    map: Vec<usize>,
+    inv: Vec<usize>,
+    // Bitset per query atom, with a single rollback trail.
+    forbidden: Vec<Vec<u64>>,
+    trail: Vec<(usize, usize)>,
+    rank: Vec<usize>,
+    root_rank: usize,
+    score: i64,
+    best_score: i64,
+    best_map: Vec<usize>,
+    stats: SearchStats,
+}
+impl Search<'_> {
+    fn allowed(&self, a: usize, b: usize) -> bool {
+        self.map[a] == NONE
+            && self.inv[b] == NONE
+            && self.rank[a] >= self.root_rank
+            && self.forbidden[a][b / 64] & (1u64 << (b % 64)) == 0
+    }
+    fn forbid(&mut self, a: usize, b: usize) {
+        let bit = 1u64 << (b % 64);
+        if self.forbidden[a][b / 64] & bit == 0 {
+            self.forbidden[a][b / 64] |= bit;
+            self.trail.push((a, b));
+        }
+    }
+    fn rollback(&mut self, mark: usize) {
+        while self.trail.len() > mark {
+            let (a, b) = self.trail.pop().unwrap();
+            self.forbidden[a][b / 64] &= !(1u64 << (b % 64));
+        }
+    }
+    fn delta(&self, a: usize, b: usize) -> (i64, bool) {
+        let mut gain = self.atom_gain[a * self.r.n + b];
+        let mut attached = false;
+        for &(x, e) in &self.q.adj[a] {
+            if self.map[x] != NONE {
+                let f = self.r.bond(b, self.map[x]);
+                if f != NONE {
+                    attached = true;
+                    gain += bond_gain(&self.q.mol.bonds[e], &self.r.mol.bonds[f]);
+                }
+            }
+        }
+        (gain, attached)
+    }
+    fn update_best(&mut self) {
+        if self.score > self.best_score {
+            self.best_score = self.score;
+            self.best_map.copy_from_slice(&self.map);
+        }
+    }
+    // Returns true only if the branch can strictly improve the incumbent.
+    fn can_improve(&mut self) -> bool {
+        let qs: Vec<_> = (0..self.q.n)
+            .filter(|&a| self.map[a] == NONE && self.rank[a] >= self.root_rank)
+            .collect();
+        let rs: Vec<_> = (0..self.r.n).filter(|&b| self.inv[b] == NONE).collect();
+        if qs.is_empty() || rs.is_empty() {
+            return false;
+        }
+        let mut weights = vec![vec![0; rs.len()]; qs.len()];
+        let mut row_bound = 0;
+        for (i, &a) in qs.iter().enumerate() {
+            for (j, &b) in rs.iter().enumerate() {
+                if !self.allowed(a, b) {
+                    continue;
+                }
+                let mut w2 = 2 * self.delta(a, b).0;
+                for &(x, e) in &self.q.adj[a] {
+                    if self.map[x] != NONE || self.rank[x] < self.root_rank {
+                        continue;
+                    }
+                    let mut best = 0;
+                    for &(y, f) in &self.r.adj[b] {
+                        if self.allowed(x, y) {
+                            best = best.max(bond_gain(&self.q.mol.bonds[e], &self.r.mol.bonds[f]));
+                        }
+                    }
+                    w2 += best;
+                }
+                // Clipping negatives and allowing zero-weight forbidden cells
+                // only relax the assignment problem, so the bound stays safe.
+                weights[i][j] = w2.max(0);
+            }
+            row_bound += weights[i].iter().copied().max().unwrap_or(0);
+        }
+        let needed = 2 * (self.best_score - self.score);
+        if row_bound <= needed {
+            return false;
+        }
+        let col_bound: i64 = (0..rs.len())
+            .map(|j| weights.iter().map(|row| row[j]).max().unwrap_or(0))
+            .sum();
+        if col_bound <= needed {
+            return false;
+        }
+        self.stats.assignment_bounds += 1;
+        assignment_upper(&weights) > needed
+    }
+    fn choose_pair(&mut self) -> Option<(usize, usize, i64)> {
+        let mut best: Option<(usize, usize, i64, usize)> = None;
+        for a in 0..self.q.n {
+            if self.map[a] != NONE || self.rank[a] < self.root_rank {
+                continue;
+            }
+            let mut candidates = Vec::new();
+            for b in 0..self.r.n {
+                if !self.allowed(a, b) {
+                    continue;
+                }
+                let (gain, attached) = self.delta(a, b);
+                if !attached {
+                    continue;
+                }
+                self.map[a] = b;
+                let valid = stereo_ok(&self.q, &self.r, &self.map);
+                self.map[a] = NONE;
+                if valid {
+                    candidates.push((b, gain));
+                }
+            }
+            let count = candidates.len();
+            for (b, gain) in candidates {
+                let replace = match best {
+                    None => true,
+                    Some((ba, bb, bg, bc)) => {
+                        gain > bg
+                            || (gain == bg && (count, self.rank[a], b) < (bc, self.rank[ba], bb))
+                    }
+                };
+                if replace {
+                    best = Some((a, b, gain, count));
+                }
+            }
+        }
+        best.map(|(a, b, gain, _)| (a, b, gain))
+    }
+    fn dfs(&mut self, group: &Group) {
+        self.update_best();
+        let mark = self.trail.len();
+        // Exclusion branches use a loop: call-stack depth is at most the number
+        // of mapped atoms, not the number of rejected atom pairs.
+        loop {
+            self.stats.states += 1;
+            if !self.can_improve() {
+                self.stats.bound_prunes += 1;
+                break;
+            }
+            let Some((a, b, gain)) = self.choose_pair() else {
+                break;
+            };
+            let orbit = group.orbit(b);
+            debug_assert!(orbit.iter().all(|&v| self.allowed(a, v)));
+            self.stats.symmetry_alternatives_removed += (orbit.len() - 1) as u64;
+            let child_group = group.stabilizer(b);
+            self.map[a] = b;
+            self.inv[b] = a;
+            self.score += gain;
+            self.dfs(&child_group);
+            self.score -= gain;
+            self.inv[b] = NONE;
+            self.map[a] = NONE;
+            // Excluding the WHOLE orbit preserves group invariance of every
+            // forbidden row. No partition stabilizer or nauty rerun is needed.
+            for v in orbit {
+                self.forbid(a, v);
+            }
+        }
+        self.rollback(mark);
+    }
+    fn greedy(&mut self) {
+        let mut added = Vec::new();
+        while let Some((a, b, gain)) = self.choose_pair() {
+            if gain <= 0 {
+                break;
+            } // Only incumbent initialization is greedy.
+            self.map[a] = b;
+            self.inv[b] = a;
+            self.score += gain;
+            added.push((a, b, gain));
+            self.update_best();
+        }
+        for (a, b, gain) in added.into_iter().rev() {
+            self.map[a] = NONE;
+            self.inv[b] = NONE;
+            self.score -= gain;
+        }
+    }
+}
+
+/// Exact, nonempty, connected map. Empty input graphs return None.
+/// Reference symmetry comes from [`reference_generators`] (Canonaut).
+/// Panics on malformed graphs; use cost_mapping_with_generators for errors.
+pub fn cost_mapping(reference: &MolGraph, query: &MolGraph) -> Option<MappingResult> {
+    let generators = reference_generators(reference);
+    cost_mapping_with_generators(reference, query, &generators)
+        .expect("invalid molecular graph")
+        .0
+}
+
+thread_local! {
+    static CANONAUT_GENERATORS: std::cell::RefCell<Vec<Vec<u32>>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+fn collect_generator(_n: u32, perm: &mut [u32], _: &mut [u32], _: u32, _: u32, _: u32) {
+    CANONAUT_GENERATORS.with(|g| g.borrow_mut().push(perm.to_vec()));
+}
+
+/// Atom-permutation generators of `mol`'s automorphism group, via Canonaut on
+/// the atom–bond incidence graph. Atom vertices are colored by
+/// (element, charge, radical) and bond vertices by (order, aromatic), so every
+/// generator preserves exactly the features [`cost_mapping_with_generators`]
+/// checks. Generators are projected onto atom vertices.
+pub fn reference_generators(mol: &MolGraph) -> Vec<Vec<u16>> {
+    use canonaut::structs::{CanonautManager, DenseGraph};
+    let (n, m) = (mol.n_atoms(), mol.n_bonds());
+    if n < 2 {
+        return Vec::new();
+    }
+    let mut g = DenseGraph::new(n + m);
+    for (i, b) in mol.bonds.iter().enumerate() {
+        g.add_edge(b.begin as usize, n + i);
+        g.add_edge(b.end as usize, n + i);
+    }
+    let mut keys: Vec<(u8, u8, i8, u8, bool)> = Vec::with_capacity(n + m);
+    keys.extend(
+        mol.atoms
+            .iter()
+            .map(|a| (0, a.atomic_number, a.formal_charge, a.radical, false)),
+    );
+    keys.extend(mol.bonds.iter().map(|b| (1, b.order, 0, 0, b.aromatic)));
+    let mut palette = keys.clone();
+    palette.sort_unstable();
+    palette.dedup();
+    let colors: Vec<u32> = keys
         .iter()
-        .filter(|(&qv, _)| q.is_atom(qv))
-        .map(|(&qv, &rv)| (qv, rv))
+        .map(|k| palette.binary_search(k).unwrap_or(0) as u32)
+        .collect();
+
+    CANONAUT_GENERATORS.with(|g| g.borrow_mut().clear());
+    let mut manager = CanonautManager::new(n + m).with_automorphism_callback(collect_generator);
+    manager.canonize_graph_with_colors(&g, &colors);
+    let perms = CANONAUT_GENERATORS.with(|g| std::mem::take(&mut *g.borrow_mut()));
+    perms
+        .into_iter()
+        .filter(|p| p.len() >= n && p[..n].iter().all(|&v| (v as usize) < n))
+        .map(|p| p[..n].iter().map(|&v| v as u16).collect())
         .collect()
 }
 
-fn compatible(q: &AbGraph, r: &AbGraph, mapping: &HashMap<u16, u16>, qv: u16, rv: u16) -> bool {
-    if q.is_atom(qv) != r.is_atom(rv) {
-        return false;
+/// Pass atom-permutation generators from Cannonaut for reference symmetry.
+/// Any valid subgroup is sufficient for correctness. No full group enumeration.
+/// Cost ties retain the first optimum; atom indices may affect the representative
+/// returned but do not affect the optimal cost.
+pub fn cost_mapping_with_generators(
+    reference: &MolGraph,
+    query: &MolGraph,
+    reference_generators: &[Vec<u16>],
+) -> Result<(Option<MappingResult>, SearchStats), String> {
+    let q = Graph::new(query)?;
+    let r = Graph::new(reference)?;
+    let group = reference_group(&r, reference_generators)?;
+    if q.n == 0 || r.n == 0 {
+        return Ok((None, SearchStats::default()));
     }
-    // Incidence consistency with already-mapped neighbors.
-    for &qn in &q.adj[qv as usize] {
-        let Some(&rn) = mapping.get(&qn) else {
-            continue;
-        };
-        if !r.adj[rv as usize].contains(&rn) {
-            return false;
-        }
+    // Rarity is over the full atom type, pooled across both molecules.
+    let q_types: Vec<_> = (0..q.n).map(|a| q.atom_type(a)).collect();
+    let r_types: Vec<_> = (0..r.n).map(|b| r.atom_type(b)).collect();
+    let mut frequency: HashMap<AtomType, usize> = HashMap::new();
+    for t in q_types.iter().chain(&r_types) {
+        *frequency.entry(*t).or_default() += 1;
     }
-    if q.is_atom(qv) {
-        let am = atom_map_of(q, mapping);
-        if !ez_ok(&q.mol, &r.mol, &am, qv, rv) {
-            return false;
-        }
+    let mut order: Vec<_> = (0..q.n).collect();
+    order.sort_by_key(|&a| (frequency[&q_types[a]], std::cmp::Reverse(q.adj[a].len()), a));
+    let mut rank = vec![0; q.n];
+    for (i, &a) in order.iter().enumerate() {
+        rank[a] = i;
     }
-    true
-}
-
-fn mapping_cost_ab(q: &AbGraph, r: &AbGraph, mapping: &HashMap<u16, u16>) -> i32 {
-    // A bond match only counts when both atom endpoints are mapped. Otherwise the
-    // bond stays unmatched (same rule as [`mapping_cost`]). Without this, the
-    // search can "match" a bond from one endpoint alone and avoid COST_UNMATCHED,
-    // making a shifted methyl→ring map look cheaper than a full ring map.
-    let mut cost = 0i32;
-    let mut matched = std::collections::HashSet::new();
-    for (&qv, &rv) in mapping {
-        if !q.is_atom(qv) && !bond_endpoints_mapped(q, mapping, qv) {
-            continue;
-        }
-        cost = cost.saturating_add(pair_cost(q, r, qv, rv));
-        matched.insert(qv);
-    }
-    for qv in 0..q.n_verts() as u16 {
-        if !matched.contains(&qv) {
-            cost += COST_UNMATCHED;
+    let atom_gain: Vec<_> = (0..q.n)
+        .flat_map(|a| (0..r.n).map(move |b| (a, b)))
+        .map(|(a, b)| PAIR_GAIN - atom_cost(&q, &r, a, b))
+        .collect();
+    let mut seeds = Vec::new();
+    let reference_representatives = group.representatives();
+    for &a in &order {
+        for &b in &reference_representatives {
+            seeds.push((a, b));
         }
     }
-    cost
-}
-
-const NODE_BUDGET: usize = 12_000;
-const MAP_KEEP: usize = 32;
-
-fn grow_from_seed(
-    q: &AbGraph,
-    r: &AbGraph,
-    seed_q: u16,
-    seed_r: u16,
-    budget: usize,
-) -> (Vec<HashMap<u16, u16>>, usize) {
-    let mut found = Vec::new();
-    let mut best_cost = i32::MAX;
-    let mut nodes = 0usize;
-
-    fn rec(
-        q: &AbGraph,
-        r: &AbGraph,
-        mapping: &mut HashMap<u16, u16>,
-        inv: &mut HashMap<u16, u16>,
-        found: &mut Vec<HashMap<u16, u16>>,
-        best_cost: &mut i32,
-        nodes: &mut usize,
-        budget: usize,
-    ) {
-        if *nodes >= budget {
-            return;
-        }
-        *nodes += 1;
-
-        let mut growable: Vec<(usize, u16, Vec<u16>)> = Vec::new();
-        for (&qv, &rv) in mapping.iter() {
-            for &qn in &q.adj[qv as usize] {
-                if mapping.contains_key(&qn) {
-                    continue;
-                }
-                let mut cands = Vec::new();
-                for &rn in &r.adj[rv as usize] {
-                    if inv.contains_key(&rn) {
-                        continue;
-                    }
-                    if compatible(q, r, mapping, qn, rn) {
-                        cands.push(rn);
-                    }
-                }
-                if !cands.is_empty() {
-                    growable.push((cands.len(), qn, cands));
-                }
-            }
-        }
-
-        if growable.is_empty() {
-            let cost = mapping_cost_ab(q, r, mapping);
-            if cost < *best_cost {
-                *best_cost = cost;
-                found.clear();
-                found.push(mapping.clone());
-            } else if cost == *best_cost && found.len() < MAP_KEEP {
-                found.push(mapping.clone());
-            }
-            return;
-        }
-
-        growable.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
-        let (_n, qn, mut cands) = growable.into_iter().next().unwrap();
-        cands.sort_unstable();
-        for rn in cands {
-            mapping.insert(qn, rn);
-            inv.insert(rn, qn);
-            rec(q, r, mapping, inv, found, best_cost, nodes, budget);
-            mapping.remove(&qn);
-            inv.remove(&rn);
-            if *nodes >= budget {
-                return;
-            }
+    // Seed order only affects speed (every seed is still searched). Lead with
+    // the topology-free optimal atom assignment, rarest query elements first:
+    // those pairs usually sit inside the optimum, so the first incumbent is
+    // strong and the bound prunes the remaining seeds early.
+    let assigned = optimal_assignment(&atom_gain, q.n, r.n);
+    let orbit_rep = group.orbit_representative_of();
+    let mut preferred = HashSet::new();
+    for (a, b) in assigned.into_iter().enumerate() {
+        if let Some(b) = b {
+            preferred.insert((a, orbit_rep[b]));
         }
     }
-
-    let mut mapping = HashMap::from([(seed_q, seed_r)]);
-    let mut inv = HashMap::from([(seed_r, seed_q)]);
-    rec(
+    seeds.sort_by_key(|&(a, b)| {
+        let lead = preferred.contains(&(a, b));
+        // Same-type pairs first, rarest type first (rank is query rarity).
+        let same = q_types[a] == r_types[b];
+        (
+            !lead,
+            !same,
+            if lead { rank[a] } else { 0 },
+            std::cmp::Reverse(atom_gain[a * r.n + b]),
+            rank[a],
+            b,
+        )
+    });
+    let mut s = Search {
+        map: vec![NONE; q.n],
+        inv: vec![NONE; r.n],
+        forbidden: vec![vec![0; (r.n + 63) / 64]; q.n],
+        trail: Vec::new(),
+        best_map: vec![NONE; q.n],
+        atom_gain,
+        rank,
+        root_rank: 0,
+        score: 0,
+        best_score: i64::MIN / 4,
+        stats: SearchStats::default(),
         q,
         r,
-        &mut mapping,
-        &mut inv,
-        &mut found,
-        &mut best_cost,
-        &mut nodes,
-        budget,
-    );
-    (found, nodes)
-}
-
-#[derive(Debug, Clone)]
-pub struct MappingResult {
-    /// query atom idx → ref atom idx
-    pub map: HashMap<u16, u16>,
-    pub cost: i32,
-}
-
-/// Minimum-cost connected mapping of `query` onto `reference`.
-pub fn cost_mapping(reference: &MolGraph, query: &MolGraph) -> Option<MappingResult> {
-    if reference.n_atoms() == 0 || query.n_atoms() == 0 {
-        return None;
-    }
-    let r = AbGraph::from_mol(reference.clone());
-    let q = AbGraph::from_mol(query.clone());
-
-    // Seed on atom pairs (prefer exact element, then hetero, then degree).
-    let mut seeds = Vec::new();
-    for qa in 0..q.n_atoms() as u16 {
-        for ra in 0..r.n_atoms() as u16 {
-            seeds.push((qa, ra));
+    };
+    for (a, b) in seeds {
+        // Every connected map is considered under its lowest-ranked query atom.
+        // Reference orbit reduction is independent of that query restriction.
+        s.root_rank = s.rank[a];
+        s.map[a] = b;
+        s.inv[b] = a;
+        s.score = s.atom_gain[a * s.r.n + b];
+        s.stats.seeds += 1;
+        s.update_best();
+        s.greedy();
+        s.dfs(&group.stabilizer(b));
+        s.map[a] = NONE;
+        s.inv[b] = NONE;
+        if s.best_score == unmatched_baseline(query, reference) {
+            break; // Zero cost is a global lower bound, not a search cap.
         }
     }
-    seeds.sort_by(|a, b| {
-        let aq = &q.mol.atoms[a.0 as usize];
-        let ar = &r.mol.atoms[a.1 as usize];
-        let bq = &q.mol.atoms[b.0 as usize];
-        let br = &r.mol.atoms[b.1 as usize];
-        let a_ex = aq.atomic_number == ar.atomic_number;
-        let b_ex = bq.atomic_number == br.atomic_number;
-        b_ex.cmp(&a_ex)
-            .then((aq.atomic_number != 6).cmp(&(bq.atomic_number != 6)))
-            .then(q.adj[b.0 as usize].len().cmp(&q.adj[a.0 as usize].len()))
-            .then(a.0.cmp(&b.0))
-            .then(a.1.cmp(&b.1))
-    });
+    let baseline = unmatched_baseline(query, reference);
+    let cost = i32::try_from(baseline - s.best_score).map_err(|_| "cost exceeds i32")?;
+    let map = s
+        .best_map
+        .iter()
+        .enumerate()
+        .filter(|(_, b)| **b != NONE)
+        .map(|(a, &b)| (a as u16, b as u16))
+        .collect();
+    Ok((Some(MappingResult { map, cost }), s.stats))
+}
 
-    let mut budget = NODE_BUDGET;
-    let mut best: Option<MappingResult> = None;
-    for (sq, sr) in seeds {
-        if budget == 0 {
-            break;
+/// Max-gain atom assignment ignoring topology (Hungarian, O(n²·m)).
+/// `gain` is row-major `nq × nr`; only positive-gain pairs are kept, so an
+/// atom whose every pairing costs more than leaving it unmatched stays `None`.
+fn optimal_assignment(gain: &[i64], nq: usize, nr: usize) -> Vec<Option<usize>> {
+    // Square cost matrix: dummy rows/cols cost 0 (= leave unmatched).
+    let n = nq.max(nr);
+    let cost = |i: usize, j: usize| -> i64 {
+        if i < nq && j < nr {
+            -gain[i * nr + j].max(0)
+        } else {
+            0
         }
-        let (maps, used) = grow_from_seed(&q, &r, sq, sr, budget);
-        budget = budget.saturating_sub(used);
-        for m in maps {
-            let cost = mapping_cost_ab(&q, &r, &m);
-            let atom_map = atom_map_of(&q, &m);
-            let cand = MappingResult {
-                map: atom_map,
-                cost,
-            };
-            if best.as_ref().is_none_or(|b| cand.cost < b.cost) {
-                best = Some(cand);
+    };
+    let (mut u, mut v) = (vec![0i64; n + 1], vec![0i64; n + 1]);
+    let (mut p, mut way) = (vec![0usize; n + 1], vec![0usize; n + 1]);
+    for i in 1..=n {
+        p[0] = i;
+        let mut j0 = 0;
+        let mut minv = vec![i64::MAX; n + 1];
+        let mut used = vec![false; n + 1];
+        loop {
+            used[j0] = true;
+            let (i0, mut delta, mut j1) = (p[j0], i64::MAX, 0);
+            for j in 1..=n {
+                if !used[j] {
+                    let cur = cost(i0 - 1, j - 1) - u[i0] - v[j];
+                    if cur < minv[j] {
+                        minv[j] = cur;
+                        way[j] = j0;
+                    }
+                    if minv[j] < delta {
+                        delta = minv[j];
+                        j1 = j;
+                    }
+                }
+            }
+            for j in 0..=n {
+                if used[j] {
+                    u[p[j]] += delta;
+                    v[j] -= delta;
+                } else {
+                    minv[j] -= delta;
+                }
+            }
+            j0 = j1;
+            if p[j0] == 0 {
+                break;
+            }
+        }
+        loop {
+            let j1 = way[j0];
+            p[j0] = p[j1];
+            j0 = j1;
+            if j0 == 0 {
+                break;
             }
         }
     }
-    best
-}
-
-/// Cost of an explicit atom map (bonds inferred where both endpoints mapped).
-pub fn mapping_cost(query: &MolGraph, reference: &MolGraph, mapping: &HashMap<u16, u16>) -> i32 {
-    let q = AbGraph::from_mol(query.clone());
-    let r = AbGraph::from_mol(reference.clone());
-    let mut full = mapping.clone();
-    // Add bond vertices whose endpoints are mapped to a ref bond's endpoints.
-    for (qi, qb) in query.bonds.iter().enumerate() {
-        let (Some(&ra), Some(&rb)) = (mapping.get(&qb.begin), mapping.get(&qb.end)) else {
-            continue;
-        };
-        if let Some((ri, _)) = reference.bonds.iter().enumerate().find(|(_, b)| {
-            (b.begin == ra && b.end == rb) || (b.begin == rb && b.end == ra)
-        }) {
-            full.insert((q.n_atoms() + qi) as u16, (r.n_atoms() + ri) as u16);
+    let mut out = vec![None; nq];
+    for j in 1..=n {
+        let (i, b) = (p[j] - 1, j - 1);
+        if i < nq && b < nr && gain[i * nr + b] > 0 {
+            out[i] = Some(b);
         }
     }
-    mapping_cost_ab(&q, &r, &full)
+    out
+}
+
+/// Scores an injective atom map, penalizing unmatched atoms and bonds on both
+/// sides, with bonds inferred.
+/// As in the original, this scorer does not enforce connectivity or E/Z validity.
+pub fn mapping_cost(query: &MolGraph, reference: &MolGraph, mapping: &HashMap<u16, u16>) -> i32 {
+    let q = Graph::new(query).expect("invalid query graph");
+    let r = Graph::new(reference).expect("invalid reference graph");
+    let mut used = vec![false; r.n];
+    let mut score = 0;
+    for (&a, &b) in mapping {
+        let (a, b) = (a as usize, b as usize);
+        assert!(
+            a < q.n && b < r.n && !used[b],
+            "invalid/noninjective atom map"
+        );
+        used[b] = true;
+        score += PAIR_GAIN - atom_cost(&q, &r, a, b);
+    }
+    for b in &query.bonds {
+        if let (Some(&x), Some(&y)) = (mapping.get(&b.begin), mapping.get(&b.end)) {
+            let e = r.bond(x as usize, y as usize);
+            if e != NONE {
+                score += bond_gain(b, &reference.bonds[e]);
+            }
+        }
+    }
+    let baseline = unmatched_baseline(query, reference);
+    i32::try_from(baseline - score).expect("cost exceeds i32")
 }
 
 pub fn signed_side(ax: f64, ay: f64, bx: f64, by: f64, px: f64, py: f64) -> f64 {
     (bx - ax) * (py - ay) - (by - ay) * (px - ax)
 }
-
 pub fn substituents_same_side(
     ax: f64,
     ay: f64,
@@ -575,11 +1025,9 @@ pub fn substituents_same_side(
     let s2 = signed_side(ax, ay, bx, by, s2x, s2y);
     s1 * s2 > 0.0
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
     fn c() -> AtomFeat {
         AtomFeat {
             atomic_number: 6,
@@ -588,7 +1036,6 @@ mod tests {
             chirality: AtomChirality::None,
         }
     }
-
     fn single(a: u16, b: u16) -> BondFeat {
         BondFeat {
             begin: a,
@@ -600,20 +1047,19 @@ mod tests {
             stereo_atom2: None,
         }
     }
-
     fn chain(n: usize) -> MolGraph {
         MolGraph::new(
             vec![c(); n],
-            (0..n - 1).map(|i| single(i as u16, (i + 1) as u16)).collect(),
+            (0..n - 1)
+                .map(|i| single(i as u16, (i + 1) as u16))
+                .collect(),
         )
     }
-
     fn cyclohexane() -> MolGraph {
         let mut bonds: Vec<_> = (0..5).map(|i| single(i, i + 1)).collect();
         bonds.push(single(0, 5));
         MolGraph::new(vec![c(); 6], bonds)
     }
-
     fn alkene(cis: bool) -> MolGraph {
         MolGraph::new(
             vec![c(); 4],
@@ -632,7 +1078,6 @@ mod tests {
             ],
         )
     }
-
     fn hetero_alkene(cis: bool) -> MolGraph {
         let mut atoms = vec![c(); 4];
         atoms[0].atomic_number = 17;
@@ -654,7 +1099,6 @@ mod tests {
             ],
         )
     }
-
     fn branched_alkene(cis: bool) -> MolGraph {
         MolGraph::new(
             vec![c(); 6],
@@ -675,7 +1119,6 @@ mod tests {
             ],
         )
     }
-
     fn chiral(r: bool) -> MolGraph {
         let mut atoms = vec![c(); 4];
         atoms[2].atomic_number = 8;
@@ -687,7 +1130,6 @@ mod tests {
         };
         MolGraph::new(atoms, vec![single(0, 1), single(1, 2), single(1, 3)])
     }
-
     fn all_perms(n: usize) -> Vec<Vec<u16>> {
         let mut base: Vec<u16> = (0..n as u16).collect();
         let mut out = Vec::new();
@@ -708,7 +1150,6 @@ mod tests {
         heap(&mut base, n, &mut out);
         out
     }
-
     /// C1CCCCC1CCCC: ring atoms 0..5, butyl chain 6..9 on atom 5.
     fn butylcyclohexane_ring_first() -> MolGraph {
         let mut bonds: Vec<_> = (0..5).map(|i| single(i, i + 1)).collect();
@@ -716,14 +1157,12 @@ mod tests {
         bonds.extend((5..9).map(|i| single(i, i + 1)));
         MolGraph::new(vec![c(); 10], bonds)
     }
-
     /// CCCCC1CCCCC1: butyl chain 0..3, ring atoms 4..9.
     fn butylcyclohexane_chain_first() -> MolGraph {
         let mut bonds: Vec<_> = (0..9).map(|i| single(i, i + 1)).collect();
         bonds.push(single(4, 9));
         MolGraph::new(vec![c(); 10], bonds)
     }
-
     #[test]
     fn hexane_onto_butylcyclohexane_atom_order_invariant() {
         let a = cost_mapping(&chain(6), &butylcyclohexane_ring_first()).expect("map");
@@ -743,10 +1182,17 @@ mod tests {
         let b = cost_mapping(&butylcyclohexane_chain_first(), &chain(6)).expect("map");
         assert_eq!(a.map.len(), 6, "ring-first map={:?}", a.map);
         assert_eq!(a.cost, b.cost, "a={a:?} b={b:?}");
-        assert!(a.map.values().filter(|v| (0..6).contains(*v)).count() < 6, "{:?}", a.map);
-        assert!(b.map.values().filter(|v| (4..10).contains(*v)).count() < 6, "{:?}", b.map);
+        assert!(
+            a.map.values().filter(|v| (0..6).contains(*v)).count() < 6,
+            "{:?}",
+            a.map
+        );
+        assert!(
+            b.map.values().filter(|v| (4..10).contains(*v)).count() < 6,
+            "{:?}",
+            b.map
+        );
     }
-
     /// Deterministic pseudo-random permutations (no rand dep).
     fn lcg_perms(n: usize, count: usize) -> Vec<Vec<u16>> {
         let mut state: u64 = 0x9E37_79B9_7F4A_7C15;
@@ -754,14 +1200,15 @@ mod tests {
             .map(|_| {
                 let mut p: Vec<u16> = (0..n as u16).collect();
                 for i in (1..n).rev() {
-                    state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                    state = state
+                        .wrapping_mul(6364136223846793005)
+                        .wrapping_add(1442695040888963407);
                     p.swap(i, (state >> 33) as usize % (i + 1));
                 }
                 p
             })
             .collect()
     }
-
     #[test]
     fn cost_mapping_cost_invariant_under_atom_permutation() {
         let cases = [
@@ -774,30 +1221,35 @@ mod tests {
             let base = cost_mapping(&r, &q).expect("map").cost;
             for pq in lcg_perms(q.n_atoms(), 40) {
                 for pr in lcg_perms(r.n_atoms(), 3) {
-                    let got = cost_mapping(&r.permute(&pr), &q.permute(&pq)).expect("map").cost;
+                    let got = cost_mapping(&r.permute(&pr), &q.permute(&pq))
+                        .expect("map")
+                        .cost;
                     assert_eq!(got, base, "pq={pq:?} pr={pr:?}");
                 }
             }
         }
     }
-
     #[test]
     fn hexane_maps_all_cyclohexane_atoms() {
         let res = cost_mapping(&chain(6), &cyclohexane()).expect("map");
         assert_eq!(res.map.len(), 6, "map={:?}", res.map);
         // One unmatched ring-closure bond (cost > any pair mismatch).
-        assert_eq!(res.cost, COST_UNMATCHED + 6 * COST_RING, "cost={}", res.cost);
+        assert_eq!(
+            res.cost,
+            COST_UNMATCHED + 6 * COST_RING,
+            "cost={}",
+            res.cost
+        );
     }
-
     #[test]
-    fn element_mismatch_allowed() {
+    fn costly_terminal_element_maps_when_both_sides_pay() {
+        // C–N onto C–C: N→C (11) beats leaving N, C, and both bonds unmatched (20).
         let mut a = chain(2);
         a.atoms[1].atomic_number = 7;
         let res = cost_mapping(&chain(2), &a).expect("map");
         assert_eq!(res.map.len(), 2);
-        assert!(res.cost >= COST_ELEMENT);
+        assert_eq!(res.cost, COST_ELEMENT);
     }
-
     fn aromatic(a: u16, b: u16) -> BondFeat {
         BondFeat {
             begin: a,
@@ -809,13 +1261,12 @@ mod tests {
             stereo_atom2: None,
         }
     }
-
     #[test]
     fn aromatic_ring_beats_substituent_element_mismatch() {
         // o-cresol-like: ring 0..5, OH on 0, Me on 1.
         let mut cresol_atoms = vec![c(); 8];
         cresol_atoms[6].atomic_number = 8; // OH
-        // 7 = Me carbon
+                                           // 7 = Me carbon
         let cresol = MolGraph::new(
             cresol_atoms,
             vec![
@@ -856,18 +1307,13 @@ mod tests {
                 res.map
             );
         }
-        let ring_pairs = res
-            .map
-            .iter()
-            .filter(|(&q, _)| q < 6)
-            .count();
+        let ring_pairs = res.map.iter().filter(|(&q, _)| q < 6).count();
         assert!(
             ring_pairs >= 6,
             "expected full aromatic ring map, got {ring_pairs}; map={:?}",
             res.map
         );
     }
-
     #[test]
     fn toluene_anisole_ring_map_is_cheaper_than_shifted_methyl() {
         // Chematic-like: anisole Me(0)-O(1)-ring 2..7; toluene Me(0)-ring 1..6.
@@ -898,20 +1344,19 @@ mod tests {
                 aromatic(6, 1),
             ],
         );
-
         // Good: full ring + pendant Me↔O (both exo to ipso). Bad: methyl steals a ring slot.
         let good: HashMap<u16, u16> = [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (5, 6), (6, 7)]
             .into_iter()
             .collect();
-        let bad: HashMap<u16, u16> =
-            [(0, 3), (1, 2), (2, 7), (3, 6), (4, 5), (5, 4)].into_iter().collect();
+        let bad: HashMap<u16, u16> = [(0, 3), (1, 2), (2, 7), (3, 6), (4, 5), (5, 4)]
+            .into_iter()
+            .collect();
         let good_c = mapping_cost(&toluene, &anisole, &good);
         let bad_c = mapping_cost(&toluene, &anisole, &bad);
         assert!(
             good_c < bad_c,
             "ring+Me↔O map should beat shifted map: good={good_c} bad={bad_c}"
         );
-
         let res = cost_mapping(&anisole, &toluene).expect("map");
         assert!(
             res.cost <= good_c,
@@ -919,13 +1364,11 @@ mod tests {
             res.cost,
             res.map
         );
-        // Toluene methyl (0) lands on anisole O (1), not a ring carbon.
-        assert_eq!(
-            res.map.get(&0),
-            Some(&1),
-            "toluene methyl should map to anisole oxygen; map={:?}",
-            res.map
-        );
+        // Leaving the methyl unmatched would also strand anisole's O and
+        // its bond (20), so Me→O (11) is the minimum.
+        assert_eq!(res.map.get(&0), Some(&1));
+        // Plus anisole's methyl carbon and its O–C bond left unmatched.
+        assert_eq!(res.cost, COST_ELEMENT + 2 * COST_UNMATCHED);
         let ring_pairs = res
             .map
             .iter()
@@ -937,10 +1380,14 @@ mod tests {
             res.map
         );
     }
-
     #[test]
     fn ez_self_all_orderings_zero_cost() {
-        for g in [alkene(true), alkene(false), hetero_alkene(true), branched_alkene(true)] {
+        for g in [
+            alkene(true),
+            alkene(false),
+            hetero_alkene(true),
+            branched_alkene(true),
+        ] {
             for perm in all_perms(g.n_atoms()) {
                 let gp = g.permute(&perm);
                 let res = cost_mapping(&g, &gp).expect("map");
@@ -949,7 +1396,6 @@ mod tests {
             }
         }
     }
-
     #[test]
     fn ez_cis_vs_trans_never_zero() {
         // Identity orderings + a sample of perms (full 6!² is too heavy).
@@ -968,7 +1414,6 @@ mod tests {
             }
         }
     }
-
     #[test]
     fn ez_geometry_sides_and_distances() {
         let cis = [(-1.0, 1.0), (0.0, 0.0), (1.5, 0.0), (2.5, 1.0)];
@@ -985,7 +1430,6 @@ mod tests {
         };
         assert!(d(&cis, 0, 3) < d(&trans, 0, 3));
     }
-
     #[test]
     fn tetrahedral_stereo_free() {
         let r = chiral(true);
@@ -1000,3 +1444,381 @@ mod tests {
     }
 }
 
+#[cfg(test)]
+mod exact_tests {
+    use super::*;
+    fn atom(z: u8) -> AtomFeat {
+        AtomFeat {
+            atomic_number: z,
+            formal_charge: 0,
+            radical: 0,
+            chirality: AtomChirality::None,
+        }
+    }
+    fn edge(a: usize, b: usize) -> BondFeat {
+        BondFeat {
+            begin: a as u16,
+            end: b as u16,
+            order: 1,
+            aromatic: false,
+            stereo: EzStereo::None,
+            stereo_atom1: None,
+            stereo_atom2: None,
+        }
+    }
+    fn graph(n: usize, bits: usize) -> MolGraph {
+        let mut bonds = Vec::new();
+        let mut bit = 0;
+        for a in 0..n {
+            for b in 0..a {
+                if bits & (1 << bit) != 0 {
+                    bonds.push(edge(a, b));
+                }
+                bit += 1;
+            }
+        }
+        MolGraph::new(vec![atom(6); n], bonds)
+    }
+    fn connected(q: &Graph<'_>, r: &Graph<'_>, map: &[usize]) -> bool {
+        let Some(root) = map.iter().position(|&b| b != NONE) else {
+            return false;
+        };
+        let mut seen = vec![false; q.n];
+        seen[root] = true;
+        let mut stack = vec![root];
+        while let Some(a) = stack.pop() {
+            for &(x, _) in &q.adj[a] {
+                if !seen[x] && map[x] != NONE && r.bond(map[a], map[x]) != NONE {
+                    seen[x] = true;
+                    stack.push(x);
+                }
+            }
+        }
+        map.iter().enumerate().all(|(a, &b)| b == NONE || seen[a])
+    }
+    // Independent exhaustive partial-injection enumeration: no bounds, seeds,
+    // frontier ordering, or symmetry pruning. Scoring counts penalties directly.
+    fn brute(reference: &MolGraph, query: &MolGraph) -> i32 {
+        let q = Graph::new(query).unwrap();
+        let r = Graph::new(reference).unwrap();
+        fn rec(
+            q: &Graph<'_>,
+            r: &Graph<'_>,
+            map: &mut [usize],
+            used: &mut [bool],
+            a: usize,
+            best: &mut i32,
+        ) {
+            if a < q.n {
+                map[a] = NONE;
+                rec(q, r, map, used, a + 1, best);
+                for b in 0..r.n {
+                    if !used[b] {
+                        used[b] = true;
+                        map[a] = b;
+                        rec(q, r, map, used, a + 1, best);
+                        used[b] = false;
+                    }
+                }
+                map[a] = NONE;
+                return;
+            }
+            if !connected(q, r, map) || !stereo_ok(q, r, map) {
+                return;
+            }
+            let mut cost = 0;
+            let mut matched_bonds = 0;
+            for (a, &b) in map.iter().enumerate() {
+                cost += if b == NONE {
+                    COST_UNMATCHED
+                } else {
+                    atom_cost(q, r, a, b) as i32
+                };
+            }
+            for qb in &q.mol.bonds {
+                let (x, y) = (map[qb.begin as usize], map[qb.end as usize]);
+                let e = if x != NONE && y != NONE {
+                    r.bond(x, y)
+                } else {
+                    NONE
+                };
+                cost += if e == NONE {
+                    COST_UNMATCHED
+                } else {
+                    matched_bonds += 1;
+                    (PAIR_GAIN - bond_gain(qb, &r.mol.bonds[e])) as i32
+                };
+            }
+            // Reference-side leftovers cost too.
+            let matched_atoms = map.iter().filter(|&&b| b != NONE).count();
+            cost += COST_UNMATCHED * (r.n - matched_atoms + r.mol.n_bonds() - matched_bonds) as i32;
+            *best = (*best).min(cost);
+        }
+        let mut best = i32::MAX;
+        rec(
+            &q,
+            &r,
+            &mut vec![NONE; q.n],
+            &mut vec![false; r.n],
+            0,
+            &mut best,
+        );
+        best
+    }
+    fn assert_solution(r: &MolGraph, q: &MolGraph, gens: &[Vec<u16>]) {
+        let result = cost_mapping_with_generators(r, q, gens).unwrap().0.unwrap();
+        assert_eq!(
+            result.cost,
+            brute(r, q),
+            "q={q:?} r={r:?} map={:?}",
+            result.map
+        );
+        assert_eq!(result.cost, mapping_cost(q, r, &result.map));
+        let mut dense = vec![NONE; q.n_atoms()];
+        for (&a, &b) in &result.map {
+            dense[a as usize] = b as usize;
+        }
+        let (qg, rg) = (Graph::new(q).unwrap(), Graph::new(r).unwrap());
+        assert!(connected(&qg, &rg, &dense));
+        assert!(stereo_ok(&qg, &rg, &dense));
+    }
+    #[test]
+    fn exhaustive_all_pairs_of_four_vertex_graphs() {
+        for qb in 0..64 {
+            for rb in 0..64 {
+                assert_solution(&graph(4, rb), &graph(4, qb), &[]);
+            }
+        }
+    }
+    #[test]
+    fn weighted_random_graphs_match_brute_force() {
+        let mut state = 1234567u64;
+        let mut next = || {
+            state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
+            state >> 32
+        };
+        for _ in 0..160 {
+            let mut q = graph(5, next() as usize & 1023);
+            let mut r = graph(5, next() as usize & 1023);
+            for mol in [&mut q, &mut r] {
+                for a in &mut mol.atoms {
+                    a.atomic_number = [6, 6, 7, 8][next() as usize % 4];
+                    a.formal_charge = (next() % 3) as i8 - 1;
+                }
+                for b in &mut mol.bonds {
+                    b.order = (next() % 3 + 1) as u8;
+                }
+            }
+            assert_solution(&r, &q, &[]);
+        }
+    }
+    fn closure(g: &Group) -> HashSet<Perm> {
+        let id: Perm = (0..g.n).collect();
+        let mut seen = HashSet::from([id.clone()]);
+        let mut queue = VecDeque::from([id]);
+        while let Some(p) = queue.pop_front() {
+            for a in &g.generators {
+                let b = compose(a, &p);
+                if seen.insert(b.clone()) {
+                    queue.push_back(b);
+                }
+            }
+        }
+        seen
+    }
+    #[test]
+    fn schreier_recovers_stabilizer_compositions() {
+        let g = Group::new(4, vec![vec![1, 2, 3, 0], vec![1, 0, 2, 3]]);
+        assert_eq!(closure(&g).len(), 24);
+        let fixed = g.stabilizer(0);
+        let expected: HashSet<_> = closure(&g).into_iter().filter(|p| p[0] == 0).collect();
+        assert_eq!(closure(&fixed), expected);
+        assert_eq!(closure(&fixed).len(), 6);
+        assert_eq!(closure(&fixed.stabilizer(1)).len(), 2);
+    }
+    #[test]
+    fn symmetry_and_exclusions_match_brute_force() {
+        let ring = MolGraph::new(
+            vec![atom(6); 5],
+            (0..5).map(|i| edge(i, (i + 1) % 5)).collect(),
+        );
+        let star = MolGraph::new(vec![atom(6); 5], (1..5).map(|i| edge(0, i)).collect());
+        let ring_gens = vec![vec![1, 2, 3, 4, 0], vec![0, 4, 3, 2, 1]];
+        let star_gens = vec![vec![0, 2, 3, 4, 1], vec![0, 2, 1, 3, 4]];
+        let mut removed = 0;
+        for bits in (0..1024).step_by(17) {
+            let mut q = graph(5, bits);
+            q.atoms[1].atomic_number = 8;
+            for (r, gens) in [(&ring, &ring_gens), (&star, &star_gens)] {
+                assert_solution(r, &q, gens);
+                removed += cost_mapping_with_generators(r, &q, gens)
+                    .unwrap()
+                    .1
+                    .symmetry_alternatives_removed;
+            }
+        }
+        assert!(removed > 0);
+    }
+    #[test]
+    fn negative_bridge_is_not_pruned() {
+        let r = MolGraph::new(vec![atom(6); 5], (0..4).map(|i| edge(i, i + 1)).collect());
+        let mut q = r.clone();
+        q.atoms[2].atomic_number = 7;
+        assert_solution(&r, &q, &[]);
+        let result = cost_mapping(&r, &q).unwrap();
+        assert_eq!(result.cost, 11);
+        assert_eq!(result.map.len(), 5);
+    }
+    #[test]
+    fn assignment_matches_exhaustive_assignments() {
+        fn brute_w(w: &[Vec<i64>], i: usize, used: &mut [bool]) -> i64 {
+            if i == w.len() {
+                return 0;
+            }
+            let mut best = brute_w(w, i + 1, used);
+            for j in 0..used.len() {
+                if !used[j] {
+                    used[j] = true;
+                    best = best.max(w[i][j] + brute_w(w, i + 1, used));
+                    used[j] = false;
+                }
+            }
+            best
+        }
+        for k in 0..100 {
+            let w: Vec<Vec<_>> = (0..5)
+                .map(|i| {
+                    (0..4)
+                        .map(|j| ((k + 3 * i + 7 * j + i * j) % 19) as i64)
+                        .collect()
+                })
+                .collect();
+            assert_eq!(assignment_upper(&w), brute_w(&w, 0, &mut [false; 4]));
+        }
+    }
+    #[test]
+    fn invalid_generators_rejected() {
+        let r = graph(4, 7);
+        assert!(cost_mapping_with_generators(&r, &r, &[vec![0, 0, 2, 3]]).is_err());
+        assert!(cost_mapping_with_generators(&r, &r, &[vec![0, 1]]).is_err());
+        let mut r = graph(2, 1);
+        r.atoms[1].atomic_number = 8;
+        assert!(cost_mapping_with_generators(&r, &r, &[vec![1, 0]]).is_err());
+    }
+    #[test]
+    fn empty_and_single_atom_inputs() {
+        assert!(cost_mapping(&graph(0, 0), &graph(1, 0)).is_none());
+        let r = MolGraph::new(vec![atom(8)], vec![]);
+        let q = MolGraph::new(vec![atom(6)], vec![]);
+        // Nonempty is part of the contract, even if the empty map would cost 5.
+        assert_eq!(cost_mapping(&r, &q).unwrap().cost, 11);
+    }
+    #[test]
+    fn medium_related_molecule_smoke_benchmark() {
+        let mut r = MolGraph::new(
+            vec![atom(6); 12],
+            (0..12).map(|i| edge(i, (i + 1) % 12)).collect(),
+        );
+        for i in 0..12 {
+            let mut last = i;
+            for j in 0..i % 4 {
+                let a = r.n_atoms();
+                r.atoms.push(atom(if j == 1 { 8 } else { 6 }));
+                r.bonds.push(edge(last, a));
+                last = a;
+            }
+        }
+        let mut q = r.clone();
+        q.atoms[8].atomic_number = 7;
+        let start = std::time::Instant::now();
+        let (result, stats) = cost_mapping_with_generators(&r, &q, &[]).unwrap();
+        let result = result.unwrap();
+        assert_eq!(result.cost, mapping_cost(&q, &r, &result.map));
+        eprintln!(
+            "synthetic {}-atom related pair: {:?}; {stats:?}; cost={}",
+            q.n_atoms(),
+            start.elapsed(),
+            result.cost
+        );
+    }
+}
+
+#[cfg(test)]
+mod canonaut_tests {
+    use super::*;
+
+    fn atom(z: u8) -> AtomFeat {
+        AtomFeat {
+            atomic_number: z,
+            formal_charge: 0,
+            radical: 0,
+            chirality: AtomChirality::None,
+        }
+    }
+    fn bond(a: u16, b: u16, order: u8) -> BondFeat {
+        BondFeat {
+            begin: a,
+            end: b,
+            order,
+            aromatic: false,
+            stereo: EzStereo::None,
+            stereo_atom1: None,
+            stereo_atom2: None,
+        }
+    }
+    fn chain_ring(chain: u16, ring: u16) -> MolGraph {
+        let n = chain + ring;
+        let mut bonds: Vec<_> = (1..n).map(|i| bond(i - 1, i, 1)).collect();
+        if ring > 2 {
+            bonds.push(bond(chain, n - 1, 1));
+        }
+        MolGraph::new(vec![atom(6); n as usize], bonds)
+    }
+
+    #[test]
+    fn cyclohexane_generators_act_on_ring() {
+        let ring = MolGraph::new(
+            vec![atom(6); 6],
+            (0..6).map(|i| bond(i, (i + 1) % 6, 1)).collect(),
+        );
+        let gens = reference_generators(&ring);
+        assert!(!gens.is_empty());
+        let (res, stats) = cost_mapping_with_generators(&ring, &ring, &gens).unwrap();
+        assert_eq!(res.unwrap().cost, 0);
+        // One reference orbit: a perfect map is found from the first seed.
+        assert_eq!(stats.seeds, 1);
+    }
+
+    #[test]
+    fn generators_respect_bond_order() {
+        // Kekulé-free 1,3-butadiene: ends swap, but C1–C2 never maps to C2–C3.
+        let diene = MolGraph::new(
+            vec![atom(6); 4],
+            vec![bond(0, 1, 2), bond(1, 2, 1), bond(2, 3, 2)],
+        );
+        for g in reference_generators(&diene) {
+            assert!(g == [3, 2, 1, 0] || g == [0, 1, 2, 3], "{g:?}");
+        }
+    }
+
+    #[test]
+    fn optimal_assignment_maximizes_gain_and_drops_losers() {
+        // 2×3: greedy would take (0,0)=9 then (1,1)=1; optimum is 8+7.
+        let gain = [9, 8, 0, 7, 1, -4];
+        assert_eq!(optimal_assignment(&gain, 2, 3), vec![Some(1), Some(0)]);
+        // Only negative gains: nothing assigned.
+        assert_eq!(optimal_assignment(&[-1, -2], 1, 2), vec![None]);
+    }
+
+    #[test]
+    fn symmetry_does_not_change_optimum() {
+        let pentyl = chain_ring(5, 6);
+        let hexane = chain_ring(6, 0);
+        for (r, q) in [(&pentyl, &hexane), (&hexane, &pentyl), (&pentyl, &pentyl)] {
+            let plain = cost_mapping_with_generators(r, q, &[]).unwrap().0.unwrap();
+            let sym = cost_mapping(r, q).unwrap();
+            assert_eq!(plain.cost, sym.cost);
+            assert_eq!(mapping_cost(q, r, &sym.map), sym.cost);
+        }
+    }
+}
