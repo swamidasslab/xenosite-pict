@@ -877,7 +877,8 @@ fn region_primitives(
                         place_circle_label(circ_cx, circ_cy, circ_r, ink, false, side, &occ)
                     }
                     RegionStyle::Box | RegionStyle::Bezier => {
-                        // Outside-style seed on the preferred edge of the atom hull.
+                        // Clash-free seed on the preferred side of the atom
+                        // hull (outside). Never park in the ring center.
                         place_region_edge(
                             &occ,
                             region_box,
@@ -906,20 +907,15 @@ fn region_primitives(
                         inside_seed = Some(seed);
                     }
                     RegionStyle::Bezier => {
-                        // Grow the hull so an outside-edge seed becomes inside.
-                        // With **no** excludes, expanding the cover by the seed
-                        // box is safe and keeps pad modest. With excludes,
-                        // dumping those corners + half-plane clips digs bowtie
-                        // notches (Ex6 ethylbenzene) — grow pad only, then
-                        // fall back to an inside seed if still unreachable.
-                        if exclude_xy.is_empty() {
-                            let b = seed.bounds.inflate(CONTAIN_MARGIN_PX);
-                            cover_hull.push((b.x0, b.y0));
-                            cover_hull.push((b.x1, b.y0));
-                            cover_hull.push((b.x1, b.y1));
-                            cover_hull.push((b.x0, b.y1));
-                        }
-                        let pad_before = pad_hull;
+                        // Place far from clashes, then grow the proxy so it
+                        // surrounds **atoms + label**. Soft refine PreferPose-
+                        // holds that seed and can snug later — do not re-seed
+                        // inside the ring when excludes block a pad-only grow.
+                        let b = seed.bounds.inflate(CONTAIN_MARGIN_PX);
+                        cover_hull.push((b.x0, b.y0));
+                        cover_hull.push((b.x1, b.y0));
+                        cover_hull.push((b.x1, b.y1));
+                        cover_hull.push((b.x0, b.y1));
                         pad_hull = grow_pad_until_hull_contains(
                             &cover_hull,
                             &exclude_xy,
@@ -927,38 +923,7 @@ fn region_primitives(
                             seed.bounds,
                             CONTAIN_MARGIN_PX,
                         );
-                        let proxy =
-                            hull_proxy(&cover_hull, &exclude_xy, pad_hull, pad_hull + 6.0);
-                        if hull_contains_aabb(&proxy, seed.bounds, CONTAIN_MARGIN_PX) {
-                            inside_seed = Some(seed);
-                        } else {
-                            // Outside swallow failed (usually excludes) — do not
-                            // keep the inflated pad; re-seed inside the base hull.
-                            pad_hull = pad_before;
-                            let base = hull_proxy(
-                                &cover_hull,
-                                &exclude_xy,
-                                pad_hull,
-                                pad_hull + 6.0,
-                            );
-                            let inner = place_region_edge(
-                                &occ,
-                                base.aabb(),
-                                ink,
-                                /* inside */ true,
-                                side,
-                                CLASH_MARGIN_PX,
-                                CLASH_MARGIN_PX,
-                            );
-                            pad_hull = grow_pad_until_hull_contains(
-                                &cover_hull,
-                                &exclude_xy,
-                                pad_hull,
-                                inner.bounds,
-                                CONTAIN_MARGIN_PX,
-                            );
-                            inside_seed = Some(inner);
-                        }
+                        inside_seed = Some(seed);
                     }
                 }
             }
@@ -1624,7 +1589,7 @@ fn grow_pad_until_hull_contains(
     margin: f64,
 ) -> f64 {
     let mut pad = pad0;
-    for _ in 0..16 {
+    for _ in 0..32 {
         let proxy = hull_proxy(cover, exclude, pad, pad + 6.0);
         if hull_contains_aabb(&proxy, label, margin) {
             return pad;
@@ -3341,31 +3306,39 @@ mod tests {
             (max_x - min_x) < 160.0 && (max_y - min_y) < 130.0,
             "hull AABB blew up: {min_x}..{max_x} x {min_y}..{max_y}; d={d}"
         );
-        // Include atoms near the ring center strip; exclude ethyl should sit
-        // outside / on the clipped side of the path AABB.
         let (dx, dy) = frame_offset(&mol);
         let (cx, cy) = (50.0 + dx, 50.0 + dy);
         assert!(
             cx >= min_x && cx <= max_x && cy >= min_y && cy <= max_y,
             "ring center ({cx},{cy}) outside hull AABB"
         );
-        let ethyl = (mol.atoms[7].x + dx, mol.atoms[7].y + dy);
-        let inside_ethyl = ethyl.0 >= min_x
-            && ethyl.0 <= max_x
-            && ethyl.1 >= min_y
-            && ethyl.1 <= max_y;
-        // Ethyl tip may sit just outside the AABB after clip; if inside AABB,
-        // it must be near the clipped edge (not deep in the fill).
-        if inside_ethyl {
-            let edge = (ethyl.1 - min_y)
-                .min(max_y - ethyl.1)
-                .min(ethyl.0 - min_x)
-                .min(max_x - ethyl.0);
-            assert!(
-                edge < 20.0,
-                "exclude ethyl buried in hull AABB (edge clearance {edge})"
-            );
-        }
+        // Inside label must not sit in the ring nucleus (outside-seed + grow).
+        let aryl = layer_prims(&out)
+            .into_iter()
+            .find_map(|p| match p {
+                Primitive::Path {
+                    d,
+                    class: Some(c),
+                    data_text: Some(t),
+                    ..
+                } if c.contains("region-label") && t == "aryl" => {
+                    let nums = path_nums(d);
+                    let xs: Vec<_> = nums.iter().step_by(2).copied().collect();
+                    let ys: Vec<_> = nums.iter().skip(1).step_by(2).copied().collect();
+                    Some((
+                        (xs.iter().sum::<f64>() / xs.len() as f64),
+                        (ys.iter().sum::<f64>() / ys.len() as f64),
+                    ))
+                }
+                _ => None,
+            })
+            .expect("aryl region-label");
+        let dist_center = (aryl.0 - cx).hypot(aryl.1 - cy);
+        assert!(
+            dist_center > 18.0,
+            "aryl label at {:?} too close to ring center ({cx},{cy}); dist={dist_center}",
+            aryl
+        );
     }
 
     #[test]

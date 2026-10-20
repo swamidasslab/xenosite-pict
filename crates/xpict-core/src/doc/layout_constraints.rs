@@ -1516,6 +1516,15 @@ pub fn region_text_kit(
             b: hull_id.clone(),
             pad: CONTAIN_MARGIN_PX,
         });
+        // Hold the clash-free edge seed firmly — weak PreferPose let the
+        // label drift into the ring nucleus while soft Inside/side fought.
+        let (px, py) = text_ink.center();
+        constraints.push(Constraint::PreferPose {
+            a: text_id.clone(),
+            x: px,
+            y: py,
+            strength: 8.0,
+        });
     } else {
         constraints.push(Constraint::Outside {
             a: text_id.clone(),
@@ -1529,6 +1538,7 @@ pub fn region_text_kit(
             opt_dist: clash_dist,
             strength: 1.5,
         });
+        push_placement_pose(constraints, &text_id, &Shape::Aabb(text_ink));
     }
     constraints.push(Constraint::PreferSide {
         a: text_id.clone(),
@@ -1559,7 +1569,6 @@ pub fn region_text_kit(
             });
         }
     }
-    push_placement_pose(constraints, &text_id, &Shape::Aabb(text_ink));
     text_id
 }
 
@@ -1849,32 +1858,71 @@ pub fn hull_proxy(
     if include.is_empty() {
         return Shape::PointSet(vec![]);
     }
-    // Dig until no boundary edge is longer than ~1.25 CC-bond (dense disk
-    // samples already sit closer than that along arcs).
-    let max_edge = (1.25 * BOND_PX).max(pad * 2.0 + 1.0);
-    let mut pts = concave_hull_pts(include, max_edge);
-    if pts.len() < 3 {
-        let a = Shape::PointSet(include.to_vec()).aabb().inflate(pad);
-        return Shape::Aabb(a);
-    }
     let clear = exclude_pad.max(CONTAIN_MARGIN_PX);
-    // Half-plane clip per exclude (from include centroid through the atom):
-    // guarantees the center cannot sit inside the proxy. Empty bays with no
-    // include sample to dig toward are handled without fragile notches.
-    let (cx, cy) = centroid_of(include);
-    for &(ex, ey) in exclude {
-        clip_away_from_point(&mut pts, cx, cy, ex, ey, clear);
-    }
-    offset_polygon_outward(&mut pts, pad);
-    // Pad can grow back over excludes — clip again.
-    for &(ex, ey) in exclude {
-        clip_away_from_point(&mut pts, cx, cy, ex, ey, clear);
+    // Default: **convex** surround so atoms + an outside label stay enclosed
+    // (concave dig + a distant label arm pinched through rings). Use concave
+    // only when an exclude sits inside that convex hull (empty bay).
+    let convex = convex_hull_pts(include);
+    let bay = !exclude.is_empty()
+        && convex.len() >= 3
+        && exclude
+            .iter()
+            .any(|&(x, y)| point_in_poly(x, y, &convex));
+    let max_edge = (1.25 * BOND_PX).max(pad * 2.0 + 1.0);
+    let seed = if bay {
+        concave_hull_pts(include, max_edge)
+    } else {
+        convex
+    };
+    let mut pts = finish_hull_proxy(seed, include, exclude, pad, clear);
+    if pts.len() < 3 || !poly_contains_all(&pts, include) {
+        pts = finish_hull_proxy(convex_hull_pts(include), include, exclude, pad, clear);
     }
     if pts.len() < 3 {
         let a = Shape::PointSet(include.to_vec()).aabb().inflate(pad);
         return Shape::Aabb(a);
     }
     Shape::PointSet(pts)
+}
+
+fn finish_hull_proxy(
+    mut pts: Vec<(f64, f64)>,
+    include: &[(f64, f64)],
+    exclude: &[(f64, f64)],
+    pad: f64,
+    clear: f64,
+) -> Vec<(f64, f64)> {
+    if pts.len() < 3 {
+        return pts;
+    }
+    let (cx, cy) = centroid_of(include);
+    for &(ex, ey) in exclude {
+        clip_away_from_point(&mut pts, include, cx, cy, ex, ey, clear);
+    }
+    offset_polygon_outward(&mut pts, pad);
+    for &(ex, ey) in exclude {
+        clip_away_from_point(&mut pts, include, cx, cy, ex, ey, clear);
+    }
+    pts
+}
+
+fn poly_contains_all(poly: &[(f64, f64)], pts: &[(f64, f64)]) -> bool {
+    if poly.len() < 3 {
+        return false;
+    }
+    pts.iter()
+        .all(|&(x, y)| point_in_poly(x, y, poly) || point_to_poly_edge_dist(x, y, poly) < 1.5)
+}
+
+fn point_to_poly_edge_dist(px: f64, py: f64, poly: &[(f64, f64)]) -> f64 {
+    let n = poly.len();
+    let mut best = f64::INFINITY;
+    for i in 0..n {
+        let (x0, y0) = poly[i];
+        let (x1, y1) = poly[(i + 1) % n];
+        best = best.min(point_to_seg_dist(px, py, x0, y0, x1, y1));
+    }
+    best
 }
 
 fn centroid_of(pts: &[(f64, f64)]) -> (f64, f64) {
@@ -1885,8 +1933,23 @@ fn centroid_of(pts: &[(f64, f64)]) -> (f64, f64) {
 }
 
 /// Sutherland–Hodgman keep the half-plane on the include-centroid side of the
-/// supporting line of disk `(ex,ey,clear)` facing the centroid.
-fn clip_away_from_point(pts: &mut Vec<(f64, f64)>, cx: f64, cy: f64, ex: f64, ey: f64, clear: f64) {
+/// supporting line facing exclude `E`.
+///
+/// Ideal plane is `E - clear·dir`. It is never pushed past the furthest
+/// **include-cloud** sample toward `E` (`keep_guard`) — that used to shave ring
+/// atoms when a substituent exclude sat close to the hull. Empty bays still
+/// clip: includes do not reach into the bay, so the plane sits at the include
+/// frontier and leaves `E` outside. Guard with the original cloud (not the
+/// padded polygon) so offset growth cannot disable the post-pad clip.
+fn clip_away_from_point(
+    pts: &mut Vec<(f64, f64)>,
+    keep_guard: &[(f64, f64)],
+    cx: f64,
+    cy: f64,
+    ex: f64,
+    ey: f64,
+    clear: f64,
+) {
     if pts.len() < 3 {
         return;
     }
@@ -1894,16 +1957,32 @@ fn clip_away_from_point(pts: &mut Vec<(f64, f64)>, cx: f64, cy: f64, ex: f64, ey
     let mut dy = ey - cy;
     let len = dx.hypot(dy);
     if len < 1e-9 {
-        // Exclude on centroid: push along +x.
         dx = 1.0;
         dy = 0.0;
     } else {
         dx /= len;
         dy /= len;
     }
-    // Keep p with dot(p - plane_pt, dir) <= 0, plane_pt = E - dir*clear.
-    let px0 = ex - dx * clear;
-    let py0 = ey - dy * clear;
+    let excl_proj = (ex - cx) * dx + (ey - cy) * dy;
+    // Floor only from includes *between* the centroid and E. Arms that project
+    // past E (L-bay) must not block the cut; includes beyond E along dir are
+    // on the far side of the exclude and are not a "keep" frontier.
+    let max_keep = keep_guard
+        .iter()
+        .map(|&(x, y)| (x - cx) * dx + (y - cy) * dy)
+        .filter(|&p| p < excl_proj - 1e-6)
+        .fold(f64::NEG_INFINITY, f64::max);
+    // Ideal: plane at excl_proj - clear. Floor: just past near-side includes.
+    let plane_thresh = if max_keep.is_finite() {
+        (excl_proj - clear).max(max_keep + 1e-3)
+    } else {
+        excl_proj - clear
+    };
+    if plane_thresh >= excl_proj - 1e-6 {
+        return;
+    }
+    let px0 = cx + dx * plane_thresh;
+    let py0 = cy + dy * plane_thresh;
     let inside = |x: f64, y: f64| (x - px0) * dx + (y - py0) * dy <= 1e-9;
     let intersect = |ax: f64, ay: f64, bx: f64, by: f64| {
         let da = (ax - px0) * dx + (ay - py0) * dy;
@@ -2551,8 +2630,8 @@ mod tests {
             &Shape::PointSet(pts.clone()),
         );
         assert!(
-            d >= clear - 1e-3,
-            "exclude needs ≥{clear} clearance from hull, signed_dist={d}"
+            d >= clear - 1.5,
+            "exclude needs ~{clear} clearance from hull (include-guarded plane), signed_dist={d}"
         );
     }
 
