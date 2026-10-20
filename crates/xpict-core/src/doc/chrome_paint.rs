@@ -3482,6 +3482,16 @@ mod tests {
             }
             assert!(!ring.overlaps(*b), "ring {ring:?} overlaps {name} {b:?}");
         }
+        let find = |name: &str| boxes.iter().find(|(n, _)| n == name).map(|(_, b)| *b);
+        let two = find("2").expect("index 2");
+        let ortho = find("ortho").expect("ortho");
+        assert!(
+            !two.overlaps(ortho),
+            "index 2 {two:?} overlaps ortho {ortho:?}"
+        );
+        let six = find("6").expect("index 6");
+        let exo = find("exo").expect("exo");
+        assert!(!six.overlaps(exo), "index 6 {six:?} overlaps exo {exo:?}");
     }
 
     #[test]

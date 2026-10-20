@@ -1804,16 +1804,16 @@ pub fn atom_number_kit(
             tip
         })
     };
-    if let Some(anchor) = anchor {
+    if let Some(ref a) = anchor {
         constraints.push(Constraint::MinimizeDist {
             a: id.clone(),
-            b: anchor.clone(),
+            b: a.clone(),
             opt_dist: clash_dist,
             strength: ATOM_SNUG_STRENGTH,
         });
         hard.push(HardConstraint::MaxDist {
             a: id.clone(),
-            b: anchor,
+            b: a.clone(),
             dist: tether_px,
         });
     }
@@ -1830,7 +1830,13 @@ pub fn atom_number_kit(
         }
     }
     // Chem text: hard Outside + mild soft twin. Prior annotations (`t{10000+}`):
-    // soft Outside only — hard-clearing them flung later indices off-atom.
+    // soft Outside unless they sit in this label's tether neighborhood — then
+    // they compete for the same atom (kitchen-sink "2" vs "ortho") and must
+    // be hard-cleared. Hard-clearing *every* earlier number flung later
+    // indices off-atom.
+    let home_shape = anchor
+        .as_ref()
+        .and_then(|a| world.get(a).map(|n| n.world_shape()));
     if let Some(texts) = world.get("mol/chem/atom_texts") {
         for tid in texts.children.clone() {
             let annot_box = tid
@@ -1838,6 +1844,18 @@ pub fn atom_number_kit(
                 .and_then(|(_, s)| s.parse::<usize>().ok())
                 .is_some_and(|i| i >= 10_000);
             if annot_box {
+                let compete = home_shape.as_ref().is_some_and(|home| {
+                    world
+                        .get(&tid)
+                        .is_some_and(|n| edge_signed_distance(&n.world_shape(), home) < tether_px)
+                });
+                if compete {
+                    hard.push(HardConstraint::Outside {
+                        a: id.clone(),
+                        b: tid.clone(),
+                        clash_dist,
+                    });
+                }
                 constraints.push(Constraint::Outside {
                     a: id.clone(),
                     b: tid,
@@ -3218,6 +3236,37 @@ mod tests {
             );
         }
         let _ = id;
+    }
+
+    #[test]
+    fn atom_label_hard_clears_prior_near_home() {
+        // Same-atom number vs custom text: snug used to pull "ortho" onto "2".
+        let bonds = [(0.0, 0.0, 30.0, 0.0)];
+        let atoms = [(0usize, 0.0, 0.0), (1, 30.0, 0.0)];
+        let prior = Aabb::new(6.0, -5.0, 14.0, 5.0);
+        let seed = Aabb::new(5.0, -6.0, 25.0, 6.0);
+        let (dtx, dty) = refine_atom_number(
+            &bonds,
+            &atoms,
+            &[],
+            &[(10_000, prior)],
+            0,
+            seed,
+            3.0,
+            ATOM_TEXT_TETHER_PX,
+            None,
+            false,
+        );
+        let placed = seed.translated(dtx, dty);
+        assert!(
+            !placed.overlaps(prior),
+            "custom label {placed:?} must clear prior number {prior:?} (dtx={dtx} dty={dty})"
+        );
+        let d = edge_signed_distance(&Shape::Aabb(placed), &Shape::Point { x: 0.0, y: 0.0 });
+        assert!(
+            d <= ATOM_TEXT_TETHER_PX + 1.0,
+            "must stay tethered to the atom: d={d}"
+        );
     }
 
     /// Wall-clock + iteration stats for paint-style refine kits (noise=0).
