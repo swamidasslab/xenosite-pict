@@ -152,7 +152,6 @@ impl Occupancy {
     }
 
     /// Register an extra obstacle (placed label, chem glyph AABB, …).
-    #[allow(dead_code)] // public IR; chrome callers will register labels next
     pub fn add_aabb(&mut self, box_: Aabb) {
         self.aabbs.push(box_);
     }

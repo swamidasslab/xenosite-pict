@@ -12,8 +12,8 @@
 use crate::depict::frame_offset;
 use crate::doc::chrome::{
     annotations_from_overlay, Annotation, AtomNumberBy, CalloutSpec, CircleSpec, FillSpec,
-    LabelRole, MolText, RegionSpec, RegionStyle, RegionTextPlace, StrokeSpec, Z_ATOM_LABEL,
-    Z_CALLOUT, Z_CIRCLE, Z_REGION, Z_REGION_LABEL,
+    LabelRole, MolText, RegionSpec, RegionStyle, RegionTextPlace, StrokeSpec, Z_CIRCLE,
+    Z_REGION_LABEL,
 };
 use crate::doc::layout_constraints::{
     bezier_path_from_proxy, hull_proxy, refine_atom_number, refine_callout, refine_region_text,
@@ -80,11 +80,6 @@ pub fn apply_mol_chrome(node: &MolNode, mol: &MoleculeIn, mut scene: Scene) -> S
 
     // Place atom numbers/labels and circles before region text so "ring" can
     // clear them (kitchen sink). Callouts last so they clear region labels too.
-    for ann in &anns {
-        if let Annotation::Shade { .. } = ann {
-            // Scores already painted via MoleculeIn → depict shading layer.
-        }
-    }
     for ann in &anns {
         if let Annotation::Circle { spec, z, .. } = ann {
             for p in circle_primitives(mol, node, spec, dx, dy) {
@@ -203,8 +198,6 @@ pub fn apply_mol_chrome(node: &MolNode, mol: &MoleculeIn, mut scene: Scene) -> S
         }
     }
     scene.halo.extend(halo_prims);
-
-    let _ = (Z_ATOM_LABEL, Z_CIRCLE, Z_REGION, Z_REGION_LABEL, Z_CALLOUT);
     scene
 }
 
