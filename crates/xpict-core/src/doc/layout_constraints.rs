@@ -467,11 +467,11 @@ pub enum HardConstraint {
 /// How hard the placement well pulls, relative to clash hinges (strength ~3–8).
 const POSE_STRENGTH: f64 = 0.35;
 
-/// Hard max edge gap from an atom label/number to its atom disk (~½ CC-bond).
+/// Hard max edge gap from an atom label/number to its atom disk (~0.3 CC-bond).
 ///
 /// Closest-point only: at least part of the label must reach within this gap;
 /// the whole AABB need not fit inside the disk.
-const ATOM_LABEL_TETHER_PX: f64 = 0.5 * BOND_PX;
+pub const ATOM_LABEL_TETHER_PX: f64 = 0.3 * BOND_PX;
 
 fn shape_anchor(shape: &Shape) -> (f64, f64) {
     match shape {
@@ -1700,7 +1700,7 @@ pub fn callout_kit(
 /// chem-text box if present, else the atom point. Weak PreferPose only keeps
 /// the greedy side — it must not pin a distant seed.
 ///
-/// [`HardConstraint::MaxDist`] (~½ bond) is only a ceiling via AL (feasibility
+/// [`HardConstraint::MaxDist`] (~0.3 bond) is only a ceiling via AL (feasibility
 /// penalty, not a magnet). Clears bond lines via [`push_clear_bonds`]. Chem
 /// atom text is hard Outside; prior annotation boxes are soft Outside. Shade is
 /// **not** a layout obstacle.

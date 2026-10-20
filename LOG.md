@@ -2,8 +2,8 @@
 
 ## 2026-10-19
 
-- Atom numbers: **closeness is soft energy** — strong `MinimizeDist` to the clash margin on chem text / atom point; weak PreferPose (0.12) so a distant seed is not pinned. AL `MaxDist` (~½ bond) is only a ceiling/feasibility term, not the magnet.
-- Atom-number drift fix: prior annotation boxes (`t{10000+}`) are **soft** Outside only — hard-clearing every earlier number made later indices infeasible near their atoms. Greedy `max_gap` capped at `min_gap+½·bond` (was +2.5·bond). Post-nudge is tether-aware so bond pushes cannot fling past the home.
+- Atom numbers: **closeness is soft energy** — strong `MinimizeDist` to the clash margin on chem text / atom point; weak PreferPose (0.12) so a distant seed is not pinned. AL `MaxDist` ceiling is **0.3·bond** (was 0.5).
+- Atom-number drift fix: prior annotation boxes (`t{10000+}`) are **soft** Outside only — hard-clearing every earlier number made later indices infeasible near their atoms. Greedy `max_gap` capped at `min_gap+tether`. Post-nudge is tether-aware so bond pushes cannot fling past the home.
 - Bond clearance is now a **hard** inequality via augmented Lagrangian (PHR) around Nelder–Mead — soft `Outside` hinges alone left residual ink-on-bond when PreferPose fought them. `HardConstraint::{Outside,Inside,MaxDist}`; kits push bonds (and atom-text Outside / region Inside / atom tether) into the hard set; soft PreferPose / PreferSide / shade clash stay soft. `SolveResult.max_hard_violation` reports residual `g⁺`.
 - Bond clearance is **baseline** for all movable annotations: shared `push_clear_bonds` (hard Outside) on captions, region text, callouts (label/tip/routes), and atom numbers/labels. Occupancy seed (bonds + aromatic circle stroke) + refine. Circles clear non-incident bonds via `circle_clear_bonds`.
 - Text halos are **paint-only** (like shadows): never a layout constraint (`Constraint::Halo` removed). After placement, chrome numbers/labels on shade get the **same glyph path** with white fill + white stroke (outline = shape + buffer), not a Minkowski blob or AABB box.

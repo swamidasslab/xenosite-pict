@@ -17,7 +17,7 @@ use crate::doc::chrome::{
 };
 use crate::doc::layout_constraints::{
     bezier_path_from_proxy, hull_proxy, refine_atom_number, refine_callout, refine_region_text,
-    Shape,
+    Shape, ATOM_LABEL_TETHER_PX,
 };
 use crate::doc::layout_items::{
     callout_arrow, place_greedy, place_region_edge, tip_standoff_clearing, Aabb, InkAtOrigin,
@@ -577,9 +577,9 @@ fn atom_label_primitive(
             ink,
             preferred,
             min_gap,
-            // Keep seeds inside the hard MaxDist tether (~½ bond) — a 2.5·bond
+            // Keep seeds inside the hard MaxDist tether (~0.3 bond) — a 2.5·bond
             // search was PreferPose-locking numbers far from home before AL ran.
-            max_gap: min_gap + HALF_BOND_PX,
+            max_gap: min_gap + ATOM_LABEL_TETHER_PX,
             gap_step: 0.5,
             margin: CLASH_MARGIN_PX + STROKE_PX.max(0.8) * 0.5,
             tip_standoff: None,
@@ -629,7 +629,7 @@ fn atom_label_primitive(
         &clear_segs,
         CLASH_MARGIN_PX + STROKE_PX.max(0.8) * 0.5,
         home,
-        HALF_BOND_PX,
+        ATOM_LABEL_TETHER_PX,
     );
     let origin_x = greedy.x + dtx + nudge_x;
     let origin_y = greedy.y + dty + nudge_y;
@@ -2361,7 +2361,7 @@ mod tests {
         let (nx, ny) = num2.expect("atom-number 2");
         let dist = (nx - ox).hypot(ny - oy);
         assert!(
-            dist < 0.5 * BOND_PX + 20.0,
+            dist < ATOM_LABEL_TETHER_PX + 20.0,
             "index number '2' centroid ({nx},{ny}) far from OH center ({ox},{oy}); dist={dist}"
         );
     }
@@ -2395,7 +2395,7 @@ mod tests {
         let (nx, ny) = m22.expect("mapno 22 on O");
         let dist = (nx - ox).hypot(ny - oy);
         assert!(
-            dist < 0.5 * BOND_PX + 20.0,
+            dist < ATOM_LABEL_TETHER_PX + 20.0,
             "mapno '22' centroid ({nx},{ny}) far from OH center ({ox},{oy}); dist={dist}"
         );
         // Carbon with no chem text: tether to atom point.
@@ -2412,7 +2412,7 @@ mod tests {
         let (nx, ny) = m11.expect("mapno 11 on C");
         let dist = (nx - c_xy.0).hypot(ny - c_xy.1);
         assert!(
-            dist < 0.5 * BOND_PX + 20.0,
+            dist < ATOM_LABEL_TETHER_PX + 20.0,
             "mapno '11' centroid ({nx},{ny}) far from C ({}, {}); dist={dist}",
             c_xy.0,
             c_xy.1
