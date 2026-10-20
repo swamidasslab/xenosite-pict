@@ -15,6 +15,21 @@ use ts_rs::TS;
 /// Minimum mapped atoms before align is trusted (MCS or explicit map).
 pub const MIN_MCS_ATOMS: u32 = 3;
 
+/// MCS search style for [`AlignOpts::mode`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
+pub enum AlignMode {
+    /// Branch-and-bound until timeout / node cap (house default).
+    #[default]
+    Exact,
+    /// Greedy incumbent only — skip BnB.
+    Greedy,
+    /// Free CoordGen; ignore the parent template.
+    Skip,
+}
+
 /// Align this mol onto its parent template.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
@@ -28,6 +43,28 @@ pub struct AlignOpts {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub min_atoms: Option<u32>,
+    /// `exact` (default) / `greedy` / `skip`. Omit = exact with house timeout.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub mode: Option<AlignMode>,
+    /// MCS budget in milliseconds. `None` = house 100 ms; `0` = unbounded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub timeout_ms: Option<u32>,
+}
+
+impl AlignOpts {
+    pub fn align_mode(&self) -> AlignMode {
+        self.mode.unwrap_or(AlignMode::Exact)
+    }
+
+    /// Search caps for MCS. Explicit `atom_map` skips search entirely.
+    pub fn search_limits(&self) -> crate::align_cost::SearchLimits {
+        crate::align_cost::SearchLimits::from_timeout_ms(
+            self.timeout_ms,
+            matches!(self.align_mode(), AlignMode::Greedy),
+        )
+    }
 }
 
 /// One node in a coord_gen forest (root = free layout; children align to parent).
@@ -165,6 +202,10 @@ pub enum CoordMethod {
     Free,
     AtomMap,
     Mcs,
+    /// Greedy incumbent (mode `greedy`, or exact search that never entered BnB).
+    Greedy,
+    /// Mode `skip` — free layout despite a parent template.
+    Skip,
     /// Align was requested but failed — host fell back to unaligned coord gen.
     None,
 }
@@ -249,7 +290,7 @@ mod tests {
                     molfile: None,
                     align: Some(AlignOpts {
                         atom_map: Some(vec![(1, 0), (2, 1), (3, 2), (4, 3), (5, 4), (6, 5)]),
-                        min_atoms: None,
+                        ..Default::default()
                     }),
                     template_for: vec![],
                 }],

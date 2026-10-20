@@ -32,7 +32,7 @@ if [[ -d "$BINDINGS" ]]; then
   }
 
   write_barrel "$OUT_TS/edge.ts" \
-    AlignOpts MolTemplate EdgeTask EdgePlan CoordMethod \
+    AlignMode AlignOpts MolTemplate EdgeTask EdgePlan CoordMethod \
     CoordGenMoleculeResult EdgeTaskResult EdgeResult \
     AtomIn BondIn MoleculeIn
 
@@ -41,7 +41,7 @@ if [[ -d "$BINDINGS" ]]; then
     TextAnchor LayerName Primitive Layer Viewport Scene
 
   write_barrel "$OUT_TS/depict-abi.ts" \
-    ShadeSpec ShadeStyle AlignToSpec AlignTo MolNodeKind MolNode \
+    ShadeSpec ShadeStyle AlignMode AlignToSpec AlignTo MolNodeKind MolNode \
     CommonOpts MolOpts NodeType ForTypesPatch TypedOptsPatch OptsPatch Opts \
     EdgeArrow EdgeNodeKind EdgeNode TextNodeKind TextNode \
     LabelPos LabelPlacement LabelItem LabelLanes Label \

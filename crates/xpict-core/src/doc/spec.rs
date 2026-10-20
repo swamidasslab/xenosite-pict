@@ -26,7 +26,7 @@ use crate::doc::chrome::{
     annotations_from_overlay, overlay_from_mol, Annotation, AtomLabelSpec, AtomNumberSpec,
     CalloutField, CircleField, MolOverlayFields, MolText, RegionField,
 };
-use crate::edge::AlignOpts;
+use crate::edge::{AlignMode, AlignOpts};
 use crate::scene::AromaticStyle;
 
 // ---------------------------------------------------------------------------
@@ -125,7 +125,7 @@ impl ShadeSpec {
 // ---------------------------------------------------------------------------
 
 /// Object form of document ``align_to`` (template ref + EdgePlan-style opts).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
 #[cfg_attr(feature = "codegen", ts(export))]
 pub struct AlignToSpec {
@@ -141,9 +141,17 @@ pub struct AlignToSpec {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub min_atoms: Option<u32>,
+    /// `exact` (default) / `greedy` / `skip`. Omit = exact with house timeout.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub mode: Option<AlignMode>,
+    /// MCS budget in milliseconds. `None` = house 100 ms; `0` = unbounded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub timeout_ms: Option<u32>,
 }
 
-/// Document align target: id string or `{ "ref", "atom_map"?, "min_atoms"? }`.
+/// Document align target: id string or `{ "ref", "atom_map"?, "min_atoms"?, "mode"?, "timeout_ms"? }`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 #[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
@@ -168,6 +176,8 @@ impl AlignTo {
             AlignTo::Spec(s) => AlignOpts {
                 atom_map: s.atom_map.clone(),
                 min_atoms: s.min_atoms,
+                mode: s.mode,
+                timeout_ms: s.timeout_ms,
             },
         }
     }
@@ -507,7 +517,7 @@ pub struct MolNode {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub star_labels: Option<Vec<Option<String>>>,
-    /// Template id string, or `{ "ref", "atom_map"?, "min_atoms"? }`.
+    /// Template id string, or `{ "ref", "atom_map"?, "min_atoms"?, "mode"?, "timeout_ms"? }`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub align_to: Option<AlignTo>,

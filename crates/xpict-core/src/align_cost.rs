@@ -1,6 +1,9 @@
 //! Exact connected molecular alignment with atom-only branch-and-bound.
 //!
-//! No seed, node, time, or result-count caps. Worst-case search remains exponential.
+//! [`cost_mapping`] / [`cost_mapping_with_generators`] stay unbounded (library
+//! exact API). Depict / EdgePlan search uses [`SearchLimits`]: a house time and
+//! node cap, optional greedy-only, and timeout returns the greedy/BnB incumbent.
+//! Worst-case search remains exponential when uncapped.
 //! Unmatched atoms and bonds are penalized on BOTH sides (query and reference).
 //! Bond correspondence is inferred from atom endpoints; missing bonds are allowed.
 //! Returns one optimum, not every symmetry-related map or a geometric tie-break.
@@ -14,6 +17,9 @@
 //! let (result, stats) = cost_mapping_with_generators(
 //!     &reference, &query, &reference_generators,
 //! ).expect("valid graphs and automorphism generators");
+//! let (result, stats) = cost_mapping_with_generators_limited(
+//!     &reference, &query, &reference_generators, &SearchLimits::house(),
+//! ).expect("valid graphs");
 //! ```
 //! Each generator is `Vec<u16>` with `generator[old_atom] = new_atom`.
 //! Project Cannonaut incidence-vertex permutations onto atom vertices first.
@@ -33,6 +39,74 @@
 //! (nauty port) on the colored atom–bond incidence graph.
 
 use std::collections::{HashMap, HashSet, VecDeque};
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Duration;
+use std::time::Instant;
+
+/// House wall-clock budget for document / EdgePlan MCS (not the unbounded
+/// [`cost_mapping`] library entry).
+pub const ALIGN_HOUSE_TIMEOUT_MS: u64 = 100;
+/// House branch-and-bound state cap (wasm-safe even if `Instant` is inert).
+pub const ALIGN_HOUSE_MAX_STATES: u64 = 50_000;
+
+/// Caps for [`cost_mapping_with_generators_limited`]. Empty limits = unbounded.
+#[derive(Debug, Clone, Default)]
+pub struct SearchLimits {
+    /// Stop when `Instant::now()` reaches this (native). `None` = no clock cap.
+    pub deadline: Option<Instant>,
+    /// Stop when [`SearchStats::states`] reaches this. `None` = no node cap.
+    pub max_states: Option<u64>,
+    /// Greedy incumbent only — skip branch-and-bound `dfs`.
+    pub greedy_only: bool,
+}
+
+impl SearchLimits {
+    /// No time, node, or greedy-only caps.
+    pub fn unbounded() -> Self {
+        Self::default()
+    }
+
+    /// Depict-path default: [`ALIGN_HOUSE_TIMEOUT_MS`] + [`ALIGN_HOUSE_MAX_STATES`].
+    pub fn house() -> Self {
+        Self::timed(ALIGN_HOUSE_TIMEOUT_MS)
+    }
+
+    /// Wall-clock budget plus the house node cap. `ms == 0` is unbounded.
+    pub fn timed(ms: u64) -> Self {
+        if ms == 0 {
+            return Self::unbounded();
+        }
+        Self {
+            deadline: deadline_from_ms(ms),
+            max_states: Some(ALIGN_HOUSE_MAX_STATES),
+            greedy_only: false,
+        }
+    }
+
+    /// Wire `timeout_ms`: `None` = house, `Some(0)` = unbounded, else that many ms.
+    pub fn from_timeout_ms(timeout_ms: Option<u32>, greedy_only: bool) -> Self {
+        let mut limits = match timeout_ms {
+            Some(0) => Self::unbounded(),
+            Some(ms) => Self::timed(u64::from(ms)),
+            None => Self::house(),
+        };
+        limits.greedy_only = greedy_only;
+        limits
+    }
+}
+
+fn deadline_from_ms(ms: u64) -> Option<Instant> {
+    // wasm32 Instant may be inert or panic; node cap is the hatch there.
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = ms;
+        None
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        Some(Instant::now() + Duration::from_millis(ms))
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EzStereo {
@@ -132,6 +206,8 @@ pub struct SearchStats {
     pub bound_prunes: u64,
     pub assignment_bounds: u64,
     pub symmetry_alternatives_removed: u64,
+    /// True when a time or node cap stopped the search; incumbent is still valid.
+    pub timed_out: bool,
 }
 
 struct Graph<'a> {
@@ -562,8 +638,27 @@ struct Search<'a> {
     best_score: i64,
     best_map: Vec<usize>,
     stats: SearchStats,
+    limits: SearchLimits,
 }
 impl Search<'_> {
+    fn budget_exhausted(&mut self) -> bool {
+        if self.stats.timed_out {
+            return true;
+        }
+        if let Some(max) = self.limits.max_states {
+            if self.stats.states >= max {
+                self.stats.timed_out = true;
+                return true;
+            }
+        }
+        if let Some(deadline) = self.limits.deadline {
+            if self.stats.states % 32 == 0 && Instant::now() >= deadline {
+                self.stats.timed_out = true;
+                return true;
+            }
+        }
+        false
+    }
     fn allowed(&self, a: usize, b: usize) -> bool {
         self.map[a] == NONE
             && self.inv[b] == NONE
@@ -696,6 +791,9 @@ impl Search<'_> {
         // of mapped atoms, not the number of rejected atom pairs.
         loop {
             self.stats.states += 1;
+            if self.budget_exhausted() {
+                break;
+            }
             if !self.can_improve() {
                 self.stats.bound_prunes += 1;
                 break;
@@ -714,6 +812,9 @@ impl Search<'_> {
             self.score -= gain;
             self.inv[b] = NONE;
             self.map[a] = NONE;
+            if self.stats.timed_out {
+                break;
+            }
             // Excluding the WHOLE orbit preserves group invariance of every
             // forbidden row. No partition stabilizer or nauty rerun is needed.
             for v in orbit {
@@ -725,6 +826,10 @@ impl Search<'_> {
     fn greedy(&mut self) {
         let mut added = Vec::new();
         while let Some((a, b, gain)) = self.choose_pair() {
+            self.stats.states += 1;
+            if self.budget_exhausted() {
+                break;
+            }
             if gain <= 0 {
                 break;
             } // Only incumbent initialization is greedy.
@@ -812,6 +917,22 @@ pub fn cost_mapping_with_generators(
     query: &MolGraph,
     reference_generators: &[Vec<u16>],
 ) -> Result<(Option<MappingResult>, SearchStats), String> {
+    cost_mapping_with_generators_limited(
+        reference,
+        query,
+        reference_generators,
+        &SearchLimits::unbounded(),
+    )
+}
+
+/// Like [`cost_mapping_with_generators`], with time / node / greedy-only caps.
+/// Timeout or node cap returns the incumbent (greedy or partial BnB), not an error.
+pub fn cost_mapping_with_generators_limited(
+    reference: &MolGraph,
+    query: &MolGraph,
+    reference_generators: &[Vec<u16>],
+    limits: &SearchLimits,
+) -> Result<(Option<MappingResult>, SearchStats), String> {
     let q = Graph::new(query)?;
     let r = Graph::new(reference)?;
     let group = reference_group(&r, reference_generators)?;
@@ -879,10 +1000,14 @@ pub fn cost_mapping_with_generators(
         score: 0,
         best_score: i64::MIN / 4,
         stats: SearchStats::default(),
+        limits: limits.clone(),
         q,
         r,
     };
     for (a, b) in seeds {
+        if s.budget_exhausted() {
+            break;
+        }
         // Every connected map is considered under its lowest-ranked query atom.
         // Reference orbit reduction is independent of that query restriction.
         s.root_rank = s.rank[a];
@@ -892,12 +1017,17 @@ pub fn cost_mapping_with_generators(
         s.stats.seeds += 1;
         s.update_best();
         s.greedy();
-        s.dfs(&group.stabilizer(b));
+        if !s.limits.greedy_only && !s.stats.timed_out {
+            s.dfs(&group.stabilizer(b));
+        }
         s.map[a] = NONE;
         s.inv[b] = NONE;
         if s.best_score == unmatched_baseline(query, reference) {
             break; // Zero cost is a global lower bound, not a search cap.
         }
+    }
+    if s.best_score == i64::MIN / 4 {
+        return Ok((None, s.stats));
     }
     let baseline = unmatched_baseline(query, reference);
     let cost = i32::try_from(baseline - s.best_score).map_err(|_| "cost exceeds i32")?;
@@ -1739,6 +1869,59 @@ mod exact_tests {
             q.n_atoms(),
             start.elapsed(),
             result.cost
+        );
+    }
+
+    #[test]
+    fn greedy_only_maps_hexane_onto_cyclohexane() {
+        let hexane = MolGraph::new(
+            vec![atom(6); 6],
+            (0..5).map(|i| edge(i, i + 1)).collect(),
+        );
+        let mut bonds: Vec<_> = (0..5).map(|i| edge(i, i + 1)).collect();
+        bonds.push(edge(0, 5));
+        let cyclo = MolGraph::new(vec![atom(6); 6], bonds);
+        let limits = SearchLimits {
+            greedy_only: true,
+            ..SearchLimits::unbounded()
+        };
+        let (res, stats) =
+            cost_mapping_with_generators_limited(&hexane, &cyclo, &[], &limits).unwrap();
+        let res = res.expect("greedy map");
+        assert_eq!(res.map.len(), 6, "map={:?}", res.map);
+        assert!(!stats.timed_out);
+        assert_eq!(res.cost, mapping_cost(&cyclo, &hexane, &res.map));
+    }
+
+    #[test]
+    fn max_states_cap_returns_incumbent_without_hanging() {
+        let mut r = MolGraph::new(
+            vec![atom(6); 12],
+            (0..12).map(|i| edge(i, (i + 1) % 12)).collect(),
+        );
+        for i in 0..12 {
+            let mut last = i;
+            for j in 0..i % 4 {
+                let a = r.n_atoms();
+                r.atoms.push(atom(if j == 1 { 8 } else { 6 }));
+                r.bonds.push(edge(last, a));
+                last = a;
+            }
+        }
+        let mut q = r.clone();
+        q.atoms[8].atomic_number = 7;
+        let limits = SearchLimits {
+            max_states: Some(8),
+            ..SearchLimits::unbounded()
+        };
+        let start = Instant::now();
+        let (res, stats) = cost_mapping_with_generators_limited(&r, &q, &[], &limits).unwrap();
+        assert!(stats.timed_out, "cap should fire; {stats:?}");
+        assert!(res.is_some(), "incumbent should survive a cap");
+        assert!(
+            start.elapsed() < std::time::Duration::from_secs(2),
+            "capped search hung: {:?}",
+            start.elapsed()
         );
     }
 }

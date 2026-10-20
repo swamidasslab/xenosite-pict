@@ -18,6 +18,7 @@ import type {
 } from "./generated/edge.js";
 
 export type {
+  AlignMode,
   AlignOpts,
   AtomIn,
   BondIn,
@@ -131,6 +132,15 @@ export async function processEdgePlanWithFrames(
             id: node.id,
             ok: true,
             method: "free",
+            molecule: asWireMolecule(laid.molecule),
+          });
+          poses.set(node.id, laid.molblock);
+        } else if (node.align?.mode === "skip") {
+          const laid = await freeLayout();
+          rows.push({
+            id: node.id,
+            ok: true,
+            method: "skip",
             molecule: asWireMolecule(laid.molecule),
           });
           poses.set(node.id, laid.molblock);

@@ -481,8 +481,34 @@
     }
   ],
   "definitions": {
+    "AlignMode": {
+      "description": "MCS search style for [`AlignOpts::mode`].",
+      "oneOf": [
+        {
+          "description": "Branch-and-bound until timeout / node cap (house default).",
+          "type": "string",
+          "enum": [
+            "exact"
+          ]
+        },
+        {
+          "description": "Greedy incumbent only — skip BnB.",
+          "type": "string",
+          "enum": [
+            "greedy"
+          ]
+        },
+        {
+          "description": "Free CoordGen; ignore the parent template.",
+          "type": "string",
+          "enum": [
+            "skip"
+          ]
+        }
+      ]
+    },
     "AlignTo": {
-      "description": "Document align target: id string or `{ \"ref\", \"atom_map\"?, \"min_atoms\"? }`.",
+      "description": "Document align target: id string or `{ \"ref\", \"atom_map\"?, \"min_atoms\"?, \"mode\"?, \"timeout_ms\"? }`.",
       "anyOf": [
         {
           "description": "Shorthand for `{ \"ref\": \"…\" }`.",
@@ -533,9 +559,29 @@
           "format": "uint32",
           "minimum": 0.0
         },
+        "mode": {
+          "description": "`exact` (default) / `greedy` / `skip`. Omit = exact with house timeout.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AlignMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "ref": {
           "description": "Id of the template mol in this group.",
           "type": "string"
+        },
+        "timeout_ms": {
+          "description": "MCS budget in milliseconds. `None` = house 100 ms; `0` = unbounded.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
         }
       }
     },
@@ -1767,7 +1813,7 @@
       "type": "object",
       "properties": {
         "align_to": {
-          "description": "Template id string, or `{ \"ref\", \"atom_map\"?, \"min_atoms\"? }`.",
+          "description": "Template id string, or `{ \"ref\", \"atom_map\"?, \"min_atoms\"?, \"mode\"?, \"timeout_ms\"? }`.",
           "anyOf": [
             {
               "$ref": "#/definitions/AlignTo"
@@ -2409,10 +2455,11 @@
       }
     },
     "StrokeSpec": {
-      "description": "Stroke ink for region / circle.",
+      "description": "Stroke ink for region / circle.\n\nOmit / `null` with a fill → no stroke. Omit / `null` without fill → house outline. Set `color: \"none\"` (or `width: 0`) to force no stroke; set a [`StrokeSpec`] object to force an outline even when filled.",
       "type": "object",
       "properties": {
         "color": {
+          "description": "CSS color, or `\"none\"` to disable stroke.",
           "type": [
             "string",
             "null"

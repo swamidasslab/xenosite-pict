@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use xpict_core::edge::{
-    AlignOpts, CoordGenMoleculeResult, CoordMethod, EdgePlan, EdgeResult, EdgeTask,
+    AlignMode, AlignOpts, CoordGenMoleculeResult, CoordMethod, EdgePlan, EdgeResult, EdgeTask,
     EdgeTaskResult, MolTemplate, MIN_MCS_ATOMS,
 };
 
@@ -30,7 +30,7 @@ pub fn build_align_plan(
                 molfile: None,
                 align: Some(AlignOpts {
                     atom_map,
-                    min_atoms: None,
+                    ..Default::default()
                 }),
                 template_for: vec![],
             }],
@@ -39,9 +39,7 @@ pub fn build_align_plan(
 }
 
 fn source_of(node: &MolTemplate) -> Result<String, Error> {
-    node.source()
-        .map(str::to_string)
-        .map_err(Error::Parse)
+    node.source().map(str::to_string).map_err(Error::Parse)
 }
 
 /// Run all ``coord_gen`` tasks; always return flat molecule rows.
@@ -84,12 +82,8 @@ pub fn process_edge_plan_with_frames(
     Ok((EdgeResult::new_v1(task_results), all_poses))
 }
 
-fn free_layout(
-    source: &str,
-    id: &str,
-) -> Result<(xpict_core::MoleculeIn, String), Error> {
-    let (molecule, pose, _) =
-        layout_with_rdkit_meta(source, None, None, Some(id.to_string()))?;
+fn free_layout(source: &str, id: &str) -> Result<(xpict_core::MoleculeIn, String), Error> {
+    let (molecule, pose, _) = layout_with_rdkit_meta(source, None, None, Some(id.to_string()))?;
     Ok((molecule, pose))
 }
 
@@ -106,6 +100,11 @@ fn visit(
         .and_then(|a| a.min_atoms)
         .unwrap_or(MIN_MCS_ATOMS);
     let atom_map = node.align.as_ref().and_then(|a| a.atom_map.clone());
+    let mode = node
+        .align
+        .as_ref()
+        .map(AlignOpts::align_mode)
+        .unwrap_or(AlignMode::Exact);
 
     match parent_id {
         None => match free_layout(&source, &node.id) {
@@ -114,6 +113,30 @@ fn visit(
                     id: node.id.clone(),
                     ok: true,
                     method: CoordMethod::Free,
+                    used_map: None,
+                    molecule: Some(molecule),
+                    error: None,
+                });
+                poses.insert(node.id.clone(), pose);
+            }
+            Err(e) => {
+                rows.push(CoordGenMoleculeResult {
+                    id: node.id.clone(),
+                    ok: false,
+                    method: CoordMethod::None,
+                    used_map: None,
+                    molecule: None,
+                    error: Some(e.to_string()),
+                });
+                return Ok(());
+            }
+        },
+        Some(_) if mode == AlignMode::Skip => match free_layout(&source, &node.id) {
+            Ok((molecule, pose)) => {
+                rows.push(CoordGenMoleculeResult {
+                    id: node.id.clone(),
+                    ok: true,
+                    method: CoordMethod::Skip,
                     used_map: None,
                     molecule: Some(molecule),
                     error: None,
@@ -175,12 +198,7 @@ fn visit(
                 .unwrap_or(true);
             let use_map = if map_ok_len { map_ref } else { None };
 
-            match layout_with_rdkit_meta(
-                &source,
-                Some(&template),
-                use_map,
-                Some(node.id.clone()),
-            ) {
+            match layout_with_rdkit_meta(&source, Some(&template), use_map, Some(node.id.clone())) {
                 Ok((molecule, pose, matched)) if matched => {
                     let method = if atom_map.is_some() {
                         CoordMethod::AtomMap

@@ -25,6 +25,7 @@ from xpict.contracts.depict import (
 )
 from xpict.contracts.depict_dict import DepictSpecDict, OptsPatchDict
 from xpict.contracts.edge import (
+    AlignMode,
     AlignOpts,
     AtomIn,
     BondIn,
@@ -55,6 +56,7 @@ MolSpec = MolNode
 
 
 __all__ = [
+    "AlignMode",
     "AlignOpts",
     "AlignToSpec",
     "AtomIn",

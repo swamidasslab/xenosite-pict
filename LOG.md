@@ -2,6 +2,7 @@
 
 ## 2026-10-20
 
+- Molecule align hung on reasonably sized mols: exact connected cost-mapping had no time/node caps, and `+` always stamps `align_to` so BnB ran unbounded. Escape hatches in `xpict-core` (not a host reimplementation): `AlignOpts`/`AlignToSpec` `mode` (`exact`|`greedy`|`skip`) and `timeout_ms` (`None` = house 100 ms + 50k states, `0` = unbounded). Timeout returns the greedy/BnB incumbent if ≥ `min_atoms`, else free layout. `atom_map` still skips MCS. Library `cost_mapping` stays exact/unbounded. JS/RDKit hosts honor `mode: skip` only; greedy/timeout need the in-core solver.
 - Restored `+` chain-align (`align_to` previous mol). A chrome landing stub had left it off; tests still required it.
 - Fitted SVG pad tracks `mol.scale` when `pad` is omitted, so `scale: 2` doubles width/height (house 4 px margin was a fixed addend).
 - Region hulls cover chrome atom numbers/labels on included atoms (chem text already was). Kitchen-sink "ortho" sat outside the ring box. Lagrangian ladder unchanged — keep-off / tether / contain; this is cover membership, not energy.

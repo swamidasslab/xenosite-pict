@@ -11,8 +11,8 @@ use chematic::smiles::{self, parse_cxsmiles};
 use crate::align_layout::layout_or_align;
 use crate::cxsmiles::smiles_base;
 use crate::edge::{
-    CoordGenMoleculeResult, CoordMethod, EdgePlan, EdgeResult, EdgeTask, EdgeTaskResult,
-    MolTemplate, MIN_MCS_ATOMS,
+    AlignMode, AlignOpts, CoordGenMoleculeResult, CoordMethod, EdgePlan, EdgeResult, EdgeTask,
+    EdgeTaskResult, MolTemplate, MIN_MCS_ATOMS,
 };
 use crate::elements::element_symbol;
 use crate::labels::atom_display_label;
@@ -264,8 +264,16 @@ struct Pose {
 
 fn free_layout(source: &str, id: &str) -> Result<Pose, String> {
     let parsed = parse_source(source)?;
-    let (coords, _) = layout_or_align(&parsed.layout, &parsed.atom_indices, None, None, None, None)
-        .map_err(|e| e.to_string())?;
+    let (coords, _) = layout_or_align(
+        &parsed.layout,
+        &parsed.atom_indices,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .map_err(|e| e.to_string())?;
     let molecule = to_molecule_in(id, &parsed, &coords);
     let frame = frame_json(&parsed, &coords);
     let layout_ref = with_coords(parsed.layout.clone(), &coords);
@@ -283,6 +291,7 @@ fn align_layout(
     parent: &Pose,
     parent_id: &str,
     atom_map: Option<&[(u32, u32)]>,
+    align: Option<&AlignOpts>,
 ) -> Result<(Pose, CoordMethod), String> {
     let parsed = parse_source(source)?;
     let dense: Option<Vec<(i32, i32)>> =
@@ -294,12 +303,15 @@ fn align_layout(
         Some(&parent.parsed.atom_indices),
         dense.as_deref(),
         Some(parent_id),
+        align,
     )
     .map_err(|e| e.to_string())?;
     let mut molecule = to_molecule_in(id, &parsed, &coords);
     molecule.align_debug = dbg;
     let method = if atom_map.is_some() {
         CoordMethod::AtomMap
+    } else if matches!(align.map(AlignOpts::align_mode), Some(AlignMode::Greedy)) {
+        CoordMethod::Greedy
     } else {
         CoordMethod::Mcs
     };
@@ -367,6 +379,11 @@ fn visit(
         .and_then(|a| a.min_atoms)
         .unwrap_or(MIN_MCS_ATOMS);
     let atom_map = node.align.as_ref().and_then(|a| a.atom_map.clone());
+    let mode = node
+        .align
+        .as_ref()
+        .map(AlignOpts::align_mode)
+        .unwrap_or(AlignMode::Exact);
 
     match parent_id {
         None => match free_layout(source, &node.id) {
@@ -375,6 +392,30 @@ fn visit(
                     id: node.id.clone(),
                     ok: true,
                     method: CoordMethod::Free,
+                    used_map: None,
+                    molecule: Some(pose.molecule.clone()),
+                    error: None,
+                });
+                poses.insert(node.id.clone(), pose);
+            }
+            Err(e) => {
+                rows.push(CoordGenMoleculeResult {
+                    id: node.id.clone(),
+                    ok: false,
+                    method: CoordMethod::None,
+                    used_map: None,
+                    molecule: None,
+                    error: Some(e),
+                });
+                return Ok(());
+            }
+        },
+        Some(_) if mode == AlignMode::Skip => match free_layout(source, &node.id) {
+            Ok(pose) => {
+                rows.push(CoordGenMoleculeResult {
+                    id: node.id.clone(),
+                    ok: true,
+                    method: CoordMethod::Skip,
                     used_map: None,
                     molecule: Some(pose.molecule.clone()),
                     error: None,
@@ -431,7 +472,7 @@ fn visit(
                 .unwrap_or(true);
             let use_map = if map_ok { atom_map.as_deref() } else { None };
 
-            match align_layout(source, &node.id, &parent, pid, use_map) {
+            match align_layout(source, &node.id, &parent, pid, use_map, node.align.as_ref()) {
                 Ok((pose, method)) => {
                     rows.push(CoordGenMoleculeResult {
                         id: node.id.clone(),
@@ -649,5 +690,112 @@ mod tests {
                 );
             }
         }
+    }
+
+    fn tmpl(
+        id: &str,
+        smiles: &str,
+        align: Option<AlignOpts>,
+        kids: Vec<MolTemplate>,
+    ) -> MolTemplate {
+        MolTemplate {
+            id: id.into(),
+            smiles: Some(smiles.into()),
+            cxsmiles: None,
+            molfile: None,
+            align,
+            template_for: kids,
+        }
+    }
+
+    #[test]
+    fn skip_mode_free_layouts_child() {
+        let plan = EdgePlan::new_v1(vec![EdgeTask::CoordGen {
+            roots: vec![tmpl(
+                "a",
+                "c1ccccc1",
+                None,
+                vec![tmpl(
+                    "b",
+                    "Cc1ccccc1",
+                    Some(AlignOpts {
+                        mode: Some(AlignMode::Skip),
+                        ..Default::default()
+                    }),
+                    vec![],
+                )],
+            )],
+        }]);
+        let edge = process_edge_plan(&plan).unwrap();
+        let EdgeTaskResult::CoordGen { molecules, ok } = &edge.results[0];
+        assert!(ok);
+        assert_eq!(molecules[0].method, CoordMethod::Free);
+        assert_eq!(molecules[1].method, CoordMethod::Skip);
+        assert!(molecules[1]
+            .molecule
+            .as_ref()
+            .unwrap()
+            .align_debug
+            .is_none());
+    }
+
+    #[test]
+    fn greedy_mode_aligns_toluene_to_anisole() {
+        let plan = EdgePlan::new_v1(vec![EdgeTask::CoordGen {
+            roots: vec![tmpl(
+                "a",
+                "COc1ccccc1",
+                None,
+                vec![tmpl(
+                    "b",
+                    "Cc1ccccc1",
+                    Some(AlignOpts {
+                        mode: Some(AlignMode::Greedy),
+                        timeout_ms: Some(0),
+                        ..Default::default()
+                    }),
+                    vec![],
+                )],
+            )],
+        }]);
+        let edge = process_edge_plan(&plan).unwrap();
+        let EdgeTaskResult::CoordGen { molecules, ok } = &edge.results[0];
+        assert!(ok);
+        assert_eq!(molecules[1].method, CoordMethod::Greedy);
+        let tags = molecules[1]
+            .molecule
+            .as_ref()
+            .unwrap()
+            .align_debug
+            .as_ref()
+            .expect("greedy should stamp align_debug")
+            .tags
+            .len();
+        assert!(tags >= MIN_MCS_ATOMS as usize, "tags={tags}");
+    }
+
+    #[test]
+    fn atom_map_still_skips_mcs() {
+        let plan = EdgePlan::new_v1(vec![EdgeTask::CoordGen {
+            roots: vec![tmpl(
+                "a",
+                "CCO",
+                None,
+                vec![tmpl(
+                    "b",
+                    "CCO",
+                    Some(AlignOpts {
+                        atom_map: Some(vec![(0, 0), (1, 1), (2, 2)]),
+                        timeout_ms: Some(1),
+                        ..Default::default()
+                    }),
+                    vec![],
+                )],
+            )],
+        }]);
+        let edge = process_edge_plan(&plan).unwrap();
+        let EdgeTaskResult::CoordGen { molecules, ok } = &edge.results[0];
+        assert!(ok);
+        assert_eq!(molecules[1].method, CoordMethod::AtomMap);
     }
 }

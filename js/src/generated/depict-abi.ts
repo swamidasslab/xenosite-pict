@@ -2,6 +2,7 @@
 
 export type { ShadeSpec } from "./ShadeSpec.js";
 export type { ShadeStyle } from "./ShadeStyle.js";
+export type { AlignMode } from "./AlignMode.js";
 export type { AlignToSpec } from "./AlignToSpec.js";
 export type { AlignTo } from "./AlignTo.js";
 export type { MolNodeKind } from "./MolNodeKind.js";

@@ -1,5 +1,6 @@
 // Auto-generated barrel — do not edit (make types).
 
+export type { AlignMode } from "./AlignMode.js";
 export type { AlignOpts } from "./AlignOpts.js";
 export type { MolTemplate } from "./MolTemplate.js";
 export type { EdgeTask } from "./EdgeTask.js";

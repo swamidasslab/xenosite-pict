@@ -61,6 +61,7 @@ export {
   MIN_MCS_ATOMS as EDGE_MIN_MCS_ATOMS,
 } from "./edge-plan.js";
 export type {
+  AlignMode as EdgeAlignMode,
   AlignOpts as EdgeAlignOpts,
   CoordGenMoleculeResult,
   CoordGenTask,

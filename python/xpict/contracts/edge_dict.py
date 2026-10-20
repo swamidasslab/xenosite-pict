@@ -5,10 +5,15 @@ from __future__ import annotations
 
 from typing import Literal, NotRequired, Required, TypedDict
 
+AlignMode = Literal['exact', 'greedy', 'skip']
+
+
 class AlignOptsDict(TypedDict, total=False):
     """Align this mol onto its parent template."""
     atom_map: NotRequired[list[tuple[int, int]]]
     min_atoms: NotRequired[int]
+    mode: NotRequired[AlignMode]
+    timeout_ms: NotRequired[int]
 
 
 class MolTemplateDict(TypedDict, total=False):
@@ -35,7 +40,7 @@ class EdgePlanDict(TypedDict, total=False):
     tasks: NotRequired[list[EdgeTaskDict]]
 
 
-CoordMethod = Literal['free', 'atom_map', 'mcs', 'none']
+CoordMethod = Literal['free', 'atom_map', 'mcs', 'greedy', 'skip', 'none']
 
 
 AlignDebugRole = Literal['template', 'query']

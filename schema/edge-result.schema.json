@@ -259,6 +259,20 @@
           ]
         },
         {
+          "description": "Greedy incumbent (mode `greedy`, or exact search that never entered BnB).",
+          "type": "string",
+          "enum": [
+            "greedy"
+          ]
+        },
+        {
+          "description": "Mode `skip` — free layout despite a parent template.",
+          "type": "string",
+          "enum": [
+            "skip"
+          ]
+        },
+        {
           "description": "Align was requested but failed — host fell back to unaligned coord gen.",
           "type": "string",
           "enum": [

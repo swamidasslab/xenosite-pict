@@ -37,9 +37,10 @@ pub mod align_layout;
 pub mod layout_coordgen;
 
 pub use align_cost::{
-    cost_mapping, mapping_cost, signed_side, substituents_same_side, AtomChirality, AtomFeat,
-    BondFeat, EzStereo, MappingResult, MolGraph, COST_BOND_ORDER, COST_CHARGE_RADICAL,
-    COST_ELEMENT, COST_UNMATCHED,
+    cost_mapping, cost_mapping_with_generators_limited, mapping_cost, signed_side,
+    substituents_same_side, AtomChirality, AtomFeat, BondFeat, EzStereo, MappingResult, MolGraph,
+    SearchLimits, SearchStats, ALIGN_HOUSE_MAX_STATES, ALIGN_HOUSE_TIMEOUT_MS, COST_BOND_ORDER,
+    COST_CHARGE_RADICAL, COST_ELEMENT, COST_UNMATCHED,
 };
 #[cfg(feature = "coordgen")]
 pub use align_layout::{
@@ -87,8 +88,8 @@ pub use doc::{
     SvgBond as DepictSvgBond,
 };
 pub use edge::{
-    AlignOpts, CoordGenMoleculeResult, CoordMethod, EdgePlan, EdgeResult, EdgeTask, EdgeTaskResult,
-    MolTemplate, MIN_MCS_ATOMS as EDGE_MIN_MCS_ATOMS,
+    AlignMode, AlignOpts, CoordGenMoleculeResult, CoordMethod, EdgePlan, EdgeResult, EdgeTask,
+    EdgeTaskResult, MolTemplate, MIN_MCS_ATOMS as EDGE_MIN_MCS_ATOMS,
 };
 pub use elements::{atomic_number, element_symbol, SYMBOLS};
 #[cfg(feature = "elk")]

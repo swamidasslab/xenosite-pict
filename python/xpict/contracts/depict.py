@@ -19,11 +19,16 @@ class StrictModel(BaseModel):
         kwargs.setdefault("exclude_none", True)
         return super().model_dump_json(*args, **kwargs)
 
+AlignMode = Literal['exact', 'greedy', 'skip']
+
+
 class AlignToSpec(StrictModel):
     """Object form of document ``align_to`` (template ref + EdgePlan-style opts)."""
     ref: Annotated[str, Field(description='Id of the template mol in this group.')]
     atom_map: Annotated[list[tuple[int, int]] | None, Field(description='Pairs `(query, template)` vs the template; skips MCS when set.')] = None
     min_atoms: Annotated[int | None, Field(description='Override [`crate::edge::MIN_MCS_ATOMS`] when set.')] = None
+    mode: Annotated[AlignMode | None, Field(description='`exact` (default) / `greedy` / `skip`. Omit = exact with house timeout.')] = None
+    timeout_ms: Annotated[int | None, Field(description='MCS budget in milliseconds. `None` = house 100 ms; `0` = unbounded.')] = None
 
 
 AlignTo = str | AlignToSpec
@@ -100,7 +105,7 @@ class FillSpec(StrictModel):
 
 class StrokeSpec(StrictModel):
     """Stroke ink for region / circle."""
-    color: str | None = None
+    color: Annotated[str | None, Field(description='CSS color, or `"none"` to disable stroke.')] = None
     dash: Annotated[str | None, Field(description='`solid` | `dashed` | `dotted` or a raw SVG dasharray.')] = None
     width: float | None = None
 
@@ -274,7 +279,7 @@ MolNodeKind = Literal['mol']
 class MolNode(StrictModel):
     """Mol node — [`MolOpts`] fields + non-cascading identity / scores / align."""
     type: Literal['mol'] = 'mol'
-    align_to: Annotated[AlignTo | None, Field(description='Template id string, or `{ "ref", "atom_map"?, "min_atoms"? }`.')] = None
+    align_to: Annotated[AlignTo | None, Field(description='Template id string, or `{ "ref", "atom_map"?, "min_atoms"?, "mode"?, "timeout_ms"? }`.')] = None
     aromatic: Annotated[AromaticStyle | None, Field(description='Aromatic ring paint: ``circle`` (default) or ``kekule``.')] = None
     atom_label: Annotated[AtomLabelSpec | None, Field(description='Per-atom arbitrary text map (`{ "1": "α" }` or `{ "labels": {…}, "scale"? }`).')] = None
     atom_number: Annotated[AtomNumberSpec | None, Field(description='Atom index / map-number labels (`"index"` | `"mapno"` | policy object).')] = None

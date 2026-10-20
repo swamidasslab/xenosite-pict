@@ -19,10 +19,15 @@ class StrictModel(BaseModel):
         kwargs.setdefault("exclude_none", True)
         return super().model_dump_json(*args, **kwargs)
 
+AlignMode = Literal['exact', 'greedy', 'skip']
+
+
 class AlignOpts(StrictModel):
     """Align this mol onto its parent template."""
     atom_map: Annotated[list[tuple[int, int]] | None, Field(description='Pairs `(query_atom, template_atom)`. `None` → edge runs MCS.')] = None
     min_atoms: Annotated[int | None, Field(description='Override [`MIN_MCS_ATOMS`] when set.')] = None
+    mode: Annotated[AlignMode | None, Field(description='`exact` (default) / `greedy` / `skip`. Omit = exact with house timeout.')] = None
+    timeout_ms: Annotated[int | None, Field(description='MCS budget in milliseconds. `None` = house 100 ms; `0` = unbounded.')] = None
 
 
 class MolTemplate(StrictModel):
@@ -49,7 +54,7 @@ class EdgePlan(StrictModel):
     tasks: list[EdgeTask] = Field(default_factory=list)
 
 
-CoordMethod = Literal['free', 'atom_map', 'mcs', 'none']
+CoordMethod = Literal['free', 'atom_map', 'mcs', 'greedy', 'skip', 'none']
 
 
 AlignDebugRole = Literal['template', 'query']

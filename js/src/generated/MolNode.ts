@@ -21,7 +21,7 @@ export type MolNode = { type: MolNodeKind, smiles?: string, cxsmiles?: string, m
  */
 shade?: ShadeSpec, star_labels?: Array<string | null>, 
 /**
- * Template id string, or `{ "ref", "atom_map"?, "min_atoms"? }`.
+ * Template id string, or `{ "ref", "atom_map"?, "min_atoms"?, "mode"?, "timeout_ms"? }`.
  */
 align_to?: AlignTo, 
 /**

@@ -1,8 +1,10 @@
 //! Constrained CoordGen align: cost-map then soft-constrain query onto ref.
 
 use crate::align_cost::{
-    cost_mapping, AtomChirality, AtomFeat, BondFeat, EzStereo, MappingResult, MolGraph,
+    cost_mapping_with_generators_limited, reference_generators, AtomChirality, AtomFeat, BondFeat,
+    EzStereo, MappingResult, MolGraph, SearchLimits,
 };
+use crate::edge::{AlignMode, AlignOpts, MIN_MCS_ATOMS};
 use crate::layout_coordgen::{
     generate_2d_coordinates, CoordGenError, LayoutMolecule, LayoutResult, BOND_STEREO_CIS,
     BOND_STEREO_NONE, BOND_STEREO_TRANS,
@@ -90,11 +92,27 @@ pub fn align_molecule_constrained(
 }
 
 /// Like [`align_molecule_constrained`], but ``dense_map`` (query→ref dense
-/// indices) skips MCS when provided.
+/// indices) skips MCS when provided. Unbounded exact search.
 pub fn align_molecule_constrained_with_map(
     reference: &LayoutMolecule,
     query: &LayoutMolecule,
     dense_map: Option<&[(u16, u16)]>,
+) -> Result<ConstrainedAlignResult, CoordGenError> {
+    align_molecule_constrained_with_map_limited(
+        reference,
+        query,
+        dense_map,
+        &SearchLimits::unbounded(),
+        0,
+    )
+}
+
+fn align_molecule_constrained_with_map_limited(
+    reference: &LayoutMolecule,
+    query: &LayoutMolecule,
+    dense_map: Option<&[(u16, u16)]>,
+    limits: &SearchLimits,
+    min_atoms: u32,
 ) -> Result<ConstrainedAlignResult, CoordGenError> {
     let mapping = if let Some(pairs) = dense_map {
         let mut map = std::collections::HashMap::new();
@@ -105,8 +123,15 @@ pub fn align_molecule_constrained_with_map(
     } else {
         let ref_g = mol_graph_from_layout(reference);
         let query_g = mol_graph_from_layout(query);
-        cost_mapping(&ref_g, &query_g).ok_or(CoordGenError::Empty)?
+        let gens = reference_generators(&ref_g);
+        cost_mapping_with_generators_limited(&ref_g, &query_g, &gens, limits)
+            .ok()
+            .and_then(|(m, _)| m)
+            .ok_or(CoordGenError::Empty)?
     };
+    if (mapping.map.len() as u32) < min_atoms {
+        return Err(CoordGenError::Empty);
+    }
 
     let ref_coords = ensure_ref_coords(reference)?;
 
@@ -143,6 +168,9 @@ pub fn align_molecule_constrained_with_map(
 /// ``atom_map`` is **atom-index** pairs ``(query_atom, ref_atom)``; dense indices
 /// are derived from ``query_atom_indices`` / ``ref_atom_indices`` (parallel to
 /// the LayoutMolecule atom tables). When omitted, MCS supplies the map.
+///
+/// ``align`` sets mode / timeout / min_atoms. `mode: skip` free-layouts.
+/// Omit ``align`` → house MCS timeout (not unbounded exact).
 pub fn layout_or_align(
     query: &LayoutMolecule,
     query_atom_indices: &[i32],
@@ -150,6 +178,7 @@ pub fn layout_or_align(
     ref_atom_indices: Option<&[i32]>,
     atom_map: Option<&[(i32, i32)]>,
     peer_id: Option<&str>,
+    align: Option<&AlignOpts>,
 ) -> Result<(LayoutResult, Option<crate::scene::AlignDebug>), CoordGenError> {
     use crate::debug_align::align_debug_query;
 
@@ -157,6 +186,10 @@ pub fn layout_or_align(
         let coords = generate_2d_coordinates(query)?;
         return Ok((coords, None));
     };
+    if matches!(align.map(AlignOpts::align_mode), Some(AlignMode::Skip)) {
+        let coords = generate_2d_coordinates(query)?;
+        return Ok((coords, None));
+    }
 
     let ref_idx = ref_atom_indices.unwrap_or(&[]);
     let dense = if let Some(pairs) = atom_map {
@@ -184,7 +217,23 @@ pub fn layout_or_align(
         None
     };
 
-    let res = align_molecule_constrained_with_map(reference, query, dense.as_deref())?;
+    let limits = match (dense.is_some(), align) {
+        (true, _) => SearchLimits::unbounded(),
+        (false, Some(opts)) => opts.search_limits(),
+        (false, None) => SearchLimits::house(),
+    };
+    let min_atoms = if dense.is_some() {
+        0
+    } else {
+        align.and_then(|o| o.min_atoms).unwrap_or(MIN_MCS_ATOMS)
+    };
+    let res = align_molecule_constrained_with_map_limited(
+        reference,
+        query,
+        dense.as_deref(),
+        &limits,
+        min_atoms,
+    )?;
 
     let mut tags: Vec<(i32, i32)> = res
         .mapping

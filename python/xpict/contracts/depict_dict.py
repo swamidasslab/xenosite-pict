@@ -5,11 +5,16 @@ from __future__ import annotations
 
 from typing import Mapping, Literal, NotRequired, Required, TypedDict
 
+AlignMode = Literal['exact', 'greedy', 'skip']
+
+
 class AlignToSpecDict(TypedDict, total=False):
     """Object form of document ``align_to`` (template ref + EdgePlan-style opts)."""
     ref: Required[str]
     atom_map: NotRequired[list[tuple[int, int]]]
     min_atoms: NotRequired[int]
+    mode: NotRequired[AlignMode]
+    timeout_ms: NotRequired[int]
 
 
 AlignToDict = str | AlignToSpecDict

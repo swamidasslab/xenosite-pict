@@ -2,8 +2,16 @@
 
 /**
  * Stroke ink for region / circle.
+ *
+ * Omit / `null` with a fill → no stroke. Omit / `null` without fill → house
+ * outline. Set `color: "none"` (or `width: 0`) to force no stroke; set a
+ * [`StrokeSpec`] object to force an outline even when filled.
  */
-export type StrokeSpec = { color?: string, width?: number, 
+export type StrokeSpec = { 
+/**
+ * CSS color, or `"none"` to disable stroke.
+ */
+color?: string, width?: number, 
 /**
  * `solid` | `dashed` | `dotted` or a raw SVG dasharray.
  */

@@ -159,6 +159,15 @@ class AlignToSpec(StrictModel):
         description="Override minimum mapped atoms before align is trusted",
         ge=1,
     )
+    mode: Literal["exact", "greedy", "skip"] | None = Field(
+        default=None,
+        description="exact (default, house timeout) / greedy / skip (free layout)",
+    )
+    timeout_ms: int | None = Field(
+        default=None,
+        description="MCS budget in milliseconds. None = house 100 ms; 0 = unbounded",
+        ge=0,
+    )
 
 
 class MolNode(NodeCommon):
@@ -177,7 +186,7 @@ class MolNode(NodeCommon):
         default=None,
         description=(
             "Align template: id string, or object "
-            "``{ref, atom_map?, min_atoms?}``. "
+            "``{ref, atom_map?, min_atoms?, mode?, timeout_ms?}``. "
             "When omitted and the group has align=true, defaults to the first child."
         ),
     )

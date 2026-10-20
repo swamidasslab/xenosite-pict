@@ -298,6 +298,50 @@ def test_mol_id_and_explicit_align_to():
     assert doc._repr_html_().count("<svg") == 3
 
 
+def test_align_mode_skip_does_not_stamp_debug():
+    from xpict.display import render_depict_mols
+
+    fig = DepictSpec.model_validate(
+        {
+            "type": "group",
+            "children": [
+                {"type": "mol", "id": "a", "smiles": "c1ccccc1"},
+                {
+                    "type": "mol",
+                    "id": "b",
+                    "smiles": "Cc1ccccc1",
+                    "align_to": {"ref": "a", "mode": "skip"},
+                },
+            ],
+        }
+    )
+    rows = render_depict_mols(fig)
+    assert rows[1].molecule.align_debug is None
+
+
+def test_align_mode_greedy_stamps_mcs_tags():
+    from xpict.display import render_depict_mols
+
+    fig = DepictSpec.model_validate(
+        {
+            "type": "group",
+            "children": [
+                {"type": "mol", "id": "a", "smiles": "COc1ccccc1"},
+                {
+                    "type": "mol",
+                    "id": "b",
+                    "smiles": "Cc1ccccc1",
+                    "align_to": {"ref": "a", "mode": "greedy", "timeout_ms": 0},
+                },
+            ],
+        }
+    )
+    rows = render_depict_mols(fig)
+    dbg = rows[1].molecule.align_debug
+    assert dbg is not None
+    assert len(dbg.tags) >= 3
+
+
 def test_rshift_builds_reaction_scheme():
     doc = mol("CCO", id="a") >> mol("CC=O", id="b")
     assert doc.root.type == "reaction_scheme"

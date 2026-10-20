@@ -21,6 +21,32 @@
     }
   },
   "definitions": {
+    "AlignMode": {
+      "description": "MCS search style for [`AlignOpts::mode`].",
+      "oneOf": [
+        {
+          "description": "Branch-and-bound until timeout / node cap (house default).",
+          "type": "string",
+          "enum": [
+            "exact"
+          ]
+        },
+        {
+          "description": "Greedy incumbent only — skip BnB.",
+          "type": "string",
+          "enum": [
+            "greedy"
+          ]
+        },
+        {
+          "description": "Free CoordGen; ignore the parent template.",
+          "type": "string",
+          "enum": [
+            "skip"
+          ]
+        }
+      ]
+    },
     "AlignOpts": {
       "description": "Align this mol onto its parent template.",
       "type": "object",
@@ -51,6 +77,26 @@
         },
         "min_atoms": {
           "description": "Override [`MIN_MCS_ATOMS`] when set.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "mode": {
+          "description": "`exact` (default) / `greedy` / `skip`. Omit = exact with house timeout.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AlignMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "timeout_ms": {
+          "description": "MCS budget in milliseconds. `None` = house 100 ms; `0` = unbounded.",
           "type": [
             "integer",
             "null"

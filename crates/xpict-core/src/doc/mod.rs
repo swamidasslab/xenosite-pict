@@ -559,6 +559,8 @@ mod tests {
                         ref_id: "ref".into(),
                         atom_map: Some(vec![(1, 0), (2, 1), (3, 2)]),
                         min_atoms: None,
+                        mode: None,
+                        timeout_ms: None,
                     })),
                     ..Default::default()
                 }),
@@ -1150,6 +1152,13 @@ mod tests {
         let opts = o.align_opts();
         assert_eq!(opts.atom_map.as_ref().unwrap().len(), 2);
         assert_eq!(opts.min_atoms, Some(4));
+        let timed: AlignTo =
+            serde_json::from_str(r#"{"ref":"mid","mode":"greedy","timeout_ms":50}"#).unwrap();
+        let t = timed.align_opts();
+        assert_eq!(t.mode, Some(crate::edge::AlignMode::Greedy));
+        assert_eq!(t.timeout_ms, Some(50));
+        let skip: AlignTo = serde_json::from_str(r#"{"ref":"mid","mode":"skip"}"#).unwrap();
+        assert_eq!(skip.align_opts().mode, Some(crate::edge::AlignMode::Skip));
     }
 
     #[test]

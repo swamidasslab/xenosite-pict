@@ -3,4 +3,4 @@
 /**
  * How coords were produced for one molecule.
  */
-export type CoordMethod = "free" | "atom_map" | "mcs" | "none";
+export type CoordMethod = "free" | "atom_map" | "mcs" | "greedy" | "skip" | "none";
