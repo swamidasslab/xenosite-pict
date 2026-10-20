@@ -876,13 +876,28 @@ fn region_primitives(
                             seed.bounds,
                             CONTAIN_MARGIN_PX,
                         );
+                        inside_seed = Some(seed);
                     }
                     RegionStyle::Box => {
                         region_box =
                             grow_aabb_to_contain(region_box, seed.bounds, CONTAIN_MARGIN_PX);
+                        inside_seed = Some(seed);
                     }
                     RegionStyle::Bezier => {
-                        push_aabb_corners(&mut cover_hull, seed.bounds.inflate(CONTAIN_MARGIN_PX));
+                        // Grow the hull so an outside-edge seed becomes inside.
+                        // With **no** excludes, expanding the cover by the seed
+                        // box is safe and keeps pad modest. With excludes,
+                        // dumping those corners + half-plane clips digs bowtie
+                        // notches (Ex6 ethylbenzene) — grow pad only, then
+                        // fall back to an inside seed if still unreachable.
+                        if exclude_xy.is_empty() {
+                            let b = seed.bounds.inflate(CONTAIN_MARGIN_PX);
+                            cover_hull.push((b.x0, b.y0));
+                            cover_hull.push((b.x1, b.y0));
+                            cover_hull.push((b.x1, b.y1));
+                            cover_hull.push((b.x0, b.y1));
+                        }
+                        let pad_before = pad_hull;
                         pad_hull = grow_pad_until_hull_contains(
                             &cover_hull,
                             &exclude_xy,
@@ -890,9 +905,40 @@ fn region_primitives(
                             seed.bounds,
                             CONTAIN_MARGIN_PX,
                         );
+                        let proxy =
+                            hull_proxy(&cover_hull, &exclude_xy, pad_hull, pad_hull + 6.0);
+                        if hull_contains_aabb(&proxy, seed.bounds, CONTAIN_MARGIN_PX) {
+                            inside_seed = Some(seed);
+                        } else {
+                            // Outside swallow failed (usually excludes) — do not
+                            // keep the inflated pad; re-seed inside the base hull.
+                            pad_hull = pad_before;
+                            let base = hull_proxy(
+                                &cover_hull,
+                                &exclude_xy,
+                                pad_hull,
+                                pad_hull + 6.0,
+                            );
+                            let inner = place_region_edge(
+                                &occ,
+                                base.aabb(),
+                                ink,
+                                /* inside */ true,
+                                side,
+                                CLASH_MARGIN_PX,
+                                CLASH_MARGIN_PX,
+                            );
+                            pad_hull = grow_pad_until_hull_contains(
+                                &cover_hull,
+                                &exclude_xy,
+                                pad_hull,
+                                inner.bounds,
+                                CONTAIN_MARGIN_PX,
+                            );
+                            inside_seed = Some(inner);
+                        }
                     }
                 }
-                inside_seed = Some(seed);
             }
         }
     }
@@ -1532,13 +1578,6 @@ fn grow_aabb_to_contain(outer: Aabb, inner: Aabb, margin: f64) -> Aabb {
         outer.x1.max(inner.x1 + margin),
         outer.y1.max(inner.y1 + margin),
     )
-}
-
-fn push_aabb_corners(pts: &mut Vec<(f64, f64)>, box_: Aabb) {
-    pts.push((box_.x0, box_.y0));
-    pts.push((box_.x1, box_.y0));
-    pts.push((box_.x1, box_.y1));
-    pts.push((box_.x0, box_.y1));
 }
 
 fn hull_contains_aabb(hull: &Shape, box_: Aabb, margin: f64) -> bool {
@@ -3076,6 +3115,173 @@ mod tests {
         );
     }
 
+    /// Ex6 ethylbenzene: ring include + ethyl exclude + inside "aryl".
+    /// Must not emit a self-cutting path with wild cubic handles.
+    #[test]
+    fn region_bezier_exclude_inside_label_stays_sane() {
+        // Regular hexagon (side ~30) + ethyl up from atom 0.
+        let mut atoms = Vec::new();
+        for i in 0..6 {
+            let t = std::f64::consts::TAU * i as f64 / 6.0 - std::f64::consts::FRAC_PI_2;
+            atoms.push(AtomIn {
+                index: i as i32,
+                element: Some("C".into()),
+                z: Some(6),
+                x: 50.0 + 30.0 * t.cos(),
+                y: 50.0 + 30.0 * t.sin(),
+                label: None,
+                charge: 0,
+                mapno: None,
+            });
+        }
+        atoms.push(AtomIn {
+            index: 6,
+            element: Some("C".into()),
+            z: Some(6),
+            x: 50.0,
+            y: 50.0 - 30.0 - 26.0,
+            label: None,
+            charge: 0,
+            mapno: None,
+        });
+        atoms.push(AtomIn {
+            index: 7,
+            element: Some("C".into()),
+            z: Some(6),
+            x: 50.0 + 20.0,
+            y: 50.0 - 30.0 - 26.0 - 20.0,
+            label: None,
+            charge: 0,
+            mapno: None,
+        });
+        let mut bonds = Vec::new();
+        for i in 0..6 {
+            bonds.push(BondIn {
+                index: i as i32,
+                begin: i as i32,
+                end: ((i + 1) % 6) as i32,
+                order: 1.0,
+                stereo: None,
+                interior: None,
+            });
+        }
+        bonds.push(BondIn {
+            index: 6,
+            begin: 0,
+            end: 6,
+            order: 1.0,
+            stereo: None,
+            interior: None,
+        });
+        bonds.push(BondIn {
+            index: 7,
+            begin: 6,
+            end: 7,
+            order: 1.0,
+            stereo: None,
+            interior: None,
+        });
+        let mol = MoleculeIn {
+            id: Some("etph".into()),
+            atoms,
+            bonds,
+            color: None,
+            atom_shade: None,
+            bond_shade: None,
+            shade_vmin: None,
+            shade_vmax: None,
+            mark_atoms: vec![],
+            mark_bonds: vec![],
+            scale: 1.0,
+            weight: 1.0,
+            aromatic: Default::default(),
+            debug_box: false,
+            debug_align: false,
+            align_debug: None,
+        };
+        let scene = crate::depict::depict_molecule(&mol);
+        let node = MolNode {
+            region: Some(crate::doc::chrome::RegionField::One(RegionSpec {
+                style: RegionStyle::Bezier,
+                atoms: vec![0, 1, 2, 3, 4, 5],
+                exclude: vec![6, 7],
+                fill: Some(FillSpec {
+                    color: Some("#eee".into()),
+                    opacity: None,
+                }),
+                stroke: Some(StrokeSpec {
+                    color: Some("#c44".into()),
+                    width: Some(1.2),
+                    dash: None,
+                }),
+                text: Some(MolText::Styled(crate::doc::chrome::MolTextSpec {
+                    content: "aryl".into(),
+                    place: Some(RegionTextPlace::Inside),
+                    pos: Some(LabelPos::Left),
+                    ..Default::default()
+                })),
+                z: None,
+            })),
+            ..Default::default()
+        };
+        let out = apply_mol_chrome(&node, &mol, scene);
+        let d = layer_prims(&out)
+            .into_iter()
+            .find_map(|p| match p {
+                Primitive::Path {
+                    d, class: Some(c), ..
+                } if c.contains("region") && c.contains("bezier") => Some(d.clone()),
+                _ => None,
+            })
+            .expect("bezier region");
+        assert!(
+            d.contains('C') || d.contains('c'),
+            "expected centripetal Catmull–Rom cubics: {d}"
+        );
+        let nums = path_nums(&d);
+        let xs: Vec<_> = nums.iter().step_by(2).copied().collect();
+        let ys: Vec<_> = nums.iter().skip(1).step_by(2).copied().collect();
+        let (min_x, max_x) = (
+            xs.iter().cloned().fold(f64::INFINITY, f64::min),
+            xs.iter().cloned().fold(f64::NEG_INFINITY, f64::max),
+        );
+        let (min_y, max_y) = (
+            ys.iter().cloned().fold(f64::INFINITY, f64::min),
+            ys.iter().cloned().fold(f64::NEG_INFINITY, f64::max),
+        );
+        // Ring diameter ~60 + pad; exclude clips the ethyl side. A blown-up
+        // bowtie used to span 150+ px with handles far outside.
+        assert!(
+            (max_x - min_x) < 160.0 && (max_y - min_y) < 130.0,
+            "hull AABB blew up: {min_x}..{max_x} x {min_y}..{max_y}; d={d}"
+        );
+        // Include atoms near the ring center strip; exclude ethyl should sit
+        // outside / on the clipped side of the path AABB.
+        let (dx, dy) = frame_offset(&mol);
+        let (cx, cy) = (50.0 + dx, 50.0 + dy);
+        assert!(
+            cx >= min_x && cx <= max_x && cy >= min_y && cy <= max_y,
+            "ring center ({cx},{cy}) outside hull AABB"
+        );
+        let ethyl = (mol.atoms[7].x + dx, mol.atoms[7].y + dy);
+        let inside_ethyl = ethyl.0 >= min_x
+            && ethyl.0 <= max_x
+            && ethyl.1 >= min_y
+            && ethyl.1 <= max_y;
+        // Ethyl tip may sit just outside the AABB after clip; if inside AABB,
+        // it must be near the clipped edge (not deep in the fill).
+        if inside_ethyl {
+            let edge = (ethyl.1 - min_y)
+                .min(max_y - ethyl.1)
+                .min(ethyl.0 - min_x)
+                .min(max_x - ethyl.0);
+            assert!(
+                edge < 20.0,
+                "exclude ethyl buried in hull AABB (edge clearance {edge})"
+            );
+        }
+    }
+
     #[test]
     fn region_bezier_path_has_q_and_covers_atoms() {
         let mol = ethanol();
@@ -3109,8 +3315,8 @@ mod tests {
         });
         let d = d.expect("bezier region path");
         assert!(
-            d.contains('Q') || d.contains('q'),
-            "bezier region missing Q curves: {d}"
+            d.contains('C') || d.contains('c') || d.contains('Q') || d.contains('q'),
+            "bezier region missing cubic/quadratic curves: {d}"
         );
         // Each atom (SVG) should lie inside the AABB of the path coords (+ pad slack).
         let nums = path_nums(&d);

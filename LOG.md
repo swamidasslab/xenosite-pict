@@ -2,6 +2,7 @@
 
 ## 2026-10-19
 
+- Bezier region paint: closed **centripetal Catmull–Rom** (α=½) → SVG cubics through the hull proxy (interpolating, cusp-free; preferred over mid-edge Q, κ-curves, or Hobby for this use). Inside labels with **excludes** no longer dump the outside-seed AABB into the cover cloud (that + half-plane clips made bowtie notches / wild handles); empty-exclude still expands cover so the hull can swallow the seed.
 - Atom-label MaxDist: index/mapno use `ATOM_NUMBER_TETHER_PX` (0.3·bond); custom `atom_label` text uses longer `ATOM_TEXT_TETHER_PX` (0.5·bond). `atom_number_kit` / `refine_atom_number` take `tether_px`; chrome picks by `LabelRole`.
 - Atom numbers: soft energy = strong snug `MinimizeDist` (margin) + mild soft Outside vs bonds/other labels; hard AL only for MaxDist ceiling (0.3·bond), bonds, and chem text. Snug/tether home is chem text or atom **center point** (`/snug`), not the 0.3-bond Coord disk. CCC index-1 test: snug gap + two bonds as arrow at the number. Dropped PreferPose so greedy seeds are not pinned.
 - Atom-number drift fix: prior annotation boxes (`t{10000+}`) are **soft** Outside only — hard-clearing every earlier number made later indices infeasible near their atoms. Greedy `max_gap` capped at `min_gap+tether`. Post-nudge is tether-aware so bond pushes cannot fling past the home.
