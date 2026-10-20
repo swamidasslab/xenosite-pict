@@ -2,6 +2,7 @@
 
 ## 2026-10-19
 
+- Atom-number drift fix: prior annotation boxes (`t{10000+}`) are **soft** Outside only — hard-clearing every earlier number made later indices infeasible near their atoms. Greedy `max_gap` capped at `min_gap+½·bond` (was +2.5·bond). Post-nudge is tether-aware so bond pushes cannot fling past the home.
 - Atom index / mapno numbers and custom atom labels share one kit hard **MaxDist tether** (`ATOM_LABEL_TETHER_PX` = 0.5·bond, closest-point): anchor is that atom’s chem text box if present, else the atom point/disk. Soft `MinimizeDist` uses the same anchor.
 - Bond clearance is now a **hard** inequality via augmented Lagrangian (PHR) around Nelder–Mead — soft `Outside` hinges alone left residual ink-on-bond when PreferPose fought them. `HardConstraint::{Outside,Inside,MaxDist}`; kits push bonds (and atom-text Outside / region Inside / atom tether) into the hard set; soft PreferPose / PreferSide / shade clash stay soft. `SolveResult.max_hard_violation` reports residual `g⁺`.
 - Bond clearance is **baseline** for all movable annotations: shared `push_clear_bonds` (hard Outside) on captions, region text, callouts (label/tip/routes), and atom numbers/labels. Occupancy seed (bonds + aromatic circle stroke) + refine. Circles clear non-incident bonds via `circle_clear_bonds`.

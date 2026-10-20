@@ -1755,14 +1755,29 @@ pub fn atom_number_kit(
         });
     }
     push_clear_bonds(world, hard, &id, clash_dist);
-    // Fixed chem atom text — annotation must clear it (never mute chem).
+    // Chem atom text: hard Outside (never mute chem). Prior annotation boxes are
+    // installed as `t{10000+}` — soft Outside only. Hard-clearing every prior
+    // number made later indices infeasible near their atoms and flung them away.
     if let Some(texts) = world.get("mol/chem/atom_texts") {
         for tid in texts.children.clone() {
-            hard.push(HardConstraint::Outside {
-                a: id.clone(),
-                b: tid,
-                clash_dist,
-            });
+            let annot_box = tid
+                .rsplit_once('t')
+                .and_then(|(_, s)| s.parse::<usize>().ok())
+                .is_some_and(|i| i >= 10_000);
+            if annot_box {
+                constraints.push(Constraint::Outside {
+                    a: id.clone(),
+                    b: tid,
+                    clash_dist,
+                    strength: 4.0,
+                });
+            } else {
+                hard.push(HardConstraint::Outside {
+                    a: id.clone(),
+                    b: tid,
+                    clash_dist,
+                });
+            }
         }
     }
     // Intentionally no Outside vs shade — wash is not a placement obstacle.

@@ -370,6 +370,59 @@ fn nudge_aabb_clear_bonds(mut box_: Aabb, bonds: &[(f64, f64, f64, f64)], need: 
     (dx, dy)
 }
 
+/// Like [`nudge_aabb_clear_bonds`], but reject steps that would push the AABB's
+/// closest point more than `tether` past `anchor` (atom / chem-text home).
+fn nudge_aabb_clear_bonds_tethered(
+    mut box_: Aabb,
+    bonds: &[(f64, f64, f64, f64)],
+    need: f64,
+    anchor: (f64, f64),
+    tether: f64,
+) -> (f64, f64) {
+    let mut dx = 0.0;
+    let mut dy = 0.0;
+    let anchor_shape = Shape::Point {
+        x: anchor.0,
+        y: anchor.1,
+    };
+    for _ in 0..48 {
+        let mut worst = 0.0f64;
+        let mut push = (0.0, 0.0);
+        for &(x0, y0, x1, y1) in bonds {
+            let d = crate::doc::layout_constraints::edge_signed_distance(
+                &Shape::Aabb(box_),
+                &Shape::Line { x0, y0, x1, y1 },
+            );
+            let pen = need - d;
+            if pen > worst {
+                worst = pen;
+                let (cx, cy) = box_.center();
+                let (qx, qy) = closest_on_seg(cx, cy, x0, y0, x1, y1);
+                let vx = cx - qx;
+                let vy = cy - qy;
+                let len = vx.hypot(vy).max(1e-6);
+                push = (vx / len * (pen + 0.25), vy / len * (pen + 0.25));
+            }
+        }
+        if worst <= 1e-6 {
+            break;
+        }
+        let cand = box_.translated(push.0, push.1);
+        let gap = crate::doc::layout_constraints::edge_signed_distance(
+            &Shape::Aabb(cand),
+            &anchor_shape,
+        );
+        if gap > tether + 1e-6 {
+            // Would break the ½-bond home tether — stop rather than fling away.
+            break;
+        }
+        box_ = cand;
+        dx += push.0;
+        dy += push.1;
+    }
+    (dx, dy)
+}
+
 fn atom_xy(a: &AtomIn, dx: f64, dy: f64) -> (f64, f64) {
     (a.x + dx, a.y + dy)
 }
@@ -524,8 +577,10 @@ fn atom_label_primitive(
             ink,
             preferred,
             min_gap,
-            max_gap: min_gap + BOND_PX * 2.5,
-            gap_step: 0.75,
+            // Keep seeds inside the hard MaxDist tether (~½ bond) — a 2.5·bond
+            // search was PreferPose-locking numbers far from home before AL ran.
+            max_gap: min_gap + HALF_BOND_PX,
+            gap_step: 0.5,
             margin: CLASH_MARGIN_PX + STROKE_PX.max(0.8) * 0.5,
             tip_standoff: None,
             label_pullback: 0.0,
@@ -560,14 +615,21 @@ fn atom_label_primitive(
         None,
         false,
     );
-    // Soft refine can leave residual overlap — hard-nudge off bonds + aromatic
-    // stroke (custom labels like "ortho" must clear the same as numbers).
+    // AL already hard-clears bonds + MaxDist-tethers to the atom. A post-nudge
+    // along bond normals was shoving numbers far off their atoms after a good
+    // solve — do a tether-aware residual clear instead (home = chem text or atom).
     let mut clear_segs = bonds.clone();
     clear_segs.extend(aromatic_circle_segs(mol, dx, dy));
-    let (nudge_x, nudge_y) = nudge_aabb_clear_bonds(
+    let home = chem_text_boxes(mol, dx, dy)
+        .get(&(a.index))
+        .map(|b| b.center())
+        .unwrap_or((ax, ay));
+    let (nudge_x, nudge_y) = nudge_aabb_clear_bonds_tethered(
         seed.translated(dtx, dty),
         &clear_segs,
         CLASH_MARGIN_PX + STROKE_PX.max(0.8) * 0.5,
+        home,
+        HALF_BOND_PX,
     );
     let origin_x = greedy.x + dtx + nudge_x;
     let origin_y = greedy.y + dty + nudge_y;
