@@ -2,6 +2,7 @@
 
 ## 2026-10-19
 
+- Region paint cleanup: shared cover-corner / occupancy / seed helpers; emit box/circle/bezier once after snug (no placeholder patch). Dropped unused inside-of-circle seed. Tests share an ethylbenzene fixture and pin covering-circle exclude + label-shift.
 - Ex6 circle (`style: circle`, inside aryl left, exclude ethyl): do not grow r about a fixed atom-centroid. Snug the label first; rebuild the **smallest enclosing circle** of atoms + label (Welzl) so the center shifts toward the text. Exclude atoms push the center, then r is recomputed. Notebook cell 14.
 - Kitchen sink: paint circles + atom numbers/labels **before** region text, callouts last. Region labels hard-clear prior chrome AABBs and outside seeds may flip side when `pos` is blocked — "ring" no longer sits on exo / indices / callout.
 - Ex6 inside region label: drop PreferPose + hard Inside of the grown seed hull (they pinned the label and inflated the box). Soft snug to chem; PreferSide also aligns along the edge; seed stays on `pos` (slide=0 first, no side flip); rebuild box/circle/bezier after snug. Shade omitted from inside-seed occupancy.

@@ -1939,7 +1939,7 @@ fn caption_aabbs_from_scene(scene: &Scene) -> Vec<Aabb> {
     out
 }
 
-fn path_aabb(d: &str) -> Option<Aabb> {
+fn path_nums(d: &str) -> Vec<f64> {
     let mut nums = Vec::new();
     let mut cur = String::new();
     for ch in d.chars() {
@@ -1957,6 +1957,11 @@ fn path_aabb(d: &str) -> Option<Aabb> {
             nums.push(v);
         }
     }
+    nums
+}
+
+fn path_aabb(d: &str) -> Option<Aabb> {
+    let nums = path_nums(d);
     if nums.len() < 2 {
         return None;
     }
@@ -2332,59 +2337,39 @@ mod tests {
         }
     }
 
-    fn ethanol() -> MoleculeIn {
+    fn atom(index: i32, element: &str, z: u32, x: f64, y: f64, label: Option<&str>) -> AtomIn {
+        AtomIn {
+            index,
+            element: Some(element.into()),
+            z: Some(z),
+            x,
+            y,
+            label: label.map(str::to_string),
+            charge: 0,
+            mapno: None,
+        }
+    }
+
+    fn c(index: i32, x: f64, y: f64) -> AtomIn {
+        atom(index, "C", 6, x, y, None)
+    }
+
+    fn bond(index: i32, begin: i32, end: i32) -> BondIn {
+        BondIn {
+            index,
+            begin,
+            end,
+            order: 1.0,
+            stereo: None,
+            interior: None,
+        }
+    }
+
+    fn molecule(id: &str, atoms: Vec<AtomIn>, bonds: Vec<BondIn>) -> MoleculeIn {
         MoleculeIn {
-            id: Some("e".into()),
-            atoms: vec![
-                AtomIn {
-                    index: 0,
-                    element: Some("C".into()),
-                    z: Some(6),
-                    x: 0.0,
-                    y: 0.0,
-                    label: None,
-                    charge: 0,
-                    mapno: None,
-                },
-                AtomIn {
-                    index: 1,
-                    element: Some("C".into()),
-                    z: Some(6),
-                    x: 30.0,
-                    y: 0.0,
-                    label: None,
-                    charge: 0,
-                    mapno: None,
-                },
-                AtomIn {
-                    index: 2,
-                    element: Some("O".into()),
-                    z: Some(8),
-                    x: 45.0,
-                    y: 20.0,
-                    label: Some("OH".into()),
-                    charge: 0,
-                    mapno: None,
-                },
-            ],
-            bonds: vec![
-                BondIn {
-                    index: 0,
-                    begin: 0,
-                    end: 1,
-                    order: 1.0,
-                    stereo: None,
-                    interior: None,
-                },
-                BondIn {
-                    index: 1,
-                    begin: 1,
-                    end: 2,
-                    order: 1.0,
-                    stereo: None,
-                    interior: None,
-                },
-            ],
+            id: Some(id.into()),
+            atoms,
+            bonds,
             color: None,
             atom_shade: None,
             bond_shade: None,
@@ -2399,97 +2384,108 @@ mod tests {
             debug_align: false,
             align_debug: None,
         }
+    }
+
+    fn ethanol() -> MoleculeIn {
+        molecule(
+            "e",
+            vec![
+                c(0, 0.0, 0.0),
+                c(1, 30.0, 0.0),
+                atom(2, "O", 8, 45.0, 20.0, Some("OH")),
+            ],
+            vec![bond(0, 0, 1), bond(1, 1, 2)],
+        )
     }
 
     /// Zig-zag propane; atom index 1 is the middle carbon (degree 2).
     fn propane() -> MoleculeIn {
-        MoleculeIn {
-            id: Some("ccc".into()),
-            atoms: vec![
-                AtomIn {
-                    index: 0,
-                    element: Some("C".into()),
-                    z: Some(6),
-                    x: 0.0,
-                    y: 15.0,
-                    label: None,
-                    charge: 0,
-                    mapno: None,
-                },
-                AtomIn {
-                    index: 1,
-                    element: Some("C".into()),
-                    z: Some(6),
-                    x: 26.0,
-                    y: 0.0,
-                    label: None,
-                    charge: 0,
-                    mapno: None,
-                },
-                AtomIn {
-                    index: 2,
-                    element: Some("C".into()),
-                    z: Some(6),
-                    x: 52.0,
-                    y: 15.0,
-                    label: None,
-                    charge: 0,
-                    mapno: None,
-                },
-            ],
-            bonds: vec![
-                BondIn {
-                    index: 0,
-                    begin: 0,
-                    end: 1,
-                    order: 1.0,
-                    stereo: None,
-                    interior: None,
-                },
-                BondIn {
-                    index: 1,
-                    begin: 1,
-                    end: 2,
-                    order: 1.0,
-                    stereo: None,
-                    interior: None,
-                },
-            ],
-            color: None,
-            atom_shade: None,
-            bond_shade: None,
-            shade_vmin: None,
-            shade_vmax: None,
-            mark_atoms: vec![],
-            mark_bonds: vec![],
-            scale: 1.0,
-            weight: 1.0,
-            aromatic: Default::default(),
-            debug_box: false,
-            debug_align: false,
-            align_debug: None,
-        }
+        molecule(
+            "ccc",
+            vec![c(0, 0.0, 15.0), c(1, 26.0, 0.0), c(2, 52.0, 15.0)],
+            vec![bond(0, 0, 1), bond(1, 1, 2)],
+        )
     }
 
-    fn path_nums(d: &str) -> Vec<f64> {
-        let mut out = Vec::new();
-        let mut cur = String::new();
-        for c in d.chars() {
-            if c.is_ascii_digit() || c == '.' || c == '-' || c == '+' || c == 'e' || c == 'E' {
-                cur.push(c);
-            } else if !cur.is_empty() {
-                if let Ok(v) = cur.parse::<f64>() {
-                    out.push(v);
-                }
-                cur.clear();
-            }
+    /// Notebook Ex6: hexagon + ethyl off atom 0. Ring 0..5, ethyl 6,7.
+    fn ethylbenzene() -> MoleculeIn {
+        let mut atoms: Vec<_> = (0..6)
+            .map(|i| {
+                let t = std::f64::consts::TAU * i as f64 / 6.0 - std::f64::consts::FRAC_PI_2;
+                c(i as i32, 50.0 + 30.0 * t.cos(), 50.0 + 30.0 * t.sin())
+            })
+            .collect();
+        atoms.push(c(6, 50.0, 50.0 - 30.0 - 26.0));
+        atoms.push(c(7, 50.0 + 20.0, 50.0 - 30.0 - 26.0 - 20.0));
+        let mut bonds: Vec<_> = (0..6)
+            .map(|i| bond(i as i32, i as i32, ((i + 1) % 6) as i32))
+            .collect();
+        bonds.push(bond(6, 0, 6));
+        bonds.push(bond(7, 6, 7));
+        molecule("etph", atoms, bonds)
+    }
+
+    fn ring_xy(i: usize, dx: f64, dy: f64) -> (f64, f64) {
+        let t = std::f64::consts::TAU * i as f64 / 6.0 - std::f64::consts::FRAC_PI_2;
+        (50.0 + dx + 30.0 * t.cos(), 50.0 + dy + 30.0 * t.sin())
+    }
+
+    fn ring_mean(dx: f64, dy: f64) -> (f64, f64) {
+        let (sx, sy) = (0..6).fold((0.0, 0.0), |(sx, sy), i| {
+            let (x, y) = ring_xy(i, dx, dy);
+            (sx + x, sy + y)
+        });
+        (sx / 6.0, sy / 6.0)
+    }
+
+    fn nearest_ring(label: (f64, f64), dx: f64, dy: f64) -> f64 {
+        (0..6)
+            .map(|i| {
+                let (ax, ay) = ring_xy(i, dx, dy);
+                (label.0 - ax).hypot(label.1 - ay)
+            })
+            .fold(f64::INFINITY, f64::min)
+    }
+
+    fn aryl_xy(out: &Scene) -> (f64, f64) {
+        layer_prims(out)
+            .into_iter()
+            .find_map(|p| match p {
+                Primitive::Path {
+                    d,
+                    class: Some(c),
+                    data_text: Some(t),
+                    ..
+                } if c.contains("region-label") && t == "aryl" => Some(path_centroid(d)),
+                _ => None,
+            })
+            .expect("aryl")
+    }
+
+    fn ex6_region(style: RegionStyle, place: Option<RegionTextPlace>) -> RegionSpec {
+        RegionSpec {
+            style,
+            atoms: vec![0, 1, 2, 3, 4, 5],
+            exclude: vec![6, 7],
+            fill: Some(FillSpec {
+                color: Some("#eee".into()),
+                opacity: None,
+            }),
+            stroke: Some(StrokeSpec {
+                color: Some("#c44".into()),
+                width: Some(1.2),
+                dash: None,
+            }),
+            text: place.map(|p| {
+                MolText::Styled(crate::doc::chrome::MolTextSpec {
+                    content: "aryl".into(),
+                    place: Some(p),
+                    pos: Some(LabelPos::Left),
+                    ..Default::default()
+                })
+            }),
+            z: None,
         }
-        if !cur.is_empty() {
-            if let Ok(v) = cur.parse::<f64>() {
-                out.push(v);
-            }
-        }
-        out
     }
 
     fn path_centroid(d: &str) -> (f64, f64) {
@@ -3492,179 +3488,31 @@ mod tests {
     fn region_box_ex6_inside_label_snugs_and_shrinks() {
         // Notebook Ex6: box + exclude ethyl + inside aryl left — label must
         // move toward the ring and the box must not stay at the far-seed size.
-        let mut atoms = Vec::new();
-        for i in 0..6 {
-            let t = std::f64::consts::TAU * i as f64 / 6.0 - std::f64::consts::FRAC_PI_2;
-            atoms.push(AtomIn {
-                index: i as i32,
-                element: Some("C".into()),
-                z: Some(6),
-                x: 50.0 + 30.0 * t.cos(),
-                y: 50.0 + 30.0 * t.sin(),
-                label: None,
-                charge: 0,
-                mapno: None,
-            });
-        }
-        atoms.push(AtomIn {
-            index: 6,
-            element: Some("C".into()),
-            z: Some(6),
-            x: 50.0,
-            y: 50.0 - 30.0 - 26.0,
-            label: None,
-            charge: 0,
-            mapno: None,
-        });
-        atoms.push(AtomIn {
-            index: 7,
-            element: Some("C".into()),
-            z: Some(6),
-            x: 50.0 + 20.0,
-            y: 50.0 - 30.0 - 26.0 - 20.0,
-            label: None,
-            charge: 0,
-            mapno: None,
-        });
-        let mut bonds = Vec::new();
-        for i in 0..6 {
-            bonds.push(BondIn {
-                index: i as i32,
-                begin: i as i32,
-                end: ((i + 1) % 6) as i32,
-                order: 1.0,
-                stereo: None,
-                interior: None,
-            });
-        }
-        bonds.push(BondIn {
-            index: 6,
-            begin: 0,
-            end: 6,
-            order: 1.0,
-            stereo: None,
-            interior: None,
-        });
-        bonds.push(BondIn {
-            index: 7,
-            begin: 6,
-            end: 7,
-            order: 1.0,
-            stereo: None,
-            interior: None,
-        });
-        let mol = MoleculeIn {
-            id: Some("ex6".into()),
-            atoms,
-            bonds,
-            color: None,
-            atom_shade: None,
-            bond_shade: None,
-            shade_vmin: None,
-            shade_vmax: None,
-            mark_atoms: vec![],
-            mark_bonds: vec![],
-            scale: 1.0,
-            weight: 1.0,
-            aromatic: Default::default(),
-            debug_box: false,
-            debug_align: false,
-            align_debug: None,
-        };
+        let mol = ethylbenzene();
         let (dx, dy) = frame_offset(&mol);
-        let mean = (
-            (0..6)
-                .map(|i| {
-                    let t = std::f64::consts::TAU * i as f64 / 6.0 - std::f64::consts::FRAC_PI_2;
-                    50.0 + dx + 30.0 * t.cos()
-                })
-                .sum::<f64>()
-                / 6.0,
-            (0..6)
-                .map(|i| {
-                    let t = std::f64::consts::TAU * i as f64 / 6.0 - std::f64::consts::FRAC_PI_2;
-                    50.0 + dy + 30.0 * t.sin()
-                })
-                .sum::<f64>()
-                / 6.0,
-        );
+        let mean = ring_mean(dx, dy);
         let scene = crate::depict::depict_molecule(&mol);
-        let mk = |place: RegionTextPlace| {
+        let paint = |spec: RegionSpec| {
             let node = MolNode {
-                region: Some(crate::doc::chrome::RegionField::One(RegionSpec {
-                    style: RegionStyle::Box,
-                    atoms: vec![0, 1, 2, 3, 4, 5],
-                    exclude: vec![6, 7],
-                    fill: Some(FillSpec {
-                        color: Some("#eee".into()),
-                        opacity: None,
-                    }),
-                    stroke: Some(StrokeSpec {
-                        color: Some("#c44".into()),
-                        width: Some(1.2),
-                        dash: None,
-                    }),
-                    text: Some(MolText::Styled(crate::doc::chrome::MolTextSpec {
-                        content: "aryl".into(),
-                        place: Some(place),
-                        pos: Some(LabelPos::Left),
-                        ..Default::default()
-                    })),
-                    z: None,
-                })),
+                region: Some(crate::doc::chrome::RegionField::One(spec)),
                 ..Default::default()
             };
             apply_mol_chrome(&node, &mol, scene.clone())
         };
-        let out_in = mk(RegionTextPlace::Inside);
-        let out_none = {
-            let node = MolNode {
-                region: Some(crate::doc::chrome::RegionField::One(RegionSpec {
-                    style: RegionStyle::Box,
-                    atoms: vec![0, 1, 2, 3, 4, 5],
-                    exclude: vec![6, 7],
-                    fill: None,
-                    stroke: None,
-                    text: None,
-                    z: None,
-                })),
-                ..Default::default()
-            };
-            apply_mol_chrome(&node, &mol, scene.clone())
-        };
+        let out_in = paint(ex6_region(RegionStyle::Box, Some(RegionTextPlace::Inside)));
+        let out_none = paint(ex6_region(RegionStyle::Box, None));
         let box_aabb = |out: &Scene| {
             layer_prims(out)
                 .into_iter()
                 .find_map(|p| match p {
                     Primitive::Path {
                         d, class: Some(c), ..
-                    } if c.contains("region") && c.contains("box") => {
-                        let nums = path_nums(d);
-                        let xs: Vec<_> = nums.iter().step_by(2).copied().collect();
-                        let ys: Vec<_> = nums.iter().skip(1).step_by(2).copied().collect();
-                        Some(Aabb::new(
-                            xs.iter().cloned().fold(f64::INFINITY, f64::min),
-                            ys.iter().cloned().fold(f64::INFINITY, f64::min),
-                            xs.iter().cloned().fold(f64::NEG_INFINITY, f64::max),
-                            ys.iter().cloned().fold(f64::NEG_INFINITY, f64::max),
-                        ))
-                    }
+                    } if c.contains("region") && c.contains("box") => path_aabb(d),
                     _ => None,
                 })
                 .expect("region box")
         };
-        let label = layer_prims(&out_in)
-            .into_iter()
-            .find_map(|p| match p {
-                Primitive::Path {
-                    d,
-                    class: Some(c),
-                    data_text: Some(t),
-                    ..
-                } if c.contains("region-label") && t == "aryl" => Some(path_centroid(d)),
-                _ => None,
-            })
-            .expect("aryl");
+        let label = aryl_xy(&out_in);
         let bin = box_aabb(&out_in);
         let b0 = box_aabb(&out_none);
         assert!(
@@ -3691,134 +3539,22 @@ mod tests {
     fn region_circle_ex6_inside_label_snugs_and_shifts_center() {
         // Notebook Ex6 with style=circle: aryl left of the ring, circle center
         // moves toward the label (not a ballooned r about the atom centroid).
-        let mut atoms = Vec::new();
-        for i in 0..6 {
-            let t = std::f64::consts::TAU * i as f64 / 6.0 - std::f64::consts::FRAC_PI_2;
-            atoms.push(AtomIn {
-                index: i as i32,
-                element: Some("C".into()),
-                z: Some(6),
-                x: 50.0 + 30.0 * t.cos(),
-                y: 50.0 + 30.0 * t.sin(),
-                label: None,
-                charge: 0,
-                mapno: None,
-            });
-        }
-        atoms.push(AtomIn {
-            index: 6,
-            element: Some("C".into()),
-            z: Some(6),
-            x: 50.0,
-            y: 50.0 - 30.0 - 26.0,
-            label: None,
-            charge: 0,
-            mapno: None,
-        });
-        atoms.push(AtomIn {
-            index: 7,
-            element: Some("C".into()),
-            z: Some(6),
-            x: 50.0 + 20.0,
-            y: 50.0 - 30.0 - 26.0 - 20.0,
-            label: None,
-            charge: 0,
-            mapno: None,
-        });
-        let mut bonds = Vec::new();
-        for i in 0..6 {
-            bonds.push(BondIn {
-                index: i as i32,
-                begin: i as i32,
-                end: ((i + 1) % 6) as i32,
-                order: 1.0,
-                stereo: None,
-                interior: None,
-            });
-        }
-        bonds.push(BondIn {
-            index: 6,
-            begin: 0,
-            end: 6,
-            order: 1.0,
-            stereo: None,
-            interior: None,
-        });
-        bonds.push(BondIn {
-            index: 7,
-            begin: 6,
-            end: 7,
-            order: 1.0,
-            stereo: None,
-            interior: None,
-        });
-        let mol = MoleculeIn {
-            id: Some("ex6-circ".into()),
-            atoms,
-            bonds,
-            color: None,
-            atom_shade: None,
-            bond_shade: None,
-            shade_vmin: None,
-            shade_vmax: None,
-            mark_atoms: vec![],
-            mark_bonds: vec![],
-            scale: 1.0,
-            weight: 1.0,
-            aromatic: Default::default(),
-            debug_box: false,
-            debug_align: false,
-            align_debug: None,
-        };
+        let mol = ethylbenzene();
         let (dx, dy) = frame_offset(&mol);
-        let mean = (
-            (0..6)
-                .map(|i| {
-                    let t = std::f64::consts::TAU * i as f64 / 6.0 - std::f64::consts::FRAC_PI_2;
-                    50.0 + dx + 30.0 * t.cos()
-                })
-                .sum::<f64>()
-                / 6.0,
-            (0..6)
-                .map(|i| {
-                    let t = std::f64::consts::TAU * i as f64 / 6.0 - std::f64::consts::FRAC_PI_2;
-                    50.0 + dy + 30.0 * t.sin()
-                })
-                .sum::<f64>()
-                / 6.0,
-        );
+        let mean = ring_mean(dx, dy);
         let scene = crate::depict::depict_molecule(&mol);
-        let mk = |place: Option<RegionTextPlace>| {
+        let paint = |place: Option<RegionTextPlace>| {
             let node = MolNode {
-                region: Some(crate::doc::chrome::RegionField::One(RegionSpec {
-                    style: RegionStyle::Circle,
-                    atoms: vec![0, 1, 2, 3, 4, 5],
-                    exclude: vec![6, 7],
-                    fill: Some(FillSpec {
-                        color: Some("#eee".into()),
-                        opacity: None,
-                    }),
-                    stroke: Some(StrokeSpec {
-                        color: Some("#c44".into()),
-                        width: Some(1.2),
-                        dash: None,
-                    }),
-                    text: place.map(|p| {
-                        MolText::Styled(crate::doc::chrome::MolTextSpec {
-                            content: "aryl".into(),
-                            place: Some(p),
-                            pos: Some(LabelPos::Left),
-                            ..Default::default()
-                        })
-                    }),
-                    z: None,
-                })),
+                region: Some(crate::doc::chrome::RegionField::One(ex6_region(
+                    RegionStyle::Circle,
+                    place,
+                ))),
                 ..Default::default()
             };
             apply_mol_chrome(&node, &mol, scene.clone())
         };
-        let out_in = mk(Some(RegionTextPlace::Inside));
-        let out_none = mk(None);
+        let out_in = paint(Some(RegionTextPlace::Inside));
+        let out_none = paint(None);
         let circ = |out: &Scene| {
             layer_prims(out)
                 .into_iter()
@@ -3836,18 +3572,7 @@ mod tests {
         };
         let (cx0, cy0, r0) = circ(&out_none);
         let (cx, cy, r) = circ(&out_in);
-        let label = layer_prims(&out_in)
-            .into_iter()
-            .find_map(|p| match p {
-                Primitive::Path {
-                    d,
-                    class: Some(c),
-                    data_text: Some(t),
-                    ..
-                } if c.contains("region-label") && t == "aryl" => Some(path_centroid(d)),
-                _ => None,
-            })
-            .expect("aryl");
+        let label = aryl_xy(&out_in);
         assert!(
             label.0 < mean.0 - 5.0,
             "pos=Left: aryl {:?} should be left of atom mean {:?}",
@@ -3860,17 +3585,10 @@ mod tests {
             label,
             mean
         );
-        let nearest_ring = (0..6)
-            .map(|i| {
-                let t = std::f64::consts::TAU * i as f64 / 6.0 - std::f64::consts::FRAC_PI_2;
-                let ax = 50.0 + dx + 30.0 * t.cos();
-                let ay = 50.0 + dy + 30.0 * t.sin();
-                (label.0 - ax).hypot(label.1 - ay)
-            })
-            .fold(f64::INFINITY, f64::min);
+        let nearest = nearest_ring(label, dx, dy);
         assert!(
-            nearest_ring < 42.0,
-            "aryl {:?} still far from ring (nearest={nearest_ring})",
+            nearest < 42.0,
+            "aryl {:?} still far from ring (nearest={nearest})",
             label
         );
         assert!(
@@ -3897,108 +3615,13 @@ mod tests {
     #[test]
     fn region_bezier_exclude_inside_label_stays_sane() {
         // Regular hexagon (side ~30) + ethyl up from atom 0.
-        let mut atoms = Vec::new();
-        for i in 0..6 {
-            let t = std::f64::consts::TAU * i as f64 / 6.0 - std::f64::consts::FRAC_PI_2;
-            atoms.push(AtomIn {
-                index: i as i32,
-                element: Some("C".into()),
-                z: Some(6),
-                x: 50.0 + 30.0 * t.cos(),
-                y: 50.0 + 30.0 * t.sin(),
-                label: None,
-                charge: 0,
-                mapno: None,
-            });
-        }
-        atoms.push(AtomIn {
-            index: 6,
-            element: Some("C".into()),
-            z: Some(6),
-            x: 50.0,
-            y: 50.0 - 30.0 - 26.0,
-            label: None,
-            charge: 0,
-            mapno: None,
-        });
-        atoms.push(AtomIn {
-            index: 7,
-            element: Some("C".into()),
-            z: Some(6),
-            x: 50.0 + 20.0,
-            y: 50.0 - 30.0 - 26.0 - 20.0,
-            label: None,
-            charge: 0,
-            mapno: None,
-        });
-        let mut bonds = Vec::new();
-        for i in 0..6 {
-            bonds.push(BondIn {
-                index: i as i32,
-                begin: i as i32,
-                end: ((i + 1) % 6) as i32,
-                order: 1.0,
-                stereo: None,
-                interior: None,
-            });
-        }
-        bonds.push(BondIn {
-            index: 6,
-            begin: 0,
-            end: 6,
-            order: 1.0,
-            stereo: None,
-            interior: None,
-        });
-        bonds.push(BondIn {
-            index: 7,
-            begin: 6,
-            end: 7,
-            order: 1.0,
-            stereo: None,
-            interior: None,
-        });
-        let mol = MoleculeIn {
-            id: Some("etph".into()),
-            atoms,
-            bonds,
-            color: None,
-            atom_shade: None,
-            bond_shade: None,
-            shade_vmin: None,
-            shade_vmax: None,
-            mark_atoms: vec![],
-            mark_bonds: vec![],
-            scale: 1.0,
-            weight: 1.0,
-            aromatic: Default::default(),
-            debug_box: false,
-            debug_align: false,
-            align_debug: None,
-        };
+        let mol = ethylbenzene();
         let scene = crate::depict::depict_molecule(&mol);
         let node = MolNode {
-            region: Some(crate::doc::chrome::RegionField::One(RegionSpec {
-                style: RegionStyle::Bezier,
-                atoms: vec![0, 1, 2, 3, 4, 5],
-                exclude: vec![6, 7],
-                fill: Some(FillSpec {
-                    color: Some("#eee".into()),
-                    opacity: None,
-                }),
-                stroke: Some(StrokeSpec {
-                    color: Some("#c44".into()),
-                    width: Some(1.2),
-                    dash: None,
-                }),
-                text: Some(MolText::Styled(crate::doc::chrome::MolTextSpec {
-                    content: "aryl".into(),
-                    place: Some(RegionTextPlace::Inside),
-                    pos: Some(LabelPos::Left),
-                    ..Default::default()
-                })),
-                z: None,
-            })),
+            region: Some(crate::doc::chrome::RegionField::One(ex6_region(
+                RegionStyle::Bezier,
+                Some(RegionTextPlace::Inside),
+            ))),
             ..Default::default()
         };
         let out = apply_mol_chrome(&node, &mol, scene);
@@ -4015,50 +3638,21 @@ mod tests {
             d.contains('C') || d.contains('c'),
             "expected centripetal Catmull–Rom cubics: {d}"
         );
-        let nums = path_nums(&d);
-        let xs: Vec<_> = nums.iter().step_by(2).copied().collect();
-        let ys: Vec<_> = nums.iter().skip(1).step_by(2).copied().collect();
-        let (min_x, max_x) = (
-            xs.iter().cloned().fold(f64::INFINITY, f64::min),
-            xs.iter().cloned().fold(f64::NEG_INFINITY, f64::max),
-        );
-        let (min_y, max_y) = (
-            ys.iter().cloned().fold(f64::INFINITY, f64::min),
-            ys.iter().cloned().fold(f64::NEG_INFINITY, f64::max),
-        );
+        let hull = path_aabb(&d).expect("bezier aabb");
         // Ring diameter ~60 + pad; exclude clips the ethyl side. A blown-up
         // bowtie used to span 150+ px with handles far outside.
         assert!(
-            (max_x - min_x) < 160.0 && (max_y - min_y) < 130.0,
-            "hull AABB blew up: {min_x}..{max_x} x {min_y}..{max_y}; d={d}"
+            hull.width() < 160.0 && hull.height() < 130.0,
+            "hull AABB blew up: {hull:?}; d={d}"
         );
         let (dx, dy) = frame_offset(&mol);
         let (cx, cy) = (50.0 + dx, 50.0 + dy);
         assert!(
-            cx >= min_x && cx <= max_x && cy >= min_y && cy <= max_y,
-            "ring center ({cx},{cy}) outside hull AABB"
+            cx >= hull.x0 && cx <= hull.x1 && cy >= hull.y0 && cy <= hull.y1,
+            "ring center ({cx},{cy}) outside hull AABB {hull:?}"
         );
         // Inside label must not sit in the ring nucleus (outside-seed + grow).
-        let aryl = layer_prims(&out)
-            .into_iter()
-            .find_map(|p| match p {
-                Primitive::Path {
-                    d,
-                    class: Some(c),
-                    data_text: Some(t),
-                    ..
-                } if c.contains("region-label") && t == "aryl" => {
-                    let nums = path_nums(d);
-                    let xs: Vec<_> = nums.iter().step_by(2).copied().collect();
-                    let ys: Vec<_> = nums.iter().skip(1).step_by(2).copied().collect();
-                    Some((
-                        (xs.iter().sum::<f64>() / xs.len() as f64),
-                        (ys.iter().sum::<f64>() / ys.len() as f64),
-                    ))
-                }
-                _ => None,
-            })
-            .expect("aryl region-label");
+        let aryl = aryl_xy(&out);
         let dist_center = (aryl.0 - cx).hypot(aryl.1 - cy);
         assert!(
             dist_center > 18.0,
@@ -4067,17 +3661,10 @@ mod tests {
         );
         // Soft snug to chem must pull the outside seed inward — not leave it
         // parked at the clash-free far edge of a grown hull.
-        let nearest_ring = (0..6)
-            .map(|i| {
-                let t = std::f64::consts::TAU * i as f64 / 6.0 - std::f64::consts::FRAC_PI_2;
-                let ax = 50.0 + dx + 30.0 * t.cos();
-                let ay = 50.0 + dy + 30.0 * t.sin();
-                (aryl.0 - ax).hypot(aryl.1 - ay)
-            })
-            .fold(f64::INFINITY, f64::min);
+        let nearest = nearest_ring(aryl, dx, dy);
         assert!(
-            nearest_ring < 42.0,
-            "aryl label at {:?} still far from ring (nearest={nearest_ring}); expected snug to chem",
+            nearest < 42.0,
+            "aryl label at {:?} still far from ring (nearest={nearest}); expected snug to chem",
             aryl
         );
         assert!(
@@ -4098,72 +3685,11 @@ mod tests {
     fn region_pos_is_relative_to_contained_atom_mean() {
         // Asymmetric include: three atoms on the right of a wide pad box so the
         // AABB center ≠ atom mean. pos=Left must end left of the atom mean.
-        let mol = MoleculeIn {
-            id: Some("asym".into()),
-            atoms: vec![
-                AtomIn {
-                    index: 0,
-                    element: Some("C".into()),
-                    z: Some(6),
-                    x: 80.0,
-                    y: 40.0,
-                    label: None,
-                    charge: 0,
-                    mapno: None,
-                },
-                AtomIn {
-                    index: 1,
-                    element: Some("C".into()),
-                    z: Some(6),
-                    x: 100.0,
-                    y: 40.0,
-                    label: None,
-                    charge: 0,
-                    mapno: None,
-                },
-                AtomIn {
-                    index: 2,
-                    element: Some("C".into()),
-                    z: Some(6),
-                    x: 120.0,
-                    y: 40.0,
-                    label: None,
-                    charge: 0,
-                    mapno: None,
-                },
-            ],
-            bonds: vec![
-                BondIn {
-                    index: 0,
-                    begin: 0,
-                    end: 1,
-                    order: 1.0,
-                    stereo: None,
-                    interior: None,
-                },
-                BondIn {
-                    index: 1,
-                    begin: 1,
-                    end: 2,
-                    order: 1.0,
-                    stereo: None,
-                    interior: None,
-                },
-            ],
-            color: None,
-            atom_shade: None,
-            bond_shade: None,
-            shade_vmin: None,
-            shade_vmax: None,
-            mark_atoms: vec![],
-            mark_bonds: vec![],
-            scale: 1.0,
-            weight: 1.0,
-            aromatic: Default::default(),
-            debug_box: false,
-            debug_align: false,
-            align_debug: None,
-        };
+        let mol = molecule(
+            "asym",
+            vec![c(0, 80.0, 40.0), c(1, 100.0, 40.0), c(2, 120.0, 40.0)],
+            vec![bond(0, 0, 1), bond(1, 1, 2)],
+        );
         let (dx, dy) = frame_offset(&mol);
         let mean_x = (80.0 + 100.0 + 120.0) / 3.0 + dx;
         let scene = crate::depict::depict_molecule(&mol);
@@ -4448,6 +3974,50 @@ mod tests {
                 "({x},{y}) outside disk ({cx},{cy}) r={r}"
             );
         }
+    }
+
+    #[test]
+    fn circle_cover_pushes_center_off_excludes() {
+        let pts = [(0.0, 0.0), (20.0, 0.0), (10.0, 17.0)];
+        let exclude = [(10.0, -2.0)];
+        let (cx, cy, r) = circle_cover_points_label_excludes(&pts, None, 0.0, 0.0, &exclude, 1.0);
+        for &(x, y) in &pts {
+            assert!(
+                (x - cx).hypot(y - cy) <= r + 1e-6,
+                "include ({x},{y}) outside disk ({cx},{cy}) r={r}"
+            );
+        }
+        let d = (exclude[0].0 - cx).hypot(exclude[0].1 - cy);
+        assert!(
+            d + 1e-6 >= r,
+            "exclude should sit outside covering: d={d} r={r} center=({cx},{cy})"
+        );
+        assert!(
+            cy > 0.0,
+            "center should move away from exclude below the triangle: cy={cy}"
+        );
+    }
+
+    #[test]
+    fn circle_cover_with_label_shifts_center() {
+        let mut pts = Vec::new();
+        for i in 0..6 {
+            let t = std::f64::consts::TAU * i as f64 / 6.0;
+            pts.push((30.0 * t.cos(), 30.0 * t.sin()));
+        }
+        let (cx0, _, r0) = circle_cover_points_label_excludes(&pts, None, 0.0, 0.0, &[], 0.0);
+        let label = Aabb::new(-55.0, -6.0, -35.0, 6.0);
+        let (cx, _, r) = circle_cover_points_label_excludes(&pts, Some(label), 0.0, 0.0, &[], 0.0);
+        assert!(
+            cx < cx0 - 4.0,
+            "label on the left should shift the covering center: {cx} vs {cx0}"
+        );
+        let balloon = (label.x0 - cx0).abs() + 1.0;
+        assert!(
+            r + 1e-6 < balloon,
+            "shifted covering should beat fixed-center balloon: r={r} balloon={balloon} r0={r0}"
+        );
+        assert!(r > r0, "label must enlarge r a little: r={r} r0={r0}");
     }
 
     #[test]
