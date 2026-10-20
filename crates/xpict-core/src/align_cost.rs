@@ -8,7 +8,8 @@
 //! locked equal-size ring may grow onto a size-adjacent ring (14- vs 15-
 //! macrolide). Fusion atoms that also sit in the matched ring still map.
 //! Ring-seed orientation uses exocyclic neighbor elements so a sugar does
-//! not flip NMe2 onto a ring methyl.
+//! not flip NMe2 onto a ring methyl. N/O/S in a shared ring size is a cheap
+//! heteroatom swap (aza-crown NH onto ether O); O→C is still refused.
 //!
 //! [`cost_mapping`] / [`cost_mapping_with_generators`] stay unbounded (library
 //! exact API). Depict / EdgePlan search uses [`SearchLimits`]: a house time and
@@ -211,6 +212,9 @@ impl MolGraph {
     }
 }
 pub const COST_ELEMENT: i32 = 11;
+/// N↔O↔S in a shared Relevant-Ring size (aza-crown). Below [`PAIR_GAIN`] so
+/// house `strict_atoms` still pairs them; C↔hetero stays [`COST_ELEMENT`].
+pub const COST_HETERO: i32 = 2;
 pub const COST_CHARGE_RADICAL: i32 = 2;
 pub const COST_BOND_ORDER: i32 = 3;
 pub const COST_UNMATCHED: i32 = 5;
@@ -390,9 +394,30 @@ fn ring_size_mismatch(q: &Graph<'_>, r: &Graph<'_>, a: usize, b: usize) -> bool 
     qa != 0 && rb != 0 && qa & rb == 0
 }
 
+fn is_n_o_s(z: u8) -> bool {
+    matches!(z, 7 | 8 | 16)
+}
+
+/// Both atoms N/O/S in overlapping Relevant-Ring sizes (aza-18-crown NH→O).
+fn ring_hetero_swap(q: &Graph<'_>, r: &Graph<'_>, a: usize, b: usize) -> bool {
+    let za = q.mol.atoms[a].atomic_number;
+    let zb = r.mol.atoms[b].atomic_number;
+    if za == zb || !is_n_o_s(za) || !is_n_o_s(zb) {
+        return false;
+    }
+    let qa = q.ring_bits[a];
+    let rb = r.ring_bits[b];
+    qa != 0 && rb != 0 && qa & rb != 0
+}
+
 fn atom_cost(q: &Graph<'_>, r: &Graph<'_>, a: usize, b: usize) -> i64 {
     let (x, y) = (&q.mol.atoms[a], &r.mol.atoms[b]);
-    i64::from(COST_ELEMENT) * i64::from(x.atomic_number != y.atomic_number)
+    let element = if ring_hetero_swap(q, r, a, b) {
+        i64::from(COST_HETERO)
+    } else {
+        i64::from(COST_ELEMENT) * i64::from(x.atomic_number != y.atomic_number)
+    };
+    element
         + i64::from(COST_CHARGE_RADICAL)
             * i64::from(x.formal_charge != y.formal_charge || x.radical != y.radical)
         + i64::from(COST_RING) * i64::from(q.ring[a] != r.ring[b])
@@ -2353,6 +2378,29 @@ mod exact_tests {
         let fused = MolGraph::new(vec![atom(6); 22], bonds);
         let res = cost_mapping(&eighteen, &fused).expect("map");
         assert_eq!(res.map.len(), 18, "map={:?}", res.map);
+    }
+
+    fn six_ring_hetero(z: u8) -> MolGraph {
+        let mut atoms = vec![atom(6); 6];
+        atoms[0] = atom(z);
+        MolGraph::new(atoms, (0..6).map(|i| edge(i, (i + 1) % 6)).collect())
+    }
+
+    #[test]
+    fn house_maps_ring_nitrogen_onto_ring_oxygen() {
+        let thp = six_ring_hetero(8);
+        let piperidine = six_ring_hetero(7);
+        let (res, _) =
+            cost_mapping_with_generators_limited(&thp, &piperidine, &[], &SearchLimits::house())
+                .unwrap();
+        let res = res.expect("map");
+        assert_eq!(res.map.len(), 6, "map={:?}", res.map);
+        assert_eq!(
+            res.map.get(&0),
+            Some(&0),
+            "N should sit on O: {:?}",
+            res.map
+        );
     }
 
     #[test]

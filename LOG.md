@@ -2,6 +2,10 @@
 
 ## 2026-10-20
 
+- House `strict_atoms` left aza-18-crown NH unmatched (N→O gain −1) and kinked the ring; 18-crown vs aza used to lock 18/18. N/O/S in a *shared* Relevant-Ring size now costs `COST_HETERO` (2), so NH sits on an ether O. O→C (testosterone 17-OH onto cholesterol carbon) stays refused.
+
+## 2026-10-20
+
 - Align tests for conjugate remodeling: quinone formation (hydroquinone→benzoquinone, APAP→NAPQI), benzene epoxidation, benzene-oxide opening (NIH-shift/hydrate), tetralin dehydrogenation. Forest single-piece products that keep the parent heavy-atom count; house maps every parent atom with matching elements.
 
 ## 2026-10-20

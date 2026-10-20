@@ -107,6 +107,17 @@ def test_azithromycin_maps_onto_erythromycin_without_flipping_desosamine() -> No
     assert ring_n and ring_n[0] not in by_q
 
 
+def test_aza_18_crown_maps_nh_onto_ether_oxygen() -> None:
+    crown = "C1COCCOCCOCCOCCOCCO1"
+    aza = "C1COCCOCCOCCNCCOCCO1"
+    ref, qry, tags = _align(crown, aza)
+    by_q = dict(tags)
+    assert len(tags) == 18, tags
+    n_idx = next(int(a["index"]) for a in qry["atoms"] if a.get("element") == "N")
+    o_idx = by_q[n_idx]
+    assert _el(ref, o_idx) == "O", (n_idx, o_idx, by_q)
+
+
 def test_testosterone_does_not_map_oxygen_onto_cholesterol_carbon() -> None:
     ref, qry, tags = _align(CHOLESTEROL, TESTOSTERONE)
     assert tags
