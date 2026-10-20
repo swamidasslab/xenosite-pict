@@ -79,77 +79,103 @@ pub fn apply_mol_chrome(node: &MolNode, mol: &MoleculeIn, mut scene: Scene) -> S
         }
     }
 
+    // Place atom numbers/labels and circles before region text so "ring" can
+    // clear them (kitchen sink). Callouts last so they clear region labels too.
     for ann in &anns {
-        match ann {
-            Annotation::Shade { .. } => {
-                // Scores already painted via MoleculeIn → depict shading layer.
-            }
-            Annotation::Region { spec, z } => {
-                // Hull under shade; region text always in the front Labels layer.
-                for p in region_primitives(mol, spec, dx, dy, &caption_boxes, &shade) {
-                    let is_label = matches!(
-                        &p,
-                        Primitive::Path {
-                            class: Some(c),
-                            ..
-                        } if c.contains("region-label")
-                    );
-                    if is_label {
-                        label_prims.push((Z_REGION_LABEL, p));
-                    } else {
-                        underlay_prims.push((*z, p));
-                    }
+        if let Annotation::Shade { .. } = ann {
+            // Scores already painted via MoleculeIn → depict shading layer.
+        }
+    }
+    for ann in &anns {
+        if let Annotation::Circle { spec, z, .. } = ann {
+            for p in circle_primitives(mol, node, spec, dx, dy) {
+                if let Primitive::Circle { cx, cy, r, .. } = &p {
+                    placed_label_boxes.push(Aabb::new(cx - r, cy - r, cx + r, cy + r));
                 }
+                circle_prims.push((*z, p));
             }
-            Annotation::Circle { spec, z, .. } => {
-                for p in circle_primitives(mol, node, spec, dx, dy) {
-                    circle_prims.push((*z, p));
-                }
-            }
-            Annotation::AtomLabel {
-                atom,
-                text,
-                role,
-                scale,
-                color,
-                z,
-            } => {
-                let items = expand_atom_labels(mol, *atom, text, *role, node);
-                for (ai, content) in items {
-                    if let Some((p, box_, halo)) = atom_label_primitive(
-                        mol,
-                        &neighbors,
-                        ai,
-                        &content,
-                        *role,
-                        *scale,
-                        color.as_deref(),
-                        dx,
-                        dy,
-                        &shade,
-                        &placed_label_boxes,
-                        mol.weight,
-                    ) {
-                        if let Some(h) = halo {
-                            halo_prims.push(h);
-                        }
-                        placed_label_boxes.push(box_);
-                        label_prims.push((*z, p));
-                    }
-                }
-            }
-            Annotation::Callout { spec, z } => {
-                for (p, box_, halo) in
-                    callout_primitives(mol, spec, dx, dy, &caption_boxes, &shade, mol.weight)
-                {
+        }
+    }
+    for ann in &anns {
+        if let Annotation::AtomLabel {
+            atom,
+            text,
+            role,
+            scale,
+            color,
+            z,
+        } = ann
+        {
+            let items = expand_atom_labels(mol, *atom, text, *role, node);
+            for (ai, content) in items {
+                if let Some((p, box_, halo)) = atom_label_primitive(
+                    mol,
+                    &neighbors,
+                    ai,
+                    &content,
+                    *role,
+                    *scale,
+                    color.as_deref(),
+                    dx,
+                    dy,
+                    &shade,
+                    &placed_label_boxes,
+                    mol.weight,
+                ) {
                     if let Some(h) = halo {
                         halo_prims.push(h);
                     }
-                    if box_.width() > 0.0 || box_.height() > 0.0 {
-                        placed_label_boxes.push(box_);
-                    }
-                    callout_prims.push((*z, p));
+                    placed_label_boxes.push(box_);
+                    label_prims.push((*z, p));
                 }
+            }
+        }
+    }
+    for ann in &anns {
+        if let Annotation::Region { spec, z } = ann {
+            // Hull under shade; region text always in the front Labels layer.
+            for p in region_primitives(
+                mol,
+                spec,
+                dx,
+                dy,
+                &caption_boxes,
+                &shade,
+                &placed_label_boxes,
+            ) {
+                let is_label = matches!(
+                    &p,
+                    Primitive::Path {
+                        class: Some(c),
+                        ..
+                    } if c.contains("region-label")
+                );
+                if is_label {
+                    if let Primitive::Path { d, .. } = &p {
+                        if let Some(box_) = path_aabb(d) {
+                            placed_label_boxes.push(box_);
+                        }
+                    }
+                    label_prims.push((Z_REGION_LABEL, p));
+                } else {
+                    underlay_prims.push((*z, p));
+                }
+            }
+        }
+    }
+    for ann in &anns {
+        if let Annotation::Callout { spec, z } = ann {
+            // `placed_label_boxes` already includes captions + prior chrome.
+            for (p, box_, halo) in
+                callout_primitives(mol, spec, dx, dy, &placed_label_boxes, &shade, mol.weight)
+            {
+                if let Some(h) = halo {
+                    halo_prims.push(h);
+                }
+                if box_.width() > 0.0 || box_.height() > 0.0 {
+                    placed_label_boxes.push(box_);
+                }
+                callout_prims.push((*z, p));
             }
         }
     }
@@ -770,6 +796,7 @@ fn region_primitives(
     dy: f64,
     caption_boxes: &[Aabb],
     shades: &[(usize, f64, f64, f64)],
+    other_labels: &[Aabb],
 ) -> Vec<Primitive> {
     let included: Vec<i32> = spec
         .atoms
@@ -902,6 +929,9 @@ fn region_primitives(
                 for &box_ in caption_boxes {
                     occ.add_aabb(box_);
                 }
+                for &box_ in other_labels {
+                    occ.add_aabb(box_);
+                }
                 let side = label_pos_side(pos);
                 let seed = match spec.style {
                     RegionStyle::Circle => {
@@ -920,6 +950,7 @@ fn region_primitives(
                             CLASH_MARGIN_PX,
                             CLASH_MARGIN_PX,
                             atom_centroid,
+                            /* flip_sides */ !place_inside,
                         )
                     }
                 };
@@ -1069,6 +1100,9 @@ fn region_primitives(
                 for &box_ in caption_boxes {
                     occ.add_aabb(box_);
                 }
+                for &box_ in other_labels {
+                    occ.add_aabb(box_);
+                }
                 let side = label_pos_side(pos);
                 let bonds = bond_segs(mol, dx, dy);
                 let atoms: Vec<(usize, f64, f64)> = included
@@ -1099,6 +1133,7 @@ fn region_primitives(
                             CLASH_MARGIN_PX,
                             CLASH_MARGIN_PX,
                             atom_centroid,
+                            false,
                         ),
                     })
                 } else {
@@ -1115,6 +1150,7 @@ fn region_primitives(
                             CLASH_MARGIN_PX,
                             CLASH_MARGIN_PX,
                             atom_centroid,
+                            true,
                         ),
                     }
                 };
@@ -1127,6 +1163,7 @@ fn region_primitives(
                     inside,
                     side,
                     CLASH_MARGIN_PX,
+                    other_labels,
                 );
                 let mut clear_segs = bonds.clone();
                 clear_segs.extend(aromatic_circle_segs(mol, dx, dy));
@@ -3304,6 +3341,181 @@ mod tests {
 
     /// Ex6 ethylbenzene: ring include + ethyl exclude + inside "aryl".
     /// Must not emit a self-cutting path with wild cubic handles.
+    #[test]
+    fn kitchen_sink_ring_clears_atom_labels() {
+        // Region "ring" used to paint before atom numbers / exo / callout and
+        // sat on top of them. Place chrome labels first; region text must clear.
+        let mut atoms = Vec::new();
+        for i in 0..6 {
+            let t = std::f64::consts::TAU * i as f64 / 6.0 - std::f64::consts::FRAC_PI_2;
+            atoms.push(AtomIn {
+                index: i as i32,
+                element: Some("C".into()),
+                z: Some(6),
+                x: 50.0 + 30.0 * t.cos(),
+                y: 50.0 + 30.0 * t.sin(),
+                label: None,
+                charge: 0,
+                mapno: None,
+            });
+        }
+        atoms.push(AtomIn {
+            index: 6,
+            element: Some("O".into()),
+            z: Some(8),
+            x: 50.0,
+            y: 50.0 - 30.0 - 20.0,
+            label: Some("OH".into()),
+            charge: 0,
+            mapno: None,
+        });
+        let mut bonds = Vec::new();
+        for i in 0..6 {
+            bonds.push(BondIn {
+                index: i as i32,
+                begin: i as i32,
+                end: ((i + 1) % 6) as i32,
+                order: 1.0,
+                stereo: None,
+                interior: None,
+            });
+        }
+        bonds.push(BondIn {
+            index: 6,
+            begin: 0,
+            end: 6,
+            order: 1.0,
+            stereo: None,
+            interior: None,
+        });
+        let mol = MoleculeIn {
+            id: Some("phoh".into()),
+            atoms,
+            bonds,
+            color: None,
+            atom_shade: None,
+            bond_shade: None,
+            shade_vmin: None,
+            shade_vmax: None,
+            mark_atoms: vec![],
+            mark_bonds: vec![],
+            scale: 1.0,
+            weight: 1.0,
+            aromatic: Default::default(),
+            debug_box: false,
+            debug_align: false,
+            align_debug: None,
+        };
+        let scene = crate::depict::depict_molecule(&mol);
+        let node = MolNode {
+            atom_number: Some(AtomNumberSpec::ByName(AtomNumberBy::Index)),
+            atom_label: Some(crate::doc::chrome::AtomLabelSpec::Map(
+                [
+                    ("2".into(), MolText::Plain("ortho".into())),
+                    ("6".into(), MolText::Plain("exo".into())),
+                ]
+                .into_iter()
+                .collect(),
+            )),
+            circle: Some(crate::doc::chrome::CircleField::One(CircleSpec {
+                atoms: vec![6],
+                ring: None,
+                fill: None,
+                stroke: Some(StrokeSpec {
+                    color: Some("#06c".into()),
+                    width: Some(1.4),
+                    dash: None,
+                }),
+                scale: None,
+                z: None,
+            })),
+            region: Some(crate::doc::chrome::RegionField::One(RegionSpec {
+                style: RegionStyle::Box,
+                atoms: vec![0, 1, 2, 3, 4, 5],
+                exclude: vec![],
+                fill: Some(FillSpec {
+                    color: Some("#48a".into()),
+                    opacity: Some(0.12),
+                }),
+                stroke: Some(StrokeSpec {
+                    color: Some("#48a".into()),
+                    width: Some(1.0),
+                    dash: None,
+                }),
+                text: Some(MolText::Plain("ring".into())),
+                z: None,
+            })),
+            callout: Some(crate::doc::chrome::CalloutField::One(CalloutSpec {
+                atoms: Some(vec![6]),
+                bonds: None,
+                text: MolText::Plain("phenol OH".into()),
+                arrow: true,
+                prefer: Some(LabelPos::Above),
+                color: None,
+                scale: None,
+                z: None,
+            })),
+            ..Default::default()
+        };
+        let out = apply_mol_chrome(&node, &mol, scene);
+        let mut boxes: Vec<(String, Aabb)> = Vec::new();
+        for p in layer_prims(&out) {
+            match p {
+                Primitive::Path {
+                    d,
+                    class: Some(c),
+                    data_text,
+                    ..
+                } => {
+                    let nums = path_nums(d);
+                    if nums.len() < 4 {
+                        continue;
+                    }
+                    let xs: Vec<_> = nums.iter().step_by(2).copied().collect();
+                    let ys: Vec<_> = nums.iter().skip(1).step_by(2).copied().collect();
+                    let box_ = Aabb::new(
+                        xs.iter().cloned().fold(f64::INFINITY, f64::min),
+                        ys.iter().cloned().fold(f64::INFINITY, f64::min),
+                        xs.iter().cloned().fold(f64::NEG_INFINITY, f64::max),
+                        ys.iter().cloned().fold(f64::NEG_INFINITY, f64::max),
+                    );
+                    let name = data_text.clone().unwrap_or_else(|| c.clone());
+                    if c.contains("region-label")
+                        || c.contains("atom-number")
+                        || c.contains("atom-label")
+                        || c.contains("callout-label")
+                    {
+                        boxes.push((name, box_));
+                    }
+                }
+                Primitive::Circle {
+                    cx,
+                    cy,
+                    r,
+                    class: Some(c),
+                    ..
+                } if c.contains("atom-circle") => {
+                    boxes.push(("circle".into(), Aabb::new(cx - r, cy - r, cx + r, cy + r)));
+                }
+                _ => {}
+            }
+        }
+        let ring = boxes
+            .iter()
+            .find(|(n, _)| n == "ring")
+            .map(|(_, b)| *b)
+            .expect("ring region-label");
+        for (name, b) in &boxes {
+            if name == "ring" {
+                continue;
+            }
+            assert!(
+                !ring.overlaps(*b),
+                "ring {ring:?} overlaps {name} {b:?}"
+            );
+        }
+    }
+
     #[test]
     fn region_box_ex6_inside_label_snugs_and_shrinks() {
         // Notebook Ex6: box + exclude ethyl + inside aryl left — label must

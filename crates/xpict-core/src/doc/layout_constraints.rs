@@ -1487,6 +1487,7 @@ pub fn region_text_kit(
     preferred: Side,
     clash_dist: f64,
     side_about: (f64, f64),
+    other_labels: &[Aabb],
 ) -> NodeId {
     let _ = world.insert(
         "mol/annotations",
@@ -1573,6 +1574,24 @@ pub fn region_text_kit(
         strength: if inside { 4.0 } else { 2.0 },
     });
     push_clear_bonds(world, hard, &text_id, clash_dist);
+    // Prior chrome labels / circles (kitchen-sink atom numbers, callouts, …).
+    for (i, box_) in other_labels.iter().enumerate() {
+        if box_.width() <= 0.0 && box_.height() <= 0.0 {
+            continue;
+        }
+        let oid = world.insert(
+            format!("mol/annotations/regions/r{region_idx}/other{i}"),
+            &rid,
+            ObjectType::Group,
+            Shape::Aabb(*box_),
+            true,
+        );
+        hard.push(HardConstraint::Outside {
+            a: text_id.clone(),
+            b: oid,
+            clash_dist,
+        });
+    }
     // Avoid shade disks (labels sit in front, but still clear painted wash).
     // Inside snug: mild shade Outside so shade cannot pin the seed far out.
     for (id, n) in world.nodes.clone() {
@@ -2342,6 +2361,7 @@ pub fn refine_region_text(
     inside: bool,
     preferred: Side,
     clash_dist: f64,
+    other_labels: &[Aabb],
 ) -> (f64, f64) {
     let mut world = LayoutWorld::new("mol");
     install_chem(&mut world, bonds, atoms, shades);
@@ -2366,6 +2386,7 @@ pub fn refine_region_text(
         preferred,
         clash_dist,
         side_about,
+        other_labels,
     );
     // Inside seeds often start far (clash-free outside, hull grown around them);
     // allow a larger simplex so soft snug to chem can travel inward.
@@ -3108,6 +3129,7 @@ mod tests {
                             Side::Above,
                             3.0,
                             (20.0, 0.0),
+                            &[],
                         );
                         solve(
                             &mut w,
@@ -3151,6 +3173,7 @@ mod tests {
                             Side::Above,
                             3.0,
                             (15.0, 0.0),
+                            &[],
                         );
                         solve(
                             &mut w,

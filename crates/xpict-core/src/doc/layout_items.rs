@@ -468,10 +468,15 @@ pub fn place_region_edge(
     clash_margin: f64,
     // `about`: reference for `pos` (Left/Right/Above/Below) — mean of contained atoms.
     about: (f64, f64),
+    // Outside labels may rotate CW when the preferred side is blocked; inside
+    // seeds stay on `pos` so a grown hull is not parked on the wrong edge.
+    flip_sides: bool,
 ) -> Placement {
-    // Stay on the requested `pos` side. Rotating Left→Above parked inside seeds
-    // above the ring so the grown hull stayed tall; refine then could not pull
-    // the label around the ring onto the left.
+    let sides: Vec<Side> = if flip_sides {
+        preferred.all_cw_from().to_vec()
+    } else {
+        vec![preferred]
+    };
     let best = force_region(region, ink, inside, preferred, edge_margin, 0.0, about);
     // Outside / clash-free inside seeds may bump out before the hull grows.
     let max_bump = BOND_PX.max(24.0);
@@ -485,28 +490,26 @@ pub fn place_region_edge(
     ];
     let mut least_bad = best;
     let mut least_pen = f64::INFINITY;
-    for &bump in &bumps {
-        if bump > max_bump + 1e-9 {
-            continue;
+    for side in sides {
+        for &bump in &bumps {
+            if bump > max_bump + 1e-9 {
+                continue;
+            }
+            for &t in &slides {
+                let p = force_region(region, ink, inside, side, edge_margin + bump, t, about);
+                if !occ.clashes(p.bounds, clash_margin) {
+                    return p;
+                }
+                let pen = clash_penalty(occ, p.bounds, clash_margin);
+                if pen < least_pen {
+                    least_pen = pen;
+                    least_bad = p;
+                }
+            }
         }
-        for &t in &slides {
-            let p = force_region(
-                region,
-                ink,
-                inside,
-                preferred,
-                edge_margin + bump,
-                t,
-                about,
-            );
-            if !occ.clashes(p.bounds, clash_margin) {
-                return p;
-            }
-            let pen = clash_penalty(occ, p.bounds, clash_margin);
-            if pen < least_pen {
-                least_pen = pen;
-                least_bad = p;
-            }
+        // Inside: never leave the requested side.
+        if !flip_sides {
+            return least_bad;
         }
     }
     least_bad
@@ -688,7 +691,17 @@ mod tests {
             x1: 10.0,
             y1: 5.0,
         };
-        let p = place_region_edge(&occ, region, ink, true, Side::Above, 3.0, 1.0, region.center());
+        let p = place_region_edge(
+            &occ,
+            region,
+            ink,
+            true,
+            Side::Above,
+            3.0,
+            1.0,
+            region.center(),
+            false,
+        );
         // Label top near region.y0 + margin.
         assert!(
             p.bounds.y0 < 20.0,
