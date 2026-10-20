@@ -1401,7 +1401,10 @@ pub fn install_chem_with_texts(
     world.recompute_group_aabbs();
 }
 
-/// Caption kit: movable AABB, Outside chem, PreferSide, MinimizeDist to chem, clash vs bonds.
+/// Caption kit (solver bench / unit tests only).
+///
+/// Paint places [`crate::doc::caption::apply_mol_captions`] **after** chrome
+/// constraints — the mol name is not a live layout DOF.
 pub fn caption_kit(
     world: &mut LayoutWorld,
     constraints: &mut Vec<Constraint>,

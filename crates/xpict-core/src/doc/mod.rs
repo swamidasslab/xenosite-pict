@@ -410,12 +410,13 @@ pub fn render_doc(spec: &DepictSpec, edge: &EdgeResult) -> Result<Vec<DocPaint>,
         let chrome = spec.resolve_mol_chrome(i);
         validate_mol_shade_colormap(node, &chrome)?;
         let molecule = apply_doc_chrome(base, node, id, &chrome);
-        // Captions first (structure only), then chrome so regions/callouts/labels
-        // can treat the name as an obstacle. Fit last. Do **not** mutate chem
-        // atom text for `atom_label` — that is `star_labels` on `*` atoms only.
+        // Chrome constraints first (regions/callouts/labels). Mol `name` is
+        // **not** in the solver — place it afterward clear of structure + chrome
+        // (including regions). Fit last. Do **not** mutate chem atom text for
+        // `atom_label` — that is `star_labels` on `*` atoms only.
         let scene = depict_molecule(&molecule);
-        let scene = caption::apply_mol_captions(spec, node, scene);
         let scene = chrome_paint::apply_mol_chrome(node, &molecule, scene);
+        let scene = caption::apply_mol_captions(spec, node, scene);
         let scene = fit::fit_scene(scene, fit::resolve_viewport_margin(chrome.pad));
         out.push(DocPaint {
             id: id.clone(),

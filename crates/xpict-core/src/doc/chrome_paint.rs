@@ -69,7 +69,8 @@ pub fn apply_mol_chrome(node: &MolNode, mol: &MoleculeIn, mut scene: Scene) -> S
     let mut label_prims: Vec<(i32, Primitive)> = Vec::new();
     let mut callout_prims: Vec<(i32, Primitive)> = Vec::new();
     let mut halo_prims: Vec<Primitive> = Vec::new();
-    // Mutual clash among chrome labels placed in this pass (+ name).
+    // Mutual clash among chrome labels in this pass. Mol `name` is placed
+    // after chrome (not a constraint); caption_boxes is usually empty here.
     let mut placed_label_boxes: Vec<Aabb> = caption_boxes.clone();
 
     if aromatic {

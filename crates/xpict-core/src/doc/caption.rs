@@ -63,34 +63,52 @@ fn prim_class(p: &Primitive) -> Option<&str> {
     }
 }
 
-fn shade_occupancy_from_scene(scene: &Scene) -> Occupancy {
+/// Chrome + shade obstacles the mol name must clear (placed **after** solve).
+///
+/// Includes regions, callouts, circles, atom numbers/labels, and shade — not
+/// bonds/chem text. Captions themselves are skipped (we are placing them).
+fn annotation_occupancy_from_scene(scene: &Scene) -> Occupancy {
     let mut occ = Occupancy::new();
     for vp in &scene.viewports {
         for layer in &vp.layers {
             for p in &layer.primitives {
-                let Primitive::Circle {
-                    cx,
-                    cy,
-                    r,
-                    class: Some(c),
-                    ..
-                } = p
-                else {
-                    continue;
-                };
-                if !c.contains("shade") {
+                if is_structure_class(prim_class(p)) {
                     continue;
                 }
-                occ.add_aabb(Aabb::new(
-                    vp.x + cx - r,
-                    vp.y + cy - r,
-                    vp.x + cx + r,
-                    vp.y + cy + r,
-                ));
+                add_prim_to_occupancy(&mut occ, p, vp.x, vp.y);
             }
         }
     }
+    for p in &scene.overlays {
+        let c = prim_class(p);
+        if let Some(s) = c {
+            if s.contains("mol-caption") {
+                continue;
+            }
+        }
+        if is_structure_class(c) {
+            continue;
+        }
+        add_prim_to_occupancy(&mut occ, p, 0.0, 0.0);
+    }
+    for p in &scene.halo {
+        if is_structure_class(prim_class(p)) {
+            continue;
+        }
+        add_prim_to_occupancy(&mut occ, p, 0.0, 0.0);
+    }
     occ
+}
+
+fn add_prim_to_occupancy(occ: &mut Occupancy, p: &Primitive, ox: f64, oy: f64) {
+    let mut x0 = f64::INFINITY;
+    let mut y0 = f64::INFINITY;
+    let mut x1 = f64::NEG_INFINITY;
+    let mut y1 = f64::NEG_INFINITY;
+    expand_prim_aabb(p, ox, oy, &mut x0, &mut y0, &mut x1, &mut y1);
+    if x0.is_finite() && x1 > x0 && y1 > y0 {
+        occ.add_aabb(Aabb::new(x0, y0, x1, y1));
+    }
 }
 
 fn expand_prim_aabb(
@@ -259,6 +277,10 @@ struct PlacedCaption {
 /// Prefers privileged [`MolNode::name`]; also paints legacy [`MolNode::label`]
 /// text-node refs. Captions use chem markup. Gap to mol ink uses typographic
 /// **ascent**; viewBox / stack extent uses **descent** (not glyph outline AABB).
+///
+/// Call **after** chrome constraints are solved — the name is not a layout
+/// DOF. Placement snugs to structure, then nudges clear of regions and other
+/// annotations so they do not overlap the label.
 pub fn apply_mol_captions(spec: &DepictSpec, node: &MolNode, mut scene: Scene) -> Scene {
     let mut resolved: Vec<CaptionInk> = Vec::new();
     if let Some(ref name) = node.name {
@@ -433,25 +455,25 @@ pub fn apply_mol_captions(spec: &DepictSpec, node: &MolNode, mut scene: Scene) -
         return scene;
     }
 
-    // Name must clear shade disks already in the chem scene.
-    let shade_occ = shade_occupancy_from_scene(&scene);
+    // Name must clear shade + chrome (regions, callouts, …) already solved.
+    let ann_occ = annotation_occupancy_from_scene(&scene);
     for p in &mut placed {
         let rest = Aabb::new(p.bounds.0, p.bounds.1, p.bounds.2, p.bounds.3);
-        if !shade_occ.clashes(rest, CLASH_MARGIN_PX) {
+        if !ann_occ.clashes(rest, CLASH_MARGIN_PX) {
             continue;
         }
-        // Nudge along preferred axis away from the mol.
+        // Nudge along preferred axis away from the mol / annotations.
         let (dx, dy) = match p.ink.pos {
-            LabelPos::Below => (0.0, CLASH_MARGIN_PX),
-            LabelPos::Above => (0.0, -CLASH_MARGIN_PX),
-            LabelPos::Left => (-CLASH_MARGIN_PX, 0.0),
-            LabelPos::Right => (CLASH_MARGIN_PX, 0.0),
+            LabelPos::Below => (0.0, 2.0),
+            LabelPos::Above => (0.0, -2.0),
+            LabelPos::Left => (-2.0, 0.0),
+            LabelPos::Right => (2.0, 0.0),
         };
-        for step in 1..24 {
+        for step in 1..120 {
             let ox = dx * step as f64;
             let oy = dy * step as f64;
             let cand = Aabb::new(rest.x0 + ox, rest.y0 + oy, rest.x1 + ox, rest.y1 + oy);
-            if !shade_occ.clashes(cand, CLASH_MARGIN_PX) {
+            if !ann_occ.clashes(cand, CLASH_MARGIN_PX) {
                 p.x += ox;
                 p.y += oy;
                 p.bounds.0 += ox;
@@ -976,6 +998,103 @@ mod tests {
         assert!(
             (base_flat - base_desc).abs() < 1.0,
             "baselines should match: flat={base_flat} desc={base_desc}"
+        );
+    }
+
+    #[test]
+    fn name_placed_after_chrome_clears_region() {
+        // Chrome first, then name — caption must not sit on the region hull.
+        use crate::doc::chrome::{
+            FillSpec, RegionField, RegionSpec, RegionStyle, StrokeSpec,
+        };
+        use crate::doc::chrome_paint::apply_mol_chrome;
+
+        let mol = ethanol();
+        let scene = crate::depict::depict_molecule(&mol);
+        let node = MolNode {
+            name: Some(MolText::Styled(MolTextSpec {
+                content: "ethanol".into(),
+                pos: Some(LabelPos::Below),
+                ..Default::default()
+            })),
+            region: Some(RegionField::One(RegionSpec {
+                style: RegionStyle::Box,
+                atoms: vec![0, 1, 2],
+                exclude: vec![],
+                fill: Some(FillSpec {
+                    color: Some("#eee".into()),
+                    opacity: None,
+                }),
+                stroke: Some(StrokeSpec {
+                    color: Some("#c44".into()),
+                    width: Some(1.0),
+                    dash: None,
+                }),
+                text: None,
+                z: None,
+            })),
+            ..Default::default()
+        };
+        let scene = apply_mol_chrome(&node, &mol, scene);
+        let spec: DepictSpec =
+            serde_json::from_str(r#"{"type":"mol","smiles":"CCO","name":"ethanol"}"#).unwrap();
+        let out = apply_mol_captions(&spec, &node, scene);
+
+        let region = out
+            .viewports
+            .iter()
+            .find_map(|vp| {
+                vp.layers.iter().find_map(|l| {
+                    l.primitives.iter().find_map(|p| match p {
+                        Primitive::Path {
+                            d, class: Some(c), ..
+                        } if c.contains("region") => {
+                            let pts = path_xy(d);
+                            let xs: Vec<_> = pts.iter().map(|p| vp.x + p.0).collect();
+                            let ys: Vec<_> = pts.iter().map(|p| vp.y + p.1).collect();
+                            Some(Aabb::new(
+                                xs.iter().cloned().fold(f64::INFINITY, f64::min),
+                                ys.iter().cloned().fold(f64::INFINITY, f64::min),
+                                xs.iter().cloned().fold(f64::NEG_INFINITY, f64::max),
+                                ys.iter().cloned().fold(f64::NEG_INFINITY, f64::max),
+                            ))
+                        }
+                        _ => None,
+                    })
+                })
+            })
+            .expect("region box");
+        let caption = out
+            .overlays
+            .iter()
+            .find_map(|p| match p {
+                Primitive::Path {
+                    d, class: Some(c), ..
+                } if c.contains("mol-caption-metrics") => {
+                    let pts = path_xy(d);
+                    let xs: Vec<_> = pts.iter().map(|p| p.0).collect();
+                    let ys: Vec<_> = pts.iter().map(|p| p.1).collect();
+                    Some(Aabb::new(
+                        xs.iter().cloned().fold(f64::INFINITY, f64::min),
+                        ys.iter().cloned().fold(f64::INFINITY, f64::min),
+                        xs.iter().cloned().fold(f64::NEG_INFINITY, f64::max),
+                        ys.iter().cloned().fold(f64::NEG_INFINITY, f64::max),
+                    ))
+                }
+                _ => None,
+            })
+            .expect("mol-caption-metrics");
+        let gap = CLASH_MARGIN_PX;
+        let padded = caption.inflate(gap);
+        assert!(
+            !padded.overlaps(region),
+            "name {caption:?} must clear region {region:?} by ≥{gap}"
+        );
+        assert!(
+            caption.y0 >= region.y1 - 1e-6 || caption.y1 <= region.y0 + 1e-6
+                || caption.x0 >= region.x1 - 1e-6
+                || caption.x1 <= region.x0 + 1e-6,
+            "name should sit outside the region box (pos=Below)"
         );
     }
 }
