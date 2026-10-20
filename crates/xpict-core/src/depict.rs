@@ -17,9 +17,7 @@ use crate::metrics::{
     BOND_PX, FONT_PX, HALO_OPACITY, MARK_FRAC, PAD_PX, SHADE_FRAC,
 };
 use crate::plotdot::PlotDot;
-use crate::rings::{
-    aromatic_ring_circles, bond_interior_normals, find_sssr, kekule_paint_orders,
-};
+use crate::rings::{aromatic_ring_circles, bond_interior_normals, find_sssr, kekule_paint_orders};
 use crate::scene::{
     AromaticStyle, AtomIn, Layer, LayerName, MoleculeIn, Primitive, Scene, Viewport,
 };
@@ -27,22 +25,10 @@ use crate::scene::{
 /// Paint one molecule into a single-viewport [`Scene`].
 ///
 /// Layers (bottom → top): shading → bonds → labels → marks.
-pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
-    let color = mol.color.as_deref().unwrap_or("#111");
-    let face = FaceStyle::Regular;
-    // User-facing weight (default 1 = house). Helpers convert via diagram_weight.
-    let weight = mol.weight;
-    let _ = mol.diagram_weight(); // validate early
-    let stroke_px = stroke_px_for_weight(weight);
-    let label_grow = label_weight_grow_px(weight);
-    let by_index: HashMap<i32, usize> = mol
-        .atoms
-        .iter()
-        .enumerate()
-        .map(|(i, a)| (a.index, i))
-        .collect();
-
-    // BBox from atom centers (+ mark radii), then pad into positive space.
+/// SVG-frame shift applied by [`depict_molecule`] (chem coords → viewBox ink).
+///
+/// Chrome paint must use the same `(dx, dy)` so annotations land on atoms.
+pub fn frame_offset(mol: &MoleculeIn) -> (f64, f64) {
     let mut min_x = f64::INFINITY;
     let mut min_y = f64::INFINITY;
     let mut max_x = f64::NEG_INFINITY;
@@ -65,7 +51,6 @@ pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
         max_x += mark_r;
         max_y += mark_r;
     }
-    // Extra room for heteroatom labels (OH / NH2 / …) beyond atom centers.
     let label_pad = FONT_PX * 0.85;
     for a in &mol.atoms {
         if display_label(a).is_some() {
@@ -76,8 +61,57 @@ pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
         }
     }
     let pad = PAD_PX;
-    let dx = pad - min_x;
-    let dy = pad - min_y;
+    (pad - min_x, pad - min_y)
+}
+
+pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
+    let color = mol.color.as_deref().unwrap_or("#111");
+    let face = FaceStyle::Regular;
+    // User-facing weight (default 1 = house). Helpers convert via diagram_weight.
+    let weight = mol.weight;
+    let _ = mol.diagram_weight(); // validate early
+    let stroke_px = stroke_px_for_weight(weight);
+    let label_grow = label_weight_grow_px(weight);
+    let by_index: HashMap<i32, usize> = mol
+        .atoms
+        .iter()
+        .enumerate()
+        .map(|(i, a)| (a.index, i))
+        .collect();
+
+    let (dx, dy) = frame_offset(mol);
+    let mut min_x = f64::INFINITY;
+    let mut min_y = f64::INFINITY;
+    let mut max_x = f64::NEG_INFINITY;
+    let mut max_y = f64::NEG_INFINITY;
+    for a in &mol.atoms {
+        min_x = min_x.min(a.x);
+        min_y = min_y.min(a.y);
+        max_x = max_x.max(a.x);
+        max_y = max_y.max(a.y);
+    }
+    if mol.atoms.is_empty() {
+        min_x = 0.0;
+        min_y = 0.0;
+        max_x = 0.0;
+        max_y = 0.0;
+    } else if !mol.mark_atoms.is_empty() {
+        let mark_r = BOND_PX * MARK_FRAC;
+        min_x -= mark_r;
+        min_y -= mark_r;
+        max_x += mark_r;
+        max_y += mark_r;
+    }
+    let label_pad = FONT_PX * 0.85;
+    for a in &mol.atoms {
+        if display_label(a).is_some() {
+            min_x = min_x.min(a.x - label_pad);
+            max_x = max_x.max(a.x + label_pad * 1.6);
+            min_y = min_y.min(a.y - label_pad);
+            max_y = max_y.max(a.y + label_pad);
+        }
+    }
+    let pad = PAD_PX;
     let mut width = (max_x - min_x) + 2.0 * pad;
     let mut height = (max_y - min_y) + 2.0 * pad;
 
@@ -130,14 +164,7 @@ pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
             .and_then(|m| m.get(&key).copied())
             .unwrap_or(bond.order);
         let mut db = DrawnBond::new(
-            bond.index,
-            bond.begin,
-            bond.end,
-            ends.x1,
-            ends.y1,
-            ends.x2,
-            ends.y2,
-            order,
+            bond.index, bond.begin, bond.end, ends.x1, ends.y1, ends.x2, ends.y2, order,
         );
         db.stereo = bond.stereo.clone();
         // Ring membership overrules centered/extend; else keep caller interior.
@@ -162,10 +189,7 @@ pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
             bond.trims.as_ref(),
             Some(stroke_px),
         );
-        let tag = format!(
-            "bond-{} atom-{} atom-{}",
-            bond.index, bond.begin, bond.end
-        );
+        let tag = format!("bond-{} atom-{} atom-{}", bond.index, bond.begin, bond.end);
         for sp in strokes.paint_order() {
             bond_strokes_for_halo.push((*sp).clone());
         }
@@ -201,7 +225,8 @@ pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
         let Some(pl) = pl else { continue };
         let atom_index = mol.atoms[slot].index;
         // Grow canvas if traveling text spills past the initial pad.
-        width = width.max(pl.origin_x + FONT_PX * pl.text.chars().count() as f64 * 0.65 + pad * 0.25);
+        width =
+            width.max(pl.origin_x + FONT_PX * pl.text.chars().count() as f64 * 0.65 + pad * 0.25);
         height = height.max(pl.y + FONT_PX * 0.35 + pad * 0.25);
         if matches!(pl.side, labels::LabelSide::North | labels::LabelSide::South) {
             height = height.max(pl.atom_y + FONT_PX * 1.6 + pad * 0.25);
@@ -232,7 +257,12 @@ pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
 
     let shade_prims = paint_shade(mol, &by_index, dx, dy);
     let mark_prims = paint_marks(mol, &by_index, dx, dy);
-    let halo_prims = paint_halo(&bond_strokes_for_halo, &label_ink_for_halo, stroke_px, weight);
+    let halo_prims = paint_halo(
+        &bond_strokes_for_halo,
+        &label_ink_for_halo,
+        stroke_px,
+        weight,
+    );
 
     let mut debug_prims: Vec<Primitive> = Vec::new();
     if mol.debug_box {
@@ -249,26 +279,14 @@ pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
             let ink = &label_ink_for_halo[ink_i];
             ink_i += 1;
             if let Some((x0, y0, x1, y1)) = ink.bounds() {
-                debug_prims.push(label_debug_rect(
-                    x0,
-                    y0,
-                    x1,
-                    y1,
-                    mol.atoms[slot].index,
-                ));
+                debug_prims.push(label_debug_rect(x0, y0, x1, y1, mol.atoms[slot].index));
             }
         }
         debug_prims.push(mol_debug_rect(width, height));
     }
     if mol.debug_align {
         if let Some(ref ad) = mol.align_debug {
-            debug_prims.extend(paint_align_debug(
-                &mol.atoms,
-                ad,
-                dx,
-                dy,
-                FONT_PX * 0.55,
-            ));
+            debug_prims.extend(paint_align_debug(&mol.atoms, ad, dx, dy, FONT_PX * 0.55));
         }
     }
 
@@ -329,16 +347,20 @@ pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
 
 /// Explicit ``label``, else heteroatom / charged symbol (carbons stay silent).
 ///
+/// `label: Some("")` is an **explicit silence** (no element-symbol fallback).
+/// `label: None` still invents heteroatom / charged carbon text. Chem text is
+/// not owned by chrome annotations — replace via `star_labels` on `*` atoms.
+///
 /// Appends a charge suffix when the label body does not already include one
 /// (matches Python ``display_text``).
 fn display_label(a: &AtomIn) -> Option<String> {
     let mut body = if let Some(ref l) = a.label {
         let t = l.trim();
         if t.is_empty() {
-            None
-        } else {
-            Some(t.to_string())
+            // Explicit empty silence.
+            return None;
         }
+        Some(t.to_string())
     } else {
         None
     };
@@ -433,12 +455,9 @@ fn paint_shade(
     out
 }
 
-fn normalize_shade_scores(zs: &[f64], vmin: f64, vmax: f64) -> Vec<f64> {
+pub(crate) fn normalize_shade_scores(zs: &[f64], vmin: f64, vmax: f64) -> Vec<f64> {
     if vmin >= 0.0 && vmax > 0.0 {
-        return zs
-            .iter()
-            .map(|&z| (z / vmax).clamp(0.0, 1.0))
-            .collect();
+        return zs.iter().map(|&z| (z / vmax).clamp(0.0, 1.0)).collect();
     }
     if vmax <= 0.0 && vmin < 0.0 {
         return zs
@@ -447,9 +466,35 @@ fn normalize_shade_scores(zs: &[f64], vmin: f64, vmax: f64) -> Vec<f64> {
             .collect();
     }
     let scale = vmin.abs().max(vmax.abs()).max(1e-9);
-    zs.iter()
-        .map(|&z| (z / scale).clamp(-1.0, 1.0))
-        .collect()
+    zs.iter().map(|&z| (z / scale).clamp(-1.0, 1.0)).collect()
+}
+
+/// Base radius for PlotDot shade (matches [`paint_shade`]).
+pub(crate) fn shade_base_radius_px(has_atom_shade: bool, has_bond_shade: bool) -> f64 {
+    BOND_PX
+        * (if has_atom_shade && has_bond_shade {
+            0.8
+        } else {
+            SHADE_FRAC
+        })
+}
+
+/// Outer painted shade radius for one normalized score, or `None` if paint skips it.
+///
+/// Clash / Halo must use this — not the house max `SHADE_FRAC` disk.
+pub(crate) fn shade_outer_radius_px(norm_z: f64, base_r: f64) -> Option<f64> {
+    let plot = PlotDot::default();
+    let max_frac = plot
+        .rings(norm_z)
+        .into_iter()
+        .filter(|(r, c)| !(c.abs() < 0.05 && *r < 0.35) && c.abs() >= 0.02)
+        .map(|(r, _)| r)
+        .fold(0.0_f64, f64::max);
+    if max_frac <= 0.0 {
+        None
+    } else {
+        Some(base_r * max_frac)
+    }
 }
 
 /// White knockout under bonds/labels so shade disks don't cover ink.
@@ -701,6 +746,7 @@ mod tests {
             y,
             label: label.map(str::to_string),
             charge: 0,
+            mapno: None,
         }
     }
 
@@ -810,6 +856,7 @@ mod tests {
                     y: 0.0,
                     label: None,
                     charge: 0,
+                    mapno: None,
                 },
                 AtomIn {
                     index: 1,
@@ -819,6 +866,7 @@ mod tests {
                     y: 0.0,
                     label: Some("O".into()),
                     charge: 0,
+                    mapno: None,
                 },
             ],
             bonds: vec![BondIn {
@@ -864,8 +912,7 @@ mod tests {
             .iter()
             .filter_map(|p| match p {
                 Primitive::Path {
-                    data_text: Some(t),
-                    ..
+                    data_text: Some(t), ..
                 } => Some(t.as_str()),
                 _ => None,
             })
@@ -889,8 +936,7 @@ mod tests {
             .iter()
             .filter_map(|p| match p {
                 Primitive::Path {
-                    data_text: Some(t),
-                    ..
+                    data_text: Some(t), ..
                 } => Some(t.as_str()),
                 _ => None,
             })
@@ -900,7 +946,10 @@ mod tests {
             "expected OH/HO path data-text, got {texts:?}"
         );
         assert!(
-            labels.primitives.iter().all(|p| matches!(p, Primitive::Path { .. })),
+            labels
+                .primitives
+                .iter()
+                .all(|p| matches!(p, Primitive::Path { .. })),
             "labels must be glyph paths, not text nodes"
         );
     }
@@ -997,7 +1046,10 @@ mod tests {
                 _ => false,
             })
             .count();
-        assert_eq!(offset_count, 2, "centered C=O must emit exactly two offsets");
+        assert_eq!(
+            offset_count, 2,
+            "centered C=O must emit exactly two offsets"
+        );
         assert!(
             bonds.primitives.iter().all(|p| match p {
                 Primitive::Path {
@@ -1024,6 +1076,7 @@ mod tests {
                 y: -20.0 * ang.sin(),
                 label: None,
                 charge: 0,
+                mapno: None,
             });
         }
         let orders = [1.0, 2.0, 1.0, 2.0, 1.0, 2.0];
@@ -1086,6 +1139,7 @@ mod tests {
                 y: -20.0 * ang.sin(),
                 label: None,
                 charge: 0,
+                mapno: None,
             });
         }
         let mut bonds = Vec::new();
@@ -1173,9 +1227,7 @@ mod tests {
             .primitives
             .iter()
             .filter_map(|p| match p {
-                Primitive::Path {
-                    class: Some(c), ..
-                } => Some(c.as_str()),
+                Primitive::Path { class: Some(c), .. } => Some(c.as_str()),
                 _ => None,
             })
             .collect();
@@ -1194,16 +1246,12 @@ mod tests {
             .find(|l| l.name == LayerName::Bonds)
             .expect("bonds");
         assert!(bond_layer.primitives.iter().all(|p| match p {
-            Primitive::Path {
-                class: Some(c), ..
-            } => !c.contains("debug-box"),
+            Primitive::Path { class: Some(c), .. } => !c.contains("debug-box"),
             _ => true,
         }));
         assert!(
             scene.overlays.iter().any(|p| match p {
-                Primitive::Path {
-                    class: Some(c), ..
-                } => c.contains("debug-box-scene"),
+                Primitive::Path { class: Some(c), .. } => c.contains("debug-box-scene"),
                 _ => false,
             }),
             "expected scene debug box in overlays"
@@ -1216,17 +1264,14 @@ mod tests {
         assert!(scene.viewports[0]
             .layers
             .iter()
-            .all(|l| l.name != LayerName::Overlay || l.primitives.is_empty()
+            .all(|l| l.name != LayerName::Overlay
+                || l.primitives.is_empty()
                 || l.primitives.iter().all(|p| match p {
-                    Primitive::Path {
-                        class: Some(c), ..
-                    } => !c.contains("debug-box"),
+                    Primitive::Path { class: Some(c), .. } => !c.contains("debug-box"),
                     _ => true,
                 })));
         assert!(scene.overlays.iter().all(|p| match p {
-            Primitive::Path {
-                class: Some(c), ..
-            } => !c.contains("debug-box"),
+            Primitive::Path { class: Some(c), .. } => !c.contains("debug-box"),
             _ => true,
         }));
     }
@@ -1251,12 +1296,8 @@ mod tests {
             .primitives
             .iter()
             .filter_map(|p| match p {
-                Primitive::Circle {
-                    class: Some(c), ..
-                }
-                | Primitive::Text {
-                    class: Some(c), ..
-                } => Some(c.as_str()),
+                Primitive::Circle { class: Some(c), .. }
+                | Primitive::Text { class: Some(c), .. } => Some(c.as_str()),
                 _ => None,
             })
             .collect();
@@ -1276,7 +1317,10 @@ mod tests {
                 _ => None,
             })
             .collect();
-        assert!(texts.iter().any(|t| *t == "5"), "tag text 5 missing: {texts:?}");
+        assert!(
+            texts.iter().any(|t| *t == "5"),
+            "tag text 5 missing: {texts:?}"
+        );
         assert!(
             texts.iter().any(|t| t.contains("align→Q")),
             "query badge missing: {texts:?}"
@@ -1320,11 +1364,7 @@ mod tests {
         mol.mark_atoms = vec![2];
         mol.atom_shade = Some(vec![0.0, 0.0, 0.9]);
         let scene = depict_molecule(&mol);
-        let names: Vec<_> = scene.viewports[0]
-            .layers
-            .iter()
-            .map(|l| l.name)
-            .collect();
+        let names: Vec<_> = scene.viewports[0].layers.iter().map(|l| l.name).collect();
         assert!(names.contains(&LayerName::Shading));
         assert!(names.contains(&LayerName::Bonds));
         assert!(names.contains(&LayerName::Marks));
@@ -1335,9 +1375,8 @@ mod tests {
             .find(|l| l.name == LayerName::Shading)
             .expect("shading");
         assert!(shade.primitives.iter().any(|p| match p {
-            Primitive::Circle {
-                fill: Some(f), ..
-            } => f.starts_with("rgb(") && !f.starts_with("rgb(255,222"),
+            Primitive::Circle { fill: Some(f), .. } =>
+                f.starts_with("rgb(") && !f.starts_with("rgb(255,222"),
             _ => false,
         }));
         assert!(!scene.halo.is_empty(), "expected bond/label halo knockout");
@@ -1360,14 +1399,16 @@ mod tests {
             .iter()
             .filter_map(|p| match p {
                 Primitive::Circle {
-                    fill: Some(f),
-                    r,
-                    ..
+                    fill: Some(f), r, ..
                 } => Some((f.clone(), *r)),
                 _ => None,
             })
             .collect();
-        assert!(fills.len() >= 4, "atom+bond shade should emit multiple disks, got {}", fills.len());
+        assert!(
+            fills.len() >= 4,
+            "atom+bond shade should emit multiple disks, got {}",
+            fills.len()
+        );
         // Combined atom+bond → base radius 0.8×bond (not 0.9).
         let max_r = fills.iter().map(|(_, r)| *r).fold(0.0_f64, f64::max);
         assert!(
@@ -1435,7 +1476,12 @@ mod tests {
                 opacity,
                 class: Some(c),
                 ..
-            } => c.contains("mark-halo") && s == "#555" && (*stroke_width - BOND_PX * 0.2).abs() < 1e-9 && (*opacity - 0.45).abs() < 1e-9,
+            } => {
+                c.contains("mark-halo")
+                    && s == "#555"
+                    && (*stroke_width - BOND_PX * 0.2).abs() < 1e-9
+                    && (*opacity - 0.45).abs() < 1e-9
+            }
             _ => false,
         });
         assert!(halo, "expected #555 mark halo underlay");
@@ -1525,8 +1571,7 @@ mod tests {
             .iter()
             .filter_map(|p| match p {
                 Primitive::Path {
-                    data_text: Some(t),
-                    ..
+                    data_text: Some(t), ..
                 } => Some(t.as_str()),
                 _ => None,
             })
@@ -1554,14 +1599,18 @@ mod tests {
                 _ => false,
             })
             .collect();
-        assert_eq!(offsets.len(), 2, "centered C=O must emit exactly two offsets");
+        assert_eq!(
+            offsets.len(),
+            2,
+            "centered C=O must emit exactly two offsets"
+        );
         assert!(bonds.primitives.iter().all(|p| match p {
             Primitive::Path {
                 stroke: Some(s), ..
             } => s == "#336699",
             _ => true,
         }));
-        assert_eq!(crate::metrics::OFFSET_PX, 3.0);
+        assert_eq!(crate::metrics::OFFSET_PX, 4.5);
     }
 
     /// Parity: Python ``test_depict_marks_and_shade_layers``.
@@ -1596,11 +1645,8 @@ mod tests {
             align_debug: None,
         };
         let scene = depict_molecule(&mol);
-        let names: std::collections::HashSet<_> = scene.viewports[0]
-            .layers
-            .iter()
-            .map(|l| l.name)
-            .collect();
+        let names: std::collections::HashSet<_> =
+            scene.viewports[0].layers.iter().map(|l| l.name).collect();
         assert!(names.contains(&LayerName::Shading));
         assert!(names.contains(&LayerName::Bonds));
         assert!(names.contains(&LayerName::Marks));
@@ -1639,7 +1685,9 @@ mod tests {
             "0.85 must not auto-window to full strength (got {max_r} vs base {base_r})"
         );
         let (sx, sy, _) = disks[0];
-        assert!(disks.iter().all(|(x, y, _)| (*x - sx).abs() < 1e-9 && (*y - sy).abs() < 1e-9));
+        assert!(disks
+            .iter()
+            .all(|(x, y, _)| (*x - sx).abs() < 1e-9 && (*y - sy).abs() < 1e-9));
 
         let marks = scene.viewports[0]
             .layers
@@ -1690,10 +1738,7 @@ mod tests {
         // Heteroatom without explicit label still gets a glyph path.
         let mol = MoleculeIn {
             id: None,
-            atoms: vec![
-                atom(0, "C", 0.0, 0.0, None),
-                atom(1, "N", 20.0, 0.0, None),
-            ],
+            atoms: vec![atom(0, "C", 0.0, 0.0, None), atom(1, "N", 20.0, 0.0, None)],
             bonds: vec![BondIn {
                 index: 0,
                 begin: 0,
@@ -1724,8 +1769,7 @@ mod tests {
             .expect("labels");
         assert!(labels.primitives.iter().any(|p| match p {
             Primitive::Path {
-                data_text: Some(t),
-                ..
+                data_text: Some(t), ..
             } => t == "N",
             _ => false,
         }));
@@ -1745,6 +1789,7 @@ mod tests {
             y: 0.0,
             label: Some("  ".into()),
             charge: 0,
+            mapno: None,
         };
         let mol = MoleculeIn {
             id: None,
@@ -1792,14 +1837,15 @@ mod tests {
             .iter()
             .filter_map(|p| match p {
                 Primitive::Path {
-                    data_text: Some(t),
-                    ..
+                    data_text: Some(t), ..
                 } => Some(t.as_str()),
                 _ => None,
             })
             .collect();
         assert!(texts.iter().any(|t| t.contains('⁺') || t.contains('+')));
-        assert!(texts.iter().any(|t| t.contains('⁻') || t.contains('−') || t.contains('-')));
+        assert!(texts
+            .iter()
+            .any(|t| t.contains('⁻') || t.contains('−') || t.contains('-')));
     }
 
     #[test]
@@ -1856,8 +1902,7 @@ mod tests {
             .iter()
             .filter_map(|p| match p {
                 Primitive::Path {
-                    data_text: Some(t),
-                    ..
+                    data_text: Some(t), ..
                 } => Some(t.as_str()),
                 _ => None,
             })
@@ -1897,9 +1942,7 @@ mod tests {
             .primitives
             .iter()
             .filter_map(|p| match p {
-                Primitive::Circle {
-                    fill: Some(f), ..
-                } => Some(f.as_str()),
+                Primitive::Circle { fill: Some(f), .. } => Some(f.as_str()),
                 _ => None,
             })
             .collect();
@@ -1977,9 +2020,9 @@ mod tests {
             .primitives
             .iter()
             .filter(|p| match p {
-                Primitive::Circle {
-                    class: Some(c), ..
-                } => c.contains("atom-2") && c.contains(" mark") && !c.contains("halo"),
+                Primitive::Circle { class: Some(c), .. } => {
+                    c.contains("atom-2") && c.contains(" mark") && !c.contains("halo")
+                }
                 _ => false,
             })
             .count();
@@ -1987,9 +2030,9 @@ mod tests {
             .primitives
             .iter()
             .filter(|p| match p {
-                Primitive::Path {
-                    class: Some(c), ..
-                } => c.contains("bond-mark") && !c.contains("halo"),
+                Primitive::Path { class: Some(c), .. } => {
+                    c.contains("bond-mark") && !c.contains("halo")
+                }
                 _ => false,
             })
             .count();
@@ -2041,7 +2084,9 @@ mod tests {
             .collect();
         assert_eq!(wedges.len(), 1);
         match wedges[0] {
-            Primitive::Path { d, fill: Some(f), .. } => {
+            Primitive::Path {
+                d, fill: Some(f), ..
+            } => {
                 assert!(d.starts_with("M "), "wedge path starts with move: {d}");
                 assert!(d.contains('Z'), "wedge must be closed");
                 assert_eq!(f, "#111");

@@ -155,7 +155,8 @@ fn parse_into(src: &str, out: &mut Vec<ChemGlyph>, bold: bool, italic: bool, in_
                 ScriptRole::Superscript
             };
             if i + 1 < chars.len() && chars[i + 1] == '{' {
-                let (body, end) = read_braced(&chars, i + 1).unwrap_or_else(|| (String::new(), i + 1));
+                let (body, end) =
+                    read_braced(&chars, i + 1).unwrap_or_else(|| (String::new(), i + 1));
                 for ch in body.chars() {
                     push_char(out, ch, role, bold, italic);
                 }
@@ -206,10 +207,7 @@ fn read_command_name(chars: &[char], start: usize) -> (String, usize) {
     // Longest match against known symbols / style cmds.
     let mut name = raw.clone();
     let mut end = j;
-    while !name.is_empty()
-        && lookup_symbol(&name).is_none()
-        && lookup_style_cmd(&name).is_none()
-    {
+    while !name.is_empty() && lookup_symbol(&name).is_none() && lookup_style_cmd(&name).is_none() {
         name.pop();
         end -= 1;
     }

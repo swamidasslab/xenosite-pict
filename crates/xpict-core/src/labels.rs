@@ -636,14 +636,7 @@ fn outline_placed(
     match side {
         LabelSide::East | LabelSide::West => {
             let glyphs = glyphs_for_side(parts, side, style);
-            font::compile_chem_shapes(
-                &glyphs,
-                origin_x,
-                baseline_y,
-                font_px,
-                "start",
-                style,
-            )
+            font::compile_chem_shapes(&glyphs, origin_x, baseline_y, font_px, "start", style)
         }
         LabelSide::North | LabelSide::South => {
             // Stack: center on atom; travel (+ charge) above (N) or below (S).
@@ -667,9 +660,7 @@ fn outline_placed(
                     baseline_y + line_gap
                 };
                 if let Some(ts) = t_shape {
-                    let placed = ts
-                        .scale(scale, -scale, 0.0, 0.0)
-                        .translate(t_origin_x, t_y);
+                    let placed = ts.scale(scale, -scale, 0.0, 0.0).translate(t_origin_x, t_y);
                     acc = Some(match acc.take() {
                         Some(a) => a.union(&placed),
                         None => placed,
@@ -942,22 +933,13 @@ mod tests {
     #[test]
     fn star_label_scripts_via_markup() {
         // Bare underscore is literal (``my_name``-safe).
-        assert_eq!(
-            compose_label(&split_label("R_1"), LabelSide::East),
-            "R_1"
-        );
+        assert_eq!(compose_label(&split_label("R_1"), LabelSide::East), "R_1");
         assert_eq!(
             compose_label(&split_label("my_name"), LabelSide::East),
             "my_name"
         );
-        assert_eq!(
-            compose_label(&split_label("$R_1$"), LabelSide::East),
-            "R₁"
-        );
-        assert_eq!(
-            compose_label(&split_label("R^2"), LabelSide::East),
-            "R²"
-        );
+        assert_eq!(compose_label(&split_label("$R_1$"), LabelSide::East), "R₁");
+        assert_eq!(compose_label(&split_label("R^2"), LabelSide::East), "R²");
         assert_eq!(
             compose_label(&split_label("R^{2+}"), LabelSide::East),
             "R²⁺"
@@ -966,15 +948,26 @@ mod tests {
             compose_label(&split_label(r"$\alpha$"), LabelSide::East),
             "α"
         );
-        assert_eq!(
-            compose_label(&split_label("**R**"), LabelSide::East),
-            "R"
+        assert_eq!(compose_label(&split_label("**R**"), LabelSide::East), "R");
+        let pl = place_label(
+            "$R_1$",
+            0.0,
+            0.0,
+            LabelSide::East,
+            FONT_PX,
+            FaceStyle::Regular,
         );
-        let pl = place_label("$R_1$", 0.0, 0.0, LabelSide::East, FONT_PX, FaceStyle::Regular);
         assert_eq!(pl.text, "R₁");
         assert!(!pl.path_d.is_empty());
         // West anchors on R (not the subscript digit).
-        let west = place_label("$R_1$", 0.0, 0.0, LabelSide::West, FONT_PX, FaceStyle::Regular);
+        let west = place_label(
+            "$R_1$",
+            0.0,
+            0.0,
+            LabelSide::West,
+            FONT_PX,
+            FaceStyle::Regular,
+        );
         assert_eq!(west.text, "R₁");
         assert!(west.origin_x < 0.0 || west.origin_x.abs() < FONT_PX);
     }
@@ -986,18 +979,9 @@ mod tests {
         // second superscript lift made top too high and bottom crowded.
         let parts = split_label("NH4+");
         assert_eq!(compose_label(&parts, LabelSide::East), "NH₄+");
-        assert_eq!(
-            compose_label(&split_label("N+"), LabelSide::East),
-            "N+"
-        );
-        assert_eq!(
-            compose_label(&split_label("Fe2+"), LabelSide::East),
-            "Fe2+"
-        );
-        assert_eq!(
-            compose_label(&split_label("O−"), LabelSide::East),
-            "O-"
-        );
+        assert_eq!(compose_label(&split_label("N+"), LabelSide::East), "N+");
+        assert_eq!(compose_label(&split_label("Fe2+"), LabelSide::East), "Fe2+");
+        assert_eq!(compose_label(&split_label("O−"), LabelSide::East), "O-");
         // Explicit caret markup still superscripts.
         assert_eq!(
             compose_label(&split_label("R^{2+}"), LabelSide::East),
@@ -1018,10 +1002,7 @@ mod tests {
             assert_eq!(g.last().map(|x| x.ch), Some(sign));
         }
         let fe = charge_glyphs(split_label("Fe3+").charge, FaceStyle::Regular);
-        assert_eq!(
-            fe.iter().map(|x| x.ch).collect::<String>(),
-            "3+"
-        );
+        assert_eq!(fe.iter().map(|x| x.ch).collect::<String>(), "3+");
         // Caret markup path still uses Superscript (contrast).
         let caret = markup::parse_label_markup("^+", FaceStyle::Regular);
         assert_eq!(caret.len(), 1);
@@ -1216,13 +1197,15 @@ mod tests {
                 label: None,
             },
         ];
-        let bonds = vec![
-            BondIn { begin: 0, end: 1 },
-            BondIn { begin: 1, end: 2 },
-        ];
+        let bonds = vec![BondIn { begin: 0, end: 1 }, BondIn { begin: 1, end: 2 }];
         let (out, labels) = place_backbone(&atoms, &bonds, FONT_PX, FaceStyle::Regular, 1.0);
         let lab = labels[1].as_ref().expect("O+");
-        assert_eq!(lab.side, LabelSide::East, "expected East charge side, got {:?}", lab.side);
+        assert_eq!(
+            lab.side,
+            LabelSide::East,
+            "expected East charge side, got {:?}",
+            lab.side
+        );
         assert!(
             lab.text.contains('⁺') || lab.text.contains('+'),
             "expected charge in label text, got {}",
@@ -1271,14 +1254,8 @@ mod tests {
 
     #[test]
     fn side_from_neighbors() {
-        assert_eq!(
-            label_side((0.0, 0.0), &[(10.0, 0.0)]),
-            LabelSide::West
-        );
-        assert_eq!(
-            label_side((0.0, 0.0), &[(-10.0, 0.0)]),
-            LabelSide::East
-        );
+        assert_eq!(label_side((0.0, 0.0), &[(10.0, 0.0)]), LabelSide::West);
+        assert_eq!(label_side((0.0, 0.0), &[(-10.0, 0.0)]), LabelSide::East);
         // Steep vertical, degree > 1 → N/S.
         assert_eq!(
             label_side((0.0, 0.0), &[(1.0, 10.0), (-1.0, 10.0)]),
@@ -1404,7 +1381,14 @@ mod tests {
 
     #[test]
     fn star_label_emits_path() {
-        let pl = place_label("*", 10.0, 10.0, LabelSide::East, FONT_PX, FaceStyle::Regular);
+        let pl = place_label(
+            "*",
+            10.0,
+            10.0,
+            LabelSide::East,
+            FONT_PX,
+            FaceStyle::Regular,
+        );
         assert_eq!(pl.text, "*");
         assert!(!pl.path_d.is_empty());
     }
@@ -1436,41 +1420,40 @@ mod tests {
 
     #[test]
     fn label_side_degree0_and_vertical_degree1() {
-        assert_eq!(
-            label_side_for((0.0, 0.0), &[], Some("O")),
-            LabelSide::West
-        );
-        assert_eq!(
-            label_side_for((0.0, 0.0), &[], Some("C")),
-            LabelSide::East
-        );
+        assert_eq!(label_side_for((0.0, 0.0), &[], Some("O")), LabelSide::West);
+        assert_eq!(label_side_for((0.0, 0.0), &[], Some("C")), LabelSide::East);
         // Degree-1 steep vertical → forced East (RDKit).
-        assert_eq!(
-            label_side((0.0, 0.0), &[(0.0, 20.0)]),
-            LabelSide::East
-        );
+        assert_eq!(label_side((0.0, 0.0), &[(0.0, 20.0)]), LabelSide::East);
     }
 
     #[test]
     fn label_side_degree3_keeps_north_south() {
         // Three neighbors with a near-vertical bond.
-        let side = label_side(
-            (0.0, 0.0),
-            &[(10.0, 2.0), (-10.0, 2.0), (0.0, 15.0)],
-        );
+        let side = label_side((0.0, 0.0), &[(10.0, 2.0), (-10.0, 2.0), (0.0, 15.0)]);
         assert_eq!(side, LabelSide::North);
 
-        let south = label_side(
-            (0.0, 0.0),
-            &[(10.0, -2.0), (-10.0, -2.0), (0.0, -15.0)],
-        );
+        let south = label_side((0.0, 0.0), &[(10.0, -2.0), (-10.0, -2.0), (0.0, -15.0)]);
         assert_eq!(south, LabelSide::South);
     }
 
     #[test]
     fn north_south_nh2_stacks_and_compose_charge() {
-        let north = place_label("NH2", 50.0, 50.0, LabelSide::North, FONT_PX, FaceStyle::Regular);
-        let south = place_label("NH2", 50.0, 50.0, LabelSide::South, FONT_PX, FaceStyle::Regular);
+        let north = place_label(
+            "NH2",
+            50.0,
+            50.0,
+            LabelSide::North,
+            FONT_PX,
+            FaceStyle::Regular,
+        );
+        let south = place_label(
+            "NH2",
+            50.0,
+            50.0,
+            LabelSide::South,
+            FONT_PX,
+            FaceStyle::Regular,
+        );
         assert!(north.path_d.contains('M'));
         assert!(south.path_d.contains('M'));
         assert_eq!(north.text, "NH₂");
@@ -1479,7 +1462,14 @@ mod tests {
 
         let parts = split_label("Fe2+");
         assert_eq!(compose_label(&parts, LabelSide::East), "Fe2+");
-        let west_abbr = place_label("GlcA", 0.0, 0.0, LabelSide::West, FONT_PX, FaceStyle::Regular);
+        let west_abbr = place_label(
+            "GlcA",
+            0.0,
+            0.0,
+            LabelSide::West,
+            FONT_PX,
+            FaceStyle::Regular,
+        );
         assert!(!west_abbr.path_d.is_empty());
     }
 
@@ -1504,7 +1494,14 @@ mod tests {
 
     #[test]
     fn charged_west_oh_and_empty_label_skipped() {
-        let pl = place_label("OH+", 10.0, 10.0, LabelSide::West, FONT_PX, FaceStyle::Regular);
+        let pl = place_label(
+            "OH+",
+            10.0,
+            10.0,
+            LabelSide::West,
+            FONT_PX,
+            FaceStyle::Regular,
+        );
         assert!(pl.text.contains('⁺') || pl.text.contains('+'));
         assert!(!pl.path_d.is_empty());
 
@@ -1575,20 +1572,13 @@ mod tests {
         let north = label_side(
             (0.0, 0.0),
             &[
-                (1.0, 10.0),  // near vertical south neighbor sum → North
+                (1.0, 10.0), // near vertical south neighbor sum → North
                 (8.0, 1.0),
                 (-8.0, 1.0),
             ],
         );
         assert_eq!(north, LabelSide::North);
-        let south = label_side(
-            (0.0, 0.0),
-            &[
-                (1.0, -10.0),
-                (8.0, -1.0),
-                (-8.0, -1.0),
-            ],
-        );
+        let south = label_side((0.0, 0.0), &[(1.0, -10.0), (8.0, -1.0), (-8.0, -1.0)]);
         assert_eq!(south, LabelSide::South);
     }
 }

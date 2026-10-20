@@ -51,14 +51,7 @@ pub fn centered_displacements(order: f64, off: f64) -> Vec<f64> {
     }
 }
 
-pub fn shorten(
-    x1: f64,
-    y1: f64,
-    x2: f64,
-    y2: f64,
-    gap1: f64,
-    gap2: f64,
-) -> (f64, f64, f64, f64) {
+pub fn shorten(x1: f64, y1: f64, x2: f64, y2: f64, gap1: f64, gap2: f64) -> (f64, f64, f64, f64) {
     let dx = x2 - x1;
     let dy = y2 - y1;
     let length = (dx * dx + dy * dy).sqrt().max(1.0);
@@ -88,22 +81,9 @@ fn fmt2(v: f64) -> String {
     format!("{v:.2}")
 }
 
-fn line_path(
-    x1: f64,
-    y1: f64,
-    x2: f64,
-    y2: f64,
-    class: &str,
-    width: f64,
-) -> StrokePath {
+fn line_path(x1: f64, y1: f64, x2: f64, y2: f64, class: &str, width: f64) -> StrokePath {
     StrokePath {
-        d: format!(
-            "M {} {} L {} {}",
-            fmt2(x1),
-            fmt2(y1),
-            fmt2(x2),
-            fmt2(y2)
-        ),
+        d: format!("M {} {} L {} {}", fmt2(x1), fmt2(y1), fmt2(x2), fmt2(y2)),
         stroke: "#111".into(),
         fill: None,
         stroke_width: width,
@@ -140,11 +120,7 @@ impl StrokePath {
 
     pub fn with_color(mut self, color: &str) -> Self {
         self.stroke = color.into();
-        if self
-            .fill
-            .as_ref()
-            .is_some_and(|f| f != "none")
-        {
+        if self.fill.as_ref().is_some_and(|f| f != "none") {
             self.fill = Some(color.into());
         }
         self
@@ -257,14 +233,7 @@ fn hashed_wedge_sw(
 }
 
 /// Wiggly single for unspecified stereo (e.g. RDKit UNKNOWN).
-pub fn wavy_bond(
-    x1: f64,
-    y1: f64,
-    x2: f64,
-    y2: f64,
-    amp: Option<f64>,
-    waves: usize,
-) -> StrokePath {
+pub fn wavy_bond(x1: f64, y1: f64, x2: f64, y2: f64, amp: Option<f64>, waves: usize) -> StrokePath {
     wavy_bond_sw(x1, y1, x2, y2, amp, waves, STROKE_PX)
 }
 
@@ -484,22 +453,15 @@ pub fn join_centered_multibonds(bonds: &mut [DrawnBond]) {
         if !centered_multi(&bonds[bi]) {
             continue;
         }
-        let (_ux, _uy, _nx, _ny, length) = unit(
-            bonds[bi].x1,
-            bonds[bi].y1,
-            bonds[bi].x2,
-            bonds[bi].y2,
-        );
+        let (_ux, _uy, _nx, _ny, length) =
+            unit(bonds[bi].x1, bonds[bi].y1, bonds[bi].x2, bonds[bi].y2);
         if length < 1.0 {
             continue;
         }
         let off = multi_bond_offset(length);
         let disps = centered_displacements(depict_order(bonds[bi].order), off);
         let end_disps = (disps.clone(), disps.iter().map(|d| -d).collect::<Vec<_>>());
-        let mut trims = (
-            vec![0.0; disps.len()],
-            vec![0.0; disps.len()],
-        );
+        let mut trims = (vec![0.0; disps.len()], vec![0.0; disps.len()]);
         let mut joined = false;
         let t_lo = -0.5 * length;
         let t_hi = JOIN_MAX_T_FRAC * length;
@@ -995,14 +957,7 @@ mod tests {
         );
         for path in &strokes.offsets {
             let end = path_pts(&path.d)[0];
-            assert!(on_line(
-                end.0,
-                end.1,
-                bonds[1].x1,
-                bonds[1].y1,
-                -10.0,
-                10.0
-            ));
+            assert!(on_line(end.0, end.1, bonds[1].x1, bonds[1].y1, -10.0, 10.0));
         }
     }
 
@@ -1052,33 +1007,28 @@ mod tests {
         );
         for path in &strokes.offsets {
             let end = path_pts(&path.d)[1];
-            assert!(on_line(
-                end.0,
-                end.1,
-                bonds[1].x1,
-                bonds[1].y1,
-                30.0,
-                -10.0
-            ));
+            assert!(on_line(end.0, end.1, bonds[1].x1, bonds[1].y1, 30.0, -10.0));
         }
     }
 
     #[test]
     fn acute_two_singles_still_land_on_lines() {
         // ~25° between singles — old JOIN_MIN_SIN (0.34) rejected this angle.
+        // Coords scale with BOND_PX so OFFSET_PX / bond length stays house-like.
+        let s = BOND_PX / 20.0;
         let mut bonds = vec![
-            DrawnBond::new(0, 0, 1, 0.0, 0.0, 20.0, 0.0, 2.0),
-            DrawnBond::new(1, 0, 2, 0.0, 0.0, -18.0, 4.0, 1.0),
-            DrawnBond::new(2, 0, 3, 0.0, 0.0, -18.0, -4.0, 1.0),
+            DrawnBond::new(0, 0, 1, 0.0, 0.0, 20.0 * s, 0.0, 2.0),
+            DrawnBond::new(1, 0, 2, 0.0, 0.0, -18.0 * s, 4.0 * s, 1.0),
+            DrawnBond::new(2, 0, 3, 0.0, 0.0, -18.0 * s, -4.0 * s, 1.0),
         ];
         join_centered_multibonds(&mut bonds);
         let trims = bonds[0].trims.as_ref().expect("trims at acute junction");
         assert!(trims.0.iter().all(|&t| t < 0.0));
-        let strokes = bond_strokes(0.0, 0.0, 20.0, 0.0, 2.0, None, None, Some(trims), None);
+        let strokes = bond_strokes(0.0, 0.0, 20.0 * s, 0.0, 2.0, None, None, Some(trims), None);
         for path in &strokes.offsets {
             let (x, y) = path_pts(&path.d)[0];
-            let on_upper = on_line(x, y, 0.0, 0.0, -18.0, 4.0);
-            let on_lower = on_line(x, y, 0.0, 0.0, -18.0, -4.0);
+            let on_upper = on_line(x, y, 0.0, 0.0, -18.0 * s, 4.0 * s);
+            let on_lower = on_line(x, y, 0.0, 0.0, -18.0 * s, -4.0 * s);
             assert!(on_upper || on_lower, "end ({x},{y}) not on a single");
             assert!(x < -0.2);
         }
@@ -1192,17 +1142,7 @@ mod tests {
 
     #[test]
     fn interior_triple_emits_two_side_offsets() {
-        let strokes = bond_strokes(
-            0.0,
-            0.0,
-            30.0,
-            0.0,
-            3.0,
-            Some((0.0, 1.0)),
-            None,
-            None,
-            None,
-        );
+        let strokes = bond_strokes(0.0, 0.0, 30.0, 0.0, 3.0, Some((0.0, 1.0)), None, None, None);
         assert!(strokes.skeleton.is_some());
         assert_eq!(strokes.offsets.len(), 2);
     }

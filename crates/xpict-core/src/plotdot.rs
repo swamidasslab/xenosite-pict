@@ -30,7 +30,9 @@ impl Default for PlotDot {
 impl PlotDot {
     pub fn new(levels: usize) -> Self {
         let levels = levels.max(1);
-        let stops = (0..levels).map(|i| (i + 1) as f64 / levels as f64).collect();
+        let stops = (0..levels)
+            .map(|i| (i + 1) as f64 / levels as f64)
+            .collect();
         Self { levels, stops }
     }
 
@@ -102,10 +104,8 @@ mod tests {
 
     #[test]
     fn skips_near_zero_scores() {
-        let dots = PlotDot::default().disks(
-            &[0.0, 0.01, 0.9],
-            &[(0.0, 0.0), (1.0, 0.0), (2.0, 0.0)],
-        );
+        let dots =
+            PlotDot::default().disks(&[0.0, 0.01, 0.9], &[(0.0, 0.0), (1.0, 0.0), (2.0, 0.0)]);
         assert!(dots.iter().all(|d| d.color_z.abs() >= 0.05));
         assert!(dots.iter().any(|d| d.color_z.abs() > 0.5));
     }

@@ -100,17 +100,18 @@ def test_plus_chain_aligns_aromatics_onto_previous():
 
 
 def test_mol_label_sugar_paints_caption_in_svg():
-    """``mol(..., label=)`` → text node; Rust paints caption into the mol SVG."""
-    from xpict.contracts.depict import GroupNode, LabelPlacement, TextNode
+    """``mol(..., name=)`` → ``MolNode.name``; Rust paints caption into the mol SVG."""
+    from xpict.contracts.depict import MolNode, MolTextSpec
     from xpict.display import render_depict_mols
 
-    one = mol("CCO", label="ethanol")
-    assert isinstance(one.to_spec().root, GroupNode)
-    kids = one.to_spec().root.children
-    assert any(isinstance(c, TextNode) and c.text == "ethanol" for c in kids)
-    lab = one.to_spec().mols()[0].label
-    assert isinstance(lab, LabelPlacement)
-    assert lab.pos == "below"
+    one = mol("CCO", name="ethanol")
+    root = one.to_spec().root
+    assert isinstance(root, MolNode)
+    assert root.name == "ethanol"
+
+    styled = mol("CCO", label="ethanol", label_pos="above")
+    assert isinstance(styled.to_node().name, MolTextSpec)
+    assert styled.to_node().name.pos == "above"  # type: ignore[union-attr]
 
     rows = render_depict_mols(one.to_spec())
     svg = rows[0].to_svg()
@@ -119,8 +120,8 @@ def test_mol_label_sugar_paints_caption_in_svg():
 
     fig = (
         mol("c1ccccc1")
-        | mol("c1ccc(O)c(CC)c1").opts(label="C2")
-        + mol("COc1ccccc1", label="C3")
+        | mol("c1ccc(O)c(CC)c1", name="C2")
+        + mol("COc1ccccc1", name="C3")
         + mol("Cc1ccccc1").with_label("C4", pos="above")
     )
     html = fig._repr_html_()

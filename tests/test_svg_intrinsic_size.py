@@ -9,8 +9,8 @@ from urllib.parse import unquote
 from xpict import Pict
 from xpict.rendered import svg_to_data_uri, svg_to_img_tag
 
-# Drawing units ≈ CSS px for data-URI <img> (Rust SCALE is 20).
-SCALE = 20.0
+# Drawing units ≈ CSS px for data-URI <img> (Rust SCALE is 30).
+SCALE = 30.0
 
 _ROOT = re.compile(r"<svg\b([^>]*)>", re.DOTALL)
 _ATTR = re.compile(r'([\w:-]+)="([^"]*)"')
@@ -22,8 +22,8 @@ def _root_attrs(markup: str) -> dict[str, str]:
     return dict(_ATTR.findall(m.group(1)))
 
 
-def test_scale_default_is_twenty():
-    assert SCALE == 20.0
+def test_scale_default_is_thirty():
+    assert SCALE == 30.0
 
 
 def test_render_svg_sets_width_height_matching_viewbox():

@@ -118,6 +118,7 @@ mod tests {
                     y: 0.0,
                     label: Some("*".into()),
                     charge: 0,
+                    mapno: None,
                 },
                 AtomIn {
                     index: 1,
@@ -127,6 +128,7 @@ mod tests {
                     y: 0.0,
                     label: None,
                     charge: 0,
+                    mapno: None,
                 },
                 AtomIn {
                     index: 2,
@@ -136,6 +138,7 @@ mod tests {
                     y: 0.0,
                     label: Some("*".into()),
                     charge: 0,
+                    mapno: None,
                 },
             ],
             bonds: vec![

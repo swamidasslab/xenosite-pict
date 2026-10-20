@@ -19,15 +19,7 @@ const EQ_SEP: f64 = 3.2;
 pub const ANCHOR_GAP: f64 = 6.0;
 
 /// Axis-aligned box around ``(cx,cy)`` clipped toward ``(tx,ty)``.
-pub fn clip_box_edge(
-    cx: f64,
-    cy: f64,
-    tx: f64,
-    ty: f64,
-    w: f64,
-    h: f64,
-    pad: f64,
-) -> Pt {
+pub fn clip_box_edge(cx: f64, cy: f64, tx: f64, ty: f64, w: f64, h: f64, pad: f64) -> Pt {
     let dx = tx - cx;
     let dy = ty - cy;
     if dx.abs() < 1e-9 && dy.abs() < 1e-9 {
@@ -52,11 +44,7 @@ pub fn clip_box_edge(
 /// Viewport-boundary anchors between two molecule boxes.
 ///
 /// Each box is ``(x, y, width, height)`` in document space.
-pub fn edge_anchors(
-    src: (f64, f64, f64, f64),
-    tgt: (f64, f64, f64, f64),
-    pad: f64,
-) -> (Pt, Pt) {
+pub fn edge_anchors(src: (f64, f64, f64, f64), tgt: (f64, f64, f64, f64), pad: f64) -> (Pt, Pt) {
     let (sx, sy, sw, sh) = src;
     let (tx, ty, tw, th) = tgt;
     let scx = sx + sw * 0.5;
@@ -362,11 +350,7 @@ fn path_prim(
         stroke: stroke.to_string(),
         fill: fill.to_string(),
         stroke_width: width,
-        stroke_dasharray: if dashed {
-            Some(DASH.to_string())
-        } else {
-            None
-        },
+        stroke_dasharray: if dashed { Some(DASH.to_string()) } else { None },
         class: class.to_string(),
     }
 }
@@ -595,11 +579,7 @@ pub fn edge_primitives(edge: &EdgePaintIn) -> Vec<EdgePrim> {
 mod tests {
     use super::*;
 
-    fn paint(
-        pts: Vec<Pt>,
-        arrow: EdgeArrow,
-        routing: Option<EdgeRouting>,
-    ) -> EdgePaintIn {
+    fn paint(pts: Vec<Pt>, arrow: EdgeArrow, routing: Option<EdgeRouting>) -> EdgePaintIn {
         EdgePaintIn {
             pts,
             arrow,

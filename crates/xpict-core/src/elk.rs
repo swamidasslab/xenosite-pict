@@ -45,10 +45,7 @@ fn algorithm_elk(a: LayoutAlgorithm) -> &'static str {
 ///
 /// Reaction diagrams pack tightly (node spacing ~20, layer spacing ~0) and pin
 /// `unnecessaryBendpoints=false` so shafts only bend where they turn.
-pub fn scheme_layout_options(
-    kind: DiagramKind,
-    opts: &LayoutOpts,
-) -> BTreeMap<String, String> {
+pub fn scheme_layout_options(kind: DiagramKind, opts: &LayoutOpts) -> BTreeMap<String, String> {
     let mut base: BTreeMap<String, String> = BTreeMap::from([
         ("elk.algorithm".into(), "layered".into()),
         ("elk.direction".into(), "RIGHT".into()),
@@ -58,8 +55,14 @@ pub fn scheme_layout_options(
         ("elk.spacing.nodeNode".into(), "40".into()),
         ("elk.spacing.edgeEdge".into(), "16".into()),
         ("elk.spacing.edgeNode".into(), "20".into()),
-        ("elk.layered.spacing.nodeNodeBetweenLayers".into(), "48".into()),
-        ("elk.layered.spacing.edgeNodeBetweenLayers".into(), "24".into()),
+        (
+            "elk.layered.spacing.nodeNodeBetweenLayers".into(),
+            "48".into(),
+        ),
+        (
+            "elk.layered.spacing.edgeNodeBetweenLayers".into(),
+            "24".into(),
+        ),
         (
             "elk.layered.crossingMinimization.strategy".into(),
             "LAYER_SWEEP".into(),
@@ -259,7 +262,10 @@ mod tests {
         }
         assert!(bx.unwrap() > ax.unwrap(), "b.x should be > a.x: {out}");
         let edge = &parsed["edges"][0];
-        assert!(edge["sections"].as_array().map(|s| !s.is_empty()).unwrap_or(false));
+        assert!(edge["sections"]
+            .as_array()
+            .map(|s| !s.is_empty())
+            .unwrap_or(false));
         assert!(edge["sections"][0].get("startPoint").is_some());
     }
 

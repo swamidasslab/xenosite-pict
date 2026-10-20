@@ -264,9 +264,15 @@ pub const XENOSITE: [[f64; 3]; 256] = [
 /// Sample the named colormap (default: xenosite). `z` in [0,1] sequential,
 /// or pass `diverging=true` to remap [-1,1] → [0,1] first.
 pub fn sample_colormap(z: f64, diverging: bool) -> [f64; 3] {
-    let t = if diverging { ((z + 1.0) * 0.5).clamp(0.0, 1.0) } else { z.clamp(0.0, 1.0) };
+    let t = if diverging {
+        ((z + 1.0) * 0.5).clamp(0.0, 1.0)
+    } else {
+        z.clamp(0.0, 1.0)
+    };
     let n = XENOSITE.len();
-    if n == 1 { return XENOSITE[0]; }
+    if n == 1 {
+        return XENOSITE[0];
+    }
     let x = t * (n - 1) as f64;
     let i = (x as usize).min(n - 2);
     let f = x - i as f64;

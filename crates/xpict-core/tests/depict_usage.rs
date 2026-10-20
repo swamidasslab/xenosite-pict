@@ -26,6 +26,7 @@ fn atom_charged(
         y,
         label: label.map(str::to_string),
         charge,
+        mapno: None,
     }
 }
 
@@ -205,7 +206,9 @@ fn ammonium_charge_superscript() {
     };
     let texts = label_texts(&depict_molecule(&mol));
     assert!(
-        texts.iter().any(|t| t.contains('₄') && (t.contains('⁺') || t.contains('+'))),
+        texts
+            .iter()
+            .any(|t| t.contains('₄') && (t.contains('⁺') || t.contains('+'))),
         "expected NH₄⁺, got {texts:?}"
     );
 }
@@ -243,9 +246,18 @@ fn markush_and_star_markup_labels() {
     };
     let texts = label_texts(&depict_molecule(&mol));
     let joined = texts.join("|");
-    assert!(joined.contains('₁') || texts.iter().any(|t| t == "R₁"), "R₁ missing: {texts:?}");
-    assert!(joined.contains('²') || texts.iter().any(|t| t == "R²"), "R² missing: {texts:?}");
-    assert!(texts.iter().any(|t| t.contains('α')), "α missing: {texts:?}");
+    assert!(
+        joined.contains('₁') || texts.iter().any(|t| t == "R₁"),
+        "R₁ missing: {texts:?}"
+    );
+    assert!(
+        joined.contains('²') || texts.iter().any(|t| t == "R²"),
+        "R² missing: {texts:?}"
+    );
+    assert!(
+        texts.iter().any(|t| t.contains('α')),
+        "α missing: {texts:?}"
+    );
     assert!(texts.iter().any(|t| t == "*"), "star missing: {texts:?}");
 }
 
@@ -289,11 +301,7 @@ fn acetone_double_bond_and_carbonyl_label() {
             atom(2, "O", 0.0, -20.0, Some("O")),
             atom(3, "C", 20.0, 8.0, None),
         ],
-        bonds: vec![
-            bond(0, 0, 1, 1.0),
-            bond(1, 1, 2, 2.0),
-            bond(2, 1, 3, 1.0),
-        ],
+        bonds: vec![bond(0, 0, 1, 1.0), bond(1, 1, 2, 2.0), bond(2, 1, 3, 1.0)],
         color: Some("#336699".into()),
         atom_shade: None,
         bond_shade: None,
@@ -316,7 +324,10 @@ fn acetone_double_bond_and_carbonyl_label() {
         bond_path_count(&scene)
     );
     let texts = label_texts(&scene);
-    assert!(texts.iter().any(|t| t == "O"), "carbonyl O label: {texts:?}");
+    assert!(
+        texts.iter().any(|t| t == "O"),
+        "carbonyl O label: {texts:?}"
+    );
 }
 
 #[test]
@@ -487,11 +498,15 @@ fn formal_charge_on_nh2_and_silent_carbon() {
     };
     let texts = label_texts(&depict_molecule(&mol));
     assert!(
-        texts.iter().any(|t| t.contains('C') && (t.contains('⁺') || t.contains('+'))),
+        texts
+            .iter()
+            .any(|t| t.contains('C') && (t.contains('⁺') || t.contains('+'))),
         "charged C should show C⁺, got {texts:?}"
     );
     assert!(
-        texts.iter().any(|t| t.contains('₂') && (t.contains('⁺') || t.contains('+'))),
+        texts
+            .iter()
+            .any(|t| t.contains('₂') && (t.contains('⁺') || t.contains('+'))),
         "NH2+charge → NH₂⁺, got {texts:?}"
     );
     // Label already has +; AtomIn.charge must not double it.

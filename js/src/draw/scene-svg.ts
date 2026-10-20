@@ -114,7 +114,12 @@ function renderViewportLayers(vp: Viewport, names: string[]): string {
     const body = layer.primitives.map(renderPrimitive).join("");
     chunks.push(`<g class="xpict-layer xpict-${esc(layer.name)}">${body}</g>`);
   }
-  return chunks.join("");
+  if (!chunks.length) return "";
+  const x = vp.x ?? 0;
+  const y = vp.y ?? 0;
+  const inner = chunks.join("");
+  if (x === 0 && y === 0) return inner;
+  return `<g transform="translate(${fmt(x)},${fmt(y)})">${inner}</g>`;
 }
 
 /** Serialize a Scene document to SVG (width/height = viewBox = SCALE units). */

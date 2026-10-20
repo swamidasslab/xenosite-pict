@@ -12,7 +12,7 @@ import { ensureRdkit, type RdkitMol, type RdkitModule } from "../rdkit-loader.js
 import { elementSymbol } from "../elements.js";
 
 /** Bond length target in drawing units (matches Rust `SCALE` / Python). */
-export const SCALE = 20;
+export const SCALE = 30;
 
 /**
  * Keep in sync with ``xpict::align_opts::MCS_DETAILS_JSON``.
@@ -188,6 +188,12 @@ export type MoleculeIn = {
   weight?: number;
   /** Uniform diagram scale (`1` = house). Omitted → `1`. */
   scale?: number;
+  /** Aromatic ring paint: ``circle`` (default) or ``kekule``. */
+  aromatic?: "circle" | "kekule";
+  /** Paint dashed debug rectangles for layout boxes. */
+  debug_box?: boolean;
+  /** Paint alignment correspondence overlays. */
+  debug_align?: boolean;
 };
 
 function elementFromZ(z: number | undefined): string {

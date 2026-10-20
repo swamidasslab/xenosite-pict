@@ -45,11 +45,7 @@ fn bond_key(a: i32, b: i32) -> (i32, i32) {
 }
 
 fn adjacency(mol: &MoleculeIn) -> HashMap<i32, Vec<i32>> {
-    let mut adj: HashMap<i32, Vec<i32>> = mol
-        .atoms
-        .iter()
-        .map(|a| (a.index, Vec::new()))
-        .collect();
+    let mut adj: HashMap<i32, Vec<i32>> = mol.atoms.iter().map(|a| (a.index, Vec::new())).collect();
     for b in &mol.bonds {
         adj.entry(b.begin).or_default().push(b.end);
         adj.entry(b.end).or_default().push(b.begin);
@@ -148,11 +144,7 @@ pub fn find_sssr(mol: &MoleculeIn, max_size: usize) -> Vec<Ring> {
         }
     }
     let mut rings: Vec<Ring> = by_bonds.into_values().collect();
-    rings.sort_by(|a, b| {
-        a.size()
-            .cmp(&b.size())
-            .then_with(|| a.atoms.cmp(&b.atoms))
-    });
+    rings.sort_by(|a, b| a.size().cmp(&b.size()).then_with(|| a.atoms.cmp(&b.atoms)));
     // Greedy cover: prefer smaller rings; keep a ring if it adds a new bond.
     let mut kept = Vec::new();
     let mut covered: HashSet<(i32, i32)> = HashSet::new();
@@ -228,18 +220,12 @@ pub fn bond_interior_normals(
     normals
 }
 
-fn ring_is_fully_aromatic(
-    ring: &Ring,
-    order_by_bond: &HashMap<(i32, i32), f64>,
-) -> bool {
+fn ring_is_fully_aromatic(ring: &Ring, order_by_bond: &HashMap<(i32, i32), f64>) -> bool {
     let bonds = ring.bonds();
     !bonds.is_empty()
-        && bonds.iter().all(|k| {
-            order_by_bond
-                .get(k)
-                .copied()
-                .is_some_and(is_aromatic_order)
-        })
+        && bonds
+            .iter()
+            .all(|k| order_by_bond.get(k).copied().is_some_and(is_aromatic_order))
 }
 
 /// Perpendicular distance from point to the infinite line through `a`–`b`.
@@ -382,6 +368,7 @@ mod tests {
                 y: 20.0 * ang.sin(),
                 label: None,
                 charge: 0,
+                mapno: None,
             });
         }
         let orders = [1.0, 2.0, 1.0, 2.0, 1.0, 2.0];
@@ -440,7 +427,8 @@ mod tests {
         let circles = aromatic_ring_circles(&aromatic, &rings, &coords);
         assert_eq!(circles.len(), 1);
         let (cx, cy, r) = circles[0];
-        assert!(r > 14.0 && r < 16.5, "near-edge circle, r={r}");
+        // AROMATIC_CIRCLE_FRAC = 0.60 → ~0.52 × bond for regular hex.
+        assert!(r > 9.0 && r < 12.0, "near-edge circle, r={r}");
         assert!(cx.abs() < 1e-6 && cy.abs() < 1e-6);
     }
 
@@ -467,6 +455,7 @@ mod tests {
                     y: 0.0,
                     label: None,
                     charge: 0,
+                    mapno: None,
                 },
                 AtomIn {
                     index: 1,
@@ -476,6 +465,7 @@ mod tests {
                     y: 0.0,
                     label: None,
                     charge: 0,
+                    mapno: None,
                 },
                 AtomIn {
                     index: 2,
@@ -485,6 +475,7 @@ mod tests {
                     y: 10.0,
                     label: Some("OH".into()),
                     charge: 0,
+                    mapno: None,
                 },
             ],
             bonds: vec![
@@ -563,6 +554,7 @@ mod tests {
                 y: 20.0 * ang.sin(),
                 label: None,
                 charge: 0,
+                mapno: None,
             });
         }
         let mx = 0.5 * (atoms[0].x + atoms[1].x);
@@ -582,6 +574,7 @@ mod tests {
                 y,
                 label: None,
                 charge: 0,
+                mapno: None,
             });
         }
         let mut bonds = Vec::new();

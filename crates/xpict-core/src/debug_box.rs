@@ -22,10 +22,7 @@ pub fn debug_rect(x: f64, y: f64, w: f64, h: f64, class: &str) -> Primitive {
     let x2 = x + w;
     let y2 = y + h;
     Primitive::Path {
-        d: format!(
-            "M {:.2} {:.2} H {:.2} V {:.2} H {:.2} Z",
-            x, y, x2, y2, x
-        ),
+        d: format!("M {:.2} {:.2} H {:.2} V {:.2} H {:.2} Z", x, y, x2, y2, x),
         stroke: Some(DEBUG_BOX_STROKE.into()),
         fill: Some("none".into()),
         stroke_width: DEBUG_BOX_STROKE_PX,

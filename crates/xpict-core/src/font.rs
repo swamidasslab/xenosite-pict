@@ -221,14 +221,8 @@ impl OutlineBuilder for ContourCollector {
             let t = i as f64 / BEZIER_STEPS as f64;
             let mt = 1.0 - t;
             self.cur.push((
-                mt * mt * mt * x0
-                    + 3.0 * mt * mt * t * x1
-                    + 3.0 * mt * t * t * x2
-                    + t * t * t * x,
-                mt * mt * mt * y0
-                    + 3.0 * mt * mt * t * y1
-                    + 3.0 * mt * t * t * y2
-                    + t * t * t * y,
+                mt * mt * mt * x0 + 3.0 * mt * mt * t * x1 + 3.0 * mt * t * t * x2 + t * t * t * x,
+                mt * mt * mt * y0 + 3.0 * mt * mt * t * y1 + 3.0 * mt * t * t * y2 + t * t * t * y,
             ));
         }
     }
@@ -325,11 +319,7 @@ fn script_scale_for(role: ScriptRole) -> f64 {
     }
 }
 
-fn outline_glyph_em_uncached(
-    ch: char,
-    style: FaceStyle,
-    role: ScriptRole,
-) -> (Option<Shape>, f64) {
+fn outline_glyph_em_uncached(ch: char, style: FaceStyle, role: ScriptRole) -> (Option<Shape>, f64) {
     let f = face(style);
     let upem = f64::from(f.units_per_em());
     let Some(gid) = f.glyph_index(ch) else {
@@ -545,10 +535,7 @@ mod tests {
         let shape = shape.expect("O outline");
         assert!(shape.has_holes());
         assert!(adv > 0.0);
-        assert!(!shape.contains(
-            shape.centroid().unwrap().0,
-            shape.centroid().unwrap().1
-        ));
+        assert!(!shape.contains(shape.centroid().unwrap().0, shape.centroid().unwrap().1));
     }
 
     #[test]
@@ -575,8 +562,7 @@ mod tests {
     #[test]
     fn charge_superscript_larger_than_h_subscript() {
         let (_full, adv_full) = outline_glyph_em('+', FaceStyle::Regular, ScriptRole::Normal);
-        let (_plus, adv_plus) =
-            outline_glyph_em('+', FaceStyle::Regular, ScriptRole::Superscript);
+        let (_plus, adv_plus) = outline_glyph_em('+', FaceStyle::Regular, ScriptRole::Superscript);
         let (_two, adv_sub) = outline_glyph_em('2', FaceStyle::Regular, ScriptRole::Subscript);
         // Charges must stay readable (near base height), not RDKit's tiny 0.66.
         assert!(
@@ -590,7 +576,8 @@ mod tests {
             adv_plus / adv_full
         );
         assert!(
-            adv_plus / adv_full > adv_sub / outline_glyph_em('2', FaceStyle::Regular, ScriptRole::Normal).1 + 0.1,
+            adv_plus / adv_full
+                > adv_sub / outline_glyph_em('2', FaceStyle::Regular, ScriptRole::Normal).1 + 0.1,
             "charge superscript should outsize H-count subscript"
         );
         let _ = SUBSCRIPT_SCALE;
@@ -616,11 +603,7 @@ mod tests {
         assert_eq!(FaceStyle::from_flags(true, false), FaceStyle::Bold);
         assert_eq!(FaceStyle::from_flags(false, true), FaceStyle::Italic);
         assert_eq!(FaceStyle::from_flags(true, true), FaceStyle::BoldItalic);
-        for style in [
-            FaceStyle::Bold,
-            FaceStyle::Italic,
-            FaceStyle::BoldItalic,
-        ] {
+        for style in [FaceStyle::Bold, FaceStyle::Italic, FaceStyle::BoldItalic] {
             let m = face_metrics(style);
             assert_eq!(m.upem, 2048.0);
             assert!(m.stem_em > 0.05);
@@ -648,7 +631,9 @@ mod tests {
     #[test]
     fn chem_run_scripts_anchors_and_empty() {
         assert!(outline_chem_run_em(&[], FaceStyle::Regular).0.is_none());
-        assert!(compile_chem_shapes(&[], 0.0, 0.0, FONT_PX, "middle", FaceStyle::Regular).is_none());
+        assert!(
+            compile_chem_shapes(&[], 0.0, 0.0, FONT_PX, "middle", FaceStyle::Regular).is_none()
+        );
         assert!(compile_text_shapes("", 0.0, 0.0, FONT_PX, "middle", FaceStyle::Regular).is_none());
 
         let glyphs = [

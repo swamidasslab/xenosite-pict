@@ -5,9 +5,7 @@
 //! hitting `compose_label` / `place_label` / `parse_label_markup` would see.
 
 use xpict_core::font::{FaceStyle, ScriptRole};
-use xpict_core::labels::{
-    compose_label, place_label, split_label, LabelSide,
-};
+use xpict_core::labels::{compose_label, place_label, split_label, LabelSide};
 use xpict_core::metrics::FONT_PX;
 use xpict_core::parse_label_markup;
 
@@ -34,7 +32,10 @@ fn doc_dialect_parse_label_markup() {
     assert!(roles("R_1").iter().all(|(_, r)| *r == ScriptRole::Normal));
 
     // Math zone enables bare `_`.
-    assert_eq!(roles("$R_1$"), vec![('R', ScriptRole::Normal), ('1', ScriptRole::Subscript)]);
+    assert_eq!(
+        roles("$R_1$"),
+        vec![('R', ScriptRole::Normal), ('1', ScriptRole::Subscript)]
+    );
 
     // Braced sub always works; multi-digit.
     assert_eq!(
@@ -51,7 +52,10 @@ fn doc_dialect_parse_label_markup() {
     );
 
     // Caret always superscripts.
-    assert_eq!(roles("R^2"), vec![('R', ScriptRole::Normal), ('2', ScriptRole::Superscript)]);
+    assert_eq!(
+        roles("R^2"),
+        vec![('R', ScriptRole::Normal), ('2', ScriptRole::Superscript)]
+    );
     assert_eq!(
         roles("R^{2+}"),
         vec![
@@ -193,15 +197,32 @@ fn style_cmd_aliases_and_nested_scripts() {
 
 #[test]
 fn bold_r_caret_compose_and_place() {
-    assert_eq!(compose_label(&split_label("**R**^2"), LabelSide::East), "R²");
-    let pl = place_label("**R**^2", 0.0, 0.0, LabelSide::East, FONT_PX, FaceStyle::Regular);
+    assert_eq!(
+        compose_label(&split_label("**R**^2"), LabelSide::East),
+        "R²"
+    );
+    let pl = place_label(
+        "**R**^2",
+        0.0,
+        0.0,
+        LabelSide::East,
+        FONT_PX,
+        FaceStyle::Regular,
+    );
     assert_eq!(pl.text, "R²");
     assert!(!pl.path_d.is_empty());
 }
 
 #[test]
 fn bold_face_changes_oh_outline_not_text() {
-    let regular = place_label("OH", 10.0, 10.0, LabelSide::East, FONT_PX, FaceStyle::Regular);
+    let regular = place_label(
+        "OH",
+        10.0,
+        10.0,
+        LabelSide::East,
+        FONT_PX,
+        FaceStyle::Regular,
+    );
     let bold = place_label("OH", 10.0, 10.0, LabelSide::East, FONT_PX, FaceStyle::Bold);
     assert_eq!(regular.text, bold.text);
     assert_ne!(
@@ -239,10 +260,7 @@ fn backbone_places_bold_markup_and_glca() {
             label: Some("GlcA".into()),
         },
     ];
-    let bonds = vec![
-        BondIn { begin: 0, end: 1 },
-        BondIn { begin: 0, end: 2 },
-    ];
+    let bonds = vec![BondIn { begin: 0, end: 1 }, BondIn { begin: 0, end: 2 }];
     let (ends, labels) = place_backbone(&atoms, &bonds, FONT_PX, FaceStyle::Regular, 1.0);
     assert_eq!(ends.len(), 2);
     let r = labels[1].as_ref().expect("**R**");

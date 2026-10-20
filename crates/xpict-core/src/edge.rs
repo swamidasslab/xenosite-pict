@@ -111,10 +111,7 @@ pub struct EdgePlan {
 
 impl EdgePlan {
     pub fn new_v1(tasks: Vec<EdgeTask>) -> Self {
-        Self {
-            version: 1,
-            tasks,
-        }
+        Self { version: 1, tasks }
     }
 
     pub fn validate(&self) -> Result<(), String> {
@@ -251,14 +248,7 @@ mod tests {
                     cxsmiles: None,
                     molfile: None,
                     align: Some(AlignOpts {
-                        atom_map: Some(vec![
-                            (1, 0),
-                            (2, 1),
-                            (3, 2),
-                            (4, 3),
-                            (5, 4),
-                            (6, 5),
-                        ]),
+                        atom_map: Some(vec![(1, 0), (2, 1), (3, 2), (4, 3), (5, 4), (6, 5)]),
                         min_atoms: None,
                     }),
                     template_for: vec![],
@@ -330,7 +320,10 @@ mod tests {
             align: None,
             template_for: vec![],
         };
-        assert!(bad.validate_structure().unwrap_err().contains("exactly one"));
+        assert!(bad
+            .validate_structure()
+            .unwrap_err()
+            .contains("exactly one"));
     }
 
     #[test]

@@ -2,8 +2,8 @@
 //!
 //! Python host draw stack removed; this module is SoT.
 
-/// xenopict `Xenopict.scale` / xenosite depiction `"scale": 20`.
-pub const SCALE: f64 = 20.0;
+/// House bond length / CSS-px scale (was 20; ~1.5× for publication weight).
+pub const SCALE: f64 = 30.0;
 
 /// Bond length in drawing / CSS-px units (alias of [`SCALE`]).
 pub const BOND_PX: f64 = SCALE;
@@ -186,9 +186,10 @@ mod tests {
 
     #[test]
     fn offset_matches_python_house_style() {
-        assert!((OFFSET_PX - 3.0).abs() < 1e-9);
-        assert!((STROKE_PX - 0.84).abs() < 1e-9);
-        assert!((FONT_PX - 9.0).abs() < 1e-9);
+        assert!((SCALE - 30.0).abs() < 1e-9);
+        assert!((OFFSET_PX - 4.5).abs() < 1e-9);
+        assert!((STROKE_PX - 1.26).abs() < 1e-9);
+        assert!((FONT_PX - 13.5).abs() < 1e-9);
         assert!((SHADE_FRAC - 0.90).abs() < 1e-9);
     }
 
@@ -222,9 +223,7 @@ mod tests {
         let stand1 = label_weight_standoff_px(1.0);
         assert!(stand1 > label_weight_grow_px(1.0));
         assert!(
-            (stand1
-                - (label_weight_grow_px(1.0)
-                    + 0.5 * (stroke_px_for_weight(1.0) - STROKE_PX)))
+            (stand1 - (label_weight_grow_px(1.0) + 0.5 * (stroke_px_for_weight(1.0) - STROKE_PX)))
                 .abs()
                 < 1e-9
         );

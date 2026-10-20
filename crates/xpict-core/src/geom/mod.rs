@@ -273,7 +273,7 @@ mod tests {
         use crate::metrics::{LABEL_GAP_PX, OFFSET_PX};
         let d = capsule_halo_path_d(0.0, 0.0, 20.0, 0.0, 0.56, LABEL_GAP_PX).unwrap();
         assert!(d.ends_with('Z'));
-        assert!((OFFSET_PX - 3.0).abs() < 1e-9);
+        assert!((OFFSET_PX - 4.5).abs() < 1e-9);
     }
 
     #[cfg(feature = "geom")]

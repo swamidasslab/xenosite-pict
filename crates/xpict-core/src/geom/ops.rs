@@ -89,8 +89,9 @@ impl Shape {
     }
 
     pub fn multipoint_buffer(pts: &[(f64, f64)], radius: f64) -> Self {
-        pts.iter()
-            .fold(Self::empty(), |acc, &(x, y)| acc.union(&Self::disk(x, y, radius, 8)))
+        pts.iter().fold(Self::empty(), |acc, &(x, y)| {
+            acc.union(&Self::disk(x, y, radius, 8))
+        })
     }
 
     pub fn annular(cx: f64, cy: f64, r: f64, stroke_width: f64) -> Self {
@@ -107,10 +108,7 @@ impl Shape {
     }
 
     fn overlay_with(&self, other: &Self, rule: OverlayRule) -> Self {
-        Self::wrap(
-            self.shapes
-                .overlay(&other.shapes, rule, FillRule::NonZero),
-        )
+        Self::wrap(self.shapes.overlay(&other.shapes, rule, FillRule::NonZero))
     }
 
     pub fn union(&self, other: &Self) -> Self {
@@ -158,7 +156,11 @@ impl Shape {
     }
 
     pub fn point_count(&self) -> usize {
-        self.shapes.iter().flat_map(|s| s.iter()).map(|c| c.len()).sum()
+        self.shapes
+            .iter()
+            .flat_map(|s| s.iter())
+            .map(|c| c.len())
+            .sum()
     }
 
     /// White knockout: simplify, then outline offset.
