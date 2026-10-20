@@ -2,6 +2,10 @@
 
 ## 2026-10-20
 
+- Default `+` align on larger / macrocycle pairs (`notebooks/align_large_pairs.py`). MCS usually finds a big connected map (12–37 atoms) inside the house budget; CoordGen soft-constrain is the quality bottleneck, not the timeout. Morphine/codeine: skip already shares a pose; default *rotates* codeine (19 mapped, 151 px median). Cholesterol/testosterone: 21/21 map at 0.63 px but the cholesterol template is a bad steroid drawing, so testosterone is warped onto it. 18-crown-6 vs aza-18-crown-6 locks (18/18, 1.2 px). Size-mismatched rings (12 vs 15 crown; C12 vs C15; erythromycin vs azithromycin) map many atoms then collapse/tangle the query. Erythromycin vs clarithromycin is the only macrolide pair that stays roughly the same pose (37 mapped, 11 px).
+
+## 2026-10-20
+
 - Molecule align hung on reasonably sized mols: exact connected cost-mapping had no time/node caps, and `+` always stamps `align_to` so BnB ran unbounded. Escape hatches in `xpict-core` (not a host reimplementation): `AlignOpts`/`AlignToSpec` `mode` (`exact`|`greedy`|`skip`) and `timeout_ms` (`None` = house 100 ms + 50k states, `0` = unbounded). Timeout returns the greedy/BnB incumbent if ≥ `min_atoms`, else free layout. `atom_map` still skips MCS. Library `cost_mapping` stays exact/unbounded. JS/RDKit hosts honor `mode: skip` only; greedy/timeout need the in-core solver.
 - Restored `+` chain-align (`align_to` previous mol). A chrome landing stub had left it off; tests still required it.
 - Fitted SVG pad tracks `mol.scale` when `pad` is omitted, so `scale: 2` doubles width/height (house 4 px margin was a fixed addend).
