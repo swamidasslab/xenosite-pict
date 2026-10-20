@@ -1,5 +1,6 @@
 # TODO
 
+- Spoke bonds: haptic (ATTACH=ALL) and variable ring attachment (ATTACH=ANY) via CXSMILES `m:`/`C:`; paint stem to centroid in Rust
 - Align pose lock: atom maps for fused scaffolds / metabolites / erythro–azithro are element-true; CoordGen soft-constrain still rotates morphine-like pentacycles (skip already shares the pose)
 - Constraint layout: richer discrete side flips; tune kit strengths from notebook visuals; cap route-point birth harder on dense mols
 - Lift remaining legacy Pict gaps onto live DepictSpec (titles, rgroups/annots, radical dots) or delete those tests
