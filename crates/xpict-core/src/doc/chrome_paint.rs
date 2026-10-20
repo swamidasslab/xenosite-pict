@@ -71,6 +71,9 @@ pub fn apply_mol_chrome(node: &MolNode, mol: &MoleculeIn, mut scene: Scene) -> S
     // Mutual clash among chrome labels in this pass. Mol `name` is placed
     // after chrome (not a constraint); caption_boxes is usually empty here.
     let mut placed_label_boxes: Vec<Aabb> = caption_boxes.clone();
+    // Atom-indexed chrome (numbers + custom text) so region hulls can cover
+    // labels on included atoms. Circles stay clash-only, not cover.
+    let mut atom_chrome_boxes: Vec<(i32, Aabb)> = Vec::new();
 
     if aromatic {
         for p in aromatic_circle_primitives(mol, dx, dy) {
@@ -78,8 +81,8 @@ pub fn apply_mol_chrome(node: &MolNode, mol: &MoleculeIn, mut scene: Scene) -> S
         }
     }
 
-    // Place atom numbers/labels and circles before region text so "ring" can
-    // clear them (kitchen sink). Callouts last so they clear region labels too.
+    // Place atom numbers/labels and circles before regions so the hull can
+    // cover included-atom chrome and region text can keep off it. Callouts last.
     for ann in &anns {
         if let Annotation::Circle { spec, z, .. } = ann {
             for p in circle_primitives(mol, node, spec, dx, dy) {
@@ -120,6 +123,9 @@ pub fn apply_mol_chrome(node: &MolNode, mol: &MoleculeIn, mut scene: Scene) -> S
                         halo_prims.push(h);
                     }
                     placed_label_boxes.push(box_);
+                    if let Some(a) = mol.atoms.get(ai) {
+                        atom_chrome_boxes.push((a.index, box_));
+                    }
                     label_prims.push((*z, p));
                 }
             }
@@ -136,6 +142,7 @@ pub fn apply_mol_chrome(node: &MolNode, mol: &MoleculeIn, mut scene: Scene) -> S
                 &caption_boxes,
                 &shade,
                 &placed_label_boxes,
+                &atom_chrome_boxes,
             ) {
                 let is_label = matches!(
                     &p,
@@ -789,6 +796,7 @@ fn region_primitives(
     caption_boxes: &[Aabb],
     shades: &[(usize, f64, f64, f64)],
     other_labels: &[Aabb],
+    atom_chrome: &[(i32, Aabb)],
 ) -> Vec<Primitive> {
     let included: Vec<i32> = spec
         .atoms
@@ -809,6 +817,13 @@ fn region_primitives(
         }
         if let Some(box_) = text_boxes.get(&idx) {
             push_aabb_corners(&mut cover, *box_);
+        }
+    }
+    // Chrome numbers/labels on included atoms belong in the annotation
+    // (kitchen-sink "ortho" sat outside the box when only chem text was covered).
+    for &(idx, box_) in atom_chrome {
+        if include_set.contains(&idx) {
+            push_aabb_corners(&mut cover, box_);
         }
     }
     // Interior-atom shade — actual painted outer disks (fixed with chem).
@@ -3460,6 +3475,9 @@ mod tests {
                     {
                         boxes.push((name, box_));
                     }
+                    if c.contains("region") && c.contains("box") && !c.contains("region-label") {
+                        boxes.push(("region-box".into(), box_));
+                    }
                 }
                 Primitive::Circle {
                     cx,
@@ -3494,6 +3512,19 @@ mod tests {
         let six = find("6").expect("index 6");
         let exo = find("exo").expect("exo");
         assert!(!six.overlaps(exo), "index 6 {six:?} overlaps exo {exo:?}");
+        let region_box = find("region-box").expect("ring region box");
+        assert!(
+            region_box.contains(ortho),
+            "ortho {ortho:?} must sit inside ring box {region_box:?}"
+        );
+        assert!(
+            region_box.contains(two),
+            "index 2 {two:?} must sit inside ring box {region_box:?}"
+        );
+        assert!(
+            !region_box.contains(exo),
+            "exo {exo:?} is on OH, not a ring atom: box {region_box:?}"
+        );
     }
 
     #[test]

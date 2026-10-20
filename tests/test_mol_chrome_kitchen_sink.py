@@ -88,3 +88,39 @@ def test_kitchen_sink_exo_does_not_cover_index_6():
     six = boxes[("number", "6")]
     exo = boxes[("label", "exo")]
     assert not _overlaps(six, exo), f"index 6 {six} overlaps exo {exo}"
+
+
+def _contains(
+    outer: tuple[float, float, float, float],
+    inner: tuple[float, float, float, float],
+    slack: float = 0.75,
+) -> bool:
+    return (
+        outer[0] <= inner[0] + slack
+        and outer[1] <= inner[1] + slack
+        and outer[2] + slack >= inner[2]
+        and outer[3] + slack >= inner[3]
+    )
+
+
+def _region_box(svg: str) -> tuple[float, float, float, float]:
+    for tag in _PATH.findall(svg):
+        attrs = _attrs(tag)
+        cls = attrs.get("class", "")
+        d = attrs.get("d")
+        if d and "region" in cls and "box" in cls and "region-label" not in cls:
+            return _bbox(d)
+    raise AssertionError("no region box in kitchen-sink svg")
+
+
+def test_kitchen_sink_region_contains_ring_atom_labels():
+    """Ring annotation must cover chrome labels on included atoms (not just chem)."""
+    svg = _kitchen_sink_svg()
+    box = _region_box(svg)
+    labels = _label_boxes(svg)
+    ortho = labels[("label", "ortho")]
+    two = labels[("number", "2")]
+    assert _contains(box, ortho), f"ortho {ortho} sits outside region box {box}"
+    assert _contains(box, two), f"index 2 {two} sits outside region box {box}"
+    exo = labels[("label", "exo")]
+    assert not _contains(box, exo, slack=0.0), f"exo {exo} belongs on OH, not inside ring {box}"

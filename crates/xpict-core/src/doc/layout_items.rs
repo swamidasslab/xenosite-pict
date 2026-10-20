@@ -50,6 +50,11 @@ impl Aabb {
         self.x0 < other.x1 && self.x1 > other.x0 && self.y0 < other.y1 && self.y1 > other.y0
     }
 
+    /// True when `other` lies entirely inside this box (edges count as inside).
+    pub fn contains(self, other: Aabb) -> bool {
+        self.x0 <= other.x0 && self.y0 <= other.y0 && self.x1 >= other.x1 && self.y1 >= other.y1
+    }
+
     pub fn center(self) -> (f64, f64) {
         ((self.x0 + self.x1) * 0.5, (self.y0 + self.y1) * 0.5)
     }
@@ -479,9 +484,7 @@ pub fn place_region_edge(
     let best = force_region(region, ink, inside, preferred, edge_margin, 0.0, about);
     // Outside / clash-free inside seeds may bump out before the hull grows.
     let max_bump = BOND_PX.max(24.0);
-    let bumps = [
-        0.0, 2.0, 4.0, 6.0, 8.0, 12.0, 16.0, 20.0, 24.0, 28.0, 32.0,
-    ];
+    let bumps = [0.0, 2.0, 4.0, 6.0, 8.0, 12.0, 16.0, 20.0, 24.0, 28.0, 32.0];
     // Prefer slide=0 (aligned with `about`) before skirting up/down the edge —
     // early negative slides parked Left seeds above the ring.
     let slides = [
