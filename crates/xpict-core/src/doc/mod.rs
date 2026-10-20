@@ -417,7 +417,13 @@ pub fn render_doc(spec: &DepictSpec, edge: &EdgeResult) -> Result<Vec<DocPaint>,
         let scene = depict_molecule(&molecule);
         let scene = chrome_paint::apply_mol_chrome(node, &molecule, scene);
         let scene = caption::apply_mol_captions(spec, node, scene);
-        let scene = fit::fit_scene(scene, fit::resolve_viewport_margin(chrome.pad));
+        // House pad scales with mol.scale so the fitted SVG doubles; an
+        // explicit `pad` is output pixels and stays as given.
+        let margin = match chrome.pad {
+            Some(p) if p.is_finite() && p >= 0.0 => p,
+            _ => fit::VIEWPORT_MARGIN_DEFAULT * molecule.diagram_scale(),
+        };
+        let scene = fit::fit_scene(scene, margin);
         out.push(DocPaint {
             id: id.clone(),
             molecule,

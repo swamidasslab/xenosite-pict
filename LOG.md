@@ -2,6 +2,8 @@
 
 ## 2026-10-20
 
+- Restored `+` chain-align (`align_to` previous mol). A chrome landing stub had left it off; tests still required it.
+- Fitted SVG pad tracks `mol.scale` when `pad` is omitted, so `scale: 2` doubles width/height (house 4 px margin was a fixed addend).
 - Region hulls cover chrome atom numbers/labels on included atoms (chem text already was). Kitchen-sink "ortho" sat outside the ring box. Lagrangian ladder unchanged — keep-off / tether / contain; this is cover membership, not energy.
 - Shade disks were ~25% too large (`SHADE_FRAC` 0.90×bond). House outer radius is now 0.72×bond; atom+bond shared base stays 8/9 of that. Clash disks use the painted outer radius, so they shrink with paint.
 - Containment is a third hard Lagrangian (`LAGRANGIAN_CONTAIN` = 2), after no-overlap then tether. Inside region text gets `HardConstraint::Inside` at that rank so keep-off cannot be spent to stay in the hull.

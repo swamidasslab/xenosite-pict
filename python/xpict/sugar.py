@@ -260,10 +260,12 @@ def with_group_ids(children: list[MolNode | TextNode]) -> list[MolNode | TextNod
 def chain_align_group(children: list[MolNode | TextNode]) -> list[MolNode | TextNode]:
     """Stamp unset ``align_to`` on mols to the previous mol id."""
     out: list[MolNode | TextNode] = []
+    prev_mol_id: str | None = None
     for child in children:
         if isinstance(child, MolNode):
-            # TOO SLOW TO USE BY DEFAULT. Need timeout.
-            # Stamp unset align_to onto previous mol id when enabled.
+            if child.align_to is None and prev_mol_id is not None:
+                child = child.model_copy(update={"align_to": prev_mol_id})
+            prev_mol_id = child.id
             out.append(child)
         else:
             out.append(child)
