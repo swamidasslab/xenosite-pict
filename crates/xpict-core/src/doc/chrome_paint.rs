@@ -20,10 +20,9 @@ use crate::doc::layout_constraints::{
     Shape, ATOM_NUMBER_TETHER_PX, ATOM_TEXT_TETHER_PX,
 };
 use crate::doc::layout_items::{
-    callout_arrow, least_clash_side, place_greedy, place_region_edge, tip_standoff_clearing,
-    Aabb, InkAtOrigin, Occupancy, PlaceRequest, Seg, Side, ATOM_DISK_R_PX, CLASH_MARGIN_PX,
-    CONTAIN_MARGIN_PX,
-    HALF_BOND_PX,
+    callout_arrow, least_clash_side, place_greedy, place_region_edge, tip_standoff_clearing, Aabb,
+    InkAtOrigin, Occupancy, PlaceRequest, Seg, Side, ATOM_DISK_R_PX, CLASH_MARGIN_PX,
+    CONTAIN_MARGIN_PX, HALF_BOND_PX,
 };
 use crate::doc::spec::{LabelPos, MolNode};
 use crate::doc::text_paint::{markup_bounds_at_origin, outline_markup};
@@ -436,10 +435,8 @@ fn nudge_aabb_clear_bonds_tethered(
             break;
         }
         let cand = box_.translated(push.0, push.1);
-        let gap = crate::doc::layout_constraints::edge_signed_distance(
-            &Shape::Aabb(cand),
-            &anchor_shape,
-        );
+        let gap =
+            crate::doc::layout_constraints::edge_signed_distance(&Shape::Aabb(cand), &anchor_shape);
         if gap > tether + 1e-6 {
             // Would break the ½-bond home tether — stop rather than fling away.
             break;
@@ -881,12 +878,11 @@ fn region_primitives(
         }
     };
 
-    // Circle geometry (may grow for an inside label seeded as outside, then
-    // shrink again after the label snugs).
-    let (mut circ_cx, mut circ_cy, mut circ_r) = {
-        let (cx, cy, r0) = covering_circle(&cover);
-        (cx, cy, (r0 + pad).max(pad))
-    };
+    // Circle geometry: smallest covering of included atoms (center free).
+    // Inside labels snug first; then we re-cover atoms+label so the center
+    // can shift instead of r ballooning about a fixed centroid.
+    let (mut circ_cx, mut circ_cy, mut circ_r) =
+        circle_cover_points_label_excludes(&cover, None, 0.0, pad, &exclude_xy, 1.0);
 
     let mut region_box = Aabb::new(x0, y0, x1, y1);
     let mut cover_hull = cover.clone();
@@ -956,13 +952,10 @@ fn region_primitives(
                 };
                 match spec.style {
                     RegionStyle::Circle => {
-                        circ_r = grow_circle_to_contain_aabb(
-                            circ_cx,
-                            circ_cy,
-                            circ_r,
-                            seed.bounds,
-                            CONTAIN_MARGIN_PX,
-                        );
+                        // Do **not** balloon r about a fixed center — that huge
+                        // solve hull left aryl at the far left. Keep the atom
+                        // covering as the Inside guide so snug can pull in;
+                        // paint rebuilds a shifted circle after the label moves.
                         inside_seed = Some(seed);
                     }
                     RegionStyle::Box => {
@@ -999,7 +992,11 @@ fn region_primitives(
 
     let inside_label = spec.text.as_ref().is_some_and(|t| {
         let s = t.as_styled();
-        !s.content.trim().is_empty() && matches!(s.place.unwrap_or(RegionTextPlace::Outside), RegionTextPlace::Inside)
+        !s.content.trim().is_empty()
+            && matches!(
+                s.place.unwrap_or(RegionTextPlace::Outside),
+                RegionTextPlace::Inside
+            )
     });
 
     match spec.style {
@@ -1193,16 +1190,19 @@ fn region_primitives(
                             );
                         }
                         RegionStyle::Circle => {
-                            let (cx0, cy0, r0) = covering_circle(&cover);
+                            // Smallest covering of atoms + snug label; center
+                            // moves toward the text instead of inflating r.
+                            let (cx0, cy0, r0) = circle_cover_points_label_excludes(
+                                &cover,
+                                Some(placed.bounds),
+                                CONTAIN_MARGIN_PX,
+                                pad,
+                                &exclude_xy,
+                                1.0,
+                            );
                             circ_cx = cx0;
                             circ_cy = cy0;
-                            circ_r = grow_circle_to_contain_aabb(
-                                circ_cx,
-                                circ_cy,
-                                (r0 + pad).max(pad),
-                                placed.bounds,
-                                CONTAIN_MARGIN_PX,
-                            );
+                            circ_r = r0;
                         }
                         RegionStyle::Bezier => {
                             let mut snug_cover = cover.clone();
@@ -1716,19 +1716,56 @@ fn push_disk_samples(out: &mut Vec<(f64, f64)>, cx: f64, cy: f64, r: f64) {
     }
 }
 
-/// Grow `r` so `box_` sits entirely inside the circle with `margin` clearance.
-fn grow_circle_to_contain_aabb(cx: f64, cy: f64, r: f64, box_: Aabb, margin: f64) -> f64 {
-    let corners = [
-        (box_.x0, box_.y0),
-        (box_.x1, box_.y0),
-        (box_.x1, box_.y1),
-        (box_.x0, box_.y1),
-    ];
-    let mut need = r;
-    for &(x, y) in &corners {
-        need = need.max((x - cx).hypot(y - cy) + margin);
+/// Smallest circle covering `pts` and optional label corners; center may move.
+///
+/// `extra_r` is added after the covering (contain margin around atom disks).
+/// Excluded points are pushed outside by shifting the center, then r is
+/// recomputed so includes stay covered.
+fn circle_cover_points_label_excludes(
+    pts: &[(f64, f64)],
+    label: Option<Aabb>,
+    label_margin: f64,
+    extra_r: f64,
+    exclude: &[(f64, f64)],
+    exclude_clear: f64,
+) -> (f64, f64, f64) {
+    let mut cover = pts.to_vec();
+    if let Some(box_) = label {
+        let b = box_.inflate(label_margin);
+        cover.push((b.x0, b.y0));
+        cover.push((b.x1, b.y0));
+        cover.push((b.x1, b.y1));
+        cover.push((b.x0, b.y1));
     }
-    need
+    let (mut cx, mut cy, r0) = covering_circle(&cover);
+    let mut r = (r0 + extra_r).max(extra_r);
+    for _ in 0..24 {
+        let mut hit = false;
+        for &(ex, ey) in exclude {
+            let d = (ex - cx).hypot(ey - cy);
+            let need = r + exclude_clear;
+            if d + 1e-9 < need {
+                let (ux, uy) = if d > 1e-6 {
+                    ((cx - ex) / d, (cy - ey) / d)
+                } else {
+                    (0.0, 1.0)
+                };
+                let push = need - d + 0.5;
+                cx += ux * push;
+                cy += uy * push;
+                hit = true;
+            }
+        }
+        let cover_r = cover
+            .iter()
+            .map(|&(x, y)| (x - cx).hypot(y - cy))
+            .fold(0.0_f64, f64::max);
+        r = (cover_r + extra_r).max(extra_r);
+        if !hit {
+            break;
+        }
+    }
+    (cx, cy, r)
 }
 
 fn grow_aabb_to_contain(outer: Aabb, inner: Aabb, margin: f64) -> Aabb {
@@ -1789,7 +1826,83 @@ fn bond_segs(mol: &MoleculeIn, dx: f64, dy: f64) -> Vec<(f64, f64, f64, f64)> {
     out
 }
 
-/// Smallest circle covering `pts`, center free to move off the centroid.
+fn point_in_disk(cx: f64, cy: f64, r: f64, x: f64, y: f64) -> bool {
+    (x - cx).hypot(y - cy) <= r + 1e-7
+}
+
+fn disk_from_points(r: &[(f64, f64)]) -> (f64, f64, f64) {
+    match r.len() {
+        0 => (0.0, 0.0, 0.0),
+        1 => (r[0].0, r[0].1, 0.0),
+        2 => {
+            let cx = (r[0].0 + r[1].0) * 0.5;
+            let cy = (r[0].1 + r[1].1) * 0.5;
+            (cx, cy, (r[0].0 - cx).hypot(r[0].1 - cy))
+        }
+        _ => {
+            let a = r[0];
+            let b = r[1];
+            let c = r[2];
+            let ab = (
+                (a.0 + b.0) * 0.5,
+                (a.1 + b.1) * 0.5,
+                (a.0 - b.0).hypot(a.1 - b.1) * 0.5,
+            );
+            if point_in_disk(ab.0, ab.1, ab.2, c.0, c.1) {
+                return ab;
+            }
+            let ac = (
+                (a.0 + c.0) * 0.5,
+                (a.1 + c.1) * 0.5,
+                (a.0 - c.0).hypot(a.1 - c.1) * 0.5,
+            );
+            if point_in_disk(ac.0, ac.1, ac.2, b.0, b.1) {
+                return ac;
+            }
+            let bc = (
+                (b.0 + c.0) * 0.5,
+                (b.1 + c.1) * 0.5,
+                (b.0 - c.0).hypot(b.1 - c.1) * 0.5,
+            );
+            if point_in_disk(bc.0, bc.1, bc.2, a.0, a.1) {
+                return bc;
+            }
+            let d = 2.0 * (a.0 * (b.1 - c.1) + b.0 * (c.1 - a.1) + c.0 * (a.1 - b.1));
+            if d.abs() < 1e-12 {
+                return if ab.2 >= ac.2 && ab.2 >= bc.2 {
+                    ab
+                } else if ac.2 >= bc.2 {
+                    ac
+                } else {
+                    bc
+                };
+            }
+            let a2 = a.0 * a.0 + a.1 * a.1;
+            let b2 = b.0 * b.0 + b.1 * b.1;
+            let c2 = c.0 * c.0 + c.1 * c.1;
+            let ux = (a2 * (b.1 - c.1) + b2 * (c.1 - a.1) + c2 * (a.1 - b.1)) / d;
+            let uy = (a2 * (c.0 - b.0) + b2 * (a.0 - c.0) + c2 * (b.0 - a.0)) / d;
+            (ux, uy, (ux - a.0).hypot(uy - a.1))
+        }
+    }
+}
+
+fn welzl_disk(p: &[(f64, f64)], r: &mut Vec<(f64, f64)>) -> (f64, f64, f64) {
+    if p.is_empty() || r.len() == 3 {
+        return disk_from_points(r);
+    }
+    let (&pt, rest) = p.split_last().unwrap();
+    let d = welzl_disk(rest, r);
+    if point_in_disk(d.0, d.1, d.2, pt.0, pt.1) {
+        return d;
+    }
+    r.push(pt);
+    let d = welzl_disk(rest, r);
+    r.pop();
+    d
+}
+
+/// Smallest enclosing circle; center is free to leave the centroid.
 fn covering_circle(pts: &[(f64, f64)]) -> (f64, f64, f64) {
     if pts.is_empty() {
         return (0.0, 0.0, 0.0);
@@ -1797,31 +1910,31 @@ fn covering_circle(pts: &[(f64, f64)]) -> (f64, f64, f64) {
     if pts.len() == 1 {
         return (pts[0].0, pts[0].1, 0.0);
     }
-    let n = pts.len() as f64;
-    let mut cx = pts.iter().map(|p| p.0).sum::<f64>() / n;
-    let mut cy = pts.iter().map(|p| p.1).sum::<f64>() / n;
-    for _ in 0..20 {
-        let mut sx = 0.0;
-        let mut sy = 0.0;
-        let mut wsum = 0.0;
-        for &(x, y) in pts {
-            let d = (x - cx).hypot(y - cy).max(1e-6);
-            let w = d * d;
-            sx += x * w;
-            sy += y * w;
-            wsum += w;
-        }
-        if wsum < 1e-12 {
-            break;
-        }
-        cx = sx / wsum;
-        cy = sy / wsum;
+    let mut p = pts.to_vec();
+    p.sort_by(|a, b| {
+        a.0.partial_cmp(&b.0)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+    });
+    p.dedup_by(|a, b| (a.0 - b.0).hypot(a.1 - b.1) < 1e-9);
+    // Welzl is expected-linear only after a random permutation; a sorted
+    // order can go factorial. Seed is a function of the points so tests
+    // stay deterministic.
+    let mut seed = 0x9E37_79B9_7F4A_7C15u64.wrapping_add(p.len() as u64);
+    for (i, &(x, y)) in p.iter().enumerate().take(8) {
+        seed ^= x.to_bits().wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        seed = seed.rotate_left((i as u32) + 7) ^ y.to_bits();
     }
-    let r = pts
-        .iter()
-        .map(|&(x, y)| (x - cx).hypot(y - cy))
-        .fold(0.0_f64, f64::max);
-    (cx, cy, r)
+    for i in (1..p.len()).rev() {
+        seed = seed
+            .wrapping_mul(0x9E37_79B9_7F4A_7C15)
+            .wrapping_add(1)
+            .rotate_left(17);
+        let j = (seed as usize) % (i + 1);
+        p.swap(i, j);
+    }
+    let mut r = Vec::with_capacity(3);
+    welzl_disk(&p, &mut r)
 }
 
 fn place_circle_label(
@@ -2663,38 +2776,37 @@ mod tests {
         let (n0x, n0y) = (a0.x + dx, a0.y + dy);
         let (n2x, n2y) = (a2.x + dx, a2.y + dy);
 
-        let (nx, ny, nbox) = layer_prims(&out).into_iter().find_map(|p| match p {
-            Primitive::Path {
-                d,
-                data_text: Some(t),
-                class: Some(c),
-                ..
-            } if c.contains("atom-number") && t == "1" => {
-                let (cx, cy) = path_centroid(d);
-                let nums = path_nums(d);
-                let mut x0 = f64::INFINITY;
-                let mut y0 = f64::INFINITY;
-                let mut x1 = f64::NEG_INFINITY;
-                let mut y1 = f64::NEG_INFINITY;
-                let mut i = 0;
-                while i + 1 < nums.len() {
-                    x0 = x0.min(nums[i]);
-                    y0 = y0.min(nums[i + 1]);
-                    x1 = x1.max(nums[i]);
-                    y1 = y1.max(nums[i + 1]);
-                    i += 2;
+        let (nx, ny, nbox) = layer_prims(&out)
+            .into_iter()
+            .find_map(|p| match p {
+                Primitive::Path {
+                    d,
+                    data_text: Some(t),
+                    class: Some(c),
+                    ..
+                } if c.contains("atom-number") && t == "1" => {
+                    let (cx, cy) = path_centroid(d);
+                    let nums = path_nums(d);
+                    let mut x0 = f64::INFINITY;
+                    let mut y0 = f64::INFINITY;
+                    let mut x1 = f64::NEG_INFINITY;
+                    let mut y1 = f64::NEG_INFINITY;
+                    let mut i = 0;
+                    while i + 1 < nums.len() {
+                        x0 = x0.min(nums[i]);
+                        y0 = y0.min(nums[i + 1]);
+                        x1 = x1.max(nums[i]);
+                        y1 = y1.max(nums[i + 1]);
+                        i += 2;
+                    }
+                    Some((cx, cy, Aabb::new(x0, y0, x1, y1)))
                 }
-                Some((cx, cy, Aabb::new(x0, y0, x1, y1)))
-            }
-            _ => None,
-        })
-        .expect("atom-number 1 on CCC");
+                _ => None,
+            })
+            .expect("atom-number 1 on CCC");
 
         // Snug: closest edge of the glyph within a small air gap of the atom.
-        let gap = edge_signed_distance(
-            &Shape::Aabb(nbox),
-            &Shape::Point { x: ax, y: ay },
-        );
+        let gap = edge_signed_distance(&Shape::Aabb(nbox), &Shape::Point { x: ax, y: ay });
         assert!(
             gap >= -2.0,
             "number must not sit deep through atom 1; gap={gap}"
@@ -3509,10 +3621,7 @@ mod tests {
             if name == "ring" {
                 continue;
             }
-            assert!(
-                !ring.overlaps(*b),
-                "ring {ring:?} overlaps {name} {b:?}"
-            );
+            assert!(!ring.overlaps(*b), "ring {ring:?} overlaps {name} {b:?}");
         }
     }
 
@@ -3712,6 +3821,213 @@ mod tests {
             "inside box should shrink toward atoms: in_h={} bare_h={}",
             bin.height(),
             b0.height()
+        );
+    }
+
+    #[test]
+    fn region_circle_ex6_inside_label_snugs_and_shifts_center() {
+        // Notebook Ex6 with style=circle: aryl left of the ring, circle center
+        // moves toward the label (not a ballooned r about the atom centroid).
+        let mut atoms = Vec::new();
+        for i in 0..6 {
+            let t = std::f64::consts::TAU * i as f64 / 6.0 - std::f64::consts::FRAC_PI_2;
+            atoms.push(AtomIn {
+                index: i as i32,
+                element: Some("C".into()),
+                z: Some(6),
+                x: 50.0 + 30.0 * t.cos(),
+                y: 50.0 + 30.0 * t.sin(),
+                label: None,
+                charge: 0,
+                mapno: None,
+            });
+        }
+        atoms.push(AtomIn {
+            index: 6,
+            element: Some("C".into()),
+            z: Some(6),
+            x: 50.0,
+            y: 50.0 - 30.0 - 26.0,
+            label: None,
+            charge: 0,
+            mapno: None,
+        });
+        atoms.push(AtomIn {
+            index: 7,
+            element: Some("C".into()),
+            z: Some(6),
+            x: 50.0 + 20.0,
+            y: 50.0 - 30.0 - 26.0 - 20.0,
+            label: None,
+            charge: 0,
+            mapno: None,
+        });
+        let mut bonds = Vec::new();
+        for i in 0..6 {
+            bonds.push(BondIn {
+                index: i as i32,
+                begin: i as i32,
+                end: ((i + 1) % 6) as i32,
+                order: 1.0,
+                stereo: None,
+                interior: None,
+            });
+        }
+        bonds.push(BondIn {
+            index: 6,
+            begin: 0,
+            end: 6,
+            order: 1.0,
+            stereo: None,
+            interior: None,
+        });
+        bonds.push(BondIn {
+            index: 7,
+            begin: 6,
+            end: 7,
+            order: 1.0,
+            stereo: None,
+            interior: None,
+        });
+        let mol = MoleculeIn {
+            id: Some("ex6-circ".into()),
+            atoms,
+            bonds,
+            color: None,
+            atom_shade: None,
+            bond_shade: None,
+            shade_vmin: None,
+            shade_vmax: None,
+            mark_atoms: vec![],
+            mark_bonds: vec![],
+            scale: 1.0,
+            weight: 1.0,
+            aromatic: Default::default(),
+            debug_box: false,
+            debug_align: false,
+            align_debug: None,
+        };
+        let (dx, dy) = frame_offset(&mol);
+        let mean = (
+            (0..6)
+                .map(|i| {
+                    let t = std::f64::consts::TAU * i as f64 / 6.0 - std::f64::consts::FRAC_PI_2;
+                    50.0 + dx + 30.0 * t.cos()
+                })
+                .sum::<f64>()
+                / 6.0,
+            (0..6)
+                .map(|i| {
+                    let t = std::f64::consts::TAU * i as f64 / 6.0 - std::f64::consts::FRAC_PI_2;
+                    50.0 + dy + 30.0 * t.sin()
+                })
+                .sum::<f64>()
+                / 6.0,
+        );
+        let scene = crate::depict::depict_molecule(&mol);
+        let mk = |place: Option<RegionTextPlace>| {
+            let node = MolNode {
+                region: Some(crate::doc::chrome::RegionField::One(RegionSpec {
+                    style: RegionStyle::Circle,
+                    atoms: vec![0, 1, 2, 3, 4, 5],
+                    exclude: vec![6, 7],
+                    fill: Some(FillSpec {
+                        color: Some("#eee".into()),
+                        opacity: None,
+                    }),
+                    stroke: Some(StrokeSpec {
+                        color: Some("#c44".into()),
+                        width: Some(1.2),
+                        dash: None,
+                    }),
+                    text: place.map(|p| {
+                        MolText::Styled(crate::doc::chrome::MolTextSpec {
+                            content: "aryl".into(),
+                            place: Some(p),
+                            pos: Some(LabelPos::Left),
+                            ..Default::default()
+                        })
+                    }),
+                    z: None,
+                })),
+                ..Default::default()
+            };
+            apply_mol_chrome(&node, &mol, scene.clone())
+        };
+        let out_in = mk(Some(RegionTextPlace::Inside));
+        let out_none = mk(None);
+        let circ = |out: &Scene| {
+            layer_prims(out)
+                .into_iter()
+                .find_map(|p| match p {
+                    Primitive::Circle {
+                        cx,
+                        cy,
+                        r,
+                        class: Some(c),
+                        ..
+                    } if c.contains("region") => Some((*cx, *cy, *r)),
+                    _ => None,
+                })
+                .expect("region circle")
+        };
+        let (cx0, cy0, r0) = circ(&out_none);
+        let (cx, cy, r) = circ(&out_in);
+        let label = layer_prims(&out_in)
+            .into_iter()
+            .find_map(|p| match p {
+                Primitive::Path {
+                    d,
+                    class: Some(c),
+                    data_text: Some(t),
+                    ..
+                } if c.contains("region-label") && t == "aryl" => Some(path_centroid(d)),
+                _ => None,
+            })
+            .expect("aryl");
+        assert!(
+            label.0 < mean.0 - 5.0,
+            "pos=Left: aryl {:?} should be left of atom mean {:?}",
+            label,
+            mean
+        );
+        assert!(
+            (label.1 - mean.1).abs() < 28.0,
+            "aryl should sit near ring height: {:?} mean={:?}",
+            label,
+            mean
+        );
+        let nearest_ring = (0..6)
+            .map(|i| {
+                let t = std::f64::consts::TAU * i as f64 / 6.0 - std::f64::consts::FRAC_PI_2;
+                let ax = 50.0 + dx + 30.0 * t.cos();
+                let ay = 50.0 + dy + 30.0 * t.sin();
+                (label.0 - ax).hypot(label.1 - ay)
+            })
+            .fold(f64::INFINITY, f64::min);
+        assert!(
+            nearest_ring < 42.0,
+            "aryl {:?} still far from ring (nearest={nearest_ring})",
+            label
+        );
+        assert!(
+            cx < cx0 - 1.0,
+            "circle center should shift toward left label: none=({cx0},{cy0}) in=({cx},{cy})"
+        );
+        let balloon = (label.0 - cx0).hypot(label.1 - cy0) + 8.0;
+        assert!(
+            r + 1e-6 < balloon,
+            "shifted covering should beat fixed-center balloon: r={r} balloon={balloon} r0={r0}"
+        );
+        assert!(
+            r < r0 + 22.0,
+            "inside aryl must not balloon the circle: r={r} r0={r0}"
+        );
+        let ethyl = (50.0 + dx, 50.0 - 30.0 - 26.0 + dy);
+        let d_ex = (ethyl.0 - cx).hypot(ethyl.1 - cy);
+        assert!(
+            d_ex + 1e-6 >= r,
+            "exclude ethyl should stay outside circle: d={d_ex} r={r}"
         );
     }
 
@@ -4245,6 +4561,33 @@ mod tests {
     }
 
     #[test]
+    fn covering_circle_shifts_center_toward_outlier() {
+        let mut pts = Vec::new();
+        for i in 0..6 {
+            let t = std::f64::consts::TAU * i as f64 / 6.0;
+            pts.push((30.0 * t.cos(), 30.0 * t.sin()));
+        }
+        let (cx0, cy0, r0) = covering_circle(&pts);
+        pts.push((-50.0, 0.0));
+        let (cx, cy, r) = covering_circle(&pts);
+        assert!(
+            cx < cx0 - 5.0,
+            "center should move toward left outlier: {cx} vs {cx0}"
+        );
+        let balloon = (-50.0_f64 - cx0).hypot(0.0 - cy0);
+        assert!(
+            r < balloon - 2.0,
+            "sec r={r} should beat fixed-center balloon={balloon} r0={r0}"
+        );
+        for &(x, y) in &pts {
+            assert!(
+                (x - cx).hypot(y - cy) <= r + 1e-6,
+                "({x},{y}) outside disk ({cx},{cy}) r={r}"
+            );
+        }
+    }
+
+    #[test]
     fn circle_inside_label_seeds_like_outside_not_center() {
         let mol = ethanol();
         let scene = crate::depict::depict_molecule(&mol);
@@ -4285,19 +4628,20 @@ mod tests {
             });
             (circ.expect("region circle"), label.expect("region label"))
         };
-        let ((ocx, ocy, or_), (olx, oly)) = mk(RegionTextPlace::Outside);
+        let ((ocx, ocy, or_), (_olx, _oly)) = mk(RegionTextPlace::Outside);
         let ((icx, icy, ir), (ilx, ily)) = mk(RegionTextPlace::Inside);
-        assert!((ocx - icx).abs() < 1e-6 && (ocy - icy).abs() < 1e-6);
         assert!(
             ir + 1e-6 >= or_,
-            "inside should grow circle: outside_r={or_} inside_r={ir}"
+            "inside should still cover the label: outside_r={or_} inside_r={ir}"
         );
-        let to_outside = (ilx - olx).hypot(ily - oly);
+        assert!(
+            icy <= ocy + 1e-6,
+            "Above inside-label should pull circle center up: outside=({ocx},{ocy}) inside=({icx},{icy})"
+        );
         let to_center = (ilx - icx).hypot(ily - icy);
         assert!(
-            to_outside < to_center,
-            "inside label should stay near outside seed, not center: \
-             dist_seed={to_outside} dist_center={to_center}"
+            to_center > 8.0,
+            "inside label must not sit in the circle nucleus: dist={to_center}"
         );
         assert!(
             ily < icy,
