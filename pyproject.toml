@@ -67,6 +67,7 @@ dev = [
   "coverage>=7.16.2",
   "vulture>=2.16",
   "basedpyright>=1.40.2",
+  "ipykernel>=7.4.0",
 ]
 docs = [
   "mkdocs>=1.6,<2",
