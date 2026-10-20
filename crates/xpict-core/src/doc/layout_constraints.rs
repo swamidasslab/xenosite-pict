@@ -1695,15 +1695,21 @@ pub fn callout_kit(
 /// One kit for all three — chrome `LabelRole::Number` (index or mapno) and
 /// `LabelRole::Text` both call [`refine_atom_number`] → here.
 ///
-/// **Closeness is soft energy**, not the Lagrangian: strong
-/// [`Constraint::MinimizeDist`] to the snug gap (`clash_dist` / margin) on the
-/// chem-text box if present, else the atom point. Weak PreferPose only keeps
-/// the greedy side — it must not pin a distant seed.
+/// Soft energy (NM objective):
+/// - strong [`Constraint::MinimizeDist`] to the snug gap (`clash_dist`) on chem
+///   text if present, else the atom point — this is the home magnet;
+/// - mild soft [`Constraint::Outside`] vs bonds and vs other labels (smooth
+///   repulsion in addition to hard rows).
 ///
-/// [`HardConstraint::MaxDist`] (~0.3 bond) is only a ceiling via AL (feasibility
-/// penalty, not a magnet). Clears bond lines via [`push_clear_bonds`]. Chem
-/// atom text is hard Outside; prior annotation boxes are soft Outside. Shade is
-/// **not** a layout obstacle.
+/// Hard / AL (feasibility only, not placement preference):
+/// - [`HardConstraint::MaxDist`] (~0.3 bond) ceiling;
+/// - hard Outside vs bonds and vs chem atom text.
+///
+/// No PreferPose — a greedy seed is only the NM start; pinning it made numbers
+/// look randomly parked. Shade is **not** a layout obstacle.
+const ATOM_SNUG_STRENGTH: f64 = 14.0;
+const ATOM_MILD_REPEL: f64 = 2.5;
+
 pub fn atom_number_kit(
     world: &mut LayoutWorld,
     constraints: &mut Vec<Constraint>,
@@ -1744,24 +1750,32 @@ pub fn atom_number_kit(
         coord_anchor
     };
     if world.get(&anchor).is_some() {
-        // Soft magnet to the margin gap — this is what pulls numbers home.
         constraints.push(Constraint::MinimizeDist {
             a: id.clone(),
             b: anchor.clone(),
             opt_dist: clash_dist,
-            strength: 10.0,
+            strength: ATOM_SNUG_STRENGTH,
         });
-        // AL ceiling only (not a closeness term).
         hard.push(HardConstraint::MaxDist {
             a: id.clone(),
             b: anchor,
             dist: ATOM_LABEL_TETHER_PX,
         });
     }
+    // Hard feasibility + mild soft repulsion vs every bond.
     push_clear_bonds(world, hard, &id, clash_dist);
-    // Chem atom text: hard Outside (never mute chem). Prior annotation boxes are
-    // installed as `t{10000+}` — soft Outside only. Hard-clearing every prior
-    // number made later indices infeasible near their atoms and flung them away.
+    if let Some(bonds) = world.get("mol/chem/bonds") {
+        for bid in bonds.children.clone() {
+            constraints.push(Constraint::Outside {
+                a: id.clone(),
+                b: bid,
+                clash_dist,
+                strength: ATOM_MILD_REPEL,
+            });
+        }
+    }
+    // Chem text: hard Outside + mild soft twin. Prior annotations (`t{10000+}`):
+    // soft Outside only — hard-clearing them flung later indices off-atom.
     if let Some(texts) = world.get("mol/chem/atom_texts") {
         for tid in texts.children.clone() {
             let annot_box = tid
@@ -1773,26 +1787,26 @@ pub fn atom_number_kit(
                     a: id.clone(),
                     b: tid,
                     clash_dist,
-                    strength: 4.0,
+                    strength: ATOM_MILD_REPEL,
                 });
             } else {
                 hard.push(HardConstraint::Outside {
                     a: id.clone(),
+                    b: tid.clone(),
+                    clash_dist,
+                });
+                constraints.push(Constraint::Outside {
+                    a: id.clone(),
                     b: tid,
                     clash_dist,
+                    strength: ATOM_MILD_REPEL,
                 });
             }
         }
     }
     // Intentionally no Outside vs shade — wash is not a placement obstacle.
-    // Weak side seed only; snug MinimizeDist must be able to spend this energy.
-    let (x, y) = shape_anchor(&Shape::Aabb(ink));
-    constraints.push(Constraint::PreferPose {
-        a: id.clone(),
-        x,
-        y,
-        strength: 0.12,
-    });
+    // No PreferPose: snug + mild repel own the soft energy.
+    let _ = ink;
     id
 }
 
@@ -2528,14 +2542,29 @@ mod tests {
             bond_h.iter().all(|&d| d >= 3.0 - 1e-9),
             "bond clear must use full clash_dist; got {bond_h:?}"
         );
+        let bond_soft: Vec<_> = cs
+            .iter()
+            .filter_map(|c| match c {
+                Constraint::Outside {
+                    b,
+                    clash_dist,
+                    strength,
+                    ..
+                } if b.contains("/bonds/") => Some((*clash_dist, *strength)),
+                _ => None,
+            })
+            .collect();
         assert!(
-            !cs.iter().any(|c| match c {
-                Constraint::Outside { b, .. } | Constraint::MinGap { b, .. } => {
-                    b.contains("/bonds/")
-                }
-                _ => false,
-            }),
-            "bond clearance is hard Outside, not a soft hinge"
+            !bond_soft.is_empty()
+                && bond_soft
+                    .iter()
+                    .all(|&(d, s)| d >= 3.0 - 1e-9 && (s - ATOM_MILD_REPEL).abs() < 1e-9),
+            "bonds also get mild soft Outside repulsion; got {bond_soft:?}"
+        );
+        assert!(
+            !cs.iter()
+                .any(|c| matches!(c, Constraint::MinGap { b, .. } if b.contains("/bonds/"))),
+            "bond clearance is Outside, not MinGap"
         );
     }
 
