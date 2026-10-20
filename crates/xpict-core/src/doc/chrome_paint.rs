@@ -2221,6 +2221,76 @@ mod tests {
         }
     }
 
+    /// Zig-zag propane; atom index 1 is the middle carbon (degree 2).
+    fn propane() -> MoleculeIn {
+        MoleculeIn {
+            id: Some("ccc".into()),
+            atoms: vec![
+                AtomIn {
+                    index: 0,
+                    element: Some("C".into()),
+                    z: Some(6),
+                    x: 0.0,
+                    y: 15.0,
+                    label: None,
+                    charge: 0,
+                    mapno: None,
+                },
+                AtomIn {
+                    index: 1,
+                    element: Some("C".into()),
+                    z: Some(6),
+                    x: 26.0,
+                    y: 0.0,
+                    label: None,
+                    charge: 0,
+                    mapno: None,
+                },
+                AtomIn {
+                    index: 2,
+                    element: Some("C".into()),
+                    z: Some(6),
+                    x: 52.0,
+                    y: 15.0,
+                    label: None,
+                    charge: 0,
+                    mapno: None,
+                },
+            ],
+            bonds: vec![
+                BondIn {
+                    index: 0,
+                    begin: 0,
+                    end: 1,
+                    order: 1.0,
+                    stereo: None,
+                    interior: None,
+                },
+                BondIn {
+                    index: 1,
+                    begin: 1,
+                    end: 2,
+                    order: 1.0,
+                    stereo: None,
+                    interior: None,
+                },
+            ],
+            color: None,
+            atom_shade: None,
+            bond_shade: None,
+            shade_vmin: None,
+            shade_vmax: None,
+            mark_atoms: vec![],
+            mark_bonds: vec![],
+            scale: 1.0,
+            weight: 1.0,
+            aromatic: Default::default(),
+            debug_box: false,
+            debug_align: false,
+            align_debug: None,
+        }
+    }
+
     fn path_nums(d: &str) -> Vec<f64> {
         let mut out = Vec::new();
         let mut cur = String::new();
@@ -2363,6 +2433,96 @@ mod tests {
         assert!(
             dist < ATOM_LABEL_TETHER_PX + 20.0,
             "index number '2' centroid ({nx},{ny}) far from OH center ({ox},{oy}); dist={dist}"
+        );
+    }
+
+    /// CCC middle carbon (index 1): number sits snug on the atom, and the two
+    /// bonds form an arrow that points at the label (chevron tip → number).
+    #[test]
+    fn atom_number_ccc_index1_snug_on_bond_arrow() {
+        use crate::doc::layout_constraints::edge_signed_distance;
+
+        let mol = propane();
+        let (dx, dy) = frame_offset(&mol);
+        let scene = crate::depict::depict_molecule(&mol);
+        let node = MolNode {
+            atom_number: Some(AtomNumberSpec::ByName(AtomNumberBy::Index)),
+            ..Default::default()
+        };
+        let out = apply_mol_chrome(&node, &mol, scene);
+
+        let a0 = &mol.atoms[0];
+        let a1 = &mol.atoms[1];
+        let a2 = &mol.atoms[2];
+        assert_eq!(a1.index, 1);
+        let (ax, ay) = (a1.x + dx, a1.y + dy);
+        let (n0x, n0y) = (a0.x + dx, a0.y + dy);
+        let (n2x, n2y) = (a2.x + dx, a2.y + dy);
+
+        let (nx, ny, nbox) = layer_prims(&out).into_iter().find_map(|p| match p {
+            Primitive::Path {
+                d,
+                data_text: Some(t),
+                class: Some(c),
+                ..
+            } if c.contains("atom-number") && t == "1" => {
+                let (cx, cy) = path_centroid(d);
+                let nums = path_nums(d);
+                let mut x0 = f64::INFINITY;
+                let mut y0 = f64::INFINITY;
+                let mut x1 = f64::NEG_INFINITY;
+                let mut y1 = f64::NEG_INFINITY;
+                let mut i = 0;
+                while i + 1 < nums.len() {
+                    x0 = x0.min(nums[i]);
+                    y0 = y0.min(nums[i + 1]);
+                    x1 = x1.max(nums[i]);
+                    y1 = y1.max(nums[i + 1]);
+                    i += 2;
+                }
+                Some((cx, cy, Aabb::new(x0, y0, x1, y1)))
+            }
+            _ => None,
+        })
+        .expect("atom-number 1 on CCC");
+
+        // Snug: closest edge of the glyph within a small air gap of the atom.
+        let gap = edge_signed_distance(
+            &Shape::Aabb(nbox),
+            &Shape::Point { x: ax, y: ay },
+        );
+        assert!(
+            gap >= -2.0,
+            "number must not sit deep through atom 1; gap={gap}"
+        );
+        assert!(
+            gap <= CLASH_MARGIN_PX + 6.0,
+            "number 1 should be snug (near clash margin), gap={gap} (margin={CLASH_MARGIN_PX})"
+        );
+        assert!(
+            gap <= ATOM_LABEL_TETHER_PX + 1e-3,
+            "number 1 must stay inside MaxDist tether; gap={gap}"
+        );
+
+        // Arrow: midpoint of the two neighbors → atom 1 → label.
+        let mid = ((n0x + n2x) * 0.5, (n0y + n2y) * 0.5);
+        let mut adx = ax - mid.0;
+        let mut ady = ay - mid.1;
+        let alen = adx.hypot(ady).max(1e-6);
+        adx /= alen;
+        ady /= alen;
+        let mut ldx = nx - ax;
+        let mut ldy = ny - ay;
+        let llen = ldx.hypot(ldy).max(1e-6);
+        ldx /= llen;
+        ldy /= llen;
+        let align = adx * ldx + ady * ldy;
+        assert!(
+            align > 0.5,
+            "bonds should point at number 1 like an arrow: align={align} \
+             atom=({ax:.1},{ay:.1}) num=({nx:.1},{ny:.1}) mid=({:.1},{:.1})",
+            mid.0,
+            mid.1
         );
     }
 

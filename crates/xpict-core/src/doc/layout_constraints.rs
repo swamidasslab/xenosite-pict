@@ -1741,15 +1741,32 @@ pub fn atom_number_kit(
         Shape::Aabb(ink),
         false,
     );
-    // Home: chem atom text when painted; otherwise the atom point.
+    // Home: chem atom text when painted; otherwise the atom **center point**
+    // (not the 0.3-bond Coord disk — snugging to the disk left a ~disk-radius
+    // air gap that looked randomly far from the nucleus).
     let text_anchor = format!("mol/chem/atom_texts/t{atom_idx}");
-    let coord_anchor = format!("mol/chem/atoms/a{atom_idx}/coord");
     let anchor = if world.get(&text_anchor).is_some() {
-        text_anchor
+        Some(text_anchor)
     } else {
-        coord_anchor
+        let coord = format!("mol/chem/atoms/a{atom_idx}/coord");
+        let center = world.get(&coord).map(|n| match n.world_shape() {
+            Shape::Circle { cx, cy, .. } | Shape::Point { x: cx, y: cy } => (cx, cy),
+            other => other.aabb().center(),
+        });
+        center.map(|(cx, cy)| {
+            let tip = format!("mol/chem/atoms/a{atom_idx}/snug");
+            let parent = format!("mol/chem/atoms/a{atom_idx}");
+            world.insert(
+                &tip,
+                &parent,
+                ObjectType::Coord,
+                Shape::Point { x: cx, y: cy },
+                true,
+            );
+            tip
+        })
     };
-    if world.get(&anchor).is_some() {
+    if let Some(anchor) = anchor {
         constraints.push(Constraint::MinimizeDist {
             a: id.clone(),
             b: anchor.clone(),
@@ -2585,8 +2602,8 @@ mod tests {
             .collect();
         assert_eq!(tether.len(), 1, "atom label must MaxDist-tether");
         assert!(
-            tether[0].0.ends_with("/coord"),
-            "without chem text, tether to atom point; got {}",
+            tether[0].0.ends_with("/snug"),
+            "without chem text, tether to atom center point (/snug); got {}",
             tether[0].0
         );
         assert!(
