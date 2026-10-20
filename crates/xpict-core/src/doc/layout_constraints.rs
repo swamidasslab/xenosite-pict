@@ -845,14 +845,20 @@ fn constraint_energy(world: &LayoutWorld, c: &Constraint) -> f64 {
                 Side::Below => dy,
                 Side::Above => -dy,
             };
-            // Also hug the reference along the edge (Left/Right → match y).
-            // Without this, MinimizeDist alone can leave a Left label at the
-            // top of the chem AABB and permanently inflate a grown hull.
-            let ortho = match side {
-                Side::Left | Side::Right => dy,
-                Side::Above | Side::Below => dx,
+            // Point `side_ref` (region atom-mean): also hug along the edge
+            // (Left/Right → match y). Skip for AABB targets so callout /
+            // caption PreferSide vs chem is unchanged.
+            let ortho_pen = match &sb {
+                Shape::Point { .. } => {
+                    let ortho = match side {
+                        Side::Left | Side::Right => dy,
+                        Side::Above | Side::Below => dx,
+                    };
+                    0.35 * strength * ortho * ortho
+                }
+                _ => 0.0,
             };
-            strength * hinge_below(good, 0.0) + 0.35 * strength * ortho * ortho
+            strength * hinge_below(good, 0.0) + ortho_pen
         }
         Constraint::PointStandoff {
             tip,
