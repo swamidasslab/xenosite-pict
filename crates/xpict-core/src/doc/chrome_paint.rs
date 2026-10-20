@@ -569,9 +569,11 @@ fn atom_label_primitive(
         LabelRole::Number => NUMBER_GAP_PX,
         LabelRole::Text => TEXT_GAP_PX,
     };
-    // Index/mapno: short tether; custom atom_label text: a bit longer.
+    // Index/mapno: short tether. Custom text: longer, and a full bond when an
+    // index (or other label) is already on the atom so keep-off can sit beside.
     let tether = match role {
         LabelRole::Number => ATOM_NUMBER_TETHER_PX,
+        LabelRole::Text if !other_labels.is_empty() => BOND_PX,
         LabelRole::Text => ATOM_TEXT_TETHER_PX,
     };
     let anchor = "middle";

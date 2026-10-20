@@ -1,5 +1,9 @@
 # Lab log
 
+## 2026-10-20
+
+- Keep-off and tether are **different Lagrangians** (`lagrangian` 0 vs 1 on `HardConstraint`). No-overlap solves first and is held at max ρ; MaxDist cannot re-cover a number. Custom text beside an index gets a 1-bond tether. Notebook kitchen-sink test failed first (`ortho` AABB swallowed `2`), then passed.
+
 ## 2026-10-19
 
 - Keep-off-labels is Lagrangian: prior annotation boxes (`t{10000+}`) are always hard Outside, same as chem text. A soft hinge lost to snug (kitchen-sink "ortho" on index 2).

@@ -451,6 +451,11 @@ pub enum Constraint {
 /// Soft [`Constraint`] hinges can leave residual overlap when PreferPose /
 /// PreferSide fight them. Hard rows here get Powell–Hestenes–Rockafellar
 /// multipliers so bond (and similar) clearance converges to feasibility.
+/// Clearance (no overlap) is a stronger Lagrangian than tether.
+pub const LAGRANGIAN_CLEAR: u8 = 0;
+/// Association ceiling (MaxDist). Solved after clearance and held weaker.
+pub const LAGRANGIAN_TETHER: u8 = 1;
+
 #[derive(Debug, Clone)]
 pub enum HardConstraint {
     /// Require `edge_signed(a,b) ≥ clash_dist` (`g = clash_dist - d`).
@@ -458,15 +463,35 @@ pub enum HardConstraint {
         a: NodeId,
         b: NodeId,
         clash_dist: f64,
+        /// Lower is stronger. [`LAGRANGIAN_CLEAR`] vs [`LAGRANGIAN_TETHER`].
+        lagrangian: u8,
     },
     /// Require `a` inside `b` by at least `pad` (`g` = protrusion / shallow depth).
-    Inside { a: NodeId, b: NodeId, pad: f64 },
+    Inside {
+        a: NodeId,
+        b: NodeId,
+        pad: f64,
+        lagrangian: u8,
+    },
     /// Require `edge_signed(a,b) ≤ dist` (`g = d - dist`). Overlap (`d < 0`) is fine.
     ///
     /// This is a **closest-point** tether: some part of `a` must lie within
     /// `dist` of `b` (the far side of a long label may stick out). Atom labels
     /// use it so bond-clear AL cannot fling the label across the molecule.
-    MaxDist { a: NodeId, b: NodeId, dist: f64 },
+    MaxDist {
+        a: NodeId,
+        b: NodeId,
+        dist: f64,
+        lagrangian: u8,
+    },
+}
+
+fn hard_lagrangian(h: &HardConstraint) -> u8 {
+    match h {
+        HardConstraint::Outside { lagrangian, .. }
+        | HardConstraint::Inside { lagrangian, .. }
+        | HardConstraint::MaxDist { lagrangian, .. } => *lagrangian,
+    }
 }
 
 /// How hard the placement well pulls, relative to clash hinges (strength ~3–8).
@@ -511,6 +536,7 @@ fn push_clear_bonds(world: &LayoutWorld, hard: &mut Vec<HardConstraint>, a: &str
                 a: a.to_string(),
                 b: bid,
                 clash_dist,
+                lagrangian: LAGRANGIAN_CLEAR,
             });
         }
     }
@@ -961,21 +987,23 @@ fn inside_g(sa: &Shape, sb: &Shape, pad: f64) -> f64 {
 /// Signed hard residual `g(x)`. Feasible when `g ≤ 0`.
 pub fn hard_g(world: &LayoutWorld, h: &HardConstraint) -> f64 {
     match h {
-        HardConstraint::Outside { a, b, clash_dist } => {
+        HardConstraint::Outside {
+            a, b, clash_dist, ..
+        } => {
             let (sa, sb) = match (world.get(a), world.get(b)) {
                 (Some(na), Some(nb)) => (na.world_shape(), nb.world_shape()),
                 _ => return 0.0,
             };
             clash_dist - edge_signed_distance(&sa, &sb)
         }
-        HardConstraint::Inside { a, b, pad } => {
+        HardConstraint::Inside { a, b, pad, .. } => {
             let (sa, sb) = match (world.get(a), world.get(b)) {
                 (Some(na), Some(nb)) => (na.world_shape(), nb.world_shape()),
                 _ => return 0.0,
             };
             inside_g(&sa, &sb, *pad)
         }
-        HardConstraint::MaxDist { a, b, dist } => {
+        HardConstraint::MaxDist { a, b, dist, .. } => {
             let (sa, sb) = match (world.get(a), world.get(b)) {
                 (Some(na), Some(nb)) => (na.world_shape(), nb.world_shape()),
                 _ => return 0.0,
@@ -1003,19 +1031,28 @@ fn al_energy(
     soft: &[Constraint],
     hard: &[HardConstraint],
     lambda: &[f64],
-    rho: f64,
+    rho: &[f64],
+    active: &[bool],
     seed: &[(NodeId, f64, f64)],
     w_travel: f64,
 ) -> f64 {
     let mut e = energy(world, soft, seed, w_travel);
     for (i, h) in hard.iter().enumerate() {
+        if !active.get(i).copied().unwrap_or(false) {
+            continue;
+        }
         let lam = lambda.get(i).copied().unwrap_or(0.0);
-        e += phr_penalty(hard_g(world, h), lam, rho);
+        let r = rho.get(i).copied().unwrap_or(1.0).max(1e-6);
+        e += phr_penalty(hard_g(world, h), lam, r);
     }
     e
 }
 
 /// Minimize soft energy (+ AL hard terms) with Nelder–Mead; stop on pose drift.
+///
+/// Hard rows are grouped by [`HardConstraint`] `lagrangian` (lower = stronger).
+/// Each group is its own PHR loop; stronger groups are then held at `al_rho_max`
+/// so a weaker tether cannot re-introduce overlap.
 pub fn solve(
     world: &mut LayoutWorld,
     constraints: &[Constraint],
@@ -1049,52 +1086,87 @@ pub fn solve(
         world.apply_params(&ids, &params);
     }
 
+    let mut groups: Vec<u8> = hard.iter().map(hard_lagrangian).collect();
+    groups.sort_unstable();
+    groups.dedup();
+    if groups.is_empty() {
+        groups.push(0);
+    }
+
     let outer_max = if hard.is_empty() {
         1
     } else {
         opts.al_outer_max.max(1)
     };
     let mut lambda = vec![0.0; hard.len()];
-    let mut rho_pen = opts.al_rho0.max(1e-6);
+    let mut rho = vec![opts.al_rho0.max(1e-6); hard.len()];
+    // Stronger Lagrangians start at higher ρ so snug cannot sit on a label
+    // before the outer loop has grown the penalty.
+    let max_group = *groups.last().unwrap_or(&0);
+    for (i, h) in hard.iter().enumerate() {
+        let steps = max_group.saturating_sub(hard_lagrangian(h)) as i32;
+        rho[i] = (opts.al_rho0.max(1e-6) * opts.al_rho_grow.powi(steps * 5)).min(opts.al_rho_max);
+    }
+    let mut active = vec![false; hard.len()];
     let mut total_iters = 0usize;
     let mut stopped_on_drift = false;
     let mut last_energy = 0.0;
-    let mut prev_max_v = f64::INFINITY;
 
-    for outer in 0..outer_max {
-        let nm = nelder_mead(
-            world,
-            &ids,
-            constraints,
-            hard,
-            &lambda,
-            rho_pen,
-            &seed,
-            opts,
-            outer == 0,
-        );
-        total_iters += nm.iters;
-        stopped_on_drift = nm.stopped_on_drift;
-        last_energy = nm.energy;
-
-        if hard.is_empty() {
-            break;
-        }
-
-        let mut max_v = 0.0_f64;
+    for (gi, &group) in groups.iter().enumerate() {
         for (i, h) in hard.iter().enumerate() {
-            let g = hard_g(world, h);
-            max_v = max_v.max(g.max(0.0));
-            lambda[i] = (lambda[i] + rho_pen * g).max(0.0);
+            if hard_lagrangian(h) <= group {
+                active[i] = true;
+            }
         }
-        if max_v < opts.al_tol {
-            break;
+        let mut prev_max_v = f64::INFINITY;
+        for outer in 0..outer_max {
+            let nm = nelder_mead(
+                world,
+                &ids,
+                constraints,
+                hard,
+                &lambda,
+                &rho,
+                &active,
+                &seed,
+                opts,
+                outer == 0 && gi == 0,
+            );
+            total_iters += nm.iters;
+            stopped_on_drift = nm.stopped_on_drift;
+            last_energy = nm.energy;
+
+            if hard.is_empty() {
+                break;
+            }
+
+            let mut max_v = 0.0_f64;
+            for (i, h) in hard.iter().enumerate() {
+                if hard_lagrangian(h) != group {
+                    continue;
+                }
+                let g = hard_g(world, h);
+                max_v = max_v.max(g.max(0.0));
+                lambda[i] = (lambda[i] + rho[i] * g).max(0.0);
+            }
+            if max_v < opts.al_tol {
+                break;
+            }
+            if outer + 1 < outer_max && max_v > prev_max_v * 0.85 {
+                for (i, h) in hard.iter().enumerate() {
+                    if hard_lagrangian(h) == group {
+                        rho[i] = (rho[i] * opts.al_rho_grow).min(opts.al_rho_max);
+                    }
+                }
+            }
+            prev_max_v = max_v;
         }
-        // Grow ρ when violation stalls so the quadratic term dominates PreferPose.
-        if outer + 1 < outer_max && max_v > prev_max_v * 0.85 {
-            rho_pen = (rho_pen * opts.al_rho_grow).min(opts.al_rho_max);
+        // Hold this Lagrangian so weaker groups cannot spend it.
+        for (i, h) in hard.iter().enumerate() {
+            if hard_lagrangian(h) == group {
+                rho[i] = opts.al_rho_max;
+            }
         }
-        prev_max_v = max_v;
     }
 
     SolveResult {
@@ -1112,7 +1184,8 @@ fn nelder_mead(
     constraints: &[Constraint],
     hard: &[HardConstraint],
     lambda: &[f64],
-    rho_pen: f64,
+    rho: &[f64],
+    active: &[bool],
     seed: &[(NodeId, f64, f64)],
     opts: &SolveOpts,
     rebuild_simplex: bool,
@@ -1133,7 +1206,8 @@ fn nelder_mead(
             constraints,
             hard,
             lambda,
-            rho_pen,
+            rho,
+            active,
             seed,
             opts.w_travel,
         )
@@ -1565,6 +1639,7 @@ pub fn region_text_kit(
             a: text_id.clone(),
             b: oid,
             clash_dist,
+            lagrangian: LAGRANGIAN_CLEAR,
         });
     }
     // Avoid shade disks (labels sit in front, but still clear painted wash).
@@ -1737,11 +1812,10 @@ pub fn callout_kit(
 /// - mild soft [`Constraint::Outside`] vs bonds and vs other labels (smooth
 ///   repulsion in addition to hard rows).
 ///
-/// Hard / AL (feasibility only, not placement preference):
-/// - [`HardConstraint::MaxDist`] ceiling (`tether_px`: ~0.3 bond for numbers,
-///   ~0.5 for custom text);
-/// - hard Outside vs bonds, chem atom text, and prior annotation boxes
-///   (`t{10000+}`). Keep-off-labels is Lagrangian — a soft hinge loses to snug.
+/// Hard / AL (two Lagrangians; lower index is stronger):
+/// - [`LAGRANGIAN_CLEAR`]: Outside vs bonds, chem text, and prior labels;
+/// - [`LAGRANGIAN_TETHER`]: [`HardConstraint::MaxDist`] ceiling (`tether_px`).
+///   No-overlap outranks association — a shared PHR let snug+tether cover "2".
 ///
 /// No PreferPose — a greedy seed is only the NM start; pinning it made numbers
 /// look randomly parked. Shade is **not** a layout obstacle.
@@ -1816,6 +1890,7 @@ pub fn atom_number_kit(
             a: id.clone(),
             b: a.clone(),
             dist: tether_px,
+            lagrangian: LAGRANGIAN_TETHER,
         });
     }
     // Hard feasibility + mild soft repulsion vs every bond.
@@ -1839,6 +1914,7 @@ pub fn atom_number_kit(
                 a: id.clone(),
                 b: tid.clone(),
                 clash_dist,
+                lagrangian: LAGRANGIAN_CLEAR,
             });
             constraints.push(Constraint::Outside {
                 a: id.clone(),
@@ -2860,6 +2936,7 @@ mod tests {
                 a: "lab".into(),
                 b: b.into(),
                 pad: 1.0,
+                lagrangian: LAGRANGIAN_CLEAR,
             };
             let e = constraint_energy(&w, &soft);
             let g = hard_g(&w, &hard).max(0.0);
@@ -3235,16 +3312,31 @@ mod tests {
         let prior_h: Vec<_> = hard
             .iter()
             .filter_map(|h| match h {
-                HardConstraint::Outside { b, clash_dist, .. } if b.ends_with("/t10000") => {
-                    Some(*clash_dist)
-                }
+                HardConstraint::Outside {
+                    b,
+                    clash_dist,
+                    lagrangian,
+                    ..
+                } if b.ends_with("/t10000") => Some((*clash_dist, *lagrangian)),
                 _ => None,
             })
             .collect();
         assert_eq!(
             prior_h,
-            vec![3.0],
-            "keep-off-labels must be hard Outside (AL), not a soft hinge"
+            vec![(3.0, LAGRANGIAN_CLEAR)],
+            "keep-off-labels must be the clear Lagrangian, not a soft hinge"
+        );
+        let tether_g: Vec<_> = hard
+            .iter()
+            .filter_map(|h| match h {
+                HardConstraint::MaxDist { lagrangian, .. } => Some(*lagrangian),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            tether_g,
+            vec![LAGRANGIAN_TETHER],
+            "tether is a weaker Lagrangian than keep-off"
         );
     }
 
