@@ -1504,7 +1504,10 @@ pub fn region_text_kit(
         false,
     );
     if inside {
-        // Soft guide + hard contain so PreferPose cannot leave the hull.
+        // Soft guide + hard contain. Seed may sit far (clash-free outside
+        // then hull-grown); soft snug to chem pulls it toward the mol while
+        // bonds/shade stay clear. Mild PreferPose only — a strong well pinned
+        // the label at the grown edge and it never moved closer.
         constraints.push(Constraint::Inside {
             a: text_id.clone(),
             b: hull_id.clone(),
@@ -1516,15 +1519,13 @@ pub fn region_text_kit(
             b: hull_id.clone(),
             pad: CONTAIN_MARGIN_PX,
         });
-        // Hold the clash-free edge seed firmly — weak PreferPose let the
-        // label drift into the ring nucleus while soft Inside/side fought.
-        let (px, py) = text_ink.center();
-        constraints.push(Constraint::PreferPose {
+        constraints.push(Constraint::MinimizeDist {
             a: text_id.clone(),
-            x: px,
-            y: py,
-            strength: 8.0,
+            b: "mol/chem".into(),
+            opt_dist: clash_dist,
+            strength: 12.0,
         });
+        push_placement_pose(constraints, &text_id, &Shape::Aabb(text_ink));
     } else {
         constraints.push(Constraint::Outside {
             a: text_id.clone(),
@@ -1542,7 +1543,11 @@ pub fn region_text_kit(
     }
     constraints.push(Constraint::PreferSide {
         a: text_id.clone(),
-        b: hull_id,
+        b: if inside {
+            "mol/chem".into()
+        } else {
+            hull_id.clone()
+        },
         side: preferred,
         strength: 2.0,
     });
@@ -2323,10 +2328,13 @@ pub fn refine_region_text(
     let id = region_text_kit(
         &mut world, &mut cs, &mut hard, 0, hull, text_rest, inside, preferred, clash_dist,
     );
+    // Inside seeds often start far (clash-free outside, hull grown around them);
+    // allow a larger simplex so soft snug to chem can travel inward.
     let opts = SolveOpts {
-        max_iters: 80,
+        max_iters: if inside { 120 } else { 80 },
         noise: 0.0,
         epsilon_px: 0.75,
+        initial_simplex_scale: if inside { 10.0 } else { 4.0 },
         ..SolveOpts::default()
     };
     let _ = solve(&mut world, &cs, &hard, &opts);

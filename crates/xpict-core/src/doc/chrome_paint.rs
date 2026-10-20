@@ -908,9 +908,8 @@ fn region_primitives(
                     }
                     RegionStyle::Bezier => {
                         // Place far from clashes, then grow the proxy so it
-                        // surrounds **atoms + label**. Soft refine PreferPose-
-                        // holds that seed and can snug later — do not re-seed
-                        // inside the ring when excludes block a pad-only grow.
+                        // surrounds **atoms + label**. Soft refine snugs the
+                        // label toward chem; hull is rebuilt after that move.
                         let b = seed.bounds.inflate(CONTAIN_MARGIN_PX);
                         cover_hull.push((b.x0, b.y0));
                         cover_hull.push((b.x1, b.y0));
@@ -971,36 +970,21 @@ fn region_primitives(
             });
         }
         RegionStyle::Bezier => {
+            // Placeholder — final path is written after inside-label snug so the
+            // hull can shrink around atoms + the moved label.
             let proxy = hull_proxy(&cover_hull, &exclude_xy, pad_hull, pad_hull + 6.0);
             solve_hull = proxy.clone();
-            let d = match &proxy {
-                Shape::PointSet(verts) if verts.len() >= 3 => bezier_path_from_proxy(&proxy, 0.55),
-                _ => {
-                    let hull = convex_hull(&cover_hull);
-                    if hull.len() >= 3 {
-                        rounded_hull_path(&hull, pad_hull)
-                    } else {
-                        let Aabb { x0, y0, x1, y1 } = region_box;
-                        format!(
-                            "M {:.2} {:.2} L {:.2} {:.2} L {:.2} {:.2} L {:.2} {:.2} Z",
-                            x0, y0, x1, y0, x1, y1, x0, y1
-                        )
-                    }
-                }
-            };
-            if !d.is_empty() {
-                out.push(Primitive::Path {
-                    d,
-                    stroke: stroke.0.clone(),
-                    fill: fill.clone().or(Some("none".into())),
-                    stroke_width: stroke.1,
-                    opacity,
-                    stroke_dasharray: dash_array(spec.stroke.as_ref()),
-                    stroke_linecap: None,
-                    class: Some("region bezier".into()),
-                    data_text: None,
-                });
-            }
+            out.push(Primitive::Path {
+                d: String::new(),
+                stroke: stroke.0.clone(),
+                fill: fill.clone().or(Some("none".into())),
+                stroke_width: stroke.1,
+                opacity,
+                stroke_dasharray: dash_array(spec.stroke.as_ref()),
+                stroke_linecap: None,
+                class: Some("region bezier".into()),
+                data_text: None,
+            });
         }
     }
 
@@ -1111,6 +1095,24 @@ fn region_primitives(
                     arrow_from: None,
                     arrow_to: None,
                 };
+                // After snug, rebuild Bezier around atoms + final label so the
+                // outline shrinks toward the molecule instead of staying large.
+                if matches!(spec.style, RegionStyle::Bezier) && inside {
+                    let mut snug_cover = cover.clone();
+                    let b = placed.bounds.inflate(CONTAIN_MARGIN_PX);
+                    snug_cover.push((b.x0, b.y0));
+                    snug_cover.push((b.x1, b.y0));
+                    snug_cover.push((b.x1, b.y1));
+                    snug_cover.push((b.x0, b.y1));
+                    pad_hull = grow_pad_until_hull_contains(
+                        &snug_cover,
+                        &exclude_xy,
+                        pad,
+                        placed.bounds,
+                        CONTAIN_MARGIN_PX,
+                    );
+                    cover_hull = snug_cover;
+                }
                 if let Some((d, data_text, _)) =
                     outline_markup(content, placed.x, placed.y, font_px, anchor)
                 {
@@ -1129,6 +1131,35 @@ fn region_primitives(
                     }
                 }
             }
+        }
+    }
+    if matches!(spec.style, RegionStyle::Bezier) {
+        let proxy = hull_proxy(&cover_hull, &exclude_xy, pad_hull, pad_hull + 6.0);
+        let d = match &proxy {
+            Shape::PointSet(verts) if verts.len() >= 3 => bezier_path_from_proxy(&proxy, 0.55),
+            _ => {
+                let hull = convex_hull(&cover_hull);
+                if hull.len() >= 3 {
+                    rounded_hull_path(&hull, pad_hull)
+                } else {
+                    let Aabb { x0, y0, x1, y1 } = region_box;
+                    format!(
+                        "M {:.2} {:.2} L {:.2} {:.2} L {:.2} {:.2} L {:.2} {:.2} Z",
+                        x0, y0, x1, y0, x1, y1, x0, y1
+                    )
+                }
+            }
+        };
+        if let Some(Primitive::Path { d: slot, .. }) = out.iter_mut().find(|p| {
+            matches!(
+                p,
+                Primitive::Path {
+                    class: Some(c),
+                    ..
+                } if c == "region bezier"
+            )
+        }) {
+            *slot = d;
         }
     }
     out
@@ -3337,6 +3368,26 @@ mod tests {
         assert!(
             dist_center > 18.0,
             "aryl label at {:?} too close to ring center ({cx},{cy}); dist={dist_center}",
+            aryl
+        );
+        // Soft snug to chem must pull the outside seed inward — not leave it
+        // parked at the clash-free far edge of a grown hull.
+        let nearest_ring = (0..6)
+            .map(|i| {
+                let t = std::f64::consts::TAU * i as f64 / 6.0 - std::f64::consts::FRAC_PI_2;
+                let ax = 50.0 + dx + 30.0 * t.cos();
+                let ay = 50.0 + dy + 30.0 * t.sin();
+                (aryl.0 - ax).hypot(aryl.1 - ay)
+            })
+            .fold(f64::INFINITY, f64::min);
+        assert!(
+            nearest_ring < 42.0,
+            "aryl label at {:?} still far from ring (nearest={nearest_ring}); expected snug to chem",
+            aryl
+        );
+        assert!(
+            aryl.0 < cx - 8.0,
+            "aryl label should stay on the preferred left of the ring: {:?}",
             aryl
         );
     }
