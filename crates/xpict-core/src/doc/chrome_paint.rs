@@ -806,10 +806,7 @@ fn region_primitives(
             push_disk_samples(&mut cover, ax, ay, ATOM_DISK_R_PX);
         }
         if let Some(box_) = text_boxes.get(&idx) {
-            cover.push((box_.x0, box_.y0));
-            cover.push((box_.x1, box_.y0));
-            cover.push((box_.x1, box_.y1));
-            cover.push((box_.x0, box_.y1));
+            push_aabb_corners(&mut cover, *box_);
         }
     }
     // Interior-atom shade — actual painted outer disks (fixed with chem).
@@ -821,10 +818,7 @@ fn region_primitives(
         if boundary_atom(mol, idx_i32, &include_set) {
             continue;
         }
-        for k in 0..8 {
-            let t = std::f64::consts::TAU * k as f64 / 8.0;
-            cover.push((cx + r * t.cos(), cy + r * t.sin()));
-        }
+        push_disk_samples(&mut cover, cx, cy, r);
     }
     if cover.is_empty() {
         return Vec::new();
@@ -880,14 +874,15 @@ fn region_primitives(
     let mut region_box = Aabb::new(x0, y0, x1, y1);
     let mut cover_hull = cover.clone();
     let mut pad_hull = pad;
-    let mut inside_seed: Option<crate::doc::layout_items::Placement> = None;
-
-    // Inside label: seed like outside, then grow the region so the seed fits.
+    let mut label_prim: Option<Primitive> = None;
     if let Some(ref text) = spec.text {
         let styled = text.as_styled();
         let content = styled.content.trim();
-        let place = styled.place.unwrap_or(RegionTextPlace::Outside);
-        if !content.is_empty() && matches!(place, RegionTextPlace::Inside) {
+        if !content.is_empty() {
+            let inside = matches!(
+                styled.place.unwrap_or(RegionTextPlace::Outside),
+                RegionTextPlace::Inside
+            );
             let pos = styled.pos.unwrap_or(LabelPos::Above);
             let font_px = FONT_PX
                 * styled
@@ -895,6 +890,13 @@ fn region_primitives(
                     .filter(|s| s.is_finite() && *s > 0.0)
                     .unwrap_or(1.0)
                 * 0.95;
+            let fill_c = styled
+                .color
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .unwrap_or("#333")
+                .to_string();
             if let Some((bx0, by0, bx1, by1)) = markup_bounds_at_origin(content, font_px, "middle")
             {
                 let ink = InkAtOrigin {
@@ -903,197 +905,61 @@ fn region_primitives(
                     x1: bx1,
                     y1: by1,
                 };
-                // Inside seeds: bonds only. Shade in occupancy shoved Left seeds
-                // to the top of the edge and the grown box stayed tall.
-                let mut occ = Occupancy::from_bonds(mol, dx, dy, STROKE_PX.max(0.8));
-                let place_inside = matches!(
-                    styled.place.unwrap_or(RegionTextPlace::Outside),
-                    RegionTextPlace::Inside
+                let occ = region_label_occupancy(
+                    mol,
+                    dx,
+                    dy,
+                    shades,
+                    caption_boxes,
+                    other_labels,
+                    !inside,
                 );
-                if !place_inside {
-                    for &(_, cx, cy, r) in shades {
-                        occ.add_aabb(Aabb::new(cx - r, cy - r, cx + r, cy + r));
-                    }
-                }
-                for &box_ in caption_boxes {
-                    occ.add_aabb(box_);
-                }
-                for &box_ in other_labels {
-                    occ.add_aabb(box_);
-                }
                 let side = label_pos_side(pos);
-                let seed = match spec.style {
-                    RegionStyle::Circle => {
-                        place_circle_label(circ_cx, circ_cy, circ_r, ink, false, side, &occ)
+                let seed = seed_region_label(
+                    spec.style,
+                    &occ,
+                    region_box,
+                    circ_cx,
+                    circ_cy,
+                    circ_r,
+                    ink,
+                    side,
+                    atom_centroid,
+                    !inside,
+                );
+                if inside {
+                    match spec.style {
+                        RegionStyle::Circle => {}
+                        RegionStyle::Box => {
+                            region_box =
+                                grow_aabb_to_contain(region_box, seed.bounds, CONTAIN_MARGIN_PX);
+                        }
+                        RegionStyle::Bezier => {
+                            push_aabb_corners(
+                                &mut cover_hull,
+                                seed.bounds.inflate(CONTAIN_MARGIN_PX),
+                            );
+                            pad_hull = grow_pad_until_hull_contains(
+                                &cover_hull,
+                                &exclude_xy,
+                                pad_hull,
+                                seed.bounds,
+                                CONTAIN_MARGIN_PX,
+                            );
+                        }
                     }
-                    RegionStyle::Box | RegionStyle::Bezier => {
-                        // Clash-free seed on the preferred side of the atom
-                        // hull (outside). Never park in the ring center.
-                        // `pos` slides about the contained-atom mean.
-                        place_region_edge(
-                            &occ,
-                            region_box,
-                            ink,
-                            /* inside */ false,
-                            side,
-                            CLASH_MARGIN_PX,
-                            CLASH_MARGIN_PX,
-                            atom_centroid,
-                            /* flip_sides */ !place_inside,
-                        )
-                    }
-                };
-                match spec.style {
-                    RegionStyle::Circle => {
-                        // Do **not** balloon r about a fixed center — that huge
-                        // solve hull left aryl at the far left. Keep the atom
-                        // covering as the Inside guide so snug can pull in;
-                        // paint rebuilds a shifted circle after the label moves.
-                        inside_seed = Some(seed);
-                    }
-                    RegionStyle::Box => {
-                        region_box =
-                            grow_aabb_to_contain(region_box, seed.bounds, CONTAIN_MARGIN_PX);
-                        inside_seed = Some(seed);
-                    }
+                }
+                let solve_hull = match spec.style {
+                    RegionStyle::Box => Shape::Aabb(region_box),
+                    RegionStyle::Circle => Shape::Circle {
+                        cx: circ_cx,
+                        cy: circ_cy,
+                        r: circ_r,
+                    },
                     RegionStyle::Bezier => {
-                        // Place far from clashes, then grow the proxy so it
-                        // surrounds **atoms + label**. Soft refine snugs the
-                        // label toward chem; hull is rebuilt after that move.
-                        let b = seed.bounds.inflate(CONTAIN_MARGIN_PX);
-                        cover_hull.push((b.x0, b.y0));
-                        cover_hull.push((b.x1, b.y0));
-                        cover_hull.push((b.x1, b.y1));
-                        cover_hull.push((b.x0, b.y1));
-                        pad_hull = grow_pad_until_hull_contains(
-                            &cover_hull,
-                            &exclude_xy,
-                            pad_hull,
-                            seed.bounds,
-                            CONTAIN_MARGIN_PX,
-                        );
-                        inside_seed = Some(seed);
+                        hull_proxy(&cover_hull, &exclude_xy, pad_hull, pad_hull + 6.0)
                     }
-                }
-            }
-        }
-    }
-
-    let mut out = Vec::new();
-    // Solver hull for text refine (box AABB / circle / bezier proxy).
-    let mut solve_hull = Shape::Aabb(region_box);
-
-    let inside_label = spec.text.as_ref().is_some_and(|t| {
-        let s = t.as_styled();
-        !s.content.trim().is_empty()
-            && matches!(
-                s.place.unwrap_or(RegionTextPlace::Outside),
-                RegionTextPlace::Inside
-            )
-    });
-
-    match spec.style {
-        RegionStyle::Box => {
-            // Placeholder when an inside label will snug — final AABB is written
-            // after refine so a far seed does not permanently inflate the box.
-            let d = if inside_label {
-                String::new()
-            } else {
-                let Aabb { x0, y0, x1, y1 } = region_box;
-                format!(
-                    "M {:.2} {:.2} L {:.2} {:.2} L {:.2} {:.2} L {:.2} {:.2} Z",
-                    x0, y0, x1, y0, x1, y1, x0, y1
-                )
-            };
-            out.push(Primitive::Path {
-                d,
-                stroke: stroke.0.clone(),
-                fill: fill.clone().or(Some("none".into())),
-                stroke_width: stroke.1,
-                opacity,
-                stroke_dasharray: dash_array(spec.stroke.as_ref()),
-                stroke_linecap: None,
-                class: Some("region box".into()),
-                data_text: None,
-            });
-        }
-        RegionStyle::Circle => {
-            solve_hull = Shape::Circle {
-                cx: circ_cx,
-                cy: circ_cy,
-                r: circ_r,
-            };
-            out.push(Primitive::Circle {
-                cx: circ_cx,
-                cy: circ_cy,
-                r: if inside_label { 0.0 } else { circ_r },
-                fill: fill.clone(),
-                stroke: stroke.0.clone(),
-                stroke_width: stroke.1,
-                opacity,
-                class: Some("region circle".into()),
-            });
-        }
-        RegionStyle::Bezier => {
-            // Placeholder — final path is written after inside-label snug so the
-            // hull can shrink around atoms + the moved label.
-            let proxy = hull_proxy(&cover_hull, &exclude_xy, pad_hull, pad_hull + 6.0);
-            solve_hull = proxy.clone();
-            out.push(Primitive::Path {
-                d: String::new(),
-                stroke: stroke.0.clone(),
-                fill: fill.clone().or(Some("none".into())),
-                stroke_width: stroke.1,
-                opacity,
-                stroke_dasharray: dash_array(spec.stroke.as_ref()),
-                stroke_linecap: None,
-                class: Some("region bezier".into()),
-                data_text: None,
-            });
-        }
-    }
-
-    if let Some(ref text) = spec.text {
-        let styled = text.as_styled();
-        let content = styled.content.trim();
-        if !content.is_empty() {
-            let place = styled.place.unwrap_or(RegionTextPlace::Outside);
-            let pos = styled.pos.unwrap_or(LabelPos::Above);
-            let font_px = FONT_PX
-                * styled
-                    .scale
-                    .filter(|s| s.is_finite() && *s > 0.0)
-                    .unwrap_or(1.0)
-                * 0.95;
-            let anchor = "middle";
-            let fill_c = styled
-                .color
-                .as_deref()
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .unwrap_or("#333")
-                .to_string();
-            if let Some((bx0, by0, bx1, by1)) = markup_bounds_at_origin(content, font_px, anchor) {
-                let ink = InkAtOrigin {
-                    x0: bx0,
-                    y0: by0,
-                    x1: bx1,
-                    y1: by1,
                 };
-                let inside = matches!(place, RegionTextPlace::Inside);
-                let mut occ = Occupancy::from_bonds(mol, dx, dy, STROKE_PX.max(0.8));
-                if !inside {
-                    for &(_, cx, cy, r) in shades {
-                        occ.add_aabb(Aabb::new(cx - r, cy - r, cx + r, cy + r));
-                    }
-                }
-                for &box_ in caption_boxes {
-                    occ.add_aabb(box_);
-                }
-                for &box_ in other_labels {
-                    occ.add_aabb(box_);
-                }
-                let side = label_pos_side(pos);
                 let bonds = bond_segs(mol, dx, dy);
                 let atoms: Vec<(usize, f64, f64)> = included
                     .iter()
@@ -1109,41 +975,6 @@ fn region_primitives(
                     .copied()
                     .filter(|(i, _, _, _)| included.iter().any(|&a| a as usize == *i))
                     .collect();
-                let seed = if inside {
-                    inside_seed.unwrap_or_else(|| match spec.style {
-                        RegionStyle::Circle => {
-                            place_circle_label(circ_cx, circ_cy, circ_r, ink, false, side, &occ)
-                        }
-                        RegionStyle::Box | RegionStyle::Bezier => place_region_edge(
-                            &occ,
-                            region_box,
-                            ink,
-                            true,
-                            side,
-                            CLASH_MARGIN_PX,
-                            CLASH_MARGIN_PX,
-                            atom_centroid,
-                            false,
-                        ),
-                    })
-                } else {
-                    match spec.style {
-                        RegionStyle::Circle => {
-                            place_circle_label(circ_cx, circ_cy, circ_r, ink, false, side, &occ)
-                        }
-                        RegionStyle::Box | RegionStyle::Bezier => place_region_edge(
-                            &occ,
-                            region_box,
-                            ink,
-                            false,
-                            side,
-                            CLASH_MARGIN_PX,
-                            CLASH_MARGIN_PX,
-                            atom_centroid,
-                            true,
-                        ),
-                    }
-                };
                 let (dtx, dty) = refine_region_text(
                     &bonds,
                     &atoms,
@@ -1170,8 +1001,6 @@ fn region_primitives(
                     arrow_from: None,
                     arrow_to: None,
                 };
-                // After snug, rebuild region geometry around atoms + final label
-                // so a far clash-free seed does not permanently inflate the outline.
                 if inside {
                     match spec.style {
                         RegionStyle::Box => {
@@ -1183,8 +1012,6 @@ fn region_primitives(
                             );
                         }
                         RegionStyle::Circle => {
-                            // Smallest covering of atoms + snug label; center
-                            // moves toward the text instead of inflating r.
                             let (cx0, cy0, r0) = circle_cover_points_label_excludes(
                                 &cover,
                                 Some(placed.bounds),
@@ -1199,11 +1026,10 @@ fn region_primitives(
                         }
                         RegionStyle::Bezier => {
                             let mut snug_cover = cover.clone();
-                            let b = placed.bounds.inflate(CONTAIN_MARGIN_PX);
-                            snug_cover.push((b.x0, b.y0));
-                            snug_cover.push((b.x1, b.y0));
-                            snug_cover.push((b.x1, b.y1));
-                            snug_cover.push((b.x0, b.y1));
+                            push_aabb_corners(
+                                &mut snug_cover,
+                                placed.bounds.inflate(CONTAIN_MARGIN_PX),
+                            );
                             pad_hull = grow_pad_until_hull_contains(
                                 &snug_cover,
                                 &exclude_xy,
@@ -1216,10 +1042,10 @@ fn region_primitives(
                     }
                 }
                 if let Some((d, data_text, _)) =
-                    outline_markup(content, placed.x, placed.y, font_px, anchor)
+                    outline_markup(content, placed.x, placed.y, font_px, "middle")
                 {
                     if !d.is_empty() {
-                        out.push(Primitive::Path {
+                        label_prim = Some(Primitive::Path {
                             d,
                             stroke: Some("none".into()),
                             fill: Some(fill_c),
@@ -1235,67 +1061,23 @@ fn region_primitives(
             }
         }
     }
-    if matches!(spec.style, RegionStyle::Bezier) {
-        let proxy = hull_proxy(&cover_hull, &exclude_xy, pad_hull, pad_hull + 6.0);
-        let d = match &proxy {
-            Shape::PointSet(verts) if verts.len() >= 3 => bezier_path_from_proxy(&proxy, 0.55),
-            _ => {
-                let hull = convex_hull(&cover_hull);
-                if hull.len() >= 3 {
-                    rounded_hull_path(&hull, pad_hull)
-                } else {
-                    let Aabb { x0, y0, x1, y1 } = region_box;
-                    format!(
-                        "M {:.2} {:.2} L {:.2} {:.2} L {:.2} {:.2} L {:.2} {:.2} Z",
-                        x0, y0, x1, y0, x1, y1, x0, y1
-                    )
-                }
-            }
-        };
-        if let Some(Primitive::Path { d: slot, .. }) = out.iter_mut().find(|p| {
-            matches!(
-                p,
-                Primitive::Path {
-                    class: Some(c),
-                    ..
-                } if c == "region bezier"
-            )
-        }) {
-            *slot = d;
-        }
-    }
-    if matches!(spec.style, RegionStyle::Box) {
-        let Aabb { x0, y0, x1, y1 } = region_box;
-        let d = format!(
-            "M {:.2} {:.2} L {:.2} {:.2} L {:.2} {:.2} L {:.2} {:.2} Z",
-            x0, y0, x1, y0, x1, y1, x0, y1
-        );
-        if let Some(Primitive::Path { d: slot, .. }) = out.iter_mut().find(|p| {
-            matches!(
-                p,
-                Primitive::Path {
-                    class: Some(c),
-                    ..
-                } if c == "region box"
-            )
-        }) {
-            *slot = d;
-        }
-    }
-    if matches!(spec.style, RegionStyle::Circle) {
-        if let Some(Primitive::Circle { r, cx, cy, .. }) = out.iter_mut().find(|p| {
-            matches!(
-                p,
-                Primitive::Circle {
-                    class: Some(c),
-                    ..
-                } if c == "region circle"
-            )
-        }) {
-            *cx = circ_cx;
-            *cy = circ_cy;
-            *r = circ_r;
-        }
+
+    let mut out = vec![region_shape_primitive(
+        spec.style,
+        region_box,
+        circ_cx,
+        circ_cy,
+        circ_r,
+        &cover_hull,
+        &exclude_xy,
+        pad_hull,
+        fill,
+        stroke,
+        opacity,
+        dash_array(spec.stroke.as_ref()),
+    )];
+    if let Some(p) = label_prim {
+        out.push(p);
     }
     out
 }
@@ -1709,6 +1491,140 @@ fn push_disk_samples(out: &mut Vec<(f64, f64)>, cx: f64, cy: f64, r: f64) {
     }
 }
 
+fn push_aabb_corners(out: &mut Vec<(f64, f64)>, box_: Aabb) {
+    out.push((box_.x0, box_.y0));
+    out.push((box_.x1, box_.y0));
+    out.push((box_.x1, box_.y1));
+    out.push((box_.x0, box_.y1));
+}
+
+fn aabb_path(box_: Aabb) -> String {
+    let Aabb { x0, y0, x1, y1 } = box_;
+    format!("M {x0:.2} {y0:.2} L {x1:.2} {y0:.2} L {x1:.2} {y1:.2} L {x0:.2} {y1:.2} Z")
+}
+
+fn region_label_occupancy(
+    mol: &MoleculeIn,
+    dx: f64,
+    dy: f64,
+    shades: &[(usize, f64, f64, f64)],
+    caption_boxes: &[Aabb],
+    other_labels: &[Aabb],
+    include_shade: bool,
+) -> Occupancy {
+    let mut occ = Occupancy::from_bonds(mol, dx, dy, STROKE_PX.max(0.8));
+    if include_shade {
+        for &(_, cx, cy, r) in shades {
+            occ.add_aabb(Aabb::new(cx - r, cy - r, cx + r, cy + r));
+        }
+    }
+    for &box_ in caption_boxes {
+        occ.add_aabb(box_);
+    }
+    for &box_ in other_labels {
+        occ.add_aabb(box_);
+    }
+    occ
+}
+
+fn seed_region_label(
+    style: RegionStyle,
+    occ: &Occupancy,
+    region_box: Aabb,
+    circ_cx: f64,
+    circ_cy: f64,
+    circ_r: f64,
+    ink: InkAtOrigin,
+    side: Side,
+    atom_centroid: (f64, f64),
+    flip_sides: bool,
+) -> crate::doc::layout_items::Placement {
+    match style {
+        RegionStyle::Circle => place_circle_label(circ_cx, circ_cy, circ_r, ink, side, occ),
+        RegionStyle::Box | RegionStyle::Bezier => place_region_edge(
+            occ,
+            region_box,
+            ink,
+            false,
+            side,
+            CLASH_MARGIN_PX,
+            CLASH_MARGIN_PX,
+            atom_centroid,
+            flip_sides,
+        ),
+    }
+}
+
+fn bezier_region_d(
+    cover_hull: &[(f64, f64)],
+    exclude_xy: &[(f64, f64)],
+    pad_hull: f64,
+    region_box: Aabb,
+) -> String {
+    let proxy = hull_proxy(cover_hull, exclude_xy, pad_hull, pad_hull + 6.0);
+    match &proxy {
+        Shape::PointSet(verts) if verts.len() >= 3 => bezier_path_from_proxy(&proxy, 0.55),
+        _ => {
+            let hull = convex_hull(cover_hull);
+            if hull.len() >= 3 {
+                rounded_hull_path(&hull, pad_hull)
+            } else {
+                aabb_path(region_box)
+            }
+        }
+    }
+}
+
+fn region_shape_primitive(
+    style: RegionStyle,
+    region_box: Aabb,
+    circ_cx: f64,
+    circ_cy: f64,
+    circ_r: f64,
+    cover_hull: &[(f64, f64)],
+    exclude_xy: &[(f64, f64)],
+    pad_hull: f64,
+    fill: Option<String>,
+    stroke: (Option<String>, f64),
+    opacity: f64,
+    dash: Option<String>,
+) -> Primitive {
+    match style {
+        RegionStyle::Box => Primitive::Path {
+            d: aabb_path(region_box),
+            stroke: stroke.0,
+            fill: fill.or(Some("none".into())),
+            stroke_width: stroke.1,
+            opacity,
+            stroke_dasharray: dash,
+            stroke_linecap: None,
+            class: Some("region box".into()),
+            data_text: None,
+        },
+        RegionStyle::Circle => Primitive::Circle {
+            cx: circ_cx,
+            cy: circ_cy,
+            r: circ_r,
+            fill,
+            stroke: stroke.0,
+            stroke_width: stroke.1,
+            opacity,
+            class: Some("region circle".into()),
+        },
+        RegionStyle::Bezier => Primitive::Path {
+            d: bezier_region_d(cover_hull, exclude_xy, pad_hull, region_box),
+            stroke: stroke.0,
+            fill: fill.or(Some("none".into())),
+            stroke_width: stroke.1,
+            opacity,
+            stroke_dasharray: dash,
+            stroke_linecap: None,
+            class: Some("region bezier".into()),
+            data_text: None,
+        },
+    }
+}
+
 /// Smallest circle covering `pts` and optional label corners; center may move.
 ///
 /// `extra_r` is added after the covering (contain margin around atom disks).
@@ -1724,11 +1640,7 @@ fn circle_cover_points_label_excludes(
 ) -> (f64, f64, f64) {
     let mut cover = pts.to_vec();
     if let Some(box_) = label {
-        let b = box_.inflate(label_margin);
-        cover.push((b.x0, b.y0));
-        cover.push((b.x1, b.y0));
-        cover.push((b.x1, b.y1));
-        cover.push((b.x0, b.y1));
+        push_aabb_corners(&mut cover, box_.inflate(label_margin));
     }
     let (mut cx, mut cy, r0) = covering_circle(&cover);
     let mut r = (r0 + extra_r).max(extra_r);
@@ -1935,27 +1847,22 @@ fn place_circle_label(
     cy: f64,
     r: f64,
     ink: InkAtOrigin,
-    inside: bool,
     side: Side,
     occ: &Occupancy,
 ) -> crate::doc::layout_items::Placement {
-    let gaps = if inside {
-        vec![CLASH_MARGIN_PX, 6.0, 10.0]
-    } else {
-        // Hug the stroke; never farther than half a bond.
-        let mut g = Vec::new();
-        let mut gap = CLASH_MARGIN_PX;
-        while gap <= HALF_BOND_PX + 1e-6 {
-            g.push(gap);
-            gap += 3.0;
-        }
-        g
-    };
+    // Always seed on the outside of the stroke (inside labels snug inward
+    // after this). Hug the stroke; never farther than half a bond.
+    let mut gaps = Vec::new();
+    let mut gap = CLASH_MARGIN_PX;
+    while gap <= HALF_BOND_PX + 1e-6 {
+        gaps.push(gap);
+        gap += 3.0;
+    }
     let slides = [-0.35, -0.15, 0.0, 0.15, 0.35];
-    let mut best = circle_label_at(cx, cy, r, ink, inside, side, CLASH_MARGIN_PX, 0.0);
+    let mut best = circle_label_at(cx, cy, r, ink, side, CLASH_MARGIN_PX, 0.0);
     for &gap in &gaps {
         for &slide in &slides {
-            let p = circle_label_at(cx, cy, r, ink, inside, side, gap, slide);
+            let p = circle_label_at(cx, cy, r, ink, side, gap, slide);
             if !occ.clashes(p.bounds, CLASH_MARGIN_PX) {
                 return p;
             }
@@ -1970,7 +1877,6 @@ fn circle_label_at(
     cy: f64,
     r: f64,
     ink: InkAtOrigin,
-    inside: bool,
     side: Side,
     gap: f64,
     slide: f64,
@@ -1983,61 +1889,25 @@ fn circle_label_at(
     };
     let tx = -ny;
     let ty = nx;
-    let (x, y) = if inside {
-        let dist = (r - gap).max(0.0);
-        match side {
-            Side::Right => {
-                let edge = cx + dist * nx + slide * r * tx;
-                let x = edge - ink.x1;
-                let y = cy + dist * ny + slide * r * ty - (ink.y0 + ink.y1) * 0.5;
-                (x, y)
-            }
-            Side::Left => {
-                let edge = cx + dist * nx + slide * r * tx;
-                let x = edge - ink.x0;
-                let y = cy + dist * ny + slide * r * ty - (ink.y0 + ink.y1) * 0.5;
-                (x, y)
-            }
-            Side::Above => {
-                let edge = cy + dist * ny + slide * r * ty;
-                let y = edge - ink.y0;
-                let x = cx + dist * nx + slide * r * tx - (ink.x0 + ink.x1) * 0.5;
-                (x, y)
-            }
-            Side::Below => {
-                let edge = cy + dist * ny + slide * r * ty;
-                let y = edge - ink.y1;
-                let x = cx + dist * nx + slide * r * tx - (ink.x0 + ink.x1) * 0.5;
-                (x, y)
-            }
+    let dist = r + gap;
+    let mid_y = (ink.y0 + ink.y1) * 0.5;
+    let mid_x = (ink.x0 + ink.x1) * 0.5;
+    let (x, y) = match side {
+        Side::Right => {
+            let edge = cx + dist * nx + slide * r * tx;
+            (edge - ink.x0, cy + slide * r * ty - mid_y)
         }
-    } else {
-        let dist = r + gap;
-        match side {
-            Side::Right => {
-                let edge = cx + dist * nx + slide * r * tx;
-                let x = edge - ink.x0;
-                let y = cy + slide * r * ty - (ink.y0 + ink.y1) * 0.5;
-                (x, y)
-            }
-            Side::Left => {
-                let edge = cx + dist * nx + slide * r * tx;
-                let x = edge - ink.x1;
-                let y = cy + slide * r * ty - (ink.y0 + ink.y1) * 0.5;
-                (x, y)
-            }
-            Side::Above => {
-                let edge = cy + dist * ny + slide * r * ty;
-                let y = edge - ink.y1;
-                let x = cx + slide * r * tx - (ink.x0 + ink.x1) * 0.5;
-                (x, y)
-            }
-            Side::Below => {
-                let edge = cy + dist * ny + slide * r * ty;
-                let y = edge - ink.y0;
-                let x = cx + slide * r * tx - (ink.x0 + ink.x1) * 0.5;
-                (x, y)
-            }
+        Side::Left => {
+            let edge = cx + dist * nx + slide * r * tx;
+            (edge - ink.x1, cy + slide * r * ty - mid_y)
+        }
+        Side::Above => {
+            let edge = cy + dist * ny + slide * r * ty;
+            (cx + slide * r * tx - mid_x, edge - ink.y1)
+        }
+        Side::Below => {
+            let edge = cy + dist * ny + slide * r * ty;
+            (cx + slide * r * tx - mid_x, edge - ink.y0)
         }
     };
     crate::doc::layout_items::Placement {
