@@ -1457,6 +1457,9 @@ pub fn caption_kit(
 }
 
 /// Box / hull region text kit.
+///
+/// `side_about` is the mean of contained atom positions — [`Constraint::PreferSide`]
+/// (`pos`) is relative to this point, not the hull or full-mol AABB.
 pub fn region_text_kit(
     world: &mut LayoutWorld,
     constraints: &mut Vec<Constraint>,
@@ -1467,6 +1470,7 @@ pub fn region_text_kit(
     inside: bool,
     preferred: Side,
     clash_dist: f64,
+    side_about: (f64, f64),
 ) -> NodeId {
     let _ = world.insert(
         "mol/annotations",
@@ -1502,6 +1506,16 @@ pub fn region_text_kit(
         ObjectType::RegionText,
         Shape::Aabb(text_ink),
         false,
+    );
+    let side_ref = world.insert(
+        format!("mol/annotations/regions/r{region_idx}/side_ref"),
+        &rid,
+        ObjectType::Group,
+        Shape::Point {
+            x: side_about.0,
+            y: side_about.1,
+        },
+        true,
     );
     if inside {
         // Soft guide + hard contain. Seed may sit far (clash-free outside
@@ -1543,11 +1557,7 @@ pub fn region_text_kit(
     }
     constraints.push(Constraint::PreferSide {
         a: text_id.clone(),
-        b: if inside {
-            "mol/chem".into()
-        } else {
-            hull_id.clone()
-        },
+        b: side_ref,
         side: preferred,
         strength: 2.0,
     });
@@ -2325,8 +2335,25 @@ pub fn refine_region_text(
     install_chem(&mut world, bonds, atoms, shades);
     let mut cs = Vec::new();
     let mut hard = Vec::new();
+    let side_about = if atoms.is_empty() {
+        text_rest.center()
+    } else {
+        let n = atoms.len() as f64;
+        let sx: f64 = atoms.iter().map(|(_, x, _)| x).sum();
+        let sy: f64 = atoms.iter().map(|(_, _, y)| y).sum();
+        (sx / n, sy / n)
+    };
     let id = region_text_kit(
-        &mut world, &mut cs, &mut hard, 0, hull, text_rest, inside, preferred, clash_dist,
+        &mut world,
+        &mut cs,
+        &mut hard,
+        0,
+        hull,
+        text_rest,
+        inside,
+        preferred,
+        clash_dist,
+        side_about,
     );
     // Inside seeds often start far (clash-free outside, hull grown around them);
     // allow a larger simplex so soft snug to chem can travel inward.
@@ -3068,6 +3095,7 @@ mod tests {
                             false,
                             Side::Above,
                             3.0,
+                            (20.0, 0.0),
                         );
                         solve(
                             &mut w,
@@ -3110,6 +3138,7 @@ mod tests {
                             true,
                             Side::Above,
                             3.0,
+                            (15.0, 0.0),
                         );
                         solve(
                             &mut w,

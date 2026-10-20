@@ -832,6 +832,27 @@ fn region_primitives(
     let stroke = stroke_parts(spec.stroke.as_ref(), fill.is_some());
     let opacity = fill_opacity(spec.fill.as_ref()).min(1.0);
 
+    // `pos` (Left/Right/Above/Below) is relative to the mean of contained atoms,
+    // not the cover AABB / grown hull center.
+    let atom_centroid = {
+        let mut sx = 0.0;
+        let mut sy = 0.0;
+        let mut n = 0.0;
+        for &idx in &included {
+            if let Some(a) = mol.atoms.iter().find(|a| a.index == idx) {
+                let (ax, ay) = atom_xy(a, dx, dy);
+                sx += ax;
+                sy += ay;
+                n += 1.0;
+            }
+        }
+        if n > 0.0 {
+            (sx / n, sy / n)
+        } else {
+            ((x0 + x1) * 0.5, (y0 + y1) * 0.5)
+        }
+    };
+
     // Circle geometry (may grow for an inside label seeded as outside).
     let (circ_cx, circ_cy, mut circ_r) = {
         let (cx, cy, r0) = covering_circle(&cover);
@@ -879,6 +900,7 @@ fn region_primitives(
                     RegionStyle::Box | RegionStyle::Bezier => {
                         // Clash-free seed on the preferred side of the atom
                         // hull (outside). Never park in the ring center.
+                        // `pos` slides about the contained-atom mean.
                         place_region_edge(
                             &occ,
                             region_box,
@@ -887,6 +909,7 @@ fn region_primitives(
                             side,
                             CLASH_MARGIN_PX,
                             CLASH_MARGIN_PX,
+                            atom_centroid,
                         )
                     }
                 };
@@ -1052,6 +1075,7 @@ fn region_primitives(
                             side,
                             CLASH_MARGIN_PX,
                             CLASH_MARGIN_PX,
+                            atom_centroid,
                         ),
                     })
                 } else {
@@ -1067,6 +1091,7 @@ fn region_primitives(
                             side,
                             CLASH_MARGIN_PX,
                             CLASH_MARGIN_PX,
+                            atom_centroid,
                         ),
                     }
                 };
@@ -3389,6 +3414,126 @@ mod tests {
             aryl.0 < cx - 8.0,
             "aryl label should stay on the preferred left of the ring: {:?}",
             aryl
+        );
+        // `pos` is relative to the mean of *contained* atoms (ring), not the
+        // full-mol / grown-hull AABB (ethyl would pull those centers up).
+        assert!(
+            aryl.0 < cx,
+            "pos=Left must place aryl left of contained-atom mean ({cx}): {:?}",
+            aryl
+        );
+    }
+
+    #[test]
+    fn region_pos_is_relative_to_contained_atom_mean() {
+        // Asymmetric include: three atoms on the right of a wide pad box so the
+        // AABB center ≠ atom mean. pos=Left must end left of the atom mean.
+        let mol = MoleculeIn {
+            id: Some("asym".into()),
+            atoms: vec![
+                AtomIn {
+                    index: 0,
+                    element: Some("C".into()),
+                    z: Some(6),
+                    x: 80.0,
+                    y: 40.0,
+                    label: None,
+                    charge: 0,
+                    mapno: None,
+                },
+                AtomIn {
+                    index: 1,
+                    element: Some("C".into()),
+                    z: Some(6),
+                    x: 100.0,
+                    y: 40.0,
+                    label: None,
+                    charge: 0,
+                    mapno: None,
+                },
+                AtomIn {
+                    index: 2,
+                    element: Some("C".into()),
+                    z: Some(6),
+                    x: 120.0,
+                    y: 40.0,
+                    label: None,
+                    charge: 0,
+                    mapno: None,
+                },
+            ],
+            bonds: vec![
+                BondIn {
+                    index: 0,
+                    begin: 0,
+                    end: 1,
+                    order: 1.0,
+                    stereo: None,
+                    interior: None,
+                },
+                BondIn {
+                    index: 1,
+                    begin: 1,
+                    end: 2,
+                    order: 1.0,
+                    stereo: None,
+                    interior: None,
+                },
+            ],
+            color: None,
+            atom_shade: None,
+            bond_shade: None,
+            shade_vmin: None,
+            shade_vmax: None,
+            mark_atoms: vec![],
+            mark_bonds: vec![],
+            scale: 1.0,
+            weight: 1.0,
+            aromatic: Default::default(),
+            debug_box: false,
+            debug_align: false,
+            align_debug: None,
+        };
+        let (dx, dy) = frame_offset(&mol);
+        let mean_x = (80.0 + 100.0 + 120.0) / 3.0 + dx;
+        let scene = crate::depict::depict_molecule(&mol);
+        let node = MolNode {
+            region: Some(crate::doc::chrome::RegionField::One(RegionSpec {
+                style: RegionStyle::Box,
+                atoms: vec![0, 1, 2],
+                exclude: vec![],
+                fill: None,
+                stroke: Some(StrokeSpec {
+                    color: Some("#c44".into()),
+                    width: Some(1.0),
+                    dash: None,
+                }),
+                text: Some(MolText::Styled(crate::doc::chrome::MolTextSpec {
+                    content: "R".into(),
+                    place: Some(RegionTextPlace::Outside),
+                    pos: Some(LabelPos::Left),
+                    ..Default::default()
+                })),
+                z: None,
+            })),
+            ..Default::default()
+        };
+        let out = apply_mol_chrome(&node, &mol, scene);
+        let label_cx = layer_prims(&out)
+            .into_iter()
+            .find_map(|p| match p {
+                Primitive::Path {
+                    d,
+                    class: Some(c),
+                    data_text: Some(t),
+                    ..
+                } if c.contains("region-label") && t == "R" => Some(path_centroid(d).0),
+                _ => None,
+            })
+            .expect("region-label R");
+        assert!(
+            label_cx < mean_x - 1.0,
+            "pos=Left relative to atom mean {mean_x}, got label_cx={label_cx} (dy unused {dy})"
         );
     }
 

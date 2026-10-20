@@ -2,6 +2,7 @@
 
 ## 2026-10-19
 
+- Region `pos` (Left/Right/Above/Below) is relative to the **mean of contained atoms**, not the hull / cover AABB or full-mol chem box. Seed slide uses that centroid; PreferSide targets a fixed `side_ref` Point at the mean.
 - Inside region label snug: strong PreferPose pinned the clash-free outside seed so “aryl” never moved closer. Soft energy is now **MinimizeDist to mol/chem** (opt=clash) + PreferSide vs chem + mild PreferPose; larger NM simplex when inside. After snug, Bezier cover is **rebuilt** from atoms + final label so the outline shrinks too. Ex6 exclude test asserts nearest ring atom < 42 px and left of center.
 - Bezier inside label: clash-free **outside** seed (never ring-center fallback); always add label corners to cover; grow pad so proxy surrounds atoms+label. Hull proxy defaults to **convex** (+ include-guarded exclude clip); concave dig only when an exclude sits inside the convex hull (bay). Substituent clips no longer shave ring atoms into a bottom crescent.
 - Atom_label seed: `place_greedy` fallback picks the **least** `Occupancy::clash_penalty` (bond depth² weighted), not the last CW slot. Custom text also chooses preferred side via `least_clash_side` so a chem-travel alternate does not start the label across a bond.

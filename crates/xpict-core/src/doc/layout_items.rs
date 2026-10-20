@@ -466,9 +466,11 @@ pub fn place_region_edge(
     preferred: Side,
     edge_margin: f64,
     clash_margin: f64,
+    // `about`: reference for `pos` (Left/Right/Above/Below) — mean of contained atoms.
+    about: (f64, f64),
 ) -> Placement {
     let sides = preferred.all_cw_from();
-    let best = force_region(region, ink, inside, preferred, edge_margin, 0.0);
+    let best = force_region(region, ink, inside, preferred, edge_margin, 0.0, about);
     // Outside labels stay within half a bond of the hull edge.
     let max_bump = if inside {
         HALF_BOND_PX.max(12.0)
@@ -487,7 +489,7 @@ pub fn place_region_edge(
                 continue;
             }
             for &t in &slides {
-                let p = force_region(region, ink, inside, side, edge_margin + bump, t);
+                let p = force_region(region, ink, inside, side, edge_margin + bump, t, about);
                 if !occ.clashes(p.bounds, clash_margin) {
                     return p;
                 }
@@ -532,8 +534,11 @@ fn force_region(
     side: Side,
     margin: f64,
     slide_frac: f64,
+    about: (f64, f64),
 ) -> Placement {
-    let (cx, cy) = region.center();
+    // Slide along the preferred edge about the atom-mean, not the AABB center —
+    // grown hulls / asymmetric includes shift the box while `pos` stays on atoms.
+    let (cx, cy) = about;
     let hw = region.width() * 0.5;
     let hh = region.height() * 0.5;
     let (x, y) = if inside {
@@ -677,7 +682,7 @@ mod tests {
             x1: 10.0,
             y1: 5.0,
         };
-        let p = place_region_edge(&occ, region, ink, true, Side::Above, 3.0, 1.0);
+        let p = place_region_edge(&occ, region, ink, true, Side::Above, 3.0, 1.0, region.center());
         // Label top near region.y0 + margin.
         assert!(
             p.bounds.y0 < 20.0,
