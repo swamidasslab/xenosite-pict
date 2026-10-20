@@ -1690,18 +1690,20 @@ pub fn callout_kit(
     (label_id, tip_id)
 }
 
-/// Atom index / mapno numbers **and** custom atom labels: PreferPose on seed.
+/// Atom index / mapno numbers **and** custom atom labels.
 ///
 /// One kit for all three — chrome `LabelRole::Number` (index or mapno) and
 /// `LabelRole::Text` both call [`refine_atom_number`] → here.
 ///
-/// Hard tether: some part of the glyph stays within [`ATOM_LABEL_TETHER_PX`]
-/// (~½ bond) of the atom's chem text box if present, else the atom point/disk
-/// ([`HardConstraint::MaxDist`], closest-point). Soft [`Constraint::MinimizeDist`]
-/// uses the same anchor. Clears bond lines via shared [`push_clear_bonds`]. Chem
-/// atom text is fixed — hard Outside vs each `mol/chem/atom_texts/*`. Shade is
-/// **not** a layout obstacle (numbers/labels may sit on the wash; glyph Halo is
-/// paint-only).
+/// **Closeness is soft energy**, not the Lagrangian: strong
+/// [`Constraint::MinimizeDist`] to the snug gap (`clash_dist` / margin) on the
+/// chem-text box if present, else the atom point. Weak PreferPose only keeps
+/// the greedy side — it must not pin a distant seed.
+///
+/// [`HardConstraint::MaxDist`] (~½ bond) is only a ceiling via AL (feasibility
+/// penalty, not a magnet). Clears bond lines via [`push_clear_bonds`]. Chem
+/// atom text is hard Outside; prior annotation boxes are soft Outside. Shade is
+/// **not** a layout obstacle.
 pub fn atom_number_kit(
     world: &mut LayoutWorld,
     constraints: &mut Vec<Constraint>,
@@ -1733,7 +1735,7 @@ pub fn atom_number_kit(
         Shape::Aabb(ink),
         false,
     );
-    // Tether to chem atom text when painted; otherwise the atom point.
+    // Home: chem atom text when painted; otherwise the atom point.
     let text_anchor = format!("mol/chem/atom_texts/t{atom_idx}");
     let coord_anchor = format!("mol/chem/atoms/a{atom_idx}/coord");
     let anchor = if world.get(&text_anchor).is_some() {
@@ -1742,12 +1744,14 @@ pub fn atom_number_kit(
         coord_anchor
     };
     if world.get(&anchor).is_some() {
+        // Soft magnet to the margin gap — this is what pulls numbers home.
         constraints.push(Constraint::MinimizeDist {
             a: id.clone(),
             b: anchor.clone(),
             opt_dist: clash_dist,
-            strength: 2.0,
+            strength: 10.0,
         });
+        // AL ceiling only (not a closeness term).
         hard.push(HardConstraint::MaxDist {
             a: id.clone(),
             b: anchor,
@@ -1781,7 +1785,14 @@ pub fn atom_number_kit(
         }
     }
     // Intentionally no Outside vs shade — wash is not a placement obstacle.
-    push_placement_pose(constraints, &id, &Shape::Aabb(ink));
+    // Weak side seed only; snug MinimizeDist must be able to spend this energy.
+    let (x, y) = shape_anchor(&Shape::Aabb(ink));
+    constraints.push(Constraint::PreferPose {
+        a: id.clone(),
+        x,
+        y,
+        strength: 0.12,
+    });
     id
 }
 
