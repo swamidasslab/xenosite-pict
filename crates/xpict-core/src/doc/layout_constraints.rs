@@ -395,7 +395,8 @@ pub enum Constraint {
         clash_dist: f64,
         strength: f64,
     },
-    /// `a` should stay inside `b` (negative edge distance ≥ pad depth).
+    /// `a` should stay inside `b` by at least `pad`. Energy is `strength * g⁺²`
+    /// using the same residual as [`HardConstraint::Inside`].
     Inside {
         a: NodeId,
         b: NodeId,
@@ -413,6 +414,10 @@ pub enum Constraint {
         b: NodeId,
         side: Side,
         strength: f64,
+        /// Extra spring along the edge, as a fraction of `strength`
+        /// (Left/Right → match `b`'s y; Above/Below → match x). `0` is hinge
+        /// only — the solver does not infer this from `b`'s shape.
+        align_along: f64,
     },
     PointStandoff {
         tip: NodeId,
@@ -786,32 +791,8 @@ fn constraint_energy(world: &LayoutWorld, c: &Constraint) -> f64 {
                 (Some(na), Some(nb)) => (na.world_shape(), nb.world_shape()),
                 _ => return 0.0,
             };
-            // Inside: want edge_signed of a relative to b ≤ -pad (deep enough).
-            // Violation when d > -pad.
-            let d = match (&sa, &sb) {
-                (Shape::Point { x, y }, _) => point_to_shape_signed(*x, *y, &sb),
-                (Shape::Aabb(box_), Shape::PointSet(pts)) => {
-                    let (cx, cy) = box_.center();
-                    point_to_polyline_signed(cx, cy, pts)
-                }
-                (Shape::Aabb(box_), Shape::Aabb(outer)) => {
-                    // Positive when box sticks out of outer.
-                    let left = outer.x0 + pad - box_.x0;
-                    let right = box_.x1 - (outer.x1 - pad);
-                    let top = outer.y0 + pad - box_.y0;
-                    let bot = box_.y1 - (outer.y1 - pad);
-                    left.max(0.0) + right.max(0.0) + top.max(0.0) + bot.max(0.0)
-                }
-                _ => {
-                    let d = edge_signed_distance(&sa, &sb);
-                    // If separated (d>0) or shallow, penalize.
-                    (d + pad).max(0.0)
-                }
-            };
-            match (&sa, &sb) {
-                (Shape::Aabb(_), Shape::Aabb(_)) => strength * d * d,
-                _ => strength * hinge_below(-d, *pad),
-            }
+            let g = inside_g(&sa, &sb, *pad);
+            strength * g.max(0.0) * g.max(0.0)
         }
         Constraint::MinGap {
             a,
@@ -831,6 +812,7 @@ fn constraint_energy(world: &LayoutWorld, c: &Constraint) -> f64 {
             b,
             side,
             strength,
+            align_along,
         } => {
             let (sa, sb) = match (world.get(a), world.get(b)) {
                 (Some(na), Some(nb)) => (na.world_shape(), nb.world_shape()),
@@ -845,20 +827,12 @@ fn constraint_energy(world: &LayoutWorld, c: &Constraint) -> f64 {
                 Side::Below => dy,
                 Side::Above => -dy,
             };
-            // Point `side_ref` (region atom-mean): also hug along the edge
-            // (Left/Right → match y). Skip for AABB targets so callout /
-            // caption PreferSide vs chem is unchanged.
-            let ortho_pen = match &sb {
-                Shape::Point { .. } => {
-                    let ortho = match side {
-                        Side::Left | Side::Right => dy,
-                        Side::Above | Side::Below => dx,
-                    };
-                    0.35 * strength * ortho * ortho
-                }
-                _ => 0.0,
+            let ortho = match side {
+                Side::Left | Side::Right => dy,
+                Side::Above | Side::Below => dx,
             };
-            strength * hinge_below(good, 0.0) + ortho_pen
+            let along = align_along.max(0.0);
+            strength * hinge_below(good, 0.0) + along * strength * ortho * ortho
         }
         Constraint::PointStandoff {
             tip,
@@ -870,14 +844,8 @@ fn constraint_energy(world: &LayoutWorld, c: &Constraint) -> f64 {
                 (Some(na), Some(nb)) => (na.world_shape(), nb.world_shape()),
                 _ => return 0.0,
             };
-            let (tx, ty) = match sa {
-                Shape::Point { x, y } => (x, y),
-                _ => sa.aabb().center(),
-            };
-            let (ax, ay) = match sb {
-                Shape::Point { x, y } => (x, y),
-                _ => sb.aabb().center(),
-            };
+            let (tx, ty) = shape_anchor(&sa);
+            let (ax, ay) = shape_anchor(&sb);
             let d = (tx - ax).hypot(ty - ay);
             strength * spring(d, *dist)
         }
@@ -955,6 +923,41 @@ pub struct SolveResult {
     pub max_hard_violation: f64,
 }
 
+/// Inside residual `g`. Feasible when `g ≤ 0` (`a` inside `b` by `pad`).
+///
+/// Shape dispatch lives here (geometry), not as a second energy formula in
+/// [`constraint_energy`] / [`hard_g`].
+fn inside_g(sa: &Shape, sb: &Shape, pad: f64) -> f64 {
+    match (sa, sb) {
+        (Shape::Aabb(inner), Shape::Aabb(outer)) => {
+            let left = outer.x0 + pad - inner.x0;
+            let right = inner.x1 - (outer.x1 - pad);
+            let top = outer.y0 + pad - inner.y0;
+            let bot = inner.y1 - (outer.y1 - pad);
+            left.max(0.0) + right.max(0.0) + top.max(0.0) + bot.max(0.0)
+        }
+        (Shape::Point { x, y }, _) => point_to_shape_signed(*x, *y, sb) + pad,
+        (Shape::Aabb(box_), Shape::PointSet(pts)) => {
+            let (cx, cy) = box_.center();
+            point_to_polyline_signed(cx, cy, pts) + pad
+        }
+        (Shape::Aabb(box_), Shape::Circle { cx, cy, r }) => {
+            let mut g = f64::NEG_INFINITY;
+            for &(px, py) in &[
+                (box_.x0, box_.y0),
+                (box_.x1, box_.y0),
+                (box_.x0, box_.y1),
+                (box_.x1, box_.y1),
+            ] {
+                let d = (px - cx).hypot(py - cy) - (r - pad);
+                g = g.max(d);
+            }
+            g
+        }
+        _ => edge_signed_distance(sa, sb) + pad,
+    }
+}
+
 /// Signed hard residual `g(x)`. Feasible when `g ≤ 0`.
 pub fn hard_g(world: &LayoutWorld, h: &HardConstraint) -> f64 {
     match h {
@@ -970,38 +973,7 @@ pub fn hard_g(world: &LayoutWorld, h: &HardConstraint) -> f64 {
                 (Some(na), Some(nb)) => (na.world_shape(), nb.world_shape()),
                 _ => return 0.0,
             };
-            match (&sa, &sb) {
-                (Shape::Aabb(box_), Shape::Aabb(outer)) => {
-                    let left = outer.x0 + pad - box_.x0;
-                    let right = box_.x1 - (outer.x1 - pad);
-                    let top = outer.y0 + pad - box_.y0;
-                    let bot = box_.y1 - (outer.y1 - pad);
-                    left.max(0.0) + right.max(0.0) + top.max(0.0) + bot.max(0.0)
-                }
-                (Shape::Point { x, y }, _) => {
-                    let d = point_to_shape_signed(*x, *y, &sb);
-                    d + pad
-                }
-                (Shape::Aabb(box_), Shape::PointSet(pts)) => {
-                    let (cx, cy) = box_.center();
-                    point_to_polyline_signed(cx, cy, pts) + pad
-                }
-                (Shape::Aabb(box_), Shape::Circle { cx, cy, r }) => {
-                    // Approximate: each corner must stay inside the padded circle.
-                    let mut g = f64::NEG_INFINITY;
-                    for &(px, py) in &[
-                        (box_.x0, box_.y0),
-                        (box_.x1, box_.y0),
-                        (box_.x0, box_.y1),
-                        (box_.x1, box_.y1),
-                    ] {
-                        let d = (px - cx).hypot(py - cy) - (r - pad);
-                        g = g.max(d);
-                    }
-                    g
-                }
-                _ => edge_signed_distance(&sa, &sb) + pad,
-            }
+            inside_g(&sa, &sb, *pad)
         }
         HardConstraint::MaxDist { a, b, dist } => {
             let (sa, sb) = match (world.get(a), world.get(b)) {
@@ -1460,6 +1432,7 @@ pub fn caption_kit(
         b: "mol/chem".into(),
         side: preferred,
         strength: 2.0,
+        align_along: 0.0,
     });
     constraints.push(Constraint::MinimizeDist {
         a: id.clone(),
@@ -1475,7 +1448,8 @@ pub fn caption_kit(
 /// Box / hull region text kit.
 ///
 /// `side_about` is the mean of contained atom positions — [`Constraint::PreferSide`]
-/// (`pos`) is relative to this point, not the hull or full-mol AABB.
+/// (`pos`) is relative to this point, not the hull or full-mol AABB. Edge-align
+/// is `align_along` on that constraint (not a solver branch on Point vs AABB).
 pub fn region_text_kit(
     world: &mut LayoutWorld,
     constraints: &mut Vec<Constraint>,
@@ -1572,6 +1546,7 @@ pub fn region_text_kit(
         b: side_ref,
         side: preferred,
         strength: if inside { 4.0 } else { 2.0 },
+        align_along: 0.35,
     });
     push_clear_bonds(world, hard, &text_id, clash_dist);
     // Prior chrome labels / circles (kitchen-sink atom numbers, callouts, …).
@@ -1699,6 +1674,7 @@ pub fn callout_kit(
         b: "mol/chem".into(),
         side: preferred,
         strength: 1.5,
+        align_along: 0.0,
     });
     // Label box stays one CC-bond from the target (tip standoff is separate).
     constraints.push(Constraint::MinGap {
@@ -1911,9 +1887,7 @@ pub fn hull_proxy(
     let convex = convex_hull_pts(include);
     let bay = !exclude.is_empty()
         && convex.len() >= 3
-        && exclude
-            .iter()
-            .any(|&(x, y)| point_in_poly(x, y, &convex));
+        && exclude.iter().any(|&(x, y)| point_in_poly(x, y, &convex));
     let max_edge = (1.25 * BOND_PX).max(pad * 2.0 + 1.0);
     let seed = if bay {
         concave_hull_pts(include, max_edge)
@@ -2244,12 +2218,7 @@ fn knot_span(a: (f64, f64), b: (f64, f64), alpha: f64) -> f64 {
 }
 
 /// Non-uniform CR tangent at `p` given neighbors `pm`, `pp` (Yuksel).
-fn catmull_rom_tangent(
-    pm: (f64, f64),
-    p: (f64, f64),
-    pp: (f64, f64),
-    alpha: f64,
-) -> (f64, f64) {
+fn catmull_rom_tangent(pm: (f64, f64), p: (f64, f64), pp: (f64, f64), alpha: f64) -> (f64, f64) {
     let d0 = knot_span(pm, p, alpha);
     let d1 = knot_span(p, pp, alpha);
     (
@@ -2750,13 +2719,187 @@ mod tests {
     }
 
     #[test]
+    fn prefer_side_align_along_is_constraint_data_not_target_shape() {
+        let mut w = LayoutWorld::new("mol");
+        w.insert(
+            "lab",
+            "mol",
+            ObjectType::Group,
+            Shape::Aabb(Aabb::new(-4.0, -2.0, 4.0, 2.0)),
+            false,
+        );
+        w.insert(
+            "pt",
+            "mol",
+            ObjectType::Group,
+            Shape::Point { x: 0.0, y: 0.0 },
+            true,
+        );
+        w.insert(
+            "box",
+            "mol",
+            ObjectType::Group,
+            Shape::Aabb(Aabb::new(-10.0, -10.0, 10.0, 10.0)),
+            true,
+        );
+        w.set_pose("lab", 20.0, 12.0);
+
+        let hinge = Constraint::PreferSide {
+            a: "lab".into(),
+            b: "pt".into(),
+            side: Side::Right,
+            strength: 4.0,
+            align_along: 0.0,
+        };
+        let along = Constraint::PreferSide {
+            a: "lab".into(),
+            b: "pt".into(),
+            side: Side::Right,
+            strength: 4.0,
+            align_along: 0.35,
+        };
+        let e_hinge = constraint_energy(&w, &hinge);
+        let e_along = constraint_energy(&w, &along);
+        assert!(
+            e_along > e_hinge + 10.0,
+            "align_along must cost the y offset: hinge={e_hinge} along={e_along}"
+        );
+
+        let along_box = Constraint::PreferSide {
+            a: "lab".into(),
+            b: "box".into(),
+            side: Side::Right,
+            strength: 4.0,
+            align_along: 0.35,
+        };
+        let e_box = constraint_energy(&w, &along_box);
+        assert!(
+            (e_box - e_along).abs() < 1e-9,
+            "align_along energy must not depend on Point vs AABB: pt={e_along} box={e_box}"
+        );
+    }
+
+    #[test]
+    fn kits_put_align_along_on_prefer_side_not_in_the_solver() {
+        let mut w = LayoutWorld::new("mol");
+        install_chem(&mut w, &[], &[(0, 0.0, 0.0)], &[]);
+        if let Some(n) = w.get_mut("mol/chem") {
+            let chem = Aabb::new(0.0, 0.0, 40.0, 20.0);
+            n.rest = Shape::Aabb(chem);
+            n.shape = Shape::Aabb(chem);
+        }
+        let ink = Aabb::new(-4.0, -2.0, 4.0, 2.0);
+        let mut cap_cs = Vec::new();
+        let mut cap_h = Vec::new();
+        caption_kit(&mut w, &mut cap_cs, &mut cap_h, ink, Side::Below, 8.0, 3.0);
+        let cap_along: Vec<f64> = cap_cs
+            .iter()
+            .filter_map(|c| match c {
+                Constraint::PreferSide { align_along, .. } => Some(*align_along),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(cap_along, vec![0.0], "caption vs chem AABB is hinge-only");
+
+        let mut reg_cs = Vec::new();
+        let mut reg_h = Vec::new();
+        region_text_kit(
+            &mut w,
+            &mut reg_cs,
+            &mut reg_h,
+            0,
+            Shape::Aabb(Aabb::new(0.0, 0.0, 40.0, 40.0)),
+            ink,
+            true,
+            Side::Left,
+            3.0,
+            (20.0, 20.0),
+            &[],
+        );
+        let reg_along: Vec<f64> = reg_cs
+            .iter()
+            .filter_map(|c| match c {
+                Constraint::PreferSide { align_along, .. } => Some(*align_along),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            reg_along,
+            vec![0.35],
+            "region pos vs atom-mean Point requests edge-align on the constraint"
+        );
+    }
+
+    #[test]
+    fn inside_energy_is_g_plus_squared_for_every_shape_pair() {
+        let mut w = LayoutWorld::new("mol");
+        w.insert(
+            "lab",
+            "mol",
+            ObjectType::Group,
+            Shape::Aabb(Aabb::new(-4.0, -2.0, 4.0, 2.0)),
+            false,
+        );
+        w.insert(
+            "box",
+            "mol",
+            ObjectType::Group,
+            Shape::Aabb(Aabb::new(-10.0, -10.0, 10.0, 10.0)),
+            true,
+        );
+        w.insert(
+            "circ",
+            "mol",
+            ObjectType::Group,
+            Shape::Circle {
+                cx: 0.0,
+                cy: 0.0,
+                r: 12.0,
+            },
+            true,
+        );
+        w.set_pose("lab", 9.0, 0.0);
+
+        for b in ["box", "circ"] {
+            let soft = Constraint::Inside {
+                a: "lab".into(),
+                b: b.into(),
+                pad: 1.0,
+                strength: 3.0,
+            };
+            let hard = HardConstraint::Inside {
+                a: "lab".into(),
+                b: b.into(),
+                pad: 1.0,
+            };
+            let e = constraint_energy(&w, &soft);
+            let g = hard_g(&w, &hard).max(0.0);
+            assert!(
+                (e - 3.0 * g * g).abs() < 1e-9,
+                "Inside energy must be strength·g⁺² ({b}): e={e} g={g}"
+            );
+            assert!(g > 0.5, "fixture should protrude ({b}): g={g}");
+        }
+    }
+
+    #[test]
     fn atom_number_kit_ignores_shade() {
         let mut w = LayoutWorld::new("mol");
         install_chem(&mut w, &[], &[(0, 0.0, 0.0)], &[(0, 0.0, 0.0, 8.0)]);
         let mut cs = Vec::new();
         let mut hard = Vec::new();
         let ink = Aabb::new(-2.0, -2.0, 2.0, 2.0);
-        let id = atom_number_kit(&mut w, &mut cs, &mut hard, 0, ink, 4.0, ATOM_NUMBER_TETHER_PX, Some(2.0), true);
+        let id = atom_number_kit(
+            &mut w,
+            &mut cs,
+            &mut hard,
+            0,
+            ink,
+            4.0,
+            ATOM_NUMBER_TETHER_PX,
+            Some(2.0),
+            true,
+        );
         let e = energy(&w, &cs, &[], 0.0);
         assert!(e.is_finite());
         assert!(w.get(&id).is_some());
@@ -2787,7 +2930,17 @@ mod tests {
         let mut cs = Vec::new();
         let mut hard = Vec::new();
         let ink = Aabb::new(10.0, -2.0, 14.0, 2.0); // sits on the bond
-        let _ = atom_number_kit(&mut w, &mut cs, &mut hard, 0, ink, 3.0, ATOM_NUMBER_TETHER_PX, None, false);
+        let _ = atom_number_kit(
+            &mut w,
+            &mut cs,
+            &mut hard,
+            0,
+            ink,
+            3.0,
+            ATOM_NUMBER_TETHER_PX,
+            None,
+            false,
+        );
         let bond_h: Vec<_> = hard
             .iter()
             .filter_map(|h| match h {
@@ -2919,7 +3072,17 @@ mod tests {
         let mut cs = Vec::new();
         let mut hard = Vec::new();
         let ink = Aabb::new(16.0, -2.0, 22.0, 2.0);
-        let _ = atom_number_kit(&mut w, &mut cs, &mut hard, 0, ink, 3.0, ATOM_NUMBER_TETHER_PX, None, false);
+        let _ = atom_number_kit(
+            &mut w,
+            &mut cs,
+            &mut hard,
+            0,
+            ink,
+            3.0,
+            ATOM_NUMBER_TETHER_PX,
+            None,
+            false,
+        );
         let tether: Vec<_> = hard
             .iter()
             .filter_map(|h| match h {
@@ -2950,7 +3113,17 @@ mod tests {
         let mut hard = Vec::new();
         // Seed far from atom 0 — soft PreferPose would hold it; MaxDist must pull in.
         let ink = Aabb::new(200.0, -2.0, 208.0, 2.0);
-        let id = atom_number_kit(&mut w, &mut cs, &mut hard, 0, ink, 3.0, ATOM_NUMBER_TETHER_PX, None, false);
+        let id = atom_number_kit(
+            &mut w,
+            &mut cs,
+            &mut hard,
+            0,
+            ink,
+            3.0,
+            ATOM_NUMBER_TETHER_PX,
+            None,
+            false,
+        );
         let g0 = hard
             .iter()
             .filter_map(|h| match h {
@@ -2982,10 +3155,7 @@ mod tests {
             r.iters
         );
         let box_ = w.get(&id).unwrap().world_shape();
-        let coord = w
-            .get("mol/chem/atoms/a0/coord")
-            .unwrap()
-            .world_shape();
+        let coord = w.get("mol/chem/atoms/a0/coord").unwrap().world_shape();
         let d = edge_signed_distance(&box_, &coord);
         assert!(
             d <= ATOM_NUMBER_TETHER_PX + opts.al_tol + 1e-6,
@@ -3007,7 +3177,17 @@ mod tests {
         let clash = 3.0;
         // PreferPose seed sits on the bond — soft alone can leave residual.
         let ink = Aabb::new(18.0, -2.0, 22.0, 2.0);
-        let id = atom_number_kit(&mut w, &mut cs, &mut hard, 0, ink, clash, ATOM_NUMBER_TETHER_PX, None, false);
+        let id = atom_number_kit(
+            &mut w,
+            &mut cs,
+            &mut hard,
+            0,
+            ink,
+            clash,
+            ATOM_NUMBER_TETHER_PX,
+            None,
+            false,
+        );
         let g0 = max_hard_violation(&w, &hard);
         assert!(g0 > 1.0, "seed must violate hard bond clear, g0={g0}");
         let opts = SolveOpts {
