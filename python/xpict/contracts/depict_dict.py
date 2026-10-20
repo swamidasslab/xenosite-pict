@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from typing import Literal, NotRequired, Required, TypedDict
+from typing import Mapping, Literal, NotRequired, Required, TypedDict
 
 class AlignToSpecDict(TypedDict, total=False):
     """Object form of document ``align_to`` (template ref + EdgePlan-style opts)."""
@@ -18,7 +18,90 @@ AlignToDict = str | AlignToSpecDict
 AromaticStyle = Literal['circle', 'kekule']
 
 
+RegionTextPlace = Literal['outside', 'inside']
+
+
 LabelPos = Literal['above', 'below', 'left', 'right']
+
+
+class MolTextSpecDict(TypedDict, total=False):
+    """Expanded text content for mol name, region labels, callouts, atom labels."""
+    color: NotRequired[str]
+    content: NotRequired[str]
+    margin: NotRequired[float]
+    place: NotRequired[RegionTextPlace]
+    pos: NotRequired[LabelPos]
+    scale: NotRequired[float]
+
+
+MolTextDict = str | MolTextSpecDict
+
+
+class AtomLabelDetailedDict(TypedDict, total=False):
+    """Expanded atom-label bag with optional shared scale/color/z."""
+    color: NotRequired[str]
+    labels: NotRequired[Mapping[str, MolTextDict]]
+    scale: NotRequired[float]
+    z: NotRequired[int]
+
+
+AtomLabelSpecDict = Mapping[str, MolTextDict] | AtomLabelDetailedDict
+
+
+AtomNumberBy = Literal['index', 'mapno']
+
+
+class AtomNumberPolicyDict(TypedDict, total=False):
+    """Expanded atom-number policy."""
+    by: NotRequired[AtomNumberBy]
+    color: NotRequired[str]
+    only: NotRequired[list[int]]
+    scale: NotRequired[float]
+    z: NotRequired[int]
+
+
+AtomNumberSpecDict = AtomNumberBy | AtomNumberPolicyDict
+
+
+class CalloutSpecDict(TypedDict, total=False):
+    """Callout annotation (arrow / freer placement)."""
+    text: Required[MolTextDict]
+    arrow: NotRequired[bool]
+    atoms: NotRequired[list[int]]
+    bonds: NotRequired[list[tuple[int, int]]]
+    color: NotRequired[str]
+    prefer: NotRequired[LabelPos]
+    scale: NotRequired[float]
+    z: NotRequired[int]
+
+
+CalloutFieldDict = CalloutSpecDict | list[CalloutSpecDict]
+
+
+class FillSpecDict(TypedDict, total=False):
+    """Fill ink for region / circle."""
+    color: NotRequired[str]
+    opacity: NotRequired[float]
+
+
+class StrokeSpecDict(TypedDict, total=False):
+    """Stroke ink for region / circle."""
+    color: NotRequired[str]
+    dash: NotRequired[str]
+    width: NotRequired[float]
+
+
+class CircleSpecDict(TypedDict, total=False):
+    """Atom or ring highlight circle."""
+    atoms: NotRequired[list[int]]
+    fill: NotRequired[FillSpecDict]
+    ring: NotRequired[list[int]]
+    scale: NotRequired[float]
+    stroke: NotRequired[StrokeSpecDict]
+    z: NotRequired[int]
+
+
+CircleFieldDict = CircleSpecDict | list[CircleSpecDict]
 
 
 class LabelPlacementDict(TypedDict, total=False):
@@ -56,6 +139,7 @@ class MolOptsPatchDict(TypedDict, total=False):
     debug_align: NotRequired[bool]
     debug_box: NotRequired[bool]
     halo: NotRequired[bool]
+    pad: NotRequired[float]
     scale: NotRequired[float]
     shade: NotRequired[ShadeStyleDict]
     weight: NotRequired[float]
@@ -68,6 +152,7 @@ class GroupOptsPatchDict(TypedDict, total=False):
     color: NotRequired[str]
     debug_align: NotRequired[bool]
     debug_box: NotRequired[bool]
+    pad: NotRequired[float]
     scale: NotRequired[float]
 
 
@@ -78,6 +163,7 @@ class ReactionSchemeOptsPatchDict(TypedDict, total=False):
     color: NotRequired[str]
     debug_align: NotRequired[bool]
     debug_box: NotRequired[bool]
+    pad: NotRequired[float]
     scale: NotRequired[float]
 
 
@@ -88,6 +174,7 @@ class EdgeOptsPatchDict(TypedDict, total=False):
     color: NotRequired[str]
     debug_align: NotRequired[bool]
     debug_box: NotRequired[bool]
+    pad: NotRequired[float]
     scale: NotRequired[float]
 
 
@@ -98,6 +185,7 @@ class TextOptsPatchDict(TypedDict, total=False):
     color: NotRequired[str]
     debug_align: NotRequired[bool]
     debug_box: NotRequired[bool]
+    pad: NotRequired[float]
     scale: NotRequired[float]
 
 
@@ -115,6 +203,7 @@ class ForTypesPatchDict(TypedDict, total=False):
     debug_align: NotRequired[bool]
     debug_box: NotRequired[bool]
     halo: NotRequired[bool]
+    pad: NotRequired[float]
     scale: NotRequired[float]
     shade: NotRequired[ShadeStyleDict]
     weight: NotRequired[float]
@@ -127,6 +216,7 @@ class MolOptsDict(TypedDict, total=False):
     debug_align: NotRequired[bool]
     debug_box: NotRequired[bool]
     halo: NotRequired[bool]
+    pad: NotRequired[float]
     scale: NotRequired[float]
     shade: NotRequired[ShadeStyleDict]
     weight: NotRequired[float]
@@ -136,6 +226,23 @@ OptsPatchDict = TypedOptsPatchDict | ForTypesPatchDict | MolOptsDict
 
 
 OptsDict = OptsPatchDict | list[OptsPatchDict]
+
+
+RegionStyle = Literal['box', 'bezier', 'circle']
+
+
+class RegionSpecDict(TypedDict, total=False):
+    """One region highlight on a mol."""
+    atoms: NotRequired[list[int]]
+    exclude: NotRequired[list[int]]
+    fill: NotRequired[FillSpecDict]
+    stroke: NotRequired[StrokeSpecDict]
+    style: NotRequired[RegionStyle]
+    text: NotRequired[MolTextDict]
+    z: NotRequired[int]
+
+
+RegionFieldDict = RegionSpecDict | list[RegionSpecDict]
 
 
 class ShadeSpecDict(TypedDict, total=False):
@@ -151,6 +258,10 @@ class MolNodeDict(TypedDict, total=False):
     type: Required[Literal['mol']]
     align_to: NotRequired[AlignToDict]
     aromatic: NotRequired[AromaticStyle]
+    atom_label: NotRequired[AtomLabelSpecDict]
+    atom_number: NotRequired[AtomNumberSpecDict]
+    callout: NotRequired[CalloutFieldDict]
+    circle: NotRequired[CircleFieldDict]
     color: NotRequired[str]
     cxsmiles: NotRequired[str]
     debug_align: NotRequired[bool]
@@ -159,7 +270,10 @@ class MolNodeDict(TypedDict, total=False):
     id: NotRequired[str]
     label: NotRequired[LabelDict]
     molfile: NotRequired[str]
+    name: NotRequired[MolTextDict]
     opts: NotRequired[OptsDict]
+    pad: NotRequired[float]
+    region: NotRequired[RegionFieldDict]
     scale: NotRequired[float]
     shade: NotRequired[ShadeSpecDict]
     smiles: NotRequired[str]
@@ -219,6 +333,7 @@ class GroupNodeDict(TypedDict, total=False):
     debug_box: NotRequired[bool]
     id: NotRequired[str]
     opts: NotRequired[OptsDict]
+    pad: NotRequired[float]
     scale: NotRequired[float]
 
 
@@ -248,6 +363,7 @@ class ReactionSchemeNodeDict(TypedDict, total=False):
     id: NotRequired[str]
     layout: NotRequired[LayoutOptsDict]
     opts: NotRequired[OptsDict]
+    pad: NotRequired[float]
     scale: NotRequired[float]
 
 
@@ -261,6 +377,7 @@ class GridNodeDict(TypedDict, total=False):
     debug_box: NotRequired[bool]
     id: NotRequired[str]
     opts: NotRequired[OptsDict]
+    pad: NotRequired[float]
     scale: NotRequired[float]
 
 

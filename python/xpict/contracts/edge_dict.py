@@ -59,6 +59,7 @@ class AtomInDict(TypedDict, total=False):
     charge: NotRequired[int]
     element: NotRequired[str]
     label: NotRequired[str]
+    mapno: NotRequired[int]
     z: NotRequired[int]
 
 

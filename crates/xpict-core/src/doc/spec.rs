@@ -22,6 +22,10 @@ use schemars::JsonSchema;
 #[cfg(feature = "codegen")]
 use ts_rs::TS;
 
+use crate::doc::chrome::{
+    annotations_from_overlay, overlay_from_mol, Annotation, AtomLabelSpec, AtomNumberSpec,
+    CalloutField, CircleField, MolOverlayFields, MolText, RegionField,
+};
 use crate::edge::AlignOpts;
 use crate::scene::AromaticStyle;
 
@@ -34,6 +38,8 @@ use crate::scene::AromaticStyle;
 #[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
 #[cfg_attr(feature = "codegen", ts(export))]
 pub struct ShadeStyle {
+    /// Named colormap. Only ``"xenosite"`` (default) is painted; any other
+    /// name is rejected at depict time (not silently ignored).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub colormap: Option<String>,
@@ -63,7 +69,7 @@ impl ShadeStyle {
 ///
 /// Prefer putting `colormap` / `vmin` / `vmax` in cascading [`MolOpts::shade`];
 /// values here still apply as local leaf overrides for compat.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
 #[cfg_attr(feature = "codegen", ts(export))]
 pub struct ShadeSpec {
@@ -73,6 +79,8 @@ pub struct ShadeSpec {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub bonds: Option<Vec<f64>>,
+    /// Named colormap. Only ``"xenosite"`` (default) is painted; any other
+    /// name is rejected at depict time (not silently ignored).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub colormap: Option<String>,
@@ -220,6 +228,10 @@ pub struct CommonOpts {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub debug_align: Option<bool>,
+    /// Post-layout SVG viewBox pad (px). Omit → small house default (rarely override).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub pad: Option<f64>,
 }
 
 /// Copy each ``Option`` field from ``$src`` onto ``$dst`` when ``Some``.
@@ -236,7 +248,16 @@ macro_rules! merge_opt_fields {
 
 impl CommonOpts {
     pub fn merge_from(&mut self, other: &CommonOpts) {
-        merge_opt_fields!(self, other, color, scale, aromatic, debug_box, debug_align);
+        merge_opt_fields!(
+            self,
+            other,
+            color,
+            scale,
+            aromatic,
+            debug_box,
+            debug_align,
+            pad
+        );
     }
 }
 
@@ -275,6 +296,10 @@ pub struct MolOpts {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub debug_align: Option<bool>,
+    /// Post-layout SVG viewBox pad (px). Omit → small house default (rarely override).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub pad: Option<f64>,
 }
 
 impl MolOpts {
@@ -288,7 +313,8 @@ impl MolOpts {
             halo,
             aromatic,
             debug_box,
-            debug_align
+            debug_align,
+            pad
         );
         if let Some(ref s) = other.shade {
             self.shade
@@ -299,7 +325,16 @@ impl MolOpts {
 
     pub fn merge_common(&mut self, common: &CommonOpts) {
         // Same keys as ``CommonOpts`` — update with that struct.
-        merge_opt_fields!(self, common, color, scale, aromatic, debug_box, debug_align);
+        merge_opt_fields!(
+            self,
+            common,
+            color,
+            scale,
+            aromatic,
+            debug_box,
+            debug_align,
+            pad
+        );
     }
 }
 
@@ -478,11 +513,38 @@ pub struct MolNode {
     pub align_to: Option<AlignTo>,
     /// Caption: [`Label`] (string id, list, or `{id, pos?}` — text-node refs).
     ///
+    /// Prefer privileged [`Self::name`] for inline mol captions. `label` id-refs
+    /// remain for legacy / multi-caption layouts.
+    ///
     /// `pos` on a placement chooses caption side (`above`/`below`/`left`/`right`);
     /// hosts measure the resolved text and fold that into node size for layout.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub label: Option<Label>,
+    /// Privileged figure name / caption painted inside the mol SVG (default below).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub name: Option<MolText>,
+    /// Atom index / map-number labels (`"index"` | `"mapno"` | policy object).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub atom_number: Option<AtomNumberSpec>,
+    /// Per-atom arbitrary text map (`{ "1": "α" }` or `{ "labels": {…}, "scale"? }`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub atom_label: Option<AtomLabelSpec>,
+    /// Region highlight(s) — one object or a list.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub region: Option<RegionField>,
+    /// Atom / ring highlight circle(s).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub circle: Option<CircleField>,
+    /// Callout annotation(s).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub callout: Option<CalloutField>,
     // --- local leaf opts (same keys as MolOpts; merge last) ---
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
@@ -508,6 +570,10 @@ pub struct MolNode {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub debug_align: Option<bool>,
+    /// Post-layout SVG viewBox pad (px). Omit → small house default (rarely override).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub pad: Option<f64>,
     /// Cascade patches for this node (list or singleton).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
@@ -526,6 +592,7 @@ impl MolNode {
             aromatic: self.aromatic,
             debug_box: self.debug_box,
             debug_align: self.debug_align,
+            pad: self.pad,
         };
         if let Some(ref shade) = self.shade {
             o.shade = Some(shade.style());
@@ -540,6 +607,23 @@ impl MolNode {
             }
         }
         Err("mol node needs smiles, cxsmiles, or molfile".into())
+    }
+
+    /// Wire overlay bag (excludes privileged [`Self::name`]).
+    pub fn overlay_fields(&self) -> MolOverlayFields {
+        overlay_from_mol(
+            &self.shade,
+            &self.atom_number,
+            &self.atom_label,
+            &self.region,
+            &self.circle,
+            &self.callout,
+        )
+    }
+
+    /// Internal Annotation IR for paint / occupancy (sorted by z).
+    pub fn annotations(&self) -> Vec<Annotation> {
+        annotations_from_overlay(&self.overlay_fields())
     }
 }
 
@@ -1026,6 +1110,25 @@ pub enum DepictSpec {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[cfg_attr(feature = "codegen", ts(optional))]
         label: Option<Label>,
+        /// Privileged figure name / caption (inline mol SVG).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        name: Option<MolText>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        atom_number: Option<AtomNumberSpec>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        atom_label: Option<AtomLabelSpec>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        region: Option<RegionField>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        circle: Option<CircleField>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        callout: Option<CalloutField>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[cfg_attr(feature = "codegen", ts(optional))]
         color: Option<String>,
@@ -1048,6 +1151,10 @@ pub enum DepictSpec {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[cfg_attr(feature = "codegen", ts(optional))]
         debug_align: Option<bool>,
+        /// Post-layout SVG viewBox pad (px). Omit → small house default.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        pad: Option<f64>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[cfg_attr(feature = "codegen", ts(optional))]
         opts: Option<Opts>,
@@ -1082,6 +1189,10 @@ pub enum DepictSpec {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[cfg_attr(feature = "codegen", ts(optional))]
         debug_align: Option<bool>,
+        /// Post-layout SVG viewBox pad (px). Omit → small house default.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        pad: Option<f64>,
     },
     /// Reaction / pathway scheme: mixed **node** children (`mol` | `edge` | `text`).
     ReactionScheme {
@@ -1115,6 +1226,10 @@ pub enum DepictSpec {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[cfg_attr(feature = "codegen", ts(optional))]
         debug_align: Option<bool>,
+        /// Post-layout SVG viewBox pad (px). Omit → small house default.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        pad: Option<f64>,
     },
     /// Grid root — each child is one row (`mol` / `group` / `reaction_scheme` / nested `grid`).
     Grid {
@@ -1144,6 +1259,10 @@ pub enum DepictSpec {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[cfg_attr(feature = "codegen", ts(optional))]
         debug_align: Option<bool>,
+        /// Post-layout SVG viewBox pad (px). Omit → small house default.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        pad: Option<f64>,
     },
 }
 
@@ -1158,6 +1277,7 @@ impl DepictSpec {
                 aromatic,
                 debug_box,
                 debug_align,
+                pad,
                 ..
             }
             | DepictSpec::ReactionScheme {
@@ -1167,6 +1287,7 @@ impl DepictSpec {
                 aromatic,
                 debug_box,
                 debug_align,
+                pad,
                 ..
             }
             | DepictSpec::Grid {
@@ -1176,6 +1297,7 @@ impl DepictSpec {
                 aromatic,
                 debug_box,
                 debug_align,
+                pad,
                 ..
             } => Some(CascadeLayer {
                 opts: opts.clone(),
@@ -1185,6 +1307,7 @@ impl DepictSpec {
                     aromatic: *aromatic,
                     debug_box: *debug_box,
                     debug_align: *debug_align,
+                    pad: *pad,
                 },
             }),
         }
@@ -1199,6 +1322,12 @@ impl DepictSpec {
         star_labels: &Option<Vec<Option<String>>>,
         align_to: &Option<AlignTo>,
         label: &Option<Label>,
+        name: &Option<MolText>,
+        atom_number: &Option<AtomNumberSpec>,
+        atom_label: &Option<AtomLabelSpec>,
+        region: &Option<RegionField>,
+        circle: &Option<CircleField>,
+        callout: &Option<CalloutField>,
         color: &Option<String>,
         scale: Option<f64>,
         weight: Option<f64>,
@@ -1206,6 +1335,7 @@ impl DepictSpec {
         aromatic: Option<AromaticStyle>,
         debug_box: Option<bool>,
         debug_align: Option<bool>,
+        pad: Option<f64>,
         opts: &Option<Opts>,
     ) -> MolNode {
         MolNode {
@@ -1218,6 +1348,12 @@ impl DepictSpec {
             star_labels: star_labels.clone(),
             align_to: align_to.clone(),
             label: label.clone(),
+            name: name.clone(),
+            atom_number: atom_number.clone(),
+            atom_label: atom_label.clone(),
+            region: region.clone(),
+            circle: circle.clone(),
+            callout: callout.clone(),
             color: color.clone(),
             scale,
             weight,
@@ -1225,6 +1361,7 @@ impl DepictSpec {
             aromatic,
             debug_box,
             debug_align,
+            pad,
             opts: opts.clone(),
         }
     }
@@ -1245,6 +1382,12 @@ impl DepictSpec {
                 star_labels,
                 align_to,
                 label,
+                name,
+                atom_number,
+                atom_label,
+                region,
+                circle,
+                callout,
                 color,
                 scale,
                 weight,
@@ -1252,6 +1395,7 @@ impl DepictSpec {
                 aromatic,
                 debug_box,
                 debug_align,
+                pad,
                 opts,
             } => {
                 out.push((
@@ -1264,6 +1408,12 @@ impl DepictSpec {
                         star_labels,
                         align_to,
                         label,
+                        name,
+                        atom_number,
+                        atom_label,
+                        region,
+                        circle,
+                        callout,
                         color,
                         *scale,
                         *weight,
@@ -1271,6 +1421,7 @@ impl DepictSpec {
                         *aromatic,
                         *debug_box,
                         *debug_align,
+                        *pad,
                         opts,
                     ),
                     stack.clone(),
@@ -1331,8 +1482,9 @@ impl DepictSpec {
     /// Child nodes of a flat container (empty for mol / grid roots).
     pub fn nodes(&self) -> &[Node] {
         match self {
-            DepictSpec::Group { children, .. }
-            | DepictSpec::ReactionScheme { children, .. } => children.as_slice(),
+            DepictSpec::Group { children, .. } | DepictSpec::ReactionScheme { children, .. } => {
+                children.as_slice()
+            }
             DepictSpec::Mol { .. } | DepictSpec::Grid { .. } => &[],
         }
     }
@@ -1360,9 +1512,7 @@ impl DepictSpec {
     /// Look up a mol or text node by id (for label / lane refs).
     pub fn node_by_id(&self, id: &str) -> Option<&Node> {
         match self {
-            DepictSpec::Grid { children, .. } => {
-                children.iter().find_map(|row| row.node_by_id(id))
-            }
+            DepictSpec::Grid { children, .. } => children.iter().find_map(|row| row.node_by_id(id)),
             _ => self.nodes().iter().find(|n| n.id() == Some(id)),
         }
     }

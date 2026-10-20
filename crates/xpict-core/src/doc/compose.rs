@@ -15,9 +15,7 @@ use crate::arrows::{
 use crate::debug_box::scene_debug_rect;
 use crate::scene::{Primitive, Scene, TextAnchor, Viewport};
 
-use super::{
-    DepictSpec, DocPaint, EdgeNode, EdgeRouting, LabelPos, LayoutOpts, Node,
-};
+use super::{fit, DepictSpec, DocPaint, EdgeNode, EdgeRouting, LabelPos, LayoutOpts, Node};
 
 const EDGE_LABEL_FONT_PX: f64 = 11.0;
 const EDGE_LABEL_PAD: f64 = 4.0;
@@ -28,9 +26,11 @@ const ROW_GAP: f64 = 0.0; // ≈ LayoutOpts::DEFAULT_LAYER_SPACING
 /// Non-scheme roots return the first paint scene (or an empty scene).
 pub fn compose_scheme(spec: &DepictSpec, paints: &[DocPaint]) -> Result<Scene, String> {
     let scene = match spec {
-        DepictSpec::ReactionScheme { layout, .. } => {
-            compose_reaction(spec, paints, layout.as_ref().unwrap_or(&LayoutOpts::default()))?
-        }
+        DepictSpec::ReactionScheme { layout, .. } => compose_reaction(
+            spec,
+            paints,
+            layout.as_ref().unwrap_or(&LayoutOpts::default()),
+        )?,
         DepictSpec::Mol { .. } | DepictSpec::Group { .. } | DepictSpec::Grid { .. } => {
             if paints.len() == 1 {
                 paints[0].scene.clone()
@@ -48,7 +48,27 @@ pub fn compose_scheme(spec: &DepictSpec, paints: &[DocPaint]) -> Result<Scene, S
             }
         }
     };
+    // Lone mols are already fitted in render_doc; multi-mol / schemes fit once here.
+    let scene = if matches!(spec, DepictSpec::Mol { .. }) && paints.len() == 1 {
+        scene
+    } else if paints.is_empty() {
+        scene
+    } else {
+        fit::fit_scene(scene, resolve_compose_pad(spec, paints))
+    };
     Ok(with_scene_debug_box(spec, paints, scene))
+}
+
+fn resolve_compose_pad(spec: &DepictSpec, paints: &[DocPaint]) -> f64 {
+    // Prefer an explicit cascaded pad; else house default (rarely overridden).
+    let n = spec.mols().len();
+    for i in 0..n {
+        if let Some(p) = spec.resolve_mol_chrome(i).pad {
+            return fit::resolve_viewport_margin(Some(p));
+        }
+    }
+    let _ = paints;
+    fit::VIEWPORT_MARGIN_DEFAULT
 }
 
 /// Document-level debug rectangle when any mol or the root asks for ``debug_box``.
@@ -60,9 +80,7 @@ fn with_scene_debug_box(spec: &DepictSpec, paints: &[DocPaint], mut scene: Scene
         return scene;
     }
     let already = scene.overlays.iter().any(|p| match p {
-        Primitive::Path {
-            class: Some(c), ..
-        } => c.contains("debug-box-scene"),
+        Primitive::Path { class: Some(c), .. } => c.contains("debug-box-scene"),
         _ => false,
     });
     if already {
@@ -126,19 +144,14 @@ fn compose_reaction(
             .copied()
             .unwrap_or((0.0, 0.0));
         let (w, h) = scene_size(&p.scene);
-        let mut vp = p
-            .scene
-            .viewports
-            .first()
-            .cloned()
-            .unwrap_or(Viewport {
-                id: Some(p.id.clone()),
-                x: 0.0,
-                y: 0.0,
-                width: w,
-                height: h,
-                layers: vec![],
-            });
+        let mut vp = p.scene.viewports.first().cloned().unwrap_or(Viewport {
+            id: Some(p.id.clone()),
+            x: 0.0,
+            y: 0.0,
+            width: w,
+            height: h,
+            layers: vec![],
+        });
         vp.id = Some(p.id.clone());
         vp.x = x;
         vp.y = y;
@@ -323,11 +336,7 @@ fn layout_scheme(
 }
 
 #[cfg(feature = "elk")]
-fn build_elk_graph(
-    spec: &DepictSpec,
-    layout: &LayoutOpts,
-    sizes: &[(String, f64, f64)],
-) -> Value {
+fn build_elk_graph(spec: &DepictSpec, layout: &LayoutOpts, sizes: &[(String, f64, f64)]) -> Value {
     let opts = crate::elk::scheme_layout_options(crate::elk::DiagramKind::Reaction, layout);
     let children: Vec<Value> = sizes
         .iter()
@@ -694,7 +703,10 @@ fn shift_path_d(d: &str, dx: f64, dy: f64) -> String {
         while let Some(&n) = chars.peek() {
             if n.is_ascii_digit() || n == '.' || n == 'e' || n == 'E' || n == '+' || n == '-' {
                 // stop if '-' / '+' not part of exponent
-                if (n == '-' || n == '+') && !num.is_empty() && !num.ends_with('e') && !num.ends_with('E')
+                if (n == '-' || n == '+')
+                    && !num.is_empty()
+                    && !num.ends_with('e')
+                    && !num.ends_with('E')
                 {
                     break;
                 }
@@ -716,7 +728,12 @@ fn shift_path_d(d: &str, dx: f64, dy: f64) -> String {
                     num2.push(n0);
                     chars.next();
                     while let Some(&n) = chars.peek() {
-                        if n.is_ascii_digit() || n == '.' || n == 'e' || n == 'E' || n == '+' || n == '-'
+                        if n.is_ascii_digit()
+                            || n == '.'
+                            || n == 'e'
+                            || n == 'E'
+                            || n == '+'
+                            || n == '-'
                         {
                             if (n == '-' || n == '+')
                                 && !num2.is_empty()
@@ -800,7 +817,7 @@ fn path_coords(d: &str) -> Vec<(f64, f64)> {
 mod tests {
     use super::*;
     use crate::arrows::EdgePrim;
-    use crate::doc::{EdgeArrow, EdgeNodeKind, MolIds, MolNode, MolNodeKind, TextNode, TextNodeKind};
+    use crate::doc::{EdgeArrow, EdgeNodeKind, MolIds, MolNode, TextNode, TextNodeKind};
     use crate::scene::{AtomIn, Layer, LayerName, MoleculeIn, TextAnchor};
 
     fn paint(id: &str, w: f64, h: f64) -> DocPaint {
@@ -817,6 +834,7 @@ mod tests {
                     y: 10.0,
                     label: None,
                     charge: 0,
+                    mapno: None,
                 }],
                 bonds: vec![],
                 color: None,
@@ -859,23 +877,9 @@ mod tests {
             id: None,
             children: vec![
                 Node::Mol(MolNode {
-                    type_: MolNodeKind::Mol,
                     id: Some("A".into()),
                     smiles: Some("CCO".into()),
-                    cxsmiles: None,
-                    molfile: None,
-                    label: None,
-                    star_labels: None,
-                    align_to: None,
-                    opts: None,
-                    color: None,
-                    scale: None,
-                    weight: None,
-                    halo: None,
-                    aromatic: None,
-                    debug_box: None,
-                    debug_align: None,
-                    shade: None,
+                    ..Default::default()
                 }),
                 Node::Text(TextNode {
                     type_: TextNodeKind::Text,
@@ -898,23 +902,9 @@ mod tests {
                     dashed: false,
                 }),
                 Node::Mol(MolNode {
-                    type_: MolNodeKind::Mol,
                     id: Some("B".into()),
                     smiles: Some("CC=O".into()),
-                    cxsmiles: None,
-                    molfile: None,
-                    label: None,
-                    star_labels: None,
-                    align_to: None,
-                    opts: None,
-                    color: None,
-                    scale: None,
-                    weight: None,
-                    halo: None,
-                    aromatic: None,
-                    debug_box: None,
-                    debug_align: None,
-                    shade: None,
+                    ..Default::default()
                 }),
             ],
             layout: Some(LayoutOpts {
@@ -927,6 +917,7 @@ mod tests {
             aromatic: None,
             debug_box: None,
             debug_align: None,
+            pad: None,
         };
         let paints = vec![paint("A", 80.0, 60.0), paint("B", 80.0, 60.0)];
         let scene = compose_scheme(&spec, &paints).expect("compose");
@@ -951,6 +942,7 @@ mod tests {
                 aromatic: None,
                 debug_box: None,
                 debug_align: None,
+                pad: None,
             },
             &[],
         )
@@ -961,42 +953,14 @@ mod tests {
             id: None,
             children: vec![
                 Node::Mol(MolNode {
-                    type_: MolNodeKind::Mol,
                     id: Some("a".into()),
                     smiles: Some("C".into()),
-                    cxsmiles: None,
-                    molfile: None,
-                    label: None,
-                    star_labels: None,
-                    align_to: None,
-                    opts: None,
-                    color: None,
-                    scale: None,
-                    weight: None,
-                    halo: None,
-                    aromatic: None,
-                    debug_box: None,
-                    debug_align: None,
-                    shade: None,
+                    ..Default::default()
                 }),
                 Node::Mol(MolNode {
-                    type_: MolNodeKind::Mol,
                     id: Some("b".into()),
                     smiles: Some("O".into()),
-                    cxsmiles: None,
-                    molfile: None,
-                    label: None,
-                    star_labels: None,
-                    align_to: None,
-                    opts: None,
-                    color: None,
-                    scale: None,
-                    weight: None,
-                    halo: None,
-                    aromatic: None,
-                    debug_box: None,
-                    debug_align: None,
-                    shade: None,
+                    ..Default::default()
                 }),
             ],
             align: false,
@@ -1006,8 +970,10 @@ mod tests {
             aromatic: None,
             debug_box: None,
             debug_align: None,
+            pad: None,
         };
-        let scene = compose_scheme(&group, &[paint("a", 40.0, 30.0), paint("b", 50.0, 30.0)]).unwrap();
+        let scene =
+            compose_scheme(&group, &[paint("a", 40.0, 30.0), paint("b", 50.0, 30.0)]).unwrap();
         assert_eq!(scene.viewports.len(), 2);
         assert!(scene.viewports[1].x > scene.viewports[0].x);
     }
@@ -1085,7 +1051,10 @@ mod tests {
         });
         match path {
             Primitive::Path {
-                stroke, fill, class, ..
+                stroke,
+                fill,
+                class,
+                ..
             } => {
                 assert!(stroke.is_none());
                 assert_eq!(fill.as_deref(), Some("#222"));
@@ -1163,42 +1132,14 @@ mod tests {
             id: None,
             children: vec![
                 Node::Mol(MolNode {
-                    type_: MolNodeKind::Mol,
                     id: Some("A".into()),
                     smiles: Some("C".into()),
-                    cxsmiles: None,
-                    molfile: None,
-                    label: None,
-                    star_labels: None,
-                    align_to: None,
-                    opts: None,
-                    color: None,
-                    scale: None,
-                    weight: None,
-                    halo: None,
-                    aromatic: None,
-                    debug_box: None,
-                    debug_align: None,
-                    shade: None,
+                    ..Default::default()
                 }),
                 Node::Mol(MolNode {
-                    type_: MolNodeKind::Mol,
                     id: Some("B".into()),
                     smiles: Some("O".into()),
-                    cxsmiles: None,
-                    molfile: None,
-                    label: None,
-                    star_labels: None,
-                    align_to: None,
-                    opts: None,
-                    color: None,
-                    scale: None,
-                    weight: None,
-                    halo: None,
-                    aromatic: None,
-                    debug_box: None,
-                    debug_align: None,
-                    shade: None,
+                    ..Default::default()
                 }),
                 Node::Text(TextNode {
                     type_: TextNodeKind::Text,
@@ -1250,6 +1191,7 @@ mod tests {
             aromatic: None,
             debug_box: None,
             debug_align: None,
+            pad: None,
         };
         let scene = compose_scheme(&spec, &[a, paint("B", 50.0, 40.0)]).unwrap();
         assert!(!scene.halo.is_empty());
@@ -1319,6 +1261,12 @@ mod tests {
             molfile: None,
             id: None,
             label: None,
+            name: None,
+            atom_number: None,
+            atom_label: None,
+            region: None,
+            circle: None,
+            callout: None,
             star_labels: None,
             align_to: None,
             opts: None,
@@ -1329,6 +1277,7 @@ mod tests {
             aromatic: None,
             debug_box: None,
             debug_align: None,
+            pad: None,
             shade: None,
         };
         let empty = compose_scheme(&mol, &[]).unwrap();
@@ -1382,7 +1331,9 @@ mod tests {
             10.0,
         );
         match rel {
-            Primitive::Path { d, .. } => assert!(d.contains('m') || d.contains('l') || d.contains('1')),
+            Primitive::Path { d, .. } => {
+                assert!(d.contains('m') || d.contains('l') || d.contains('1'))
+            }
             _ => panic!("path"),
         }
 
@@ -1397,6 +1348,7 @@ mod tests {
                 aromatic: None,
                 debug_box: None,
                 debug_align: None,
+                pad: None,
             },
             &EdgeNode {
                 type_: EdgeNodeKind::Edge,
@@ -1432,6 +1384,12 @@ mod tests {
             molfile: None,
             id: Some("m0".into()),
             label: None,
+            name: None,
+            atom_number: None,
+            atom_label: None,
+            region: None,
+            circle: None,
+            callout: None,
             star_labels: None,
             align_to: None,
             opts: None,
@@ -1442,6 +1400,7 @@ mod tests {
             aromatic: None,
             debug_box: None,
             debug_align: None,
+            pad: None,
             shade: None,
         };
         let scene = compose_scheme(&spec, &paints).unwrap();

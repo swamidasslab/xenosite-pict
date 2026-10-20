@@ -159,6 +159,7 @@ pub struct SvgAtom {
     pub y: f64,
     pub label: Option<String>,
     pub charge: i32,
+    mapno: None,
 }
 
 /// Bond endpoints in layout order.
@@ -263,6 +264,7 @@ fn to_coord_list(atoms: &[CoreAtom]) -> Vec<SvgAtom> {
             y: a.y,
             label: a.label.clone(),
             charge: a.charge,
+            mapno: None,
         })
         .collect()
 }

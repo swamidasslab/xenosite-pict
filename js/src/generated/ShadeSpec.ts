@@ -6,4 +6,9 @@
  * Prefer putting `colormap` / `vmin` / `vmax` in cascading [`MolOpts::shade`];
  * values here still apply as local leaf overrides for compat.
  */
-export type ShadeSpec = { atoms?: Array<number>, bonds?: Array<number>, colormap?: string, vmin: number, vmax: number, };
+export type ShadeSpec = { atoms?: Array<number>, bonds?: Array<number>, 
+/**
+ * Named colormap. Only ``"xenosite"`` (default) is painted; any other
+ * name is rejected at depict time (not silently ignored).
+ */
+colormap?: string, vmin: number, vmax: number, };

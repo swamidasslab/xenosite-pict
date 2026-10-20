@@ -105,6 +105,15 @@
             "null"
           ]
         },
+        "mapno": {
+          "description": "Reaction / SMILES atom-map number (`:n` in brackets), when known.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
         "x": {
           "type": "number",
           "format": "double"

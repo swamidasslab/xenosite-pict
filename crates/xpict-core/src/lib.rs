@@ -65,14 +65,19 @@ pub use debug_box::{
     debug_rect, label_debug_rect, mol_debug_rect, scene_debug_rect, DEBUG_BOX_DASH,
     DEBUG_BOX_STROKE, DEBUG_BOX_STROKE_PX,
 };
-pub use depict::depict_molecule;
+pub use depict::{depict_molecule, frame_offset};
 pub use doc::{
-    apply_star_labels, assign_mol_ids, compose_scheme, plan_edge, render_doc,
-    resolve_mol_opts, validate_edges, AlignTo, AlignToSpec, CommonOpts, DepictSpec, DocPaint,
-    EdgeArrow, EdgeNode, EdgeNodeKind, EdgeRouting, ForTypesPatch, Label, LabelItem, LabelLanes,
-    LabelPlacement, LabelPos, LayoutAlgorithm, LayoutDirection, LayoutOpts, MolIds, MolNode,
-    MolNodeKind, MolOpts,
-    Node, NodeType, Opts, OptsPatch, ShadeSpec, ShadeStyle, TextNode, TextNodeKind, TypedOptsPatch,
+    annotations_from_overlay, apply_star_labels, assign_mol_ids, canonicalize_overlay,
+    compose_scheme, overlay_from_annotations, plan_edge, render_doc, resolve_mol_opts,
+    validate_edges, validate_shade_colormap, AlignTo, AlignToSpec, Annotation, AtomLabelDetailed,
+    AtomLabelSpec, AtomNumberBy, AtomNumberPolicy, AtomNumberSpec, CalloutField, CalloutSpec,
+    CircleField, CircleSpec, CommonOpts, DepictSpec, DocPaint, EdgeArrow, EdgeNode, EdgeNodeKind,
+    EdgeRouting, FillSpec, ForTypesPatch, Label, LabelItem, LabelLanes, LabelPlacement, LabelPos,
+    LabelRole, LayoutAlgorithm, LayoutDirection, LayoutOpts, MolIds, MolNode, MolNodeKind, MolOpts,
+    MolOverlayFields, MolText, MolTextSpec, Node, NodeType, Opts, OptsPatch, RegionField,
+    RegionSpec, RegionStyle, RegionTextPlace, ShadeSpec, ShadeStyle, StrokeSpec, TextNode,
+    TextNodeKind, TypedOptsPatch, Z_ATOMS, Z_ATOM_LABEL, Z_BACKGROUND, Z_BONDS, Z_CALLOUT,
+    Z_CIRCLE, Z_HALO, Z_NAME, Z_REGION, Z_SHADE,
 };
 // Document ``depict`` lives at ``doc::depict`` (crate-root name would clash
 // with the ``depict`` paint module).
@@ -82,8 +87,8 @@ pub use doc::{
     SvgBond as DepictSvgBond,
 };
 pub use edge::{
-    AlignOpts, CoordGenMoleculeResult, CoordMethod, EdgePlan, EdgeResult, EdgeTask,
-    EdgeTaskResult, MolTemplate, MIN_MCS_ATOMS as EDGE_MIN_MCS_ATOMS,
+    AlignOpts, CoordGenMoleculeResult, CoordMethod, EdgePlan, EdgeResult, EdgeTask, EdgeTaskResult,
+    MolTemplate, MIN_MCS_ATOMS as EDGE_MIN_MCS_ATOMS,
 };
 pub use elements::{atomic_number, element_symbol, SYMBOLS};
 #[cfg(feature = "elk")]

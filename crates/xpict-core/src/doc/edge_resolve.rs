@@ -27,6 +27,8 @@ struct Parsed {
     paint_orders: Vec<f64>,
     /// Chematic implicit (or bracket-stored) H counts per atom.
     implicit_hs: Vec<u32>,
+    /// Chematic atom-map numbers (`:n` in reaction SMILES), parallel to atoms.
+    atom_mapnos: Vec<Option<u32>>,
 }
 
 fn ctab_bond_order(order: BondOrder, a_arom: bool, b_arom: bool) -> i32 {
@@ -53,6 +55,7 @@ fn molecule_to_layout(mol: &Molecule) -> Result<Parsed, String> {
     let mut atomic_numbers = Vec::with_capacity(n);
     let mut formal_charges = Vec::with_capacity(n);
     let mut implicit_hs = Vec::with_capacity(n);
+    let mut atom_mapnos = Vec::with_capacity(n);
     let mut arom = Vec::with_capacity(n);
     for i in 0..n {
         let idx = AtomIdx(i as u32);
@@ -65,6 +68,7 @@ fn molecule_to_layout(mol: &Molecule) -> Result<Parsed, String> {
         atomic_numbers.push(z);
         formal_charges.push(i32::from(atom.charge));
         implicit_hs.push(u32::from(implicit_hcount(mol, idx)));
+        atom_mapnos.push(atom.atom_map.map(u32::from));
         arom.push(atom.aromatic);
     }
     let mut bond_from = Vec::new();
@@ -98,6 +102,7 @@ fn molecule_to_layout(mol: &Molecule) -> Result<Parsed, String> {
         atom_indices: (0..n as i32).collect(),
         paint_orders,
         implicit_hs,
+        atom_mapnos,
     })
 }
 
@@ -147,11 +152,7 @@ fn scale_to_paint(coords: &LayoutResult, bonds: &[(i32, i32)]) -> (Vec<f64>, Vec
     let s = SCALE / mean.max(1e-6);
     let ymax = coords.y.iter().copied().fold(f32::NEG_INFINITY, f32::max);
     let xs = coords.x.iter().map(|&x| f64::from(x) * s).collect();
-    let ys = coords
-        .y
-        .iter()
-        .map(|&y| f64::from(ymax - y) * s)
-        .collect();
+    let ys = coords.y.iter().map(|&y| f64::from(ymax - y) * s).collect();
     (xs, ys)
 }
 
@@ -181,6 +182,7 @@ fn to_molecule_in(id: &str, parsed: &Parsed, coords: &LayoutResult) -> MoleculeI
                 y: ys.get(i).copied().unwrap_or(0.0),
                 label,
                 charge,
+                mapno: parsed.atom_mapnos.get(i).copied().flatten(),
             }
         })
         .collect();
@@ -262,15 +264,8 @@ struct Pose {
 
 fn free_layout(source: &str, id: &str) -> Result<Pose, String> {
     let parsed = parse_source(source)?;
-    let (coords, _) = layout_or_align(
-        &parsed.layout,
-        &parsed.atom_indices,
-        None,
-        None,
-        None,
-        None,
-    )
-    .map_err(|e| e.to_string())?;
+    let (coords, _) = layout_or_align(&parsed.layout, &parsed.atom_indices, None, None, None, None)
+        .map_err(|e| e.to_string())?;
     let molecule = to_molecule_in(id, &parsed, &coords);
     let frame = frame_json(&parsed, &coords);
     let layout_ref = with_coords(parsed.layout.clone(), &coords);
@@ -290,12 +285,8 @@ fn align_layout(
     atom_map: Option<&[(u32, u32)]>,
 ) -> Result<(Pose, CoordMethod), String> {
     let parsed = parse_source(source)?;
-    let dense: Option<Vec<(i32, i32)>> = atom_map.map(|pairs| {
-        pairs
-            .iter()
-            .map(|&(q, r)| (q as i32, r as i32))
-            .collect()
-    });
+    let dense: Option<Vec<(i32, i32)>> =
+        atom_map.map(|pairs| pairs.iter().map(|&(q, r)| (q as i32, r as i32)).collect());
     let (coords, dbg) = layout_or_align(
         &parsed.layout,
         &parsed.atom_indices,
@@ -438,11 +429,7 @@ fn visit(
                 .as_ref()
                 .map(|m| m.len() as u32 >= min_atoms)
                 .unwrap_or(true);
-            let use_map = if map_ok {
-                atom_map.as_deref()
-            } else {
-                None
-            };
+            let use_map = if map_ok { atom_map.as_deref() } else { None };
 
             match align_layout(source, &node.id, &parent, pid, use_map) {
                 Ok((pose, method)) => {
@@ -464,9 +451,7 @@ fn visit(
                             method: CoordMethod::None,
                             used_map: None,
                             molecule: Some(pose.molecule.clone()),
-                            error: Some(
-                                "align failed; fell back to unaligned coord gen".into(),
-                            ),
+                            error: Some("align failed; fell back to unaligned coord gen".into()),
                         });
                         poses.insert(node.id.clone(), pose);
                     }
@@ -507,12 +492,22 @@ mod tests {
         eprintln!(
             "anisole bond_orders={:?} n_arom4={}",
             anisole.layout.bond_orders,
-            anisole.layout.bond_orders.iter().filter(|&&o| o >= 4).count()
+            anisole
+                .layout
+                .bond_orders
+                .iter()
+                .filter(|&&o| o >= 4)
+                .count()
         );
         eprintln!(
             "toluene bond_orders={:?} n_arom4={}",
             toluene.layout.bond_orders,
-            toluene.layout.bond_orders.iter().filter(|&&o| o >= 4).count()
+            toluene
+                .layout
+                .bond_orders
+                .iter()
+                .filter(|&&o| o >= 4)
+                .count()
         );
         let ref_g = mol_graph_from_layout(&anisole.layout);
         let query_g = mol_graph_from_layout(&toluene.layout);
@@ -545,6 +540,64 @@ mod tests {
             Some(&1),
             "toluene methyl should map to anisole oxygen; map={:?}",
             res.map
+        );
+    }
+
+    /// `mol("CCCCCC") + mol("C1CCCCC1CCCCC")` must align exactly like the
+    /// same pentylcyclohexane spelled `CCCCCC1CCCCC1`: SMILES atom order is
+    /// not chemistry, so the optimum cost and the chain coverage must agree.
+    #[test]
+    fn hexane_pentylcyclohexane_alignment_is_order_independent() {
+        let hexane = mol_graph_from_layout(&parse_source("CCCCCC").unwrap().layout);
+        let ring_first = mol_graph_from_layout(&parse_source("C1CCCCC1CCCCC").unwrap().layout);
+        let chain_first = mol_graph_from_layout(&parse_source("CCCCCC1CCCCC1").unwrap().layout);
+
+        // Hexane must lie along ipso + pentyl chain — never wrapped around
+        // the cyclohexane (a zero-bond-cost tie that only atom order broke).
+        // Ring atoms: indices 0..6 in ring-first, 5..11 in chain-first.
+        let ring_first_ring = |a: u16| a < 6;
+        let chain_first_ring = |a: u16| a >= 5;
+        let ring_hits = |m: &HashMap<u16, u16>, keys: bool, in_ring: &dyn Fn(u16) -> bool| {
+            m.iter()
+                .filter(|(&q, &r)| in_ring(if keys { q } else { r }))
+                .count()
+        };
+
+        let rf = cost_mapping(&ring_first, &hexane).expect("map");
+        let cf = cost_mapping(&chain_first, &hexane).expect("map");
+        assert_eq!(rf.cost, cf.cost, "ring_first {rf:?} vs chain_first {cf:?}");
+        assert_eq!(rf.map.len(), 6, "ring_first: hexane must fully map; {rf:?}");
+        assert_eq!(
+            cf.map.len(),
+            6,
+            "chain_first: hexane must fully map; {cf:?}"
+        );
+        assert_eq!(
+            ring_hits(&rf.map, false, &ring_first_ring),
+            1,
+            "ring_first {rf:?}"
+        );
+        assert_eq!(
+            ring_hits(&cf.map, false, &chain_first_ring),
+            1,
+            "chain_first {cf:?}"
+        );
+
+        // `mol(hexane) + mol(pentylcyclohexane)`: hexane is the align ref.
+        let rf = cost_mapping(&hexane, &ring_first).expect("map");
+        let cf = cost_mapping(&hexane, &chain_first).expect("map");
+        assert_eq!(rf.cost, cf.cost, "ring_first {rf:?} vs chain_first {cf:?}");
+        assert_eq!(rf.map.len(), 6, "ring_first: six atoms should map; {rf:?}");
+        assert_eq!(cf.map.len(), 6, "chain_first: six atoms should map; {cf:?}");
+        assert_eq!(
+            ring_hits(&rf.map, true, &ring_first_ring),
+            1,
+            "ring_first {rf:?}"
+        );
+        assert_eq!(
+            ring_hits(&cf.map, true, &chain_first_ring),
+            1,
+            "chain_first {cf:?}"
         );
     }
 
@@ -581,11 +634,7 @@ mod tests {
         ];
         for &(smiles, want_labels) in cases {
             let mol = free_layout(smiles, "m").unwrap().molecule;
-            let got: Vec<String> = mol
-                .atoms
-                .iter()
-                .filter_map(|a| a.label.clone())
-                .collect();
+            let got: Vec<String> = mol.atoms.iter().filter_map(|a| a.label.clone()).collect();
             for want in want_labels {
                 assert!(
                     got.iter().any(|g| g == *want),

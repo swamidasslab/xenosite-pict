@@ -17,7 +17,11 @@ debug_box?: boolean,
 /**
  * Paint alignment correspondence (matched atom tags + mol role badge).
  */
-debug_align?: boolean, } | { "type": "group", color?: string, scale?: number, 
+debug_align?: boolean, 
+/**
+ * Post-layout SVG viewBox pad (px). Omit → small house default (rarely override).
+ */
+pad?: number, } | { "type": "group", color?: string, scale?: number, 
 /**
  * Aromatic ring paint: ``circle`` (default) or ``kekule``.
  */
@@ -29,7 +33,11 @@ debug_box?: boolean,
 /**
  * Paint alignment correspondence (matched atom tags + mol role badge).
  */
-debug_align?: boolean, } | { "type": "reaction_scheme", color?: string, scale?: number, 
+debug_align?: boolean, 
+/**
+ * Post-layout SVG viewBox pad (px). Omit → small house default (rarely override).
+ */
+pad?: number, } | { "type": "reaction_scheme", color?: string, scale?: number, 
 /**
  * Aromatic ring paint: ``circle`` (default) or ``kekule``.
  */
@@ -41,7 +49,11 @@ debug_box?: boolean,
 /**
  * Paint alignment correspondence (matched atom tags + mol role badge).
  */
-debug_align?: boolean, } | { "type": "edge", color?: string, scale?: number, 
+debug_align?: boolean, 
+/**
+ * Post-layout SVG viewBox pad (px). Omit → small house default (rarely override).
+ */
+pad?: number, } | { "type": "edge", color?: string, scale?: number, 
 /**
  * Aromatic ring paint: ``circle`` (default) or ``kekule``.
  */
@@ -53,7 +65,11 @@ debug_box?: boolean,
 /**
  * Paint alignment correspondence (matched atom tags + mol role badge).
  */
-debug_align?: boolean, } | { "type": "text", color?: string, scale?: number, 
+debug_align?: boolean, 
+/**
+ * Post-layout SVG viewBox pad (px). Omit → small house default (rarely override).
+ */
+pad?: number, } | { "type": "text", color?: string, scale?: number, 
 /**
  * Aromatic ring paint: ``circle`` (default) or ``kekule``.
  */
@@ -65,4 +81,8 @@ debug_box?: boolean,
 /**
  * Paint alignment correspondence (matched atom tags + mol role badge).
  */
-debug_align?: boolean, };
+debug_align?: boolean, 
+/**
+ * Post-layout SVG viewBox pad (px). Omit → small house default (rarely override).
+ */
+pad?: number, };

@@ -73,6 +73,7 @@ class AtomIn(StrictModel):
     charge: int = 0
     element: str | None = None
     label: str | None = None
+    mapno: Annotated[int | None, Field(description='Reaction / SMILES atom-map number (`:n` in brackets), when known.')] = None
     z: Annotated[int | None, Field(description='Atomic number (`0` = ``*``). Used when ``element`` is omitted.')] = None
 
 

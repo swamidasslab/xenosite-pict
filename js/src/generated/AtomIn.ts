@@ -10,4 +10,8 @@ export type AtomIn = { index: number, element?: string,
 /**
  * Atomic number (`0` = ``*``). Used when ``element`` is omitted.
  */
-z?: number, x: number, y: number, label?: string, charge: number, };
+z?: number, x: number, y: number, label?: string, charge: number, 
+/**
+ * Reaction / SMILES atom-map number (`:n` in brackets), when known.
+ */
+mapno?: number, };

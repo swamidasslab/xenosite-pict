@@ -3,4 +3,9 @@
 /**
  * Cascading shade window / LUT (not per-atom scores).
  */
-export type ShadeStyle = { colormap?: string, vmin?: number, vmax?: number, };
+export type ShadeStyle = { 
+/**
+ * Named colormap. Only ``"xenosite"`` (default) is painted; any other
+ * name is rejected at depict time (not silently ignored).
+ */
+colormap?: string, vmin?: number, vmax?: number, };

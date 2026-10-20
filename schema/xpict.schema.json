@@ -29,6 +29,46 @@
             }
           ]
         },
+        "atom_label": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AtomLabelSpec"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "atom_number": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AtomNumberSpec"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "callout": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/CalloutField"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "circle": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/CircleField"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "color": {
           "type": [
             "string",
@@ -83,10 +123,39 @@
             "null"
           ]
         },
+        "name": {
+          "description": "Privileged figure name / caption (inline mol SVG).",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/MolText"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "opts": {
           "anyOf": [
             {
               "$ref": "#/definitions/Opts"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "pad": {
+          "description": "Post-layout SVG viewBox pad (px). Omit → small house default.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "region": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/RegionField"
             },
             {
               "type": "null"
@@ -208,6 +277,14 @@
             }
           ]
         },
+        "pad": {
+          "description": "Post-layout SVG viewBox pad (px). Omit → small house default.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
         "scale": {
           "type": [
             "number",
@@ -295,6 +372,14 @@
             }
           ]
         },
+        "pad": {
+          "description": "Post-layout SVG viewBox pad (px). Omit → small house default.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
         "scale": {
           "type": [
             "number",
@@ -370,6 +455,14 @@
               "type": "null"
             }
           ]
+        },
+        "pad": {
+          "description": "Post-layout SVG viewBox pad (px). Omit → small house default.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
         },
         "scale": {
           "type": [
@@ -454,6 +547,302 @@
         "kekule"
       ]
     },
+    "AtomLabelDetailed": {
+      "description": "Expanded atom-label bag with optional shared scale/color/z.",
+      "type": "object",
+      "properties": {
+        "color": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "labels": {
+          "default": {},
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/MolText"
+          }
+        },
+        "scale": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "z": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int32"
+        }
+      }
+    },
+    "AtomLabelSpec": {
+      "description": "Per-atom arbitrary text. Bare map `{ \"0\": \"α\" }` or `{ \"labels\": {…}, \"scale\"? }`.",
+      "anyOf": [
+        {
+          "description": "Keys are atom index strings (`\"0\"`, `\"3\"`).",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/MolText"
+          }
+        },
+        {
+          "description": "Map plus shared style.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/AtomLabelDetailed"
+            }
+          ]
+        }
+      ]
+    },
+    "AtomNumberBy": {
+      "description": "How to generate atom index / map-number labels.",
+      "type": "string",
+      "enum": [
+        "index",
+        "mapno"
+      ]
+    },
+    "AtomNumberPolicy": {
+      "description": "Expanded atom-number policy.",
+      "type": "object",
+      "properties": {
+        "by": {
+          "default": "index",
+          "allOf": [
+            {
+              "$ref": "#/definitions/AtomNumberBy"
+            }
+          ]
+        },
+        "color": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "only": {
+          "description": "Restrict to these atom indices (omit = all).",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0.0
+          }
+        },
+        "scale": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "z": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int32"
+        }
+      }
+    },
+    "AtomNumberSpec": {
+      "description": "Atom numbering policy (singular wire field `atom_number`).",
+      "anyOf": [
+        {
+          "description": "Shorthand: `\"index\"` or `\"mapno\"`.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/AtomNumberBy"
+            }
+          ]
+        },
+        {
+          "description": "Full policy object.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/AtomNumberPolicy"
+            }
+          ]
+        }
+      ]
+    },
+    "CalloutField": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/CalloutSpec"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/CalloutSpec"
+          }
+        }
+      ]
+    },
+    "CalloutSpec": {
+      "description": "Callout annotation (arrow / freer placement).",
+      "type": "object",
+      "required": [
+        "text"
+      ],
+      "properties": {
+        "arrow": {
+          "default": true,
+          "type": "boolean"
+        },
+        "atoms": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0.0
+          }
+        },
+        "bonds": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "array",
+            "items": [
+              {
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0.0
+              },
+              {
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0.0
+              }
+            ],
+            "maxItems": 2,
+            "minItems": 2
+          }
+        },
+        "color": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "prefer": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/LabelPos"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "scale": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "text": {
+          "$ref": "#/definitions/MolText"
+        },
+        "z": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int32"
+        }
+      }
+    },
+    "CircleField": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/CircleSpec"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/CircleSpec"
+          }
+        }
+      ]
+    },
+    "CircleSpec": {
+      "description": "Atom or ring highlight circle.",
+      "type": "object",
+      "properties": {
+        "atoms": {
+          "description": "One circle centered on each atom index.",
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0.0
+          }
+        },
+        "fill": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/FillSpec"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ring": {
+          "description": "Ordered ring atoms — one circle at the ring centroid (aromatic-style).",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0.0
+          }
+        },
+        "scale": {
+          "description": "Radius scale vs house default.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "stroke": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/StrokeSpec"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "z": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int32"
+        }
+      }
+    },
     "DepictSpec": {
       "description": "Declarative document (`mol`, `group`, `reaction_scheme`, or `grid` root).",
       "oneOf": [
@@ -477,6 +866,46 @@
               "anyOf": [
                 {
                   "$ref": "#/definitions/AromaticStyle"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "atom_label": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/AtomLabelSpec"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "atom_number": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/AtomNumberSpec"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "callout": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/CalloutField"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "circle": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/CircleField"
                 },
                 {
                   "type": "null"
@@ -537,10 +966,39 @@
                 "null"
               ]
             },
+            "name": {
+              "description": "Privileged figure name / caption (inline mol SVG).",
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/MolText"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "opts": {
               "anyOf": [
                 {
                   "$ref": "#/definitions/Opts"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "pad": {
+              "description": "Post-layout SVG viewBox pad (px). Omit → small house default.",
+              "type": [
+                "number",
+                "null"
+              ],
+              "format": "double"
+            },
+            "region": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/RegionField"
                 },
                 {
                   "type": "null"
@@ -662,6 +1120,14 @@
                 }
               ]
             },
+            "pad": {
+              "description": "Post-layout SVG viewBox pad (px). Omit → small house default.",
+              "type": [
+                "number",
+                "null"
+              ],
+              "format": "double"
+            },
             "scale": {
               "type": [
                 "number",
@@ -749,6 +1215,14 @@
                 }
               ]
             },
+            "pad": {
+              "description": "Post-layout SVG viewBox pad (px). Omit → small house default.",
+              "type": [
+                "number",
+                "null"
+              ],
+              "format": "double"
+            },
             "scale": {
               "type": [
                 "number",
@@ -824,6 +1298,14 @@
                   "type": "null"
                 }
               ]
+            },
+            "pad": {
+              "description": "Post-layout SVG viewBox pad (px). Omit → small house default.",
+              "type": [
+                "number",
+                "null"
+              ],
+              "format": "double"
             },
             "scale": {
               "type": [
@@ -980,6 +1462,25 @@
         "splines"
       ]
     },
+    "FillSpec": {
+      "description": "Fill ink for region / circle.",
+      "type": "object",
+      "properties": {
+        "color": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "opacity": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        }
+      }
+    },
     "ForTypesPatch": {
       "description": "Multi-kind patch: `{ \"for_types\": [\"mol\",\"group\"], …mol opts }`.\n\nCarries full [`MolOpts`] so mol-only keys (`weight` / `halo` / `shade`) can target mols via `for_types` without a separate typed mol patch.",
       "type": "object",
@@ -1029,6 +1530,14 @@
             "boolean",
             "null"
           ]
+        },
+        "pad": {
+          "description": "Post-layout SVG viewBox pad (px). Omit → small house default (rarely override).",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
         },
         "scale": {
           "type": [
@@ -1279,6 +1788,50 @@
             }
           ]
         },
+        "atom_label": {
+          "description": "Per-atom arbitrary text map (`{ \"1\": \"α\" }` or `{ \"labels\": {…}, \"scale\"? }`).",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AtomLabelSpec"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "atom_number": {
+          "description": "Atom index / map-number labels (`\"index\"` | `\"mapno\"` | policy object).",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AtomNumberSpec"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "callout": {
+          "description": "Callout annotation(s).",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/CalloutField"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "circle": {
+          "description": "Atom / ring highlight circle(s).",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/CircleField"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "color": {
           "type": [
             "string",
@@ -1318,7 +1871,7 @@
           ]
         },
         "label": {
-          "description": "Caption: [`Label`] (string id, list, or `{id, pos?}` — text-node refs).\n\n`pos` on a placement chooses caption side (`above`/`below`/`left`/`right`); hosts measure the resolved text and fold that into node size for layout.",
+          "description": "Caption: [`Label`] (string id, list, or `{id, pos?}` — text-node refs).\n\nPrefer privileged [`Self::name`] for inline mol captions. `label` id-refs remain for legacy / multi-caption layouts.\n\n`pos` on a placement chooses caption side (`above`/`below`/`left`/`right`); hosts measure the resolved text and fold that into node size for layout.",
           "anyOf": [
             {
               "$ref": "#/definitions/Label"
@@ -1334,11 +1887,41 @@
             "null"
           ]
         },
+        "name": {
+          "description": "Privileged figure name / caption painted inside the mol SVG (default below).",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/MolText"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "opts": {
           "description": "Cascade patches for this node (list or singleton).",
           "anyOf": [
             {
               "$ref": "#/definitions/Opts"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "pad": {
+          "description": "Post-layout SVG viewBox pad (px). Omit → small house default (rarely override).",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "region": {
+          "description": "Region highlight(s) — one object or a list.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/RegionField"
             },
             {
               "type": "null"
@@ -1446,6 +2029,14 @@
             "null"
           ]
         },
+        "pad": {
+          "description": "Post-layout SVG viewBox pad (px). Omit → small house default (rarely override).",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
         "scale": {
           "type": [
             "number",
@@ -1464,6 +2055,79 @@
           ]
         },
         "weight": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        }
+      }
+    },
+    "MolText": {
+      "description": "Caption / label content: bare string or styled object.",
+      "anyOf": [
+        {
+          "description": "Plain string (default placement depends on consumer: mol name → below).",
+          "type": "string"
+        },
+        {
+          "description": "Explicit content + optional style / side.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/MolTextSpec"
+            }
+          ]
+        }
+      ]
+    },
+    "MolTextSpec": {
+      "description": "Expanded text content for mol name, region labels, callouts, atom labels.",
+      "type": "object",
+      "properties": {
+        "color": {
+          "description": "CSS color.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "content": {
+          "description": "Display string — chem label markup (`$R_1$`, `N^+`, `**bold**`, …).",
+          "default": "",
+          "type": "string"
+        },
+        "margin": {
+          "description": "Gap (px) between mol ink AABB and this caption (snug, no clash). Omit → house default (see caption paint `CAPTION_MARGIN_DEFAULT`).",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "place": {
+          "description": "Region label: inside the hull or outside (default outside).",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/RegionTextPlace"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "pos": {
+          "description": "Side relative to the anchor (mol name / outside region label).",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/LabelPos"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "scale": {
+          "description": "Font scale relative to house atom-label size (mol `name` defaults to 1.5×).",
           "type": [
             "number",
             "null"
@@ -1562,6 +2226,118 @@
         }
       ]
     },
+    "RegionField": {
+      "description": "One-or-many regions on the wire.",
+      "anyOf": [
+        {
+          "$ref": "#/definitions/RegionSpec"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RegionSpec"
+          }
+        }
+      ]
+    },
+    "RegionSpec": {
+      "description": "One region highlight on a mol.",
+      "type": "object",
+      "properties": {
+        "atoms": {
+          "description": "Atom indices that must lie inside the region.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0.0
+          }
+        },
+        "exclude": {
+          "description": "Atom indices that must stay outside.",
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0.0
+          }
+        },
+        "fill": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/FillSpec"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "stroke": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/StrokeSpec"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "style": {
+          "default": "box",
+          "allOf": [
+            {
+              "$ref": "#/definitions/RegionStyle"
+            }
+          ]
+        },
+        "text": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/MolText"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "z": {
+          "description": "Optional z-order override (lower = further back). Default band: region base.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int32"
+        }
+      }
+    },
+    "RegionStyle": {
+      "description": "Region hull style (not wire `circle` highlights).",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "box",
+            "bezier"
+          ]
+        },
+        {
+          "description": "Circular region hull (distinct from highlight [`CircleSpec`]).",
+          "type": "string",
+          "enum": [
+            "circle"
+          ]
+        }
+      ]
+    },
+    "RegionTextPlace": {
+      "description": "Where a region caption sits relative to the region geometry.",
+      "type": "string",
+      "enum": [
+        "outside",
+        "inside"
+      ]
+    },
     "ShadeSpec": {
       "description": "Per-atom / per-bond colormap scores (+ legacy window fields on the mol).\n\nPrefer putting `colormap` / `vmin` / `vmax` in cascading [`MolOpts::shade`]; values here still apply as local leaf overrides for compat.",
       "type": "object",
@@ -1587,6 +2363,7 @@
           }
         },
         "colormap": {
+          "description": "Named colormap. Only ``\"xenosite\"`` (default) is painted; any other name is rejected at depict time (not silently ignored).",
           "type": [
             "string",
             "null"
@@ -1609,6 +2386,7 @@
       "type": "object",
       "properties": {
         "colormap": {
+          "description": "Named colormap. Only ``\"xenosite\"`` (default) is painted; any other name is rejected at depict time (not silently ignored).",
           "type": [
             "string",
             "null"
@@ -1622,6 +2400,32 @@
           "format": "double"
         },
         "vmin": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        }
+      }
+    },
+    "StrokeSpec": {
+      "description": "Stroke ink for region / circle.",
+      "type": "object",
+      "properties": {
+        "color": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "dash": {
+          "description": "`solid` | `dashed` | `dotted` or a raw SVG dasharray.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "width": {
           "type": [
             "number",
             "null"
@@ -1731,6 +2535,14 @@
                 "null"
               ]
             },
+            "pad": {
+              "description": "Post-layout SVG viewBox pad (px). Omit → small house default (rarely override).",
+              "type": [
+                "number",
+                "null"
+              ],
+              "format": "double"
+            },
             "scale": {
               "type": [
                 "number",
@@ -1801,6 +2613,14 @@
                 "null"
               ]
             },
+            "pad": {
+              "description": "Post-layout SVG viewBox pad (px). Omit → small house default (rarely override).",
+              "type": [
+                "number",
+                "null"
+              ],
+              "format": "double"
+            },
             "scale": {
               "type": [
                 "number",
@@ -1853,6 +2673,14 @@
                 "boolean",
                 "null"
               ]
+            },
+            "pad": {
+              "description": "Post-layout SVG viewBox pad (px). Omit → small house default (rarely override).",
+              "type": [
+                "number",
+                "null"
+              ],
+              "format": "double"
             },
             "scale": {
               "type": [
@@ -1907,6 +2735,14 @@
                 "null"
               ]
             },
+            "pad": {
+              "description": "Post-layout SVG viewBox pad (px). Omit → small house default (rarely override).",
+              "type": [
+                "number",
+                "null"
+              ],
+              "format": "double"
+            },
             "scale": {
               "type": [
                 "number",
@@ -1959,6 +2795,14 @@
                 "boolean",
                 "null"
               ]
+            },
+            "pad": {
+              "description": "Post-layout SVG viewBox pad (px). Omit → small house default (rarely override).",
+              "type": [
+                "number",
+                "null"
+              ],
+              "format": "double"
             },
             "scale": {
               "type": [

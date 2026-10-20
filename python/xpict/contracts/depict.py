@@ -32,7 +32,90 @@ AlignTo = str | AlignToSpec
 AromaticStyle = Literal['circle', 'kekule']
 
 
+RegionTextPlace = Literal['outside', 'inside']
+
+
 LabelPos = Literal['above', 'below', 'left', 'right']
+
+
+class MolTextSpec(StrictModel):
+    """Expanded text content for mol name, region labels, callouts, atom labels."""
+    color: Annotated[str | None, Field(description='CSS color.')] = None
+    content: str = Field(default='', description='Display string — chem label markup (`$R_1$`, `N^+`, `**bold**`, …).')
+    margin: Annotated[float | None, Field(description='Gap (px) between mol ink AABB and this caption (snug, no clash). Omit → house default (see caption paint `CAPTION_MARGIN_DEFAULT`).')] = None
+    place: Annotated[RegionTextPlace | None, Field(description='Region label: inside the hull or outside (default outside).')] = None
+    pos: Annotated[LabelPos | None, Field(description='Side relative to the anchor (mol name / outside region label).')] = None
+    scale: Annotated[float | None, Field(description='Font scale relative to house atom-label size (mol `name` defaults to 1.5×).')] = None
+
+
+MolText = str | MolTextSpec
+
+
+class AtomLabelDetailed(StrictModel):
+    """Expanded atom-label bag with optional shared scale/color/z."""
+    color: str | None = None
+    labels: dict[str, MolText] = Field(default_factory=dict)
+    scale: float | None = None
+    z: int | None = None
+
+
+AtomLabelSpec = dict[str, MolText] | AtomLabelDetailed
+
+
+AtomNumberBy = Literal['index', 'mapno']
+
+
+class AtomNumberPolicy(StrictModel):
+    """Expanded atom-number policy."""
+    by: AtomNumberBy = 'index'
+    color: str | None = None
+    only: Annotated[list[int] | None, Field(description='Restrict to these atom indices (omit = all).')] = None
+    scale: float | None = None
+    z: int | None = None
+
+
+AtomNumberSpec = AtomNumberBy | AtomNumberPolicy
+
+
+class CalloutSpec(StrictModel):
+    """Callout annotation (arrow / freer placement)."""
+    text: MolText
+    arrow: bool = True
+    atoms: list[int] | None = None
+    bonds: list[tuple[int, int]] | None = None
+    color: str | None = None
+    prefer: LabelPos | None = None
+    scale: float | None = None
+    z: int | None = None
+
+
+CalloutField = CalloutSpec | list[CalloutSpec]
+
+
+class FillSpec(StrictModel):
+    """Fill ink for region / circle."""
+    color: str | None = None
+    opacity: float | None = None
+
+
+class StrokeSpec(StrictModel):
+    """Stroke ink for region / circle."""
+    color: str | None = None
+    dash: Annotated[str | None, Field(description='`solid` | `dashed` | `dotted` or a raw SVG dasharray.')] = None
+    width: float | None = None
+
+
+class CircleSpec(StrictModel):
+    """Atom or ring highlight circle."""
+    atoms: list[int] = Field(default_factory=list, description='One circle centered on each atom index.')
+    fill: FillSpec | None = None
+    ring: Annotated[list[int] | None, Field(description='Ordered ring atoms — one circle at the ring centroid (aromatic-style).')] = None
+    scale: Annotated[float | None, Field(description='Radius scale vs house default.')] = None
+    stroke: StrokeSpec | None = None
+    z: int | None = None
+
+
+CircleField = CircleSpec | list[CircleSpec]
 
 
 class LabelPlacement(StrictModel):
@@ -57,7 +140,7 @@ Label = str | list[LabelItem] | LabelPlacement | LabelLanes
 
 class ShadeStyle(StrictModel):
     """Cascading shade window / LUT (not per-atom scores)."""
-    colormap: str | None = None
+    colormap: Annotated[str | None, Field(description='Named colormap. Only ``"xenosite"`` (default) is painted; any other name is rejected at depict time (not silently ignored).')] = None
     vmax: float | None = None
     vmin: float | None = None
 
@@ -70,6 +153,7 @@ class MolOptsPatch(StrictModel):
     debug_align: Annotated[bool | None, Field(description='Paint alignment correspondence (matched atom tags + mol role badge).')] = None
     debug_box: Annotated[bool | None, Field(description='Paint dashed debug rectangles for layout boxes (labels / mol / scene).')] = None
     halo: bool | None = None
+    pad: Annotated[float | None, Field(description='Post-layout SVG viewBox pad (px). Omit → small house default (rarely override).')] = None
     scale: float | None = None
     shade: ShadeStyle | None = None
     weight: float | None = None
@@ -82,6 +166,7 @@ class GroupOptsPatch(StrictModel):
     color: str | None = None
     debug_align: Annotated[bool | None, Field(description='Paint alignment correspondence (matched atom tags + mol role badge).')] = None
     debug_box: Annotated[bool | None, Field(description='Paint dashed debug rectangles for layout boxes (labels / mol / scene).')] = None
+    pad: Annotated[float | None, Field(description='Post-layout SVG viewBox pad (px). Omit → small house default (rarely override).')] = None
     scale: float | None = None
 
 
@@ -92,6 +177,7 @@ class ReactionSchemeOptsPatch(StrictModel):
     color: str | None = None
     debug_align: Annotated[bool | None, Field(description='Paint alignment correspondence (matched atom tags + mol role badge).')] = None
     debug_box: Annotated[bool | None, Field(description='Paint dashed debug rectangles for layout boxes (labels / mol / scene).')] = None
+    pad: Annotated[float | None, Field(description='Post-layout SVG viewBox pad (px). Omit → small house default (rarely override).')] = None
     scale: float | None = None
 
 
@@ -102,6 +188,7 @@ class EdgeOptsPatch(StrictModel):
     color: str | None = None
     debug_align: Annotated[bool | None, Field(description='Paint alignment correspondence (matched atom tags + mol role badge).')] = None
     debug_box: Annotated[bool | None, Field(description='Paint dashed debug rectangles for layout boxes (labels / mol / scene).')] = None
+    pad: Annotated[float | None, Field(description='Post-layout SVG viewBox pad (px). Omit → small house default (rarely override).')] = None
     scale: float | None = None
 
 
@@ -112,6 +199,7 @@ class TextOptsPatch(StrictModel):
     color: str | None = None
     debug_align: Annotated[bool | None, Field(description='Paint alignment correspondence (matched atom tags + mol role badge).')] = None
     debug_box: Annotated[bool | None, Field(description='Paint dashed debug rectangles for layout boxes (labels / mol / scene).')] = None
+    pad: Annotated[float | None, Field(description='Post-layout SVG viewBox pad (px). Omit → small house default (rarely override).')] = None
     scale: float | None = None
 
 
@@ -129,6 +217,7 @@ class ForTypesPatch(StrictModel):
     debug_align: Annotated[bool | None, Field(description='Paint alignment correspondence (matched atom tags + mol role badge).')] = None
     debug_box: Annotated[bool | None, Field(description='Paint dashed debug rectangles for layout boxes (labels / mol / scene).')] = None
     halo: bool | None = None
+    pad: Annotated[float | None, Field(description='Post-layout SVG viewBox pad (px). Omit → small house default (rarely override).')] = None
     scale: float | None = None
     shade: ShadeStyle | None = None
     weight: float | None = None
@@ -141,6 +230,7 @@ class MolOpts(StrictModel):
     debug_align: Annotated[bool | None, Field(description='Paint alignment correspondence (matched atom tags + mol role badge).')] = None
     debug_box: Annotated[bool | None, Field(description='Paint dashed debug rectangles for layout boxes (labels / mol / scene).')] = None
     halo: bool | None = None
+    pad: Annotated[float | None, Field(description='Post-layout SVG viewBox pad (px). Omit → small house default (rarely override).')] = None
     scale: float | None = None
     shade: ShadeStyle | None = None
     weight: float | None = None
@@ -152,11 +242,28 @@ OptsPatch = TypedOptsPatch | ForTypesPatch | MolOpts
 Opts = OptsPatch | list[OptsPatch]
 
 
+RegionStyle = Literal['box', 'bezier', 'circle']
+
+
+class RegionSpec(StrictModel):
+    """One region highlight on a mol."""
+    atoms: list[int] = Field(default_factory=list, description='Atom indices that must lie inside the region.')
+    exclude: list[int] = Field(default_factory=list, description='Atom indices that must stay outside.')
+    fill: FillSpec | None = None
+    stroke: StrokeSpec | None = None
+    style: RegionStyle = 'box'
+    text: MolText | None = None
+    z: Annotated[int | None, Field(description='Optional z-order override (lower = further back). Default band: region base.')] = None
+
+
+RegionField = RegionSpec | list[RegionSpec]
+
+
 class ShadeSpec(StrictModel):
     """Per-atom / per-bond colormap scores (+ legacy window fields on the mol)."""
     atoms: list[float] | None = None
     bonds: list[float] | None = None
-    colormap: str | None = None
+    colormap: Annotated[str | None, Field(description='Named colormap. Only ``"xenosite"`` (default) is painted; any other name is rejected at depict time (not silently ignored).')] = None
     vmax: float = 1.0
     vmin: float = 0.0
 
@@ -169,6 +276,10 @@ class MolNode(StrictModel):
     type: Literal['mol'] = 'mol'
     align_to: Annotated[AlignTo | None, Field(description='Template id string, or `{ "ref", "atom_map"?, "min_atoms"? }`.')] = None
     aromatic: Annotated[AromaticStyle | None, Field(description='Aromatic ring paint: ``circle`` (default) or ``kekule``.')] = None
+    atom_label: Annotated[AtomLabelSpec | None, Field(description='Per-atom arbitrary text map (`{ "1": "α" }` or `{ "labels": {…}, "scale"? }`).')] = None
+    atom_number: Annotated[AtomNumberSpec | None, Field(description='Atom index / map-number labels (`"index"` | `"mapno"` | policy object).')] = None
+    callout: Annotated[CalloutField | None, Field(description='Callout annotation(s).')] = None
+    circle: Annotated[CircleField | None, Field(description='Atom / ring highlight circle(s).')] = None
     color: str | None = None
     cxsmiles: str | None = None
     debug_align: Annotated[bool | None, Field(description='Paint alignment correspondence (matched atom tags + mol role badge).')] = None
@@ -177,7 +288,10 @@ class MolNode(StrictModel):
     id: str | None = None
     label: Annotated[Label | None, Field(description='Caption: [`Label`] (string id, list, or `{id, pos?}` — text-node refs).')] = None
     molfile: str | None = None
+    name: Annotated[MolText | None, Field(description='Privileged figure name / caption painted inside the mol SVG (default below).')] = None
     opts: Annotated[Opts | None, Field(description='Cascade patches for this node (list or singleton).')] = None
+    pad: Annotated[float | None, Field(description='Post-layout SVG viewBox pad (px). Omit → small house default (rarely override).')] = None
+    region: Annotated[RegionField | None, Field(description='Region highlight(s) — one object or a list.')] = None
     scale: float | None = None
     shade: Annotated[ShadeSpec | None, Field(description='Shade **scores** (+ legacy window); window also cascades via [`Opts`].')] = None
     smiles: str | None = None
@@ -252,6 +366,7 @@ class GroupNode(StrictModel):
     debug_box: bool | None = None
     id: str | None = None
     opts: Annotated[Opts | None, Field(description='Group-level cascade bag (list container for child inheritance).')] = None
+    pad: Annotated[float | None, Field(description='Post-layout SVG viewBox pad (px). Omit → small house default.')] = None
     scale: float | None = None
 
 
@@ -281,6 +396,7 @@ class ReactionSchemeNode(StrictModel):
     id: str | None = None
     layout: Annotated[LayoutOpts | None, Field(description='Scheme layout (direction, edge routing); backend maps these.')] = None
     opts: Annotated[Opts | None, Field(description='Scheme-level cascade bag for child mol inheritance.')] = None
+    pad: Annotated[float | None, Field(description='Post-layout SVG viewBox pad (px). Omit → small house default.')] = None
     scale: float | None = None
 
 
@@ -294,6 +410,7 @@ class GridNode(StrictModel):
     debug_box: bool | None = None
     id: str | None = None
     opts: Annotated[Opts | None, Field(description='Grid-level cascade bag (inherits onto every row / mol).')] = None
+    pad: Annotated[float | None, Field(description='Post-layout SVG viewBox pad (px). Omit → small house default.')] = None
     scale: float | None = None
 
 

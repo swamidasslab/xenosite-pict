@@ -3,23 +3,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import Any
-
 from xpict.base import OptsKeywords, PictBase
 from xpict.contracts.depict import (
     AlignTo,
     AlignToSpec,
     AromaticStyle,
     GroupNode,
-    LabelPlacement,
     LabelPos,
     MolNode,
-    Opts,
+    MolTextSpec,
     ShadeSpec,
-    TextNode,
 )
 from xpict.contracts.depict import DepictSpec as WireDepictSpec
-from xpict.contracts.depict_dict import OptsPatchDict
 from xpict.rendered import Rendered
 
 
@@ -35,10 +30,6 @@ class DepictSpec(PictBase, WireDepictSpec):
         return mols_of(self)
 
 
-def _caption_text_id(mol_id: str) -> str:
-    return f"{mol_id}__lbl"
-
-
 @dataclass
 class Mol(PictBase):
     """Input molecule — SMILES / CXSMILES / molfile plus optional align frame."""
@@ -47,7 +38,8 @@ class Mol(PictBase):
     frame_molblock: str | None = None
     id: str | None = None
     align_to: str | None = None
-    #: Caption string (host sugar). Emits a sibling ``text`` node + ``MolNode.label``.
+    #: Caption string → wire ``MolNode.name`` (painted in the mol SVG).
+    #: ``label`` remains as host sugar alias for ``name``.
     label: str | None = None
     label_pos: LabelPos | None = None
     label_color: str | None = None
@@ -69,7 +61,7 @@ class Mol(PictBase):
         color: str | None = None,
         scale: float | None = None,
     ) -> Mol:
-        """Return a copy with a caption (``mol(..., label=...)`` equivalent)."""
+        """Return a copy with a caption (``mol(..., name=...)`` equivalent)."""
         return replace(
             self,
             label=text,
@@ -77,29 +69,6 @@ class Mol(PictBase):
             label_color=color if color is not None else self.label_color,
             label_scale=scale if scale is not None else self.label_scale,
         )
-
-    def opts(
-        self, *patches: Opts | OptsPatchDict, **kwargs: Any
-    ) -> DepictSpec:
-        """Like ``PictBase.opts``, but ``label*`` kwargs set caption sugar."""
-        label = kwargs.pop("label", None)
-        label_pos = kwargs.pop("label_pos", None)
-        label_color = kwargs.pop("label_color", None)
-        label_scale = kwargs.pop("label_scale", None)
-        base = self
-        if any(v is not None for v in (label, label_pos, label_color, label_scale)):
-            base = replace(
-                self,
-                label=str(label) if label is not None else self.label,
-                label_pos=label_pos if label_pos is not None else self.label_pos,
-                label_color=label_color
-                if label_color is not None
-                else self.label_color,
-                label_scale=label_scale
-                if label_scale is not None
-                else self.label_scale,
-            )
-        return PictBase.opts(base, *patches, **kwargs)
 
     def to_node(self, id: str | None = None) -> MolNode:
         """Build a ``MolNode`` from this source (smiles / cxsmiles / molfile)."""
@@ -118,56 +87,39 @@ class Mol(PictBase):
         if not cap:
             return node
         mid = (node.id or "m_0").strip() or "m_0"
-        tid = _caption_text_id(mid)
-        # Mol captions default below (edge labels keep their own Above default).
-        lab = LabelPlacement(id=tid, pos=self.label_pos or "below")
-        return node.model_copy(update={"id": mid, "label": lab})
+        # Privileged wire ``name`` — default side below (handled in Rust).
+        if (
+            self.label_pos is not None
+            or self.label_color is not None
+            or self.label_scale is not None
+        ):
+            name: str | MolTextSpec = MolTextSpec(
+                content=cap,
+                pos=self.label_pos,
+                color=self.label_color,
+                scale=self.label_scale,
+            )
+        else:
+            name = cap
+        return node.model_copy(update={"id": mid, "name": name})
 
-    def to_caption_nodes(self, id: str | None = None) -> list[MolNode | TextNode]:
-        """``text`` + ``mol`` when captioned; else a lone ``mol``."""
-        node = self.to_node(id=id)
-        cap = (self.label or "").strip()
-        if not cap:
-            return [node]
-        mid = (node.id or "m_0").strip() or "m_0"
-        tid = _caption_text_id(mid)
-        text_kw: dict[str, object] = {"type": "text", "id": tid, "text": cap}
-        if self.label_color is not None:
-            text_kw["color"] = self.label_color
-        if self.label_scale is not None:
-            text_kw["scale"] = self.label_scale
-        return [
-            TextNode.model_validate(text_kw),
-            node.model_copy(update={"id": mid}),
-        ]
+    def to_caption_nodes(self, id: str | None = None) -> list[MolNode]:
+        """Lone mol node (caption lives on ``MolNode.name``, not a sibling text)."""
+        return [self.to_node(id=id)]
 
     def to_spec(self, opts: MolRenderOptions | None = None) -> DepictSpec:
         """Document for paint — identity on the mol; cascade via ``.opts`` bag."""
         if opts is None:
-            nodes = self.to_caption_nodes()
-            if len(nodes) == 1:
-                return DepictSpec(nodes[0])
-            return DepictSpec(
-                GroupNode(type="group", align=False, children=list(nodes))
-            )
+            return DepictSpec(self.to_node())
         shade = opts.shade_scores()
 
         if opts.align_to is None:
-            children = self.to_caption_nodes(id=opts.id)
-            mol_i = next(i for i, c in enumerate(children) if isinstance(c, MolNode))
-            node = children[mol_i]
+            node = self.to_node(id=opts.id)
             if opts.star_labels is not None:
                 node = node.model_copy(update={"star_labels": opts.star_labels})
             if shade is not None:
                 node = node.model_copy(update={"shade": shade})
-            children[mol_i] = node
-            doc = (
-                DepictSpec(children[0])
-                if len(children) == 1
-                else DepictSpec(
-                    GroupNode(type="group", align=False, children=list(children))
-                )
-            )
+            doc = DepictSpec(node)
         else:
             ref = opts.reference_mol()
             ref_id = ref.id or "m_0"
@@ -185,14 +137,11 @@ class Mol(PictBase):
                     **({"shade": shade} if shade is not None else {}),
                 }
             )
-            q_texts = [
-                c for c in self.to_caption_nodes(id=qid) if isinstance(c, TextNode)
-            ]
             doc = DepictSpec(
                 GroupNode(
                     type="group",
                     align=False,
-                    children=[*ref.to_caption_nodes(id=ref_id), *q_texts, query],
+                    children=[ref.to_node(id=ref_id), query],
                 )
             )
 
@@ -282,6 +231,7 @@ def mol(
     *,
     id: str | None = None,
     align_to: str | None = None,
+    name: str | None = None,
     label: str | None = None,
     label_pos: LabelPos | None = None,
     label_color: str | None = None,
@@ -289,17 +239,21 @@ def mol(
 ) -> Mol:
     """Construct a ``Mol`` (JS / Rust ``xpict.mol``).
 
-    ``label`` is caption sugar: emits a sibling text node referenced by the mol.
-    Caption paint (pos/color/scale) is done in Rust; default ``label_pos`` is below.
+    ``name`` (preferred) / ``label`` (alias) set wire ``MolNode.name`` — painted
+    inside the mol SVG by Rust. Default side is below; optional ``label_pos`` /
+    color / scale map onto styled ``MolText``.
     """
     text = smiles_or_molfile.strip()
     if not text:
         raise ValueError("mol() requires a non-empty SMILES or molfile")
+    if name is not None and label is not None and name != label:
+        raise ValueError("mol() got both name= and label=; use only one")
+    caption = name if name is not None else label
     return Mol(
         source=text,
         id=id,
         align_to=align_to,
-        label=label,
+        label=caption,
         label_pos=label_pos,
         label_color=label_color,
         label_scale=label_scale,

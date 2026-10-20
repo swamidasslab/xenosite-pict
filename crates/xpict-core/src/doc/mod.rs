@@ -6,18 +6,40 @@
 //! separately. Reaction schemes use [`compose_scheme`].
 
 mod caption;
+mod chrome;
+mod chrome_paint;
 mod compose;
 #[cfg(feature = "coordgen")]
 mod depict_doc;
 #[cfg(feature = "coordgen")]
 mod edge_resolve;
+mod fit;
+mod layout_constraints;
+mod layout_items;
 mod spec;
+mod text_paint;
 
+pub use chrome::{
+    annotations_from_overlay, canonicalize_overlay, overlay_from_annotations, overlay_from_mol,
+    Annotation, AtomLabelDetailed, AtomLabelSpec, AtomNumberBy, AtomNumberPolicy, AtomNumberSpec,
+    CalloutField, CalloutSpec, CircleField, CircleSpec, FillSpec, LabelRole, MolOverlayFields,
+    MolText, MolTextSpec, RegionField, RegionSpec, RegionStyle, RegionTextPlace, StrokeSpec,
+    Z_ATOMS, Z_ATOM_LABEL, Z_BACKGROUND, Z_BONDS, Z_CALLOUT, Z_CIRCLE, Z_HALO, Z_NAME, Z_REGION,
+    Z_SHADE,
+};
 pub use compose::compose_scheme;
 #[cfg(feature = "coordgen")]
 pub use depict_doc::{depict, Rendered as DepictRendered, SvgAtom, SvgBond};
 #[cfg(feature = "coordgen")]
 pub use edge_resolve::{process_edge_plan, process_edge_plan_with_frames};
+pub use fit::{fit_scene, resolve_viewport_margin, VIEWPORT_MARGIN_DEFAULT};
+pub use layout_constraints::{
+    atom_number_kit, bezier_path_from_proxy, callout_kit, caption_kit, edge_signed_distance,
+    energy, hard_g, hull_proxy, install_chem, max_hard_violation, refine_atom_number,
+    refine_callout, refine_caption, refine_region_text, region_text_kit, solve,
+    suggest_route_points, Constraint, HardConstraint, LayoutWorld, ObjectType, Shape, SolveOpts,
+    SolveResult,
+};
 pub use spec::*;
 
 use std::collections::HashMap;
@@ -25,8 +47,7 @@ use std::collections::HashMap;
 use crate::cxsmiles::{apply_cx_by_index, cx_source};
 use crate::depict::depict_molecule;
 use crate::edge::{
-    AlignOpts, CoordGenMoleculeResult, EdgePlan, EdgeResult, EdgeTask, EdgeTaskResult,
-    MolTemplate,
+    AlignOpts, CoordGenMoleculeResult, EdgePlan, EdgeResult, EdgeTask, EdgeTaskResult, MolTemplate,
 };
 use crate::scene::{MoleculeIn, Scene};
 
@@ -67,18 +88,12 @@ pub fn validate_edges(spec: &DepictSpec) -> Result<(), String> {
     }
 
     let mol_ids = assign_mol_ids(&spec.mols())?;
-    let mol_set: std::collections::HashSet<&str> =
-        mol_ids.iter().map(String::as_str).collect();
+    let mol_set: std::collections::HashSet<&str> = mol_ids.iter().map(String::as_str).collect();
 
     // Collect labelable ids (mol + text).
     let mut labelable = mol_set.clone();
     for t in spec.texts() {
-        let Some(id) = t
-            .id
-            .as_deref()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-        else {
+        let Some(id) = t.id.as_deref().map(str::trim).filter(|s| !s.is_empty()) else {
             continue;
         };
         if !labelable.insert(id) {
@@ -220,7 +235,11 @@ pub fn plan_edge(spec: &DepictSpec) -> Result<Option<EdgePlan>, String> {
         }
     }
 
-    fn build_tree(i: usize, nodes: &mut Vec<Option<MolTemplate>>, children_of: &[Vec<usize>]) -> MolTemplate {
+    fn build_tree(
+        i: usize,
+        nodes: &mut Vec<Option<MolTemplate>>,
+        children_of: &[Vec<usize>],
+    ) -> MolTemplate {
         let mut node = nodes[i].take().expect("node");
         for &c in &children_of[i] {
             node.template_for.push(build_tree(c, nodes, children_of));
@@ -280,12 +299,33 @@ pub fn apply_star_labels(mol: &mut MoleculeIn, labels: &[Option<String>]) {
     }
 }
 
-fn apply_doc_chrome(
-    mut mol: MoleculeIn,
-    node: &MolNode,
-    id: &str,
-    chrome: &MolOpts,
-) -> MoleculeIn {
+/// House shade colormap (only name paint applies). Omit / empty / this → ok.
+const SHADE_COLORMAP_SUPPORTED: &str = "xenosite";
+
+/// Reject colormap names that paint would ignore (no silent no-op).
+pub fn validate_shade_colormap(name: Option<&str>) -> Result<(), String> {
+    let Some(raw) = name.map(str::trim).filter(|s| !s.is_empty()) else {
+        return Ok(());
+    };
+    if raw.eq_ignore_ascii_case(SHADE_COLORMAP_SUPPORTED) {
+        return Ok(());
+    }
+    Err(format!(
+        "unsupported shade colormap {raw:?}; only \"{SHADE_COLORMAP_SUPPORTED}\" (default) is supported"
+    ))
+}
+
+fn validate_mol_shade_colormap(node: &MolNode, chrome: &MolOpts) -> Result<(), String> {
+    if let Some(ref shade) = node.shade {
+        validate_shade_colormap(shade.colormap.as_deref())?;
+    }
+    if let Some(ref style) = chrome.shade {
+        validate_shade_colormap(style.colormap.as_deref())?;
+    }
+    Ok(())
+}
+
+fn apply_doc_chrome(mut mol: MoleculeIn, node: &MolNode, id: &str, chrome: &MolOpts) -> MoleculeIn {
     mol.id = Some(id.to_string());
     if let Some(ref c) = chrome.color {
         mol.color = Some(c.clone());
@@ -368,8 +408,15 @@ pub fn render_doc(spec: &DepictSpec, edge: &EdgeResult) -> Result<Vec<DocPaint>,
             .clone()
             .ok_or_else(|| format!("EdgeResult {id} missing molecule"))?;
         let chrome = spec.resolve_mol_chrome(i);
+        validate_mol_shade_colormap(node, &chrome)?;
         let molecule = apply_doc_chrome(base, node, id, &chrome);
-        let scene = caption::apply_mol_captions(spec, node, depict_molecule(&molecule));
+        // Captions first (structure only), then chrome so regions/callouts/labels
+        // can treat the name as an obstacle. Fit last. Do **not** mutate chem
+        // atom text for `atom_label` — that is `star_labels` on `*` atoms only.
+        let scene = depict_molecule(&molecule);
+        let scene = caption::apply_mol_captions(spec, node, scene);
+        let scene = chrome_paint::apply_mol_chrome(node, &molecule, scene);
+        let scene = fit::fit_scene(scene, fit::resolve_viewport_margin(chrome.pad));
         out.push(DocPaint {
             id: id.clone(),
             molecule,
@@ -398,6 +445,7 @@ mod tests {
                     y: 0.0,
                     label: None,
                     charge: 0,
+                    mapno: None,
                 },
                 AtomIn {
                     index: 1,
@@ -407,6 +455,7 @@ mod tests {
                     y: 0.0,
                     label: None,
                     charge: 0,
+                    mapno: None,
                 },
                 AtomIn {
                     index: 2,
@@ -416,6 +465,7 @@ mod tests {
                     y: 1.0,
                     label: Some("OH".into()),
                     charge: 0,
+                    mapno: None,
                 },
             ],
             bonds: vec![
@@ -467,12 +517,13 @@ mod tests {
                     ..Default::default()
                 }),
             ],
-                    opts: None,
+            opts: None,
             color: None,
             scale: None,
             aromatic: None,
             debug_box: None,
             debug_align: None,
+            pad: None,
         };
         let plan = plan_edge(&spec).unwrap().unwrap();
         match &plan.tasks[0] {
@@ -511,6 +562,7 @@ mod tests {
             aromatic: None,
             debug_box: None,
             debug_align: None,
+            pad: None,
         };
         let plan = plan_edge(&spec).unwrap().unwrap();
         match &plan.tasks[0] {
@@ -521,7 +573,14 @@ mod tests {
                 let child = &roots[0].template_for[0];
                 assert_eq!(child.id, "m_1");
                 assert_eq!(
-                    child.align.as_ref().unwrap().atom_map.as_ref().unwrap().len(),
+                    child
+                        .align
+                        .as_ref()
+                        .unwrap()
+                        .atom_map
+                        .as_ref()
+                        .unwrap()
+                        .len(),
                     3
                 );
             }
@@ -532,6 +591,12 @@ mod tests {
     fn render_doc_stitches_edge_result() {
         let spec = DepictSpec::Mol {
             label: None,
+            name: None,
+            atom_number: None,
+            atom_label: None,
+            region: None,
+            circle: None,
+            callout: None,
             smiles: Some("CCO".into()),
             cxsmiles: None,
             molfile: None,
@@ -542,10 +607,11 @@ mod tests {
             scale: None,
             weight: None,
             align_to: None,
-                    halo: None,
-                    aromatic: None,
-                    debug_box: None,
-                    debug_align: None,
+            halo: None,
+            aromatic: None,
+            debug_box: None,
+            debug_align: None,
+            pad: None,
             opts: None,
         };
         let plan = plan_edge(&spec).unwrap().unwrap();
@@ -573,6 +639,12 @@ mod tests {
     fn render_doc_applies_cx_when_no_star_labels() {
         let spec = DepictSpec::Mol {
             label: None,
+            name: None,
+            atom_number: None,
+            atom_label: None,
+            region: None,
+            circle: None,
+            callout: None,
             smiles: None,
             cxsmiles: Some("*C |$R1;$|".into()),
             molfile: None,
@@ -583,10 +655,11 @@ mod tests {
             scale: None,
             weight: None,
             align_to: None,
-                    halo: None,
-                    aromatic: None,
-                    debug_box: None,
-                    debug_align: None,
+            halo: None,
+            aromatic: None,
+            debug_box: None,
+            debug_align: None,
+            pad: None,
             opts: None,
         };
         let mol = MoleculeIn {
@@ -600,6 +673,7 @@ mod tests {
                     y: 0.0,
                     label: Some("*".into()),
                     charge: 0,
+                    mapno: None,
                 },
                 AtomIn {
                     index: 1,
@@ -609,6 +683,7 @@ mod tests {
                     y: 0.0,
                     label: None,
                     charge: 0,
+                    mapno: None,
                 },
             ],
             bonds: vec![BondIn {
@@ -701,12 +776,13 @@ mod tests {
             id: None,
             align: false,
             children: vec![],
-                    opts: None,
+            opts: None,
             color: None,
             scale: None,
             aromatic: None,
             debug_box: None,
             debug_align: None,
+            pad: None,
         };
         assert!(plan_edge(&spec).unwrap().is_none());
     }
@@ -728,12 +804,13 @@ mod tests {
                     ..Default::default()
                 }),
             ],
-                    opts: None,
+            opts: None,
             color: None,
             scale: None,
             aromatic: None,
             debug_box: None,
             debug_align: None,
+            pad: None,
         };
         assert!(plan_edge(&unknown).unwrap_err().contains("unknown id"));
 
@@ -753,12 +830,13 @@ mod tests {
                     ..Default::default()
                 }),
             ],
-                    opts: None,
+            opts: None,
             color: None,
             scale: None,
             aromatic: None,
             debug_box: None,
             debug_align: None,
+            pad: None,
         };
         assert!(plan_edge(&self_align).unwrap_err().contains("itself"));
     }
@@ -786,12 +864,13 @@ mod tests {
                     ..Default::default()
                 }),
             ],
-                    opts: None,
+            opts: None,
             color: None,
             scale: None,
             aromatic: None,
             debug_box: None,
             debug_align: None,
+            pad: None,
         };
         let plan = plan_edge(&spec).unwrap().unwrap();
         match &plan.tasks[0] {
@@ -818,6 +897,7 @@ mod tests {
                     y: 0.0,
                     label: Some("*".into()),
                     charge: 0,
+                    mapno: None,
                 },
                 AtomIn {
                     index: 1,
@@ -827,6 +907,7 @@ mod tests {
                     y: 0.0,
                     label: None,
                     charge: 0,
+                    mapno: None,
                 },
                 AtomIn {
                     index: 2,
@@ -836,6 +917,7 @@ mod tests {
                     y: 0.0,
                     label: Some("*".into()),
                     charge: 0,
+                    mapno: None,
                 },
             ],
             bonds: vec![],
@@ -857,7 +939,12 @@ mod tests {
         assert_eq!(mol.atoms[0].label.as_deref(), Some("*"));
         apply_star_labels(
             &mut mol,
-            &[None, Some("  ".into()), Some("R2".into()), Some("extra".into())],
+            &[
+                None,
+                Some("  ".into()),
+                Some("R2".into()),
+                Some("extra".into()),
+            ],
         );
         // Two stars: slot0 → "*", slot1 empty → "*"; R2/extra overflow ignored.
         assert_eq!(mol.atoms[0].label.as_deref(), Some("*"));
@@ -865,9 +952,57 @@ mod tests {
     }
 
     #[test]
+    fn shade_colormap_xenosite_or_omit_ok_others_err() {
+        assert!(validate_shade_colormap(None).is_ok());
+        assert!(validate_shade_colormap(Some("")).is_ok());
+        assert!(validate_shade_colormap(Some("xenosite")).is_ok());
+        assert!(validate_shade_colormap(Some("Xenosite")).is_ok());
+        let err = validate_shade_colormap(Some("viridis")).unwrap_err();
+        assert!(
+            err.contains("viridis") && err.contains("xenosite"),
+            "unexpected err: {err}"
+        );
+    }
+
+    #[test]
+    fn render_doc_rejects_unsupported_shade_colormap() {
+        let spec: DepictSpec = serde_json::from_str(
+            r#"{
+              "type": "mol",
+              "smiles": "CCO",
+              "id": "a",
+              "shade": {"atoms": [0.1, 0.5, 0.9], "colormap": "viridis"}
+            }"#,
+        )
+        .unwrap();
+        let edge = EdgeResult::new_v1(vec![EdgeTaskResult::CoordGen {
+            ok: true,
+            molecules: vec![CoordGenMoleculeResult {
+                id: "a".into(),
+                ok: true,
+                method: CoordMethod::Free,
+                used_map: None,
+                molecule: Some(ethanol_mol("a")),
+                error: None,
+            }],
+        }]);
+        let err = render_doc(&spec, &edge).unwrap_err();
+        assert!(
+            err.contains("viridis") && err.contains("unsupported"),
+            "expected colormap rejection, got: {err}"
+        );
+    }
+
+    #[test]
     fn render_doc_star_labels_shade_scale_weight() {
         let spec = DepictSpec::Mol {
             label: None,
+            name: None,
+            atom_number: None,
+            atom_label: None,
+            region: None,
+            circle: None,
+            callout: None,
             smiles: Some("*C".into()),
             cxsmiles: None,
             molfile: None,
@@ -884,10 +1019,11 @@ mod tests {
             scale: Some(1.5),
             weight: Some(1.2),
             align_to: None,
-                    halo: None,
-                    aromatic: None,
-                    debug_box: None,
-                    debug_align: None,
+            halo: None,
+            aromatic: None,
+            debug_box: None,
+            debug_align: None,
+            pad: None,
             opts: None,
         };
         let mut mol = ethanol_mol("s");
@@ -917,6 +1053,12 @@ mod tests {
     fn render_doc_errors_on_missing_or_failed_edge_row() {
         let spec = DepictSpec::Mol {
             label: None,
+            name: None,
+            atom_number: None,
+            atom_label: None,
+            region: None,
+            circle: None,
+            callout: None,
             smiles: Some("C".into()),
             cxsmiles: None,
             molfile: None,
@@ -927,10 +1069,11 @@ mod tests {
             scale: None,
             weight: None,
             align_to: None,
-                    halo: None,
-                    aromatic: None,
-                    debug_box: None,
-                    debug_align: None,
+            halo: None,
+            aromatic: None,
+            debug_box: None,
+            debug_align: None,
+            pad: None,
             opts: None,
         };
         let missing = EdgeResult::new_v1(vec![EdgeTaskResult::CoordGen {
@@ -963,7 +1106,9 @@ mod tests {
                 error: None,
             }],
         }]);
-        assert!(render_doc(&spec, &no_mol).unwrap_err().contains("missing molecule"));
+        assert!(render_doc(&spec, &no_mol)
+            .unwrap_err()
+            .contains("missing molecule"));
     }
 
     #[test]
@@ -975,12 +1120,13 @@ mod tests {
             id: Some("g".into()),
             align: true,
             children: vec![],
-                    opts: None,
+            opts: None,
             color: None,
             scale: None,
             aromatic: None,
             debug_box: None,
             debug_align: None,
+            pad: None,
         };
         assert!(g.align_enabled());
         assert!(g.mols().is_empty());
@@ -990,10 +1136,9 @@ mod tests {
     fn align_to_json_string_or_object() {
         let s: AlignTo = serde_json::from_str(r#""ref""#).unwrap();
         assert_eq!(s.ref_id(), "ref");
-        let o: AlignTo = serde_json::from_str(
-            r#"{"ref":"mid","atom_map":[[1,0],[2,1]],"min_atoms":4}"#,
-        )
-        .unwrap();
+        let o: AlignTo =
+            serde_json::from_str(r#"{"ref":"mid","atom_map":[[1,0],[2,1]],"min_atoms":4}"#)
+                .unwrap();
         assert_eq!(o.ref_id(), "mid");
         let opts = o.align_opts();
         assert_eq!(opts.atom_map.as_ref().unwrap().len(), 2);
@@ -1012,7 +1157,8 @@ mod tests {
             _ => panic!("expected universal"),
         }
         // Typed mol patch
-        let t: OptsPatch = serde_json::from_str(r#"{"type":"mol","weight":1.5,"halo":false}"#).unwrap();
+        let t: OptsPatch =
+            serde_json::from_str(r#"{"type":"mol","weight":1.5,"halo":false}"#).unwrap();
         match t {
             OptsPatch::Typed(TypedOptsPatch::Mol { opts }) => {
                 assert_eq!(opts.weight, Some(1.5));
@@ -1157,7 +1303,11 @@ mod tests {
         assert_eq!(b.debug_align, Some(true));
         assert_eq!(b.aromatic, Some(AromaticStyle::Kekule));
         let c = spec.resolve_mol_chrome(2);
-        assert_eq!(c.color.as_deref(), Some("blue"), "local flat overrides grid");
+        assert_eq!(
+            c.color.as_deref(),
+            Some("blue"),
+            "local flat overrides grid"
+        );
         assert_eq!(c.debug_box, Some(true));
         assert_eq!(c.debug_align, Some(true));
         assert_eq!(c.aromatic, Some(AromaticStyle::Kekule));
@@ -1564,14 +1714,8 @@ mod tests {
         )
         .unwrap();
         let e = &spec.edges()[0];
-        assert_eq!(
-            e.sources.as_slice(),
-            &["a".to_string(), "b".to_string()]
-        );
-        assert_eq!(
-            e.targets.as_slice(),
-            &["c".to_string(), "d".to_string()]
-        );
+        assert_eq!(e.sources.as_slice(), &["a".to_string(), "b".to_string()]);
+        assert_eq!(e.targets.as_slice(), &["c".to_string(), "d".to_string()]);
         validate_edges(&spec).unwrap();
     }
 

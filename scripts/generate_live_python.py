@@ -242,8 +242,20 @@ class Emitter:
         elif node.get("type") == "boolean":
             expr = "bool"
         elif node.get("type") == "object":
-            self.needs_any = True
-            expr = "dict[str, Any]"
+            add = node.get("additionalProperties")
+            if isinstance(add, dict):
+                # Map object: `{ [key: string]: Value }` → dict[str, Value]
+                expr = f"dict[str, {self.ty(add)}]"
+            elif add is True:
+                self.needs_any = True
+                expr = "dict[str, Any]"
+            elif "properties" in node or "$ref" in node:
+                # Anonymous object without a def name — fall back.
+                self.needs_any = True
+                expr = "dict[str, Any]"
+            else:
+                self.needs_any = True
+                expr = "dict[str, Any]"
         else:
             self.needs_any = True
             expr = "Any"
@@ -259,6 +271,11 @@ class Emitter:
         elif isinstance(items, list):
             for it in items:
                 self.preemit(it)
+        add = node.get("additionalProperties")
+        if isinstance(add, dict):
+            self.preemit(add)
+        for pschema in (node.get("properties") or {}).values():
+            self.preemit(pschema)
         for key in ("anyOf", "oneOf", "allOf"):
             for part in node.get(key) or []:
                 self.preemit(part)
@@ -586,8 +603,14 @@ class DictEmitter(Emitter):
             expr = "float"
         elif node.get("type") == "boolean":
             expr = "bool"
-        elif node.get("type") == "object" and "properties" not in node:
-            expr = "Mapping[str, object]"
+        elif node.get("type") == "object":
+            add = node.get("additionalProperties")
+            if isinstance(add, dict):
+                expr = f"Mapping[str, {self.ty(add)}]"
+            elif "properties" not in node:
+                expr = "Mapping[str, object]"
+            else:
+                expr = "object"
         else:
             expr = "object"
         return f"{expr} | None" if nullable else expr
@@ -600,6 +623,9 @@ class DictEmitter(Emitter):
         props = dict(node.get("properties") or {})
         for pschema in props.values():
             self.preemit(pschema)
+        add = node.get("additionalProperties")
+        if isinstance(add, dict):
+            self.preemit(add)
         required = set(node.get("required") or [])
         keys = sorted(props, key=lambda k: (k not in required, k))
         for pref in ("type", "kind"):

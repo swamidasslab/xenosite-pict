@@ -136,6 +136,12 @@ mod tests {
             star_labels: None,
             align_to: None,
             label: None,
+            name: None,
+            atom_number: None,
+            atom_label: None,
+            region: None,
+            circle: None,
+            callout: None,
             color: None,
             scale: None,
             weight: None,
@@ -143,6 +149,7 @@ mod tests {
             aromatic: None,
             debug_box: None,
             debug_align: None,
+            pad: None,
             opts: None,
         };
         let painted = depict(&spec).unwrap();
@@ -165,6 +172,12 @@ mod tests {
                 star_labels: None,
                 align_to: None,
                 label: None,
+                name: None,
+                atom_number: None,
+                atom_label: None,
+                region: None,
+                circle: None,
+                callout: None,
                 color: None,
                 scale: None,
                 weight: None,
@@ -172,6 +185,7 @@ mod tests {
                 aromatic: None,
                 debug_box: None,
                 debug_align: None,
+                pad: None,
                 opts: None,
             };
             let painted = depict(&spec).unwrap();
@@ -183,8 +197,7 @@ mod tests {
                 .flat_map(|l| l.primitives.iter())
                 .filter_map(|p| match p {
                     crate::scene::Primitive::Path {
-                        data_text: Some(t),
-                        ..
+                        data_text: Some(t), ..
                     } => Some(t.as_str()),
                     _ => None,
                 })
@@ -229,6 +242,7 @@ mod tests {
             aromatic: None,
             debug_box: None,
             debug_align: None,
+            pad: None,
         };
         let painted = depict(&spec).unwrap();
         assert_eq!(painted.len(), 2);

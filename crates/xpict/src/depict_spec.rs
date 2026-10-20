@@ -29,6 +29,7 @@ pub fn depict(spec: &DepictSpec) -> Result<Vec<Rendered>, Error> {
                     y: a.y,
                     label: a.label,
                     charge: a.charge,
+                    mapno: None,
                 })
                 .collect(),
             svg_coords: r
@@ -41,6 +42,7 @@ pub fn depict(spec: &DepictSpec) -> Result<Vec<Rendered>, Error> {
                     y: a.y,
                     label: a.label,
                     charge: a.charge,
+                    mapno: None,
                 })
                 .collect(),
             bonds: r

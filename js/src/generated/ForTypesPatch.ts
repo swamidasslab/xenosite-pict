@@ -21,4 +21,8 @@ debug_box?: boolean,
 /**
  * Paint alignment correspondence (matched atom tags + mol role badge).
  */
-debug_align?: boolean, };
+debug_align?: boolean, 
+/**
+ * Post-layout SVG viewBox pad (px). Omit → small house default (rarely override).
+ */
+pad?: number, };

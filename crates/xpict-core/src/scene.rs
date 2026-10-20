@@ -211,6 +211,10 @@ pub struct AtomIn {
     pub label: Option<String>,
     #[serde(default)]
     pub charge: i32,
+    /// Reaction / SMILES atom-map number (`:n` in brackets), when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub mapno: Option<u32>,
 }
 
 impl AtomIn {
@@ -285,11 +289,17 @@ pub struct MoleculeIn {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mark_bonds: Vec<(i32, i32)>,
     /// Uniform diagram scale (font, stroke, pad, geometry). ``1.0`` = house size.
-    #[serde(default = "default_mol_scale", skip_serializing_if = "is_default_mol_scale")]
+    #[serde(
+        default = "default_mol_scale",
+        skip_serializing_if = "is_default_mol_scale"
+    )]
     pub scale: f64,
     /// Ink weight for backbone stroke and label glyph thicken. ``1.0`` = house;
     /// may go down to ~``2/3`` (Regular stem); typical thicken up to ~2.
-    #[serde(default = "default_mol_weight", skip_serializing_if = "is_default_mol_weight")]
+    #[serde(
+        default = "default_mol_weight",
+        skip_serializing_if = "is_default_mol_weight"
+    )]
     pub weight: f64,
     /// Aromatic ring paint: circle (default) or Kekulé doubles.
     #[serde(default, skip_serializing_if = "is_default_aromatic")]
@@ -452,9 +462,7 @@ impl Primitive {
                 fill: fill.clone(),
                 stroke_width: *stroke_width * s,
                 opacity: *opacity,
-                stroke_dasharray: stroke_dasharray
-                    .as_ref()
-                    .map(|d| scale_dasharray(d, s)),
+                stroke_dasharray: stroke_dasharray.as_ref().map(|d| scale_dasharray(d, s)),
                 stroke_linecap: stroke_linecap.clone(),
                 class: class.clone(),
                 data_text: data_text.clone(),
@@ -550,11 +558,7 @@ impl Scene {
                 .iter()
                 .map(|vp| vp.scale_uniform(s))
                 .collect(),
-            overlays: self
-                .overlays
-                .iter()
-                .map(|p| p.scale_uniform(s))
-                .collect(),
+            overlays: self.overlays.iter().map(|p| p.scale_uniform(s)).collect(),
             halo: self.halo.iter().map(|p| p.scale_uniform(s)).collect(),
         }
     }
@@ -654,6 +658,7 @@ mod tests {
             y: 0.0,
             label: None,
             charge: 0,
+            mapno: None,
         };
         assert_eq!(with_el.symbol(), "N");
 
@@ -665,6 +670,7 @@ mod tests {
             y: 0.0,
             label: None,
             charge: 0,
+            mapno: None,
         };
         assert_eq!(empty_el.symbol(), "O");
 
@@ -676,6 +682,7 @@ mod tests {
             y: 0.0,
             label: None,
             charge: 0,
+            mapno: None,
         };
         assert_eq!(z_only.symbol(), "N");
 
@@ -687,6 +694,7 @@ mod tests {
             y: 0.0,
             label: None,
             charge: 0,
+            mapno: None,
         };
         assert_eq!(bare.symbol(), "C");
     }
@@ -704,10 +712,7 @@ mod tests {
     #[test]
     fn mol_scale_weight_defaults_and_fallbacks() {
         // Omitted fields → serde defaults (covers default_mol_weight / scale).
-        let mol: MoleculeIn = serde_json::from_str(
-            r#"{"id":"m","atoms":[],"bonds":[]}"#,
-        )
-        .unwrap();
+        let mol: MoleculeIn = serde_json::from_str(r#"{"id":"m","atoms":[],"bonds":[]}"#).unwrap();
         assert!((mol.scale - 1.0).abs() < 1e-12);
         assert!((mol.weight - 1.0).abs() < 1e-12);
         assert!((mol.diagram_scale() - 1.0).abs() < 1e-12);
@@ -819,10 +824,7 @@ mod tests {
         }
         match text.scale_uniform(2.0) {
             Primitive::Text {
-                x,
-                y,
-                font_size,
-                ..
+                x, y, font_size, ..
             } => {
                 assert!((x - 2.0).abs() < 1e-12);
                 assert!((y - 4.0).abs() < 1e-12);

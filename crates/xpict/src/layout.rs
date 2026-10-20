@@ -91,6 +91,7 @@ fn layout_out_to_molecule(
                 y: (flip_max_y - a.y) * scale,
                 label,
                 charge: a.charge,
+                mapno: None,
             }
         })
         .collect();

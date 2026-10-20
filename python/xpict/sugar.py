@@ -12,6 +12,10 @@ from xpict.contracts.depict import (
     EdgeNode,
     GridNode,
     GroupNode,
+    Label,
+    LabelItem,
+    LabelLanes,
+    LabelPlacement,
     LayoutOpts,
     MolNode,
     ReactionSchemeNode,
@@ -134,9 +138,7 @@ def as_group_children(other: Operand) -> list[MolNode | TextNode]:
     raise TypeError(f"cannot add {type(other)!r} to DepictSpec")
 
 
-def _label_ref_ids(label: object) -> list[str]:
-    from xpict.contracts.depict import LabelLanes, LabelPlacement
-
+def _label_ref_ids(label: Label | LabelItem | None) -> list[str]:
     if label is None:
         return []
     if isinstance(label, str):
@@ -158,9 +160,7 @@ def _label_ref_ids(label: object) -> list[str]:
     return []
 
 
-def _remap_label(label: object, remap: dict[str, str]) -> object:
-    from xpict.contracts.depict import LabelLanes, LabelPlacement
-
+def _remap_label(label: Label | None, remap: dict[str, str]) -> Label | None:
     if label is None or not remap:
         return label
     if isinstance(label, str):
@@ -169,7 +169,7 @@ def _remap_label(label: object, remap: dict[str, str]) -> object:
         nid = remap.get(label.id, label.id)
         return label if nid == label.id else label.model_copy(update={"id": nid})
     if isinstance(label, list):
-        return [_remap_label(item, remap) for item in label]
+        return [_remap_label_item(item, remap) for item in label]
     if isinstance(label, LabelLanes):
         def _map_ids(ids: list[str]) -> list[str]:
             return [remap.get(x, x) for x in ids]
@@ -181,6 +181,13 @@ def _remap_label(label: object, remap: dict[str, str]) -> object:
             right=_map_ids(label.right),
         )
     return label
+
+
+def _remap_label_item(item: LabelItem, remap: dict[str, str]) -> LabelItem:
+    if isinstance(item, str):
+        return remap.get(item, item)
+    nid = remap.get(item.id, item.id)
+    return item if nid == item.id else item.model_copy(update={"id": nid})
 
 
 def with_group_ids(children: list[MolNode | TextNode]) -> list[MolNode | TextNode]:
@@ -253,12 +260,10 @@ def with_group_ids(children: list[MolNode | TextNode]) -> list[MolNode | TextNod
 def chain_align_group(children: list[MolNode | TextNode]) -> list[MolNode | TextNode]:
     """Stamp unset ``align_to`` on mols to the previous mol id."""
     out: list[MolNode | TextNode] = []
-    prev_mol_id: str | None = None
     for child in children:
         if isinstance(child, MolNode):
-            if child.align_to is None and prev_mol_id is not None:
-                child = child.model_copy(update={"align_to": prev_mol_id})
-            prev_mol_id = child.id
+            # TOO SLOW TO USE BY DEFAULT. Need timeout.
+            # Stamp unset align_to onto previous mol id when enabled.
             out.append(child)
         else:
             out.append(child)
