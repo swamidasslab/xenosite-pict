@@ -156,7 +156,7 @@ Guide: RDKit MolDraw2D wedges + `WedgeMolBonds`.
 
 Drawing proportions follow **xenopict** ``drawer.py`` (the house style): bond
 length 20 px, stroke ``0.10 × bond`` with round caps, halo ``0.20 × bond``
-on every stroke, shade dots ``0.90 × bond``, atom-mark radius one bond,
+on every stroke, shade dots ``0.72 × bond``, atom-mark radius one bond,
 font ``0.45 × bond`` (optical match to RDKit MolDraw2D heteroatom
 glyphs; document ``baseFontSize`` is 0.6 but drawn caps read smaller).
 Stroke tracks the Liberation stem (``≈0.042 × bond``). Double-bond offset

@@ -14,7 +14,7 @@ use crate::font::FaceStyle;
 use crate::labels::{self, place_backbone};
 use crate::metrics::{
     halo_gap_for_weight, halo_stroke_for_weight, label_weight_grow_px, stroke_px_for_weight,
-    BOND_PX, FONT_PX, HALO_OPACITY, MARK_FRAC, PAD_PX, SHADE_FRAC,
+    BOND_PX, FONT_PX, HALO_OPACITY, MARK_FRAC, PAD_PX, SHADE_BOTH_FRAC, SHADE_FRAC,
 };
 use crate::plotdot::PlotDot;
 use crate::rings::{aromatic_ring_circles, bond_interior_normals, find_sssr, kekule_paint_orders};
@@ -400,12 +400,7 @@ fn paint_shade(
     let vmin = mol.shade_vmin.unwrap_or(0.0);
     let vmax = mol.shade_vmax.unwrap_or(1.0);
     let diverging = vmin < 0.0 && vmax > 0.0;
-    let base_r = BOND_PX
-        * (if !atom_zs.is_empty() && !bond_zs.is_empty() {
-            0.8
-        } else {
-            SHADE_FRAC
-        });
+    let base_r = shade_base_radius_px(!atom_zs.is_empty(), !bond_zs.is_empty());
     let plot = PlotDot::default();
     // Atom + bond scores share one PlotDot pass so overlapping rings stack by
     // strength (weak first → strong on top), matching xenopict shade().
@@ -473,7 +468,7 @@ pub(crate) fn normalize_shade_scores(zs: &[f64], vmin: f64, vmax: f64) -> Vec<f6
 pub(crate) fn shade_base_radius_px(has_atom_shade: bool, has_bond_shade: bool) -> f64 {
     BOND_PX
         * (if has_atom_shade && has_bond_shade {
-            0.8
+            SHADE_BOTH_FRAC
         } else {
             SHADE_FRAC
         })
@@ -1409,11 +1404,38 @@ mod tests {
             "atom+bond shade should emit multiple disks, got {}",
             fills.len()
         );
-        // Combined atom+bond → base radius 0.8×bond (not 0.9).
+        // Combined atom+bond uses the smaller shared base, not SHADE_FRAC.
         let max_r = fills.iter().map(|(_, r)| *r).fold(0.0_f64, f64::max);
         assert!(
-            (max_r - BOND_PX * 0.8).abs() < 0.05,
-            "expected 0.8×bond when both atom+bond shaded, got {max_r}"
+            (max_r - BOND_PX * SHADE_BOTH_FRAC).abs() < 0.05,
+            "expected SHADE_BOTH_FRAC×bond when both atom+bond shaded, got {max_r}"
+        );
+    }
+
+    #[test]
+    fn shade_full_strength_outer_is_house_frac() {
+        let mut mol = ethanol();
+        mol.atom_shade = Some(vec![1.0, 0.0, 0.0]);
+        let scene = depict_molecule(&mol);
+        let shade = scene.viewports[0]
+            .layers
+            .iter()
+            .find(|l| l.name == LayerName::Shading)
+            .expect("shading");
+        let max_r = shade
+            .primitives
+            .iter()
+            .filter_map(|p| match p {
+                Primitive::Circle {
+                    r, class: Some(c), ..
+                } if c == "shade" => Some(*r),
+                _ => None,
+            })
+            .fold(0.0_f64, f64::max);
+        assert!(
+            (max_r - BOND_PX * SHADE_FRAC).abs() < 1e-6,
+            "full-score outer r={max_r}, expected {}×bond",
+            SHADE_FRAC
         );
     }
 

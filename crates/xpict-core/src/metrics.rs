@@ -38,7 +38,12 @@ pub const CHAIN_END_GAP_FRAC: f64 = 0.0;
 pub const HASH_PER_BOND: i32 = 8;
 pub const HALO_FRAC: f64 = 2.0 * STROKE_FRAC;
 pub const LABEL_GAP_FRAC: f64 = 0.05;
-pub const SHADE_FRAC: f64 = 0.90;
+/// PlotDot outer radius as a fraction of bond length.
+///
+/// xenopict used 0.90; that reads ~25% too large at publication [`SCALE`].
+pub const SHADE_FRAC: f64 = 0.72;
+/// Shared PlotDot base when atom **and** bond scores paint (8/9 of [`SHADE_FRAC`]).
+pub const SHADE_BOTH_FRAC: f64 = SHADE_FRAC * 8.0 / 9.0;
 pub const MARK_FRAC: f64 = 1.0;
 /// xenopict mark layer: `stroke-width: scale * 0.1`, opacity 0.7.
 ///
@@ -190,7 +195,8 @@ mod tests {
         assert!((OFFSET_PX - 4.5).abs() < 1e-9);
         assert!((STROKE_PX - 1.26).abs() < 1e-9);
         assert!((FONT_PX - 13.5).abs() < 1e-9);
-        assert!((SHADE_FRAC - 0.90).abs() < 1e-9);
+        assert!((SHADE_FRAC - 0.72).abs() < 1e-9);
+        assert!((SHADE_BOTH_FRAC - 0.64).abs() < 1e-9);
     }
 
     #[test]
