@@ -15,7 +15,7 @@ use crate::scene::{AtomIn, MoleculeIn};
 /// Inside the skeleton with clear margin so the circle does not crowd bond ink.
 pub const AROMATIC_CIRCLE_FRAC: f64 = 0.60;
 
-/// One SSSR ring as an ordered atom cycle (atom indices).
+/// One ring as an ordered atom cycle (atom indices).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Ring {
     pub atoms: Vec<i32>,
@@ -122,15 +122,165 @@ fn shortest_cycle_through_bond(
     Some(path)
 }
 
-/// Practical SSSR for depiction: unique shortest cycles through each bond.
-pub fn find_sssr(mol: &MoleculeIn, max_size: usize) -> Vec<Ring> {
-    if mol.bonds.is_empty() {
+/// Cap on alternate shortest paths through one bond (cages, fused systems).
+const MAX_SHORTEST_PATHS_PER_BOND: usize = 32;
+
+/// All shortest `u → v` paths that do not use the edge `u`–`v`.
+fn all_shortest_paths_avoiding_edge(
+    adj: &HashMap<i32, Vec<i32>>,
+    u: i32,
+    v: i32,
+    max_path_edges: usize,
+) -> Vec<Vec<i32>> {
+    if max_path_edges == 0 {
         return Vec::new();
     }
-    let adj = adjacency(mol);
+    let mut dist: HashMap<i32, usize> = HashMap::new();
+    let mut parents: HashMap<i32, Vec<i32>> = HashMap::new();
+    dist.insert(u, 0);
+    let mut q = VecDeque::new();
+    q.push_back(u);
+    while let Some(cur) = q.pop_front() {
+        let d = dist[&cur];
+        if d >= max_path_edges {
+            continue;
+        }
+        if let Some(&dv) = dist.get(&v) {
+            if d >= dv {
+                continue;
+            }
+        }
+        let Some(neighbors) = adj.get(&cur) else {
+            continue;
+        };
+        for &nxt in neighbors {
+            if (cur == u && nxt == v) || (cur == v && nxt == u) {
+                continue;
+            }
+            match dist.get(&nxt).copied() {
+                None => {
+                    dist.insert(nxt, d + 1);
+                    parents.insert(nxt, vec![cur]);
+                    q.push_back(nxt);
+                }
+                Some(dn) if dn == d + 1 => {
+                    parents.entry(nxt).or_default().push(cur);
+                }
+                _ => {}
+            }
+        }
+    }
+    let Some(&dv) = dist.get(&v) else {
+        return Vec::new();
+    };
+    if dv == 0 || dv > max_path_edges {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    let mut path = Vec::new();
+    fn walk(
+        cur: i32,
+        start: i32,
+        parents: &HashMap<i32, Vec<i32>>,
+        path: &mut Vec<i32>,
+        out: &mut Vec<Vec<i32>>,
+        cap: usize,
+    ) {
+        if out.len() >= cap {
+            return;
+        }
+        path.push(cur);
+        if cur == start {
+            let mut p = path.clone();
+            p.reverse();
+            out.push(p);
+        } else if let Some(ps) = parents.get(&cur) {
+            for &p in ps {
+                walk(p, start, parents, path, out, cap);
+            }
+        }
+        path.pop();
+    }
+    walk(
+        v,
+        u,
+        &parents,
+        &mut path,
+        &mut out,
+        MAX_SHORTEST_PATHS_PER_BOND,
+    );
+    out
+}
+
+fn canonicalize_cycle(atoms: &[i32]) -> Vec<i32> {
+    let n = atoms.len();
+    if n == 0 {
+        return Vec::new();
+    }
+    let start = (0..n).min_by_key(|&i| atoms[i]).expect("nonempty");
+    let next = atoms[(start + 1) % n];
+    let prev = atoms[(start + n - 1) % n];
+    let mut out = Vec::with_capacity(n);
+    if next <= prev {
+        for k in 0..n {
+            out.push(atoms[(start + k) % n]);
+        }
+    } else {
+        for k in 0..n {
+            out.push(atoms[(start + n - k) % n]);
+        }
+    }
+    out
+}
+
+/// Relevant Rings: every distinct smallest cycle through each bond.
+///
+/// This is the union of all SSSR bases (CDK/Vismara relevant cycles), not one
+/// greedy SSSR cover. Cubane keeps all six faces; SSSR keeps five.
+/// `max_size` is inclusive.
+pub fn find_relevant_rings_from_adj(
+    adj: &HashMap<i32, Vec<i32>>,
+    bonds: impl IntoIterator<Item = (i32, i32)>,
+    max_size: usize,
+) -> Vec<Ring> {
+    if max_size < 3 {
+        return Vec::new();
+    }
     let mut by_bonds: HashMap<Vec<(i32, i32)>, Ring> = HashMap::new();
-    for b in &mol.bonds {
-        let Some(cyc) = shortest_cycle_through_bond(&adj, b.begin, b.end, max_size) else {
+    for (u, v) in bonds {
+        for path in all_shortest_paths_avoiding_edge(adj, u, v, max_size.saturating_sub(1)) {
+            if path.len() < 2 || path.len() > max_size {
+                continue;
+            }
+            let ring = Ring {
+                atoms: canonicalize_cycle(&path),
+            };
+            if ring.size() < 3 || ring.size() > max_size {
+                continue;
+            }
+            let mut keys: Vec<_> = ring.bonds().into_iter().collect();
+            keys.sort_unstable();
+            by_bonds.entry(keys).or_insert(ring);
+        }
+    }
+    let mut rings: Vec<Ring> = by_bonds.into_values().collect();
+    rings.sort_by(|a, b| a.size().cmp(&b.size()).then_with(|| a.atoms.cmp(&b.atoms)));
+    rings
+}
+
+/// Practical SSSR from adjacency + undirected bonds.
+///
+/// Unique shortest cycles through each bond, then a greedy cover that prefers
+/// smaller rings. Depiction uses this (aromatic circles, interiors). Align
+/// uses [`find_relevant_rings_from_adj`] instead. `max_size` is inclusive.
+pub fn find_sssr_from_adj(
+    adj: &HashMap<i32, Vec<i32>>,
+    bonds: impl IntoIterator<Item = (i32, i32)>,
+    max_size: usize,
+) -> Vec<Ring> {
+    let mut by_bonds: HashMap<Vec<(i32, i32)>, Ring> = HashMap::new();
+    for (u, v) in bonds {
+        let Some(cyc) = shortest_cycle_through_bond(adj, u, v, max_size) else {
             continue;
         };
         let ring = Ring { atoms: cyc };
@@ -160,6 +310,15 @@ pub fn find_sssr(mol: &MoleculeIn, max_size: usize) -> Vec<Ring> {
     } else {
         kept
     }
+}
+
+/// Practical SSSR for depiction: unique shortest cycles through each bond.
+pub fn find_sssr(mol: &MoleculeIn, max_size: usize) -> Vec<Ring> {
+    if mol.bonds.is_empty() {
+        return Vec::new();
+    }
+    let adj = adjacency(mol);
+    find_sssr_from_adj(&adj, mol.bonds.iter().map(|b| (b.begin, b.end)), max_size)
 }
 
 fn ring_centroid(ring: &Ring, coords: &HashMap<i32, (f64, f64)>) -> Option<(f64, f64)> {
@@ -622,5 +781,89 @@ mod tests {
         let rings = find_sssr(&mol, 8);
         assert_eq!(rings.len(), 2, "expected two hexagons, got {:?}", rings);
         assert!(rings.iter().all(|r| r.size() == 6));
+    }
+
+    #[test]
+    fn large_cycle_sssr_needs_max_size() {
+        let n = 12i32;
+        let mut adj: HashMap<i32, Vec<i32>> = HashMap::new();
+        let mut bonds = Vec::new();
+        for i in 0..n {
+            let j = (i + 1) % n;
+            adj.entry(i).or_default().push(j);
+            adj.entry(j).or_default().push(i);
+            bonds.push((i, j));
+        }
+        assert!(find_sssr_from_adj(&adj, bonds.iter().copied(), 8).is_empty());
+        let rings = find_sssr_from_adj(&adj, bonds, 20);
+        assert_eq!(rings.len(), 1);
+        assert_eq!(rings[0].size(), 12);
+    }
+
+    fn cube_graph() -> (HashMap<i32, Vec<i32>>, Vec<(i32, i32)>) {
+        // Cube: cyclomatic number 5, six square faces.
+        let edges = [
+            (0, 1),
+            (1, 2),
+            (2, 3),
+            (3, 0),
+            (4, 5),
+            (5, 6),
+            (6, 7),
+            (7, 4),
+            (0, 4),
+            (1, 5),
+            (2, 6),
+            (3, 7),
+        ];
+        let mut adj: HashMap<i32, Vec<i32>> = HashMap::new();
+        for (a, b) in edges {
+            adj.entry(a).or_default().push(b);
+            adj.entry(b).or_default().push(a);
+        }
+        (adj, edges.to_vec())
+    }
+
+    #[test]
+    fn cubane_relevant_rings_keep_all_six_faces() {
+        let (adj, bonds) = cube_graph();
+        let sssr = find_sssr_from_adj(&adj, bonds.iter().copied(), 8);
+        assert_eq!(sssr.len(), 5, "SSSR is a 5-cycle basis, got {:?}", sssr);
+        assert!(sssr.iter().all(|r| r.size() == 4));
+
+        let relevant = find_relevant_rings_from_adj(&adj, bonds, 8);
+        assert_eq!(
+            relevant.len(),
+            6,
+            "relevant rings are all six faces, got {:?}",
+            relevant
+        );
+        assert!(relevant.iter().all(|r| r.size() == 4));
+    }
+
+    #[test]
+    fn naphthalene_relevant_rings_match_two_hexagons() {
+        // Two fused hexagons: 0-5 and 4-5-6-7-8-9.
+        let edges = [
+            (0, 1),
+            (1, 2),
+            (2, 3),
+            (3, 4),
+            (4, 5),
+            (5, 0),
+            (4, 6),
+            (6, 7),
+            (7, 8),
+            (8, 9),
+            (9, 5),
+        ];
+        let mut adj: HashMap<i32, Vec<i32>> = HashMap::new();
+        for (a, b) in edges {
+            adj.entry(a).or_default().push(b);
+            adj.entry(b).or_default().push(a);
+        }
+        let relevant = find_relevant_rings_from_adj(&adj, edges, 8);
+        assert_eq!(relevant.len(), 2, "got {:?}", relevant);
+        assert!(relevant.iter().all(|r| r.size() == 6));
     }
 }

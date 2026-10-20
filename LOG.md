@@ -2,6 +2,11 @@
 
 ## 2026-10-20
 
+- Align ring seeds use **Relevant Rings** (union of all smallest cycles through each bond), not one SSSR cover. Cubane: SSSR 5 faces, relevant 6. Depiction (aromatic circles / interiors) still uses SSSR. Chain→ring is unchanged: no query ring means ordinary atom-pair MCS (hexane onto cyclohexane). Different-size rings are not seeded as cycles.
+- House `+` align on fused pairs was scrambling the map (morphine/codeine 19 atoms, 1 identity). Seeding equal-size Relevant Rings then greedy-extend recovers the 21-atom scaffold map; CoordGen soft-constrain can still rotate the pentacycle. Simple aromatic hydroxylations overlay tightly.
+
+## 2026-10-20
+
 - Default `+` align on larger / macrocycle pairs (`notebooks/align_large_pairs.py`). MCS usually finds a big connected map (12–37 atoms) inside the house budget; CoordGen soft-constrain is the quality bottleneck, not the timeout. Morphine/codeine: skip already shares a pose; default *rotates* codeine (19 mapped, 151 px median). Cholesterol/testosterone: 21/21 map at 0.63 px but the cholesterol template is a bad steroid drawing, so testosterone is warped onto it. 18-crown-6 vs aza-18-crown-6 locks (18/18, 1.2 px). Size-mismatched rings (12 vs 15 crown; C12 vs C15; erythromycin vs azithromycin) map many atoms then collapse/tangle the query. Erythromycin vs clarithromycin is the only macrolide pair that stays roughly the same pose (37 mapped, 11 px).
 
 ## 2026-10-20

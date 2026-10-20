@@ -1,6 +1,7 @@
 # TODO
 
-- Align pose lock: MCS maps large related mols, but CoordGen soft-constrain often rotates or collapses the query (morphine/codeine, mismatched macrocycles)
+- Align pose lock: Relevant-Ring seeds fix fused-scaffold correspondence; CoordGen soft-constrain still rotates morphine-like pentacycles; size-mismatched rings still over-match as paths
+- Parent–metabolite align tests from xenosite-forest hydroxylation hops
 - Constraint layout: richer discrete side flips; tune kit strengths from notebook visuals; cap route-point birth harder on dense mols
 - Lift remaining legacy Pict gaps onto live DepictSpec (titles, rgroups/annots, radical dots) or delete those tests
 - JS host still uses RDKit edge processor — fold onto the same in-core Chematic+CoordGen path as Python/Rust

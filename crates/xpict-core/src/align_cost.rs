@@ -1,5 +1,11 @@
 //! Exact connected molecular alignment with atom-only branch-and-bound.
 //!
+//! Equal-size Relevant Rings are tried first as connected seeds (cyclic maps,
+//! unique ring sizes preferred) so fused scaffolds lock before the house
+//! budget is spent. Chains still map onto rings: no query ring means the
+//! usual atom-pair seeds run (hexane onto cyclohexane). Different-size
+//! rings are not seeded as cycles; ordinary MCS may still map a path.
+//!
 //! [`cost_mapping`] / [`cost_mapping_with_generators`] stay unbounded (library
 //! exact API). Depict / EdgePlan search uses [`SearchLimits`]: a house time and
 //! node cap, optional greedy-only, and timeout returns the greedy/BnB incumbent.
@@ -43,11 +49,17 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::Duration;
 use std::time::Instant;
 
+use crate::rings::find_relevant_rings_from_adj;
+
 /// House wall-clock budget for document / EdgePlan MCS (not the unbounded
 /// [`cost_mapping`] library entry).
 pub const ALIGN_HOUSE_TIMEOUT_MS: u64 = 100;
 /// House branch-and-bound state cap (wasm-safe even if `Instant` is inert).
 pub const ALIGN_HOUSE_MAX_STATES: u64 = 50_000;
+/// Inclusive Relevant-Ring cap for align seeds (crowns / macrolides).
+const ALIGN_RING_MAX: usize = 40;
+/// Max cyclic ring maps tried before ordinary atom-pair seeds.
+const MAX_RING_SEEDS: usize = 32;
 
 /// Caps for [`cost_mapping_with_generators_limited`]. Empty limits = unbounded.
 #[derive(Debug, Clone, Default)]
@@ -845,6 +857,200 @@ impl Search<'_> {
             self.score -= gain;
         }
     }
+
+    fn clear_map(&mut self) {
+        self.map.fill(NONE);
+        self.inv.fill(NONE);
+        self.score = 0;
+        self.root_rank = 0;
+    }
+
+    fn apply_pairs(&mut self, pairs: &[(usize, usize)]) -> bool {
+        for (i, &(a, b)) in pairs.iter().enumerate() {
+            if !self.allowed(a, b) {
+                for &(x, y) in &pairs[..i] {
+                    self.map[x] = NONE;
+                    self.inv[y] = NONE;
+                }
+                self.score = 0;
+                return false;
+            }
+            let (gain, _) = self.delta(a, b);
+            self.map[a] = b;
+            self.inv[b] = a;
+            self.score += gain;
+            if !stereo_ok(&self.q, &self.r, &self.map) {
+                for &(x, y) in &pairs[..=i] {
+                    self.map[x] = NONE;
+                    self.inv[y] = NONE;
+                }
+                self.score = 0;
+                return false;
+            }
+        }
+        true
+    }
+
+    fn search_from_partial(&mut self, pairs: &[(usize, usize)], group: &Group) {
+        if pairs.is_empty() || self.budget_exhausted() {
+            return;
+        }
+        self.root_rank = 0;
+        if !self.apply_pairs(pairs) {
+            return;
+        }
+        self.stats.seeds += 1;
+        self.update_best();
+        self.greedy();
+        if !self.limits.greedy_only && !self.stats.timed_out {
+            let mut g = group.clone();
+            for &(_, b) in pairs {
+                g = g.stabilizer(b);
+            }
+            self.dfs(&g);
+        }
+        self.clear_map();
+    }
+}
+
+fn relevant_ring_cycles(g: &Graph<'_>, max_size: usize) -> Vec<Vec<usize>> {
+    if g.n == 0 || g.mol.bonds.is_empty() {
+        return Vec::new();
+    }
+    let mut adj: HashMap<i32, Vec<i32>> = (0..g.n as i32).map(|i| (i, Vec::new())).collect();
+    let mut bonds = Vec::with_capacity(g.mol.bonds.len());
+    for b in &g.mol.bonds {
+        let u = i32::from(b.begin);
+        let v = i32::from(b.end);
+        adj.entry(u).or_default().push(v);
+        adj.entry(v).or_default().push(u);
+        bonds.push((u, v));
+    }
+    find_relevant_rings_from_adj(&adj, bonds, max_size)
+        .into_iter()
+        .map(|ring| ring.atoms.into_iter().map(|a| a as usize).collect())
+        .collect()
+}
+
+fn cyclic_ring_pairs(q_ring: &[usize], r_ring: &[usize]) -> Vec<Vec<(usize, usize)>> {
+    let n = q_ring.len();
+    if n == 0 || n != r_ring.len() {
+        return Vec::new();
+    }
+    let mut out = Vec::with_capacity(2 * n);
+    for k in 0..n {
+        for flip in [false, true] {
+            let mut pairs = Vec::with_capacity(n);
+            for i in 0..n {
+                let b = if flip {
+                    r_ring[(k + n - i) % n]
+                } else {
+                    r_ring[(i + k) % n]
+                };
+                pairs.push((q_ring[i], b));
+            }
+            out.push(pairs);
+        }
+    }
+    out
+}
+
+fn ring_map_atom_score(pairs: &[(usize, usize)], atom_gain: &[i64], nr: usize) -> Option<i64> {
+    let mut score = 0i64;
+    for &(a, b) in pairs {
+        let g = atom_gain[a * nr + b];
+        if g <= 0 {
+            return None;
+        }
+        score += g;
+    }
+    Some(score)
+}
+
+fn pack_nonconflicting(cands: &[(i64, Vec<(usize, usize)>)]) -> Vec<(usize, usize)> {
+    let mut used_q = HashSet::new();
+    let mut used_r = HashSet::new();
+    let mut out = Vec::new();
+    for (_, pairs) in cands {
+        if pairs
+            .iter()
+            .any(|&(a, b)| used_q.contains(&a) || used_r.contains(&b))
+        {
+            continue;
+        }
+        for &(a, b) in pairs {
+            used_q.insert(a);
+            used_r.insert(b);
+            out.push((a, b));
+        }
+    }
+    out
+}
+
+/// Equal-size Relevant Ring cyclic maps, unique ring sizes first. Search-order only.
+fn ring_seed_partials(q: &Graph<'_>, r: &Graph<'_>, atom_gain: &[i64]) -> Vec<Vec<(usize, usize)>> {
+    let q_rings = relevant_ring_cycles(q, ALIGN_RING_MAX);
+    let r_rings = relevant_ring_cycles(r, ALIGN_RING_MAX);
+    if q_rings.is_empty() || r_rings.is_empty() {
+        return Vec::new();
+    }
+    let q_size_n = |sz: usize| q_rings.iter().filter(|ring| ring.len() == sz).count();
+    let r_size_n = |sz: usize| r_rings.iter().filter(|ring| ring.len() == sz).count();
+    let unique: HashSet<usize> = q_rings
+        .iter()
+        .map(|ring| ring.len())
+        .filter(|&sz| q_size_n(sz) == 1 && r_size_n(sz) == 1)
+        .collect();
+    let max_eq = q_rings
+        .iter()
+        .map(|ring| ring.len())
+        .filter(|&sz| r_size_n(sz) > 0)
+        .max();
+    let use_size = |sz: usize| {
+        if unique.is_empty() {
+            Some(sz) == max_eq
+        } else {
+            unique.contains(&sz)
+        }
+    };
+
+    let mut scored: Vec<(i64, Vec<(usize, usize)>)> = Vec::new();
+    let mut seen = HashSet::new();
+    for qr in &q_rings {
+        if !use_size(qr.len()) {
+            continue;
+        }
+        for rr in &r_rings {
+            if rr.len() != qr.len() {
+                continue;
+            }
+            for pairs in cyclic_ring_pairs(qr, rr) {
+                let Some(score) = ring_map_atom_score(&pairs, atom_gain, r.n) else {
+                    continue;
+                };
+                let mut key: Vec<(usize, usize)> = pairs.clone();
+                key.sort_unstable();
+                if !seen.insert(key) {
+                    continue;
+                }
+                scored.push((score, pairs));
+            }
+        }
+    }
+    scored.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| b.1.len().cmp(&a.1.len())));
+
+    let mut out = Vec::new();
+    let packed = pack_nonconflicting(&scored);
+    if packed.len() > scored.first().map(|c| c.1.len()).unwrap_or(0) {
+        out.push(packed);
+    }
+    for (_, pairs) in scored.into_iter().take(MAX_RING_SEEDS) {
+        out.push(pairs);
+        if out.len() >= MAX_RING_SEEDS {
+            break;
+        }
+    }
+    out
 }
 
 /// Exact, nonempty, connected map. Empty input graphs return None.
@@ -1004,8 +1210,21 @@ pub fn cost_mapping_with_generators_limited(
         q,
         r,
     };
+    let ring_seeds = ring_seed_partials(&s.q, &s.r, &s.atom_gain);
+    for pairs in &ring_seeds {
+        s.search_from_partial(pairs, &group);
+        if s.budget_exhausted() {
+            break;
+        }
+        if s.best_score == unmatched_baseline(query, reference) {
+            break;
+        }
+    }
     for (a, b) in seeds {
         if s.budget_exhausted() {
+            break;
+        }
+        if s.best_score == unmatched_baseline(query, reference) {
             break;
         }
         // Every connected map is considered under its lowest-ranked query atom.
@@ -1874,10 +2093,7 @@ mod exact_tests {
 
     #[test]
     fn greedy_only_maps_hexane_onto_cyclohexane() {
-        let hexane = MolGraph::new(
-            vec![atom(6); 6],
-            (0..5).map(|i| edge(i, i + 1)).collect(),
-        );
+        let hexane = MolGraph::new(vec![atom(6); 6], (0..5).map(|i| edge(i, i + 1)).collect());
         let mut bonds: Vec<_> = (0..5).map(|i| edge(i, i + 1)).collect();
         bonds.push(edge(0, 5));
         let cyclo = MolGraph::new(vec![atom(6); 6], bonds);
@@ -1891,6 +2107,75 @@ mod exact_tests {
         assert_eq!(res.map.len(), 6, "map={:?}", res.map);
         assert!(!stats.timed_out);
         assert_eq!(res.cost, mapping_cost(&cyclo, &hexane, &res.map));
+    }
+
+    fn oxolane() -> MolGraph {
+        MolGraph::new(
+            vec![atom(8), atom(6), atom(6), atom(6), atom(6)],
+            vec![edge(0, 1), edge(1, 2), edge(2, 3), edge(3, 4), edge(4, 0)],
+        )
+    }
+
+    fn indane() -> MolGraph {
+        // Benzene 0-5 fused to a 5-ring 0-5-6-7-8.
+        let mut bonds: Vec<_> = (0..5).map(|i| edge(i, i + 1)).collect();
+        bonds.push(edge(5, 0));
+        bonds.push(edge(5, 6));
+        bonds.push(edge(6, 7));
+        bonds.push(edge(7, 8));
+        bonds.push(edge(8, 0));
+        MolGraph::new(vec![atom(6); 9], bonds)
+    }
+
+    #[test]
+    fn ring_seed_maps_oxolane_oxygen_to_oxygen() {
+        let r = oxolane();
+        let q = oxolane();
+        let res = cost_mapping(&r, &q).expect("map");
+        assert_eq!(res.map.len(), 5, "map={:?}", res.map);
+        assert_eq!(
+            res.map.get(&0),
+            Some(&0),
+            "O should map to O: {:?}",
+            res.map
+        );
+        assert_eq!(res.cost, 0);
+    }
+
+    #[test]
+    fn house_timeout_locks_unique_five_ring_on_indane() {
+        let r = indane();
+        let mut q = indane();
+        let extra = q.n_atoms();
+        q.atoms.push(atom(6));
+        q.bonds.push(edge(6, extra));
+        let limits = SearchLimits::house();
+        let (res, _stats) = cost_mapping_with_generators_limited(&r, &q, &[], &limits).unwrap();
+        let res = res.expect("map");
+        let five_q: HashSet<u16> = [0u16, 5, 6, 7, 8].into_iter().collect();
+        let five_r: HashSet<u16> = [0u16, 5, 6, 7, 8].into_iter().collect();
+        let mapped_five: Vec<_> = res.map.iter().filter(|(a, _)| five_q.contains(a)).collect();
+        assert_eq!(mapped_five.len(), 5, "map={:?}", res.map);
+        assert!(
+            mapped_five.iter().all(|(_, b)| five_r.contains(b)),
+            "5-ring mapped off the 5-ring: {:?}",
+            res.map
+        );
+        assert!(!res.map.contains_key(&(extra as u16)));
+    }
+
+    #[test]
+    fn different_size_rings_still_map_as_path() {
+        let twelve = MolGraph::new(
+            vec![atom(6); 12],
+            (0..12).map(|i| edge(i, (i + 1) % 12)).collect(),
+        );
+        let fifteen = MolGraph::new(
+            vec![atom(6); 15],
+            (0..15).map(|i| edge(i, (i + 1) % 15)).collect(),
+        );
+        let res = cost_mapping(&twelve, &fifteen).expect("map");
+        assert_eq!(res.map.len(), 12, "map={:?}", res.map);
     }
 
     #[test]

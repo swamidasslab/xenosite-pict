@@ -107,8 +107,9 @@ pub use markup::parse_label_markup;
 pub use metrics::{BOND_PX, OFFSET_FRAC, OFFSET_PX, SCALE, SHADE_FRAC, STROKE_PX};
 pub use plotdot::{PlotDot, ShadeDisk};
 pub use rings::{
-    apply_ring_interiors, aromatic_ring_circles, bond_interior_normals, find_sssr,
-    kekule_paint_orders, Ring, AROMATIC_CIRCLE_FRAC,
+    apply_ring_interiors, aromatic_ring_circles, bond_interior_normals,
+    find_relevant_rings_from_adj, find_sssr, find_sssr_from_adj, kekule_paint_orders, Ring,
+    AROMATIC_CIRCLE_FRAC,
 };
 pub use scene::{
     AlignDebug, AlignDebugRole, AromaticStyle, Layer, LayerName, MoleculeIn, Primitive, Scene,
