@@ -774,6 +774,7 @@ mod tests {
             debug_box: false,
             debug_align: false,
             align_debug: None,
+            ..Default::default()
         }
     }
 
@@ -1004,9 +1005,7 @@ mod tests {
     #[test]
     fn name_placed_after_chrome_clears_region() {
         // Chrome first, then name — caption must not sit on the region hull.
-        use crate::doc::chrome::{
-            FillSpec, RegionField, RegionSpec, RegionStyle, StrokeSpec,
-        };
+        use crate::doc::chrome::{FillSpec, RegionField, RegionSpec, RegionStyle, StrokeSpec};
         use crate::doc::chrome_paint::apply_mol_chrome;
 
         let mol = ethanol();
@@ -1091,7 +1090,8 @@ mod tests {
             "name {caption:?} must clear region {region:?} by ≥{gap}"
         );
         assert!(
-            caption.y0 >= region.y1 - 1e-6 || caption.y1 <= region.y0 + 1e-6
+            caption.y0 >= region.y1 - 1e-6
+                || caption.y1 <= region.y0 + 1e-6
                 || caption.x0 >= region.x1 - 1e-6
                 || caption.x1 <= region.x0 + 1e-6,
             "name should sit outside the region box (pos=Below)"

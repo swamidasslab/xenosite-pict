@@ -133,6 +133,25 @@
         }
       }
     },
+    "Attach": {
+      "description": "How a ring-center stem attaches to its [`SpokeIn::endpts`].\n\nCXSMILES ``m:`` is variable attachment ([`Attach::Any`]). Haptic / ALL is reserved for a later ``C:`` / MOL ENDPTS path.",
+      "oneOf": [
+        {
+          "description": "One of the endpoints (Markush / variable attachment).",
+          "type": "string",
+          "enum": [
+            "any"
+          ]
+        },
+        {
+          "description": "All endpoints at once (haptic multicenter).",
+          "type": "string",
+          "enum": [
+            "all"
+          ]
+        }
+      ]
+    },
     "BondIn": {
       "description": "Bond input (indices into [`AtomIn::index`]).",
       "type": "object",
@@ -440,10 +459,51 @@
           ],
           "format": "double"
         },
+        "spokes": {
+          "description": "Ring-center stems (CX ``m:``). Empty when the mol has none.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/SpokeIn"
+          }
+        },
         "weight": {
           "description": "Ink weight for backbone stroke and label glyph thicken. ``1.0`` = house; may go down to ~``2/3`` (Regular stem); typical thicken up to ~2.",
           "type": "number",
           "format": "double"
+        }
+      }
+    },
+    "SpokeIn": {
+      "description": "Segment drawn from a ring centroid to a substituent (CX ``m:``).\n\nThe SMILES dummy ``*`` is **not** a neighbor in the spoke graph (it is a silent paint handle at the centroid). [`Self::atom`] is the first real atom of the substituent.",
+      "type": "object",
+      "required": [
+        "atom",
+        "endpts"
+      ],
+      "properties": {
+        "atom": {
+          "description": "First real atom of the substituent (stem end).",
+          "type": "integer",
+          "format": "int32"
+        },
+        "attach": {
+          "$ref": "#/definitions/Attach"
+        },
+        "dummy": {
+          "description": "Silent centroid atom (original CX dummy index), or omitted when dropped.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int32"
+        },
+        "endpts": {
+          "description": "Ring atoms the stem represents (CX ``m:dummy:a.b.c``).",
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "int32"
+          }
         }
       }
     }

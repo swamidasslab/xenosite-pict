@@ -78,6 +78,17 @@ class BondInDict(TypedDict, total=False):
     stereo: NotRequired[str]
 
 
+Attach = Literal['any', 'all']
+
+
+class SpokeInDict(TypedDict, total=False):
+    """Segment drawn from a ring centroid to a substituent (CX ``m:``)."""
+    atom: Required[int]
+    endpts: Required[list[int]]
+    attach: NotRequired[Attach]
+    dummy: NotRequired[int]
+
+
 class MoleculeInDict(TypedDict, total=False):
     """One molecule ready to paint (coords already in SVG / ``SCALE`` space)."""
     atoms: Required[list[AtomInDict]]
@@ -95,6 +106,7 @@ class MoleculeInDict(TypedDict, total=False):
     scale: NotRequired[float]
     shade_vmax: NotRequired[float]
     shade_vmin: NotRequired[float]
+    spokes: NotRequired[list[SpokeInDict]]
     weight: NotRequired[float]
 
 

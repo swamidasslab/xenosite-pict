@@ -2400,6 +2400,7 @@ mod tests {
             debug_box: false,
             debug_align: false,
             align_debug: None,
+            ..Default::default()
         }
     }
 
@@ -3393,6 +3394,7 @@ mod tests {
             debug_box: false,
             debug_align: false,
             align_debug: None,
+            ..Default::default()
         };
         let scene = crate::depict::depict_molecule(&mol);
         let node = MolNode {

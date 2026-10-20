@@ -12,3 +12,5 @@ export type { EdgeResult } from "./EdgeResult.js";
 export type { AtomIn } from "./AtomIn.js";
 export type { BondIn } from "./BondIn.js";
 export type { MoleculeIn } from "./MoleculeIn.js";
+export type { Attach } from "./Attach.js";
+export type { SpokeIn } from "./SpokeIn.js";

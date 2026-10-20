@@ -92,6 +92,17 @@ class BondIn(StrictModel):
     stereo: str | None = None
 
 
+Attach = Literal['any', 'all']
+
+
+class SpokeIn(StrictModel):
+    """Segment drawn from a ring centroid to a substituent (CX ``m:``)."""
+    atom: Annotated[int, Field(description='First real atom of the substituent (stem end).')]
+    endpts: Annotated[list[int], Field(description='Ring atoms the stem represents (CX ``m:dummy:a.b.c``).')]
+    attach: Attach | None = None
+    dummy: Annotated[int | None, Field(description='Silent centroid atom (original CX dummy index), or omitted when dropped.')] = None
+
+
 class MoleculeIn(StrictModel):
     """One molecule ready to paint (coords already in SVG / ``SCALE`` space)."""
     atoms: list[AtomIn]
@@ -109,6 +120,7 @@ class MoleculeIn(StrictModel):
     scale: Annotated[float | None, Field(description='Uniform diagram scale (font, stroke, pad, geometry). ``1.0`` = house size.')] = None
     shade_vmax: Annotated[float | None, Field(description='Shade colormap window high (default ``1``). Not inferred from data.')] = None
     shade_vmin: Annotated[float | None, Field(description='Shade colormap window low (default ``0``). Not inferred from data.')] = None
+    spokes: list[SpokeIn] = Field(default_factory=list, description='Ring-center stems (CX ``m:``). Empty when the mol has none.')
     weight: Annotated[float | None, Field(description='Ink weight for backbone stroke and label glyph thicken. ``1.0`` = house; may go down to ~``2/3`` (Regular stem); typical thicken up to ~2.')] = None
 
 

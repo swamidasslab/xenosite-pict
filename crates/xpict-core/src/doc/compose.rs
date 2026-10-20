@@ -850,6 +850,7 @@ mod tests {
                 debug_box: false,
                 debug_align: false,
                 align_debug: None,
+                ..Default::default()
             },
             scene: Scene {
                 width: w,

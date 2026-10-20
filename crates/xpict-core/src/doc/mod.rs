@@ -506,6 +506,7 @@ mod tests {
             debug_box: false,
             debug_align: false,
             align_debug: None,
+            ..Default::default()
         }
     }
 
@@ -716,6 +717,7 @@ mod tests {
             debug_box: false,
             debug_align: false,
             align_debug: None,
+            ..Default::default()
         };
         let edge = EdgeResult::new_v1(vec![EdgeTaskResult::CoordGen {
             ok: true,
@@ -943,6 +945,7 @@ mod tests {
             debug_box: false,
             debug_align: false,
             align_debug: None,
+            ..Default::default()
         };
         apply_star_labels(&mut mol, &[]);
         assert_eq!(mol.atoms[0].label.as_deref(), Some("*"));

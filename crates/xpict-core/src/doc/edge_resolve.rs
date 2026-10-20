@@ -8,8 +8,7 @@ use chematic::core::{implicit_hcount, AtomIdx, BondOrder, Molecule};
 use chematic::mol::{parse_mol, parse_mol_v3000};
 use chematic::smiles::{self, parse_cxsmiles};
 
-use crate::align_layout::layout_or_align;
-use crate::cxsmiles::smiles_base;
+use crate::cxsmiles::{cx_multicenters, smiles_base};
 use crate::edge::{
     AlignMode, AlignOpts, CoordGenMoleculeResult, CoordMethod, EdgePlan, EdgeResult, EdgeTask,
     EdgeTaskResult, MolTemplate, MIN_MCS_ATOMS,
@@ -17,8 +16,10 @@ use crate::edge::{
 use crate::elements::element_symbol;
 use crate::labels::atom_display_label;
 use crate::layout_coordgen::{LayoutMolecule, LayoutResult};
+use crate::layout_spoke::layout_or_align_with_spokes;
 use crate::metrics::SCALE;
-use crate::scene::{AtomIn, BondIn, MoleculeIn};
+use crate::scene::{AtomIn, Attach, BondIn, MoleculeIn, SpokeIn};
+use crate::spokes::detect_ring_spokes;
 
 #[derive(Clone)]
 struct Parsed {
@@ -156,7 +157,7 @@ fn scale_to_paint(coords: &LayoutResult, bonds: &[(i32, i32)]) -> (Vec<f64>, Vec
     (xs, ys)
 }
 
-fn to_molecule_in(id: &str, parsed: &Parsed, coords: &LayoutResult) -> MoleculeIn {
+fn to_molecule_in(id: &str, parsed: &Parsed, coords: &LayoutResult, source: &str) -> MoleculeIn {
     let bonds_idx: Vec<(i32, i32)> = parsed
         .layout
         .bond_from
@@ -186,11 +187,29 @@ fn to_molecule_in(id: &str, parsed: &Parsed, coords: &LayoutResult) -> MoleculeI
             }
         })
         .collect();
-    let bonds: Vec<BondIn> = (0..parsed.layout.n_bonds())
-        .map(|i| BondIn {
+    let groups = cx_multicenters(source);
+    let comps = detect_ring_spokes(parsed.layout.n_atoms(), &bonds_idx, &groups);
+    let dummy_of: HashMap<i32, &crate::spokes::SpokeComp> =
+        comps.iter().map(|c| (c.dummy, c)).collect();
+    let mut atoms = atoms;
+    for a in &mut atoms {
+        if dummy_of.contains_key(&a.index) {
+            a.label = Some(String::new());
+        }
+    }
+    let endpt_of_dummy =
+        |d: i32, other: i32| dummy_of.get(&d).is_some_and(|c| c.endpts.contains(&other));
+    let mut bonds: Vec<BondIn> = Vec::new();
+    for i in 0..parsed.layout.n_bonds() {
+        let begin = parsed.layout.bond_from[i];
+        let end = parsed.layout.bond_to[i];
+        if endpt_of_dummy(begin, end) || endpt_of_dummy(end, begin) {
+            continue;
+        }
+        bonds.push(BondIn {
             index: i as i32,
-            begin: parsed.layout.bond_from[i],
-            end: parsed.layout.bond_to[i],
+            begin,
+            end,
             order: parsed
                 .paint_orders
                 .get(i)
@@ -198,6 +217,15 @@ fn to_molecule_in(id: &str, parsed: &Parsed, coords: &LayoutResult) -> MoleculeI
                 .unwrap_or(parsed.layout.bond_orders[i] as f64),
             stereo: None,
             interior: None,
+        });
+    }
+    let spokes: Vec<SpokeIn> = comps
+        .iter()
+        .map(|c| SpokeIn {
+            dummy: Some(c.dummy),
+            atom: c.atom,
+            endpts: c.endpts.clone(),
+            attach: Attach::Any,
         })
         .collect();
     MoleculeIn {
@@ -217,6 +245,7 @@ fn to_molecule_in(id: &str, parsed: &Parsed, coords: &LayoutResult) -> MoleculeI
         debug_box: false,
         debug_align: false,
         align_debug: None,
+        spokes,
     }
 }
 
@@ -264,9 +293,10 @@ struct Pose {
 
 fn free_layout(source: &str, id: &str) -> Result<Pose, String> {
     let parsed = parse_source(source)?;
-    let (coords, _) = layout_or_align(
+    let (coords, _) = layout_or_align_with_spokes(
         &parsed.layout,
         &parsed.atom_indices,
+        source,
         None,
         None,
         None,
@@ -274,7 +304,7 @@ fn free_layout(source: &str, id: &str) -> Result<Pose, String> {
         None,
     )
     .map_err(|e| e.to_string())?;
-    let molecule = to_molecule_in(id, &parsed, &coords);
+    let molecule = to_molecule_in(id, &parsed, &coords, source);
     let frame = frame_json(&parsed, &coords);
     let layout_ref = with_coords(parsed.layout.clone(), &coords);
     Ok(Pose {
@@ -296,9 +326,10 @@ fn align_layout(
     let parsed = parse_source(source)?;
     let dense: Option<Vec<(i32, i32)>> =
         atom_map.map(|pairs| pairs.iter().map(|&(q, r)| (q as i32, r as i32)).collect());
-    let (coords, dbg) = layout_or_align(
+    let (coords, dbg) = layout_or_align_with_spokes(
         &parsed.layout,
         &parsed.atom_indices,
+        source,
         Some(&parent.layout_ref),
         Some(&parent.parsed.atom_indices),
         dense.as_deref(),
@@ -306,7 +337,7 @@ fn align_layout(
         align,
     )
     .map_err(|e| e.to_string())?;
-    let mut molecule = to_molecule_in(id, &parsed, &coords);
+    let mut molecule = to_molecule_in(id, &parsed, &coords, source);
     molecule.align_debug = dbg;
     let method = if atom_map.is_some() {
         CoordMethod::AtomMap
@@ -797,5 +828,83 @@ mod tests {
         let EdgeTaskResult::CoordGen { molecules, ok } = &edge.results[0];
         assert!(ok);
         assert_eq!(molecules[1].method, CoordMethod::AtomMap);
+    }
+
+    fn xy(mol: &MoleculeIn, i: i32) -> (f64, f64) {
+        let a = mol.atom(i).expect("atom");
+        (a.x, a.y)
+    }
+
+    #[test]
+    fn cc_star_on_benzene_is_collinear_no_extra_kink() {
+        let mol = free_layout("CC*.c1ccccc1 |m:2:3.4.5.6.7.8|", "s")
+            .unwrap()
+            .molecule;
+        assert_eq!(mol.spokes.len(), 1, "expected one ring-center spoke");
+        let sp = &mol.spokes[0];
+        assert_eq!(sp.atom, 1);
+        let c = mol.centroid_of(&sp.endpts).expect("centroid");
+        let attach = xy(&mol, sp.atom);
+        let methyl = xy(&mol, 0);
+        let turn = crate::spokes::kink_turn(c, attach, methyl);
+        assert!(
+            turn < 0.15,
+            "CC* must be collinear after dropping *; turn={turn:.3} rad"
+        );
+        let dummy = mol.atom(sp.dummy.expect("dummy")).unwrap();
+        assert_eq!(dummy.label.as_deref(), Some(""));
+        let disk = 0.25 * crate::metrics::BOND_PX;
+        for &e in &sp.endpts {
+            let (x, y) = xy(&mol, e);
+            let d = crate::spokes::point_segment_dist(x, y, c.0, c.1, attach.0, attach.1);
+            assert!(
+                d + 1e-6 >= disk,
+                "stem crosses ring atom {e}: d={d:.2} disk={disk:.2}"
+            );
+        }
+        let ring: Vec<(i32, f64, f64)> = sp
+            .endpts
+            .iter()
+            .map(|&i| {
+                let (x, y) = xy(&mol, i);
+                (i, x, y)
+            })
+            .collect();
+        let bonds: Vec<(i32, i32)> = mol.bonds.iter().map(|b| (b.begin, b.end)).collect();
+        let bis = crate::spokes::bisector_angles(c, &ring, &bonds);
+        let stem_ang = (attach.1 - c.1).atan2(attach.0 - c.0);
+        let best = bis
+            .iter()
+            .map(|&b| crate::spokes::ang_diff(stem_ang, b))
+            .fold(f64::INFINITY, f64::min);
+        assert!(
+            best < 0.4,
+            "stem should follow a ring-bond bisector, min Δθ={best:.3}"
+        );
+    }
+
+    #[test]
+    fn two_cc_star_spokes_take_different_slots() {
+        let mol = free_layout("CC*.CC*.c1ccccc1 |m:2:6.7.8.9.10.11,5:6.7.8.9.10.11|", "s")
+            .unwrap()
+            .molecule;
+        assert_eq!(mol.spokes.len(), 2);
+        let c = mol.centroid_of(&mol.spokes[0].endpts).unwrap();
+        let a0 = xy(&mol, mol.spokes[0].atom);
+        let a1 = xy(&mol, mol.spokes[1].atom);
+        let t0 = (a0.1 - c.1).atan2(a0.0 - c.0);
+        let t1 = (a1.1 - c.1).atan2(a1.0 - c.0);
+        assert!(
+            crate::spokes::ang_diff(t0, t1) > 0.8,
+            "two spokes must not share a slot: Δθ={:.3}",
+            crate::spokes::ang_diff(t0, t1)
+        );
+        for sp in &mol.spokes {
+            let attach = xy(&mol, sp.atom);
+            let methyl_idx = if sp.atom == 1 { 0 } else { 3 };
+            let methyl = xy(&mol, methyl_idx);
+            let turn = crate::spokes::kink_turn(c, attach, methyl);
+            assert!(turn < 0.15, "spoke {} extra kink {turn:.3}", sp.atom);
+        }
     }
 }

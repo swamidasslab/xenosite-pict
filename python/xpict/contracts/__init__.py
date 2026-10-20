@@ -28,6 +28,7 @@ from xpict.contracts.edge import (
     AlignMode,
     AlignOpts,
     AtomIn,
+    Attach,
     BondIn,
     CoordGenMoleculeResult,
     CoordGenTask,
@@ -37,6 +38,7 @@ from xpict.contracts.edge import (
     EdgeResult,
     MoleculeIn,
     MolTemplate,
+    SpokeIn,
 )
 from xpict.contracts.edge_dict import EdgePlanDict, EdgeResultDict
 from xpict.contracts.rendered_dict import DocPaintDict, RenderedDict
@@ -60,6 +62,7 @@ __all__ = [
     "AlignOpts",
     "AlignToSpec",
     "AtomIn",
+    "Attach",
     "BondIn",
     "CirclePrim",
     "CoordGenMoleculeResult",
@@ -96,6 +99,7 @@ __all__ = [
     "RenderedDict",
     "Scene",
     "SceneDict",
+    "SpokeIn",
     "TextNode",
     "TextPrim",
     "Viewport",

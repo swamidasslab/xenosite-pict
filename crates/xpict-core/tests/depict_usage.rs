@@ -109,6 +109,7 @@ fn ethanol_oh_and_single_bonds() {
         debug_box: false,
         debug_align: false,
         align_debug: None,
+        ..Default::default()
     };
     let scene = depict_molecule(&mol);
     assert!(scene.width > 0.0 && scene.height > 0.0);
@@ -143,6 +144,7 @@ fn braced_rgroup_markup_subscripts_on_star() {
         debug_box: false,
         debug_align: false,
         align_debug: None,
+        ..Default::default()
     };
     let texts = label_texts(&depict_molecule(&mol));
     assert!(
@@ -173,6 +175,7 @@ fn amine_nh2_subscript_in_scene() {
         debug_box: false,
         debug_align: false,
         align_debug: None,
+        ..Default::default()
     };
     let texts = label_texts(&depict_molecule(&mol));
     assert!(
@@ -203,6 +206,7 @@ fn ammonium_charge_superscript() {
         debug_box: false,
         debug_align: false,
         align_debug: None,
+        ..Default::default()
     };
     let texts = label_texts(&depict_molecule(&mol));
     assert!(
@@ -243,6 +247,7 @@ fn markush_and_star_markup_labels() {
         debug_box: false,
         debug_align: false,
         align_debug: None,
+        ..Default::default()
     };
     let texts = label_texts(&depict_molecule(&mol));
     let joined = texts.join("|");
@@ -283,6 +288,7 @@ fn bare_underscore_alias_not_subscripted() {
         debug_box: false,
         debug_align: false,
         align_debug: None,
+        ..Default::default()
     };
     let texts = label_texts(&depict_molecule(&mol));
     assert!(
@@ -315,6 +321,7 @@ fn acetone_double_bond_and_carbonyl_label() {
         debug_box: false,
         debug_align: false,
         align_debug: None,
+        ..Default::default()
     };
     let scene = depict_molecule(&mol);
     // Double bond → more than one stroke path (centered pair).
@@ -353,6 +360,7 @@ fn json_abi_roundtrip_then_depict() {
         debug_box: false,
         debug_align: false,
         align_debug: None,
+        ..Default::default()
     };
     let json = serde_json::to_string(&mol).expect("serialize");
     let back: MoleculeIn = serde_json::from_str(&json).expect("deserialize");
@@ -391,6 +399,7 @@ fn empty_molecule_does_not_panic() {
         debug_box: false,
         debug_align: false,
         align_debug: None,
+        ..Default::default()
     };
     let scene = depict_molecule(&mol);
     assert_eq!(scene.viewports.len(), 1);
@@ -429,6 +438,7 @@ fn west_oh_flips_to_ho_in_scene() {
         debug_box: false,
         debug_align: false,
         align_debug: None,
+        ..Default::default()
     };
     let texts = label_texts(&depict_molecule(&mol));
     assert!(
@@ -459,6 +469,7 @@ fn mol_weight_changes_oh_path_ink() {
         debug_box: false,
         debug_align: false,
         align_debug: None,
+        ..Default::default()
     };
     let thin = depict_molecule(&mol);
     mol.weight = 2.0;
@@ -495,6 +506,7 @@ fn formal_charge_on_nh2_and_silent_carbon() {
         debug_box: false,
         debug_align: false,
         align_debug: None,
+        ..Default::default()
     };
     let texts = label_texts(&depict_molecule(&mol));
     assert!(

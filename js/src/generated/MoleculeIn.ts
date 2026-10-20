@@ -3,6 +3,7 @@ import type { AlignDebug } from "./AlignDebug";
 import type { AromaticStyle } from "./AromaticStyle";
 import type { AtomIn } from "./AtomIn";
 import type { BondIn } from "./BondIn";
+import type { SpokeIn } from "./SpokeIn";
 
 /**
  * One molecule ready to paint (coords already in SVG / ``SCALE`` space).
@@ -62,4 +63,8 @@ debug_align: boolean,
 /**
  * Stamped match tags from the host/core align step (not cascading).
  */
-align_debug?: AlignDebug, };
+align_debug?: AlignDebug, 
+/**
+ * Ring-center stems (CX ``m:``). Empty when the mol has none.
+ */
+spokes: Array<SpokeIn>, };

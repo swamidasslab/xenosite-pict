@@ -34,7 +34,7 @@ if [[ -d "$BINDINGS" ]]; then
   write_barrel "$OUT_TS/edge.ts" \
     AlignMode AlignOpts MolTemplate EdgeTask EdgePlan CoordMethod \
     CoordGenMoleculeResult EdgeTaskResult EdgeResult \
-    AtomIn BondIn MoleculeIn
+    AtomIn BondIn MoleculeIn Attach SpokeIn
 
   # Barrel must not be scene.ts — collides with generated Scene.ts on case-folding FS / tsc.
   write_barrel "$OUT_TS/scene-abi.ts" \

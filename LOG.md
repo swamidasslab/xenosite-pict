@@ -2,6 +2,10 @@
 
 ## 2026-10-20
 
+- Ring-center spokes from CXSMILES `m:` in `xpict-core`. Dummy `*` and the `*`-bond are dropped from the **spoke graph** before CoordGen, so `CC*` is a straight stem (centroid → CH2 → CH3 collinear) instead of an extra kink at the dummy. Rest and spoke layout separately; greedy stem along a ring-bond perp bisector; 1-D refine so the stem misses ring atoms. Fusion/bridgehead endpoints are allowed (not a 2-regular induced cycle). Molfiles / haptic `C:` still later.
+
+## 2026-10-20
+
 - House `strict_atoms` left aza-18-crown NH unmatched (N→O gain −1) and kinked the ring; 18-crown vs aza used to lock 18/18. N/O/S in a *shared* Relevant-Ring size now costs `COST_HETERO` (2), so NH sits on an ether O. O→C (testosterone 17-OH onto cholesterol carbon) stays refused.
 
 ## 2026-10-20

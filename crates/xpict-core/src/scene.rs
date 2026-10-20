@@ -232,6 +232,47 @@ impl AtomIn {
     }
 }
 
+/// How a ring-center stem attaches to its [`SpokeIn::endpts`].
+///
+/// CXSMILES ``m:`` is variable attachment ([`Attach::Any`]). Haptic / ALL is
+/// reserved for a later ``C:`` / MOL ENDPTS path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
+pub enum Attach {
+    /// One of the endpoints (Markush / variable attachment).
+    #[default]
+    Any,
+    /// All endpoints at once (haptic multicenter).
+    All,
+}
+
+fn is_attach_any(a: &Attach) -> bool {
+    *a == Attach::Any
+}
+
+/// Segment drawn from a ring centroid to a substituent (CX ``m:``).
+///
+/// The SMILES dummy ``*`` is **not** a neighbor in the spoke graph (it is a
+/// silent paint handle at the centroid). [`Self::atom`] is the first real atom
+/// of the substituent.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
+pub struct SpokeIn {
+    /// Silent centroid atom (original CX dummy index), or omitted when dropped.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub dummy: Option<i32>,
+    /// First real atom of the substituent (stem end).
+    pub atom: i32,
+    /// Ring atoms the stem represents (CX ``m:dummy:a.b.c``).
+    pub endpts: Vec<i32>,
+    #[serde(default, skip_serializing_if = "is_attach_any")]
+    pub attach: Attach,
+}
+
 /// Bond input (indices into [`AtomIn::index`]).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
@@ -314,6 +355,9 @@ pub struct MoleculeIn {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub align_debug: Option<AlignDebug>,
+    /// Ring-center stems (CX ``m:``). Empty when the mol has none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub spokes: Vec<SpokeIn>,
 }
 
 /// Role of a molecule in an alignment debug overlay.
@@ -361,6 +405,30 @@ fn is_default_aromatic(s: &AromaticStyle) -> bool {
     *s == AromaticStyle::Circle
 }
 
+impl Default for MoleculeIn {
+    fn default() -> Self {
+        Self {
+            id: None,
+            atoms: Vec::new(),
+            bonds: Vec::new(),
+            color: None,
+            atom_shade: None,
+            bond_shade: None,
+            shade_vmin: None,
+            shade_vmax: None,
+            mark_atoms: Vec::new(),
+            mark_bonds: Vec::new(),
+            scale: 1.0,
+            weight: 1.0,
+            aromatic: AromaticStyle::default(),
+            debug_box: false,
+            debug_align: false,
+            align_debug: None,
+            spokes: Vec::new(),
+        }
+    }
+}
+
 impl MoleculeIn {
     /// Effective diagram scale; non-positive values fall back to ``1.0``.
     pub fn diagram_scale(&self) -> f64 {
@@ -377,6 +445,33 @@ impl MoleculeIn {
     /// Panics if [`Self::weight`] is invalid (see [`crate::metrics::diagram_weight`]).
     pub fn diagram_weight(&self) -> f64 {
         crate::metrics::diagram_weight(self.weight)
+    }
+
+    /// Atom with [`AtomIn::index`] ``idx``.
+    pub fn atom(&self, idx: i32) -> Option<&AtomIn> {
+        self.atoms
+            .iter()
+            .find(|a| a.index == idx)
+            .or_else(|| self.atoms.get(idx as usize))
+    }
+
+    /// Mean of ``endpts`` coordinates (ring-center for a spoke).
+    pub fn centroid_of(&self, endpts: &[i32]) -> Option<(f64, f64)> {
+        if endpts.is_empty() {
+            return None;
+        }
+        let mut sx = 0.0;
+        let mut sy = 0.0;
+        let mut n = 0usize;
+        for &i in endpts {
+            let Some(a) = self.atom(i) else {
+                continue;
+            };
+            sx += a.x;
+            sy += a.y;
+            n += 1;
+        }
+        (n > 0).then_some((sx / n as f64, sy / n as f64))
     }
 }
 

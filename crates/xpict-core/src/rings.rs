@@ -559,6 +559,7 @@ mod tests {
             debug_box: false,
             debug_align: false,
             align_debug: None,
+            ..Default::default()
         }
     }
 
@@ -668,6 +669,7 @@ mod tests {
             debug_box: false,
             debug_align: false,
             align_debug: None,
+            ..Default::default()
         }
     }
 
@@ -695,6 +697,7 @@ mod tests {
             debug_box: false,
             debug_align: false,
             align_debug: None,
+            ..Default::default()
         };
         assert!(find_sssr(&empty, 8).is_empty());
     }
@@ -777,6 +780,7 @@ mod tests {
             debug_box: false,
             debug_align: false,
             align_debug: None,
+            ..Default::default()
         };
         let rings = find_sssr(&mol, 8);
         assert_eq!(rings.len(), 2, "expected two hexagons, got {:?}", rings);

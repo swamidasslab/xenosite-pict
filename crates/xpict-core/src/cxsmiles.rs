@@ -1,8 +1,114 @@
-//! ChemAxon CXSMILES atom-label helpers.
+//! ChemAxon CXSMILES atom-label and multicenter (`m:`) helpers.
 //!
 //! Shared by paint chrome ([`crate::doc`]) and language edges. No RDKit.
+//! Chematic's CX reader ignores ``m:``; we keep it here.
 
-use crate::scene::MoleculeIn;
+use crate::scene::{Attach, MoleculeIn, SpokeIn};
+
+/// One CX ``m:dummy:a.b.c`` multicenter S-group.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Multicenter {
+    /// Dummy / attachment-point atom index.
+    pub dummy: i32,
+    /// Atoms the dummy represents (ring atoms for a ring-center stem).
+    pub endpts: Vec<i32>,
+}
+
+/// Parse CXSMILES ``m:dummy:a.b.c`` groups (comma-separated).
+///
+/// Unknown CX fields are ignored. Continuations after a split comma
+/// (``m:1:2.3,4:5.6`` → ``["m:1:2.3", "4:5.6"]``) are accepted.
+pub fn cx_multicenters(smiles_or_cx: &str) -> Vec<Multicenter> {
+    let Some(block) = cx_block(smiles_or_cx) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    let mut in_m = false;
+    for field in split_cx_fields(block) {
+        if let Some(rest) = field.strip_prefix("m:") {
+            in_m = true;
+            if let Some(g) = parse_m_group(rest) {
+                out.push(g);
+            }
+        } else if in_m {
+            if let Some(g) = parse_m_group(&field) {
+                out.push(g);
+            } else {
+                in_m = false;
+            }
+        }
+    }
+    out
+}
+
+fn cx_block(smiles_or_cx: &str) -> Option<&str> {
+    let trimmed = smiles_or_cx.trim();
+    let start = trimmed.find('|')?;
+    let rest = &trimmed[start + 1..];
+    let end = rest.find('|')?;
+    Some(&rest[..end])
+}
+
+fn split_cx_fields(cx: &str) -> Vec<String> {
+    let mut fields = Vec::new();
+    let mut current = String::new();
+    let mut in_labels = false;
+    let mut escaped = false;
+    for ch in cx.chars() {
+        if escaped {
+            current.push(ch);
+            escaped = false;
+            continue;
+        }
+        match ch {
+            '\\' => {
+                escaped = true;
+                current.push(ch);
+            }
+            '$' => {
+                in_labels = !in_labels;
+                current.push(ch);
+            }
+            ',' if !in_labels => {
+                if !current.is_empty() {
+                    fields.push(current.trim().to_string());
+                    current.clear();
+                }
+            }
+            _ => current.push(ch),
+        }
+    }
+    if !current.is_empty() {
+        fields.push(current.trim().to_string());
+    }
+    fields
+}
+
+fn parse_m_group(rest: &str) -> Option<Multicenter> {
+    let (dummy_raw, atoms_raw) = rest.split_once(':')?;
+    let dummy: i32 = dummy_raw.trim().parse().ok()?;
+    if dummy < 0 {
+        return None;
+    }
+    let mut endpts = Vec::new();
+    for part in atoms_raw.split('.') {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+        let idx: i32 = part.parse().ok()?;
+        if idx < 0 {
+            return None;
+        }
+        if !endpts.contains(&idx) {
+            endpts.push(idx);
+        }
+    }
+    if endpts.is_empty() {
+        return None;
+    }
+    Some(Multicenter { dummy, endpts })
+}
 
 /// Parse CXSMILES ``|$a;b;c;$|`` aliases into a per-atom label list.
 ///
@@ -59,21 +165,52 @@ pub fn smiles_base(smiles_or_cx: &str) -> String {
 }
 
 /// Apply CX aliases onto atoms by index. Only non-empty slots change labels.
+///
+/// Spoke dummies (CX ``m:``) stay unlabeled — they are paint handles at a
+/// ring centroid, not ``*`` glyphs.
 pub fn apply_cx_by_index(mut molecule: MoleculeIn, source: &str) -> MoleculeIn {
     let aliases = cx_atom_labels(source);
-    if aliases.is_empty() {
-        return molecule;
-    }
-    for a in &mut molecule.atoms {
-        let idx = a.index as usize;
-        if let Some(Some(label)) = aliases.get(idx) {
-            let label = label.trim();
-            if !label.is_empty() {
-                a.label = Some(label.to_string());
+    let dummies: Vec<i32> = cx_multicenters(source)
+        .into_iter()
+        .map(|g| g.dummy)
+        .collect();
+    if !aliases.is_empty() {
+        for a in &mut molecule.atoms {
+            if dummies.contains(&a.index) {
+                a.label = Some(String::new());
+                continue;
+            }
+            let idx = a.index as usize;
+            if let Some(Some(label)) = aliases.get(idx) {
+                let label = label.trim();
+                if !label.is_empty() {
+                    a.label = Some(label.to_string());
+                }
+            }
+        }
+    } else {
+        for a in &mut molecule.atoms {
+            if dummies.contains(&a.index) {
+                a.label = Some(String::new());
             }
         }
     }
+    if molecule.spokes.is_empty() {
+        molecule.spokes = spoke_ins_from_source(source);
+    }
     molecule
+}
+
+fn spoke_ins_from_source(source: &str) -> Vec<SpokeIn> {
+    cx_multicenters(source)
+        .into_iter()
+        .map(|g| SpokeIn {
+            dummy: Some(g.dummy),
+            atom: g.dummy,
+            endpts: g.endpts,
+            attach: Attach::Any,
+        })
+        .collect()
 }
 
 /// CX source string for a mol node (prefer ``cxsmiles``, else ``smiles``).
@@ -172,11 +309,26 @@ mod tests {
             debug_box: false,
             debug_align: false,
             align_debug: None,
+            ..Default::default()
         };
         let out = apply_cx_by_index(mol, "*C* |$;;R2;$|");
         assert_eq!(out.atoms[0].label.as_deref(), Some("*"));
         assert!(out.atoms[1].label.is_none());
         assert_eq!(out.atoms[2].label.as_deref(), Some("R2"));
+    }
+
+    #[test]
+    fn parses_cx_multicenter_groups() {
+        let g = cx_multicenters("CC*.c1ccccc1 |m:2:3.4.5.6.7.8|");
+        assert_eq!(g.len(), 1);
+        assert_eq!(g[0].dummy, 2);
+        assert_eq!(g[0].endpts, vec![3, 4, 5, 6, 7, 8]);
+        let two = cx_multicenters("CC*.CC*.c1ccccc1 |m:2:6.7.8.9.10.11,5:6.7.8.9.10.11|");
+        assert_eq!(two.len(), 2);
+        assert_eq!(two[0].dummy, 2);
+        assert_eq!(two[1].dummy, 5);
+        assert!(cx_multicenters("CCO").is_empty());
+        assert!(cx_multicenters("CC*.c1ccccc1 |$R$|").is_empty());
     }
 
     #[test]

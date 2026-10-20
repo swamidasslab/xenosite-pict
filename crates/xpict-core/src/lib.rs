@@ -30,11 +30,14 @@ pub mod metrics;
 pub mod plotdot;
 pub mod rings;
 pub mod scene;
+pub mod spokes;
 
 #[cfg(feature = "coordgen")]
 pub mod align_layout;
 #[cfg(feature = "coordgen")]
 pub mod layout_coordgen;
+#[cfg(feature = "coordgen")]
+pub mod layout_spoke;
 
 pub use align_cost::{
     cost_mapping, cost_mapping_with_generators_limited, mapping_cost, signed_side,
@@ -57,7 +60,9 @@ pub use bonds::{
     StrokePath,
 };
 pub use colormap::{colormap_rgb, sample_colormap, XENOSITE};
-pub use cxsmiles::{apply_cx_by_index, cx_atom_labels, cx_source, smiles_base};
+pub use cxsmiles::{
+    apply_cx_by_index, cx_atom_labels, cx_multicenters, cx_source, smiles_base, Multicenter,
+};
 pub use debug_align::{
     align_debug_query, align_debug_template, paint_align_debug, DEBUG_ALIGN_BADGE,
     DEBUG_ALIGN_OPACITY, DEBUG_ALIGN_PALETTE, DEBUG_ALIGN_UNMATCHED,
@@ -112,8 +117,8 @@ pub use rings::{
     AROMATIC_CIRCLE_FRAC,
 };
 pub use scene::{
-    AlignDebug, AlignDebugRole, AromaticStyle, Layer, LayerName, MoleculeIn, Primitive, Scene,
-    TextAnchor, Viewport,
+    AlignDebug, AlignDebugRole, AromaticStyle, Attach, Layer, LayerName, MoleculeIn, Primitive,
+    Scene, SpokeIn, TextAnchor, Viewport,
 };
 // MoleculeIn atoms/bonds are scene::AtomIn / scene::BondIn (JSON ABI).
 // labels::AtomIn / BondIn remain the place_backbone wire types.

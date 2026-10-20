@@ -784,6 +784,7 @@ mod tests {
             debug_box: false,
             debug_align: false,
             align_debug: None,
+            ..Default::default()
         }
     }
 
@@ -835,6 +836,7 @@ mod tests {
             debug_box: false,
             debug_align: false,
             align_debug: None,
+            ..Default::default()
         }
     }
 
@@ -885,6 +887,7 @@ mod tests {
             debug_box: false,
             debug_align: false,
             align_debug: None,
+            ..Default::default()
         };
         assert_eq!(mol.atoms[0].symbol(), "C");
         assert_eq!(mol.atoms[1].symbol(), "O");
@@ -1103,6 +1106,7 @@ mod tests {
             debug_box: false,
             debug_align: false,
             align_debug: None,
+            ..Default::default()
         };
         let scene = depict_molecule(&mol);
         let layer = scene.viewports[0]
@@ -1165,6 +1169,7 @@ mod tests {
             debug_box: false,
             debug_align: false,
             align_debug: None,
+            ..Default::default()
         }
     }
 
@@ -1665,6 +1670,7 @@ mod tests {
             debug_box: false,
             debug_align: false,
             align_debug: None,
+            ..Default::default()
         };
         let scene = depict_molecule(&mol);
         let names: std::collections::HashSet<_> =
@@ -1752,6 +1758,7 @@ mod tests {
             debug_box: false,
             debug_align: false,
             align_debug: None,
+            ..Default::default()
         };
         let scene = depict_molecule(&empty);
         assert_eq!(scene.viewports[0].id.as_deref(), Some("empty"));
@@ -1782,6 +1789,7 @@ mod tests {
             debug_box: false,
             debug_align: false,
             align_debug: None,
+            ..Default::default()
         };
         let scene = depict_molecule(&mol);
         let labels = scene.viewports[0]
@@ -1847,6 +1855,7 @@ mod tests {
             debug_box: false,
             debug_align: false,
             align_debug: None,
+            ..Default::default()
         };
         let scene = depict_molecule(&mol);
         let labels = scene.viewports[0]
@@ -1911,6 +1920,7 @@ mod tests {
             debug_box: false,
             debug_align: false,
             align_debug: None,
+            ..Default::default()
         };
         let scene = depict_molecule(&mol);
         assert!(scene.height > PAD_PX * 2.0);
@@ -2088,6 +2098,7 @@ mod tests {
             debug_box: false,
             debug_align: false,
             align_debug: None,
+            ..Default::default()
         };
         let scene = depict_molecule(&mol);
         assert!(!scene.halo.is_empty());
