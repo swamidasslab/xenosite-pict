@@ -467,11 +467,16 @@ pub enum HardConstraint {
 /// How hard the placement well pulls, relative to clash hinges (strength ~3–8).
 const POSE_STRENGTH: f64 = 0.35;
 
-/// Hard max edge gap from an atom label/number to its atom disk (~0.3 CC-bond).
+/// Hard MaxDist ceiling for **index / mapno** numbers (~0.3 CC-bond).
 ///
-/// Closest-point only: at least part of the label must reach within this gap;
-/// the whole AABB need not fit inside the disk.
-pub const ATOM_LABEL_TETHER_PX: f64 = 0.3 * BOND_PX;
+/// Closest-point: some part of the glyph must reach within this gap of home.
+pub const ATOM_NUMBER_TETHER_PX: f64 = 0.3 * BOND_PX;
+
+/// Hard MaxDist ceiling for custom **atom_label** text (~0.5 CC-bond).
+///
+/// Longer than [`ATOM_NUMBER_TETHER_PX`] so words like “ortho” can clear ink
+/// while still staying associated with the atom.
+pub const ATOM_TEXT_TETHER_PX: f64 = 0.5 * BOND_PX;
 
 fn shape_anchor(shape: &Shape) -> (f64, f64) {
     match shape {
@@ -1702,7 +1707,8 @@ pub fn callout_kit(
 ///   repulsion in addition to hard rows).
 ///
 /// Hard / AL (feasibility only, not placement preference):
-/// - [`HardConstraint::MaxDist`] (~0.3 bond) ceiling;
+/// - [`HardConstraint::MaxDist`] ceiling (`tether_px`: ~0.3 bond for numbers,
+///   ~0.5 for custom text);
 /// - hard Outside vs bonds and vs chem atom text.
 ///
 /// No PreferPose — a greedy seed is only the NM start; pinning it made numbers
@@ -1717,6 +1723,7 @@ pub fn atom_number_kit(
     atom_idx: usize,
     ink: Aabb,
     clash_dist: f64,
+    tether_px: f64,
     _halo_pad: Option<f64>,
     _avoid_shade: bool,
 ) -> NodeId {
@@ -1776,7 +1783,7 @@ pub fn atom_number_kit(
         hard.push(HardConstraint::MaxDist {
             a: id.clone(),
             b: anchor,
-            dist: ATOM_LABEL_TETHER_PX,
+            dist: tether_px,
         });
     }
     // Hard feasibility + mild soft repulsion vs every bond.
@@ -2242,6 +2249,7 @@ pub fn refine_atom_number(
     atom_idx: usize,
     rest: Aabb,
     clash_dist: f64,
+    tether_px: f64,
     halo_pad: Option<f64>,
     avoid_shade: bool,
 ) -> (f64, f64) {
@@ -2256,6 +2264,7 @@ pub fn refine_atom_number(
         atom_idx,
         rest,
         clash_dist,
+        tether_px,
         halo_pad,
         avoid_shade,
     );
@@ -2510,7 +2519,7 @@ mod tests {
         let mut cs = Vec::new();
         let mut hard = Vec::new();
         let ink = Aabb::new(-2.0, -2.0, 2.0, 2.0);
-        let id = atom_number_kit(&mut w, &mut cs, &mut hard, 0, ink, 4.0, Some(2.0), true);
+        let id = atom_number_kit(&mut w, &mut cs, &mut hard, 0, ink, 4.0, ATOM_NUMBER_TETHER_PX, Some(2.0), true);
         let e = energy(&w, &cs, &[], 0.0);
         assert!(e.is_finite());
         assert!(w.get(&id).is_some());
@@ -2541,7 +2550,7 @@ mod tests {
         let mut cs = Vec::new();
         let mut hard = Vec::new();
         let ink = Aabb::new(10.0, -2.0, 14.0, 2.0); // sits on the bond
-        let _ = atom_number_kit(&mut w, &mut cs, &mut hard, 0, ink, 3.0, None, false);
+        let _ = atom_number_kit(&mut w, &mut cs, &mut hard, 0, ink, 3.0, ATOM_NUMBER_TETHER_PX, None, false);
         let bond_h: Vec<_> = hard
             .iter()
             .filter_map(|h| match h {
@@ -2586,13 +2595,31 @@ mod tests {
     }
 
     #[test]
+    fn atom_text_tether_longer_than_number() {
+        assert!(
+            ATOM_TEXT_TETHER_PX > ATOM_NUMBER_TETHER_PX,
+            "custom atom text should allow a longer MaxDist than index/mapno"
+        );
+    }
+
+    #[test]
     fn atom_number_kit_tethers_to_atom() {
         let mut w = LayoutWorld::new("mol");
         install_chem(&mut w, &[], &[(0, 0.0, 0.0)], &[]);
         let mut cs = Vec::new();
         let mut hard = Vec::new();
         let ink = Aabb::new(-2.0, -2.0, 2.0, 2.0);
-        let _ = atom_number_kit(&mut w, &mut cs, &mut hard, 0, ink, 3.0, None, false);
+        let _ = atom_number_kit(
+            &mut w,
+            &mut cs,
+            &mut hard,
+            0,
+            ink,
+            3.0,
+            ATOM_NUMBER_TETHER_PX,
+            None,
+            false,
+        );
         let tether: Vec<_> = hard
             .iter()
             .filter_map(|h| match h {
@@ -2607,9 +2634,38 @@ mod tests {
             tether[0].0
         );
         assert!(
-            (tether[0].1 - ATOM_LABEL_TETHER_PX).abs() < 1e-9,
-            "tether dist must be ATOM_LABEL_TETHER_PX; got {}",
+            (tether[0].1 - ATOM_NUMBER_TETHER_PX).abs() < 1e-9,
+            "tether dist must be ATOM_NUMBER_TETHER_PX; got {}",
             tether[0].1
+        );
+        // Custom atom text may request the longer ceiling.
+        let mut w2 = LayoutWorld::new("mol");
+        install_chem(&mut w2, &[], &[(0, 0.0, 0.0)], &[]);
+        let mut cs2 = Vec::new();
+        let mut hard_text = Vec::new();
+        let _ = atom_number_kit(
+            &mut w2,
+            &mut cs2,
+            &mut hard_text,
+            0,
+            ink,
+            3.0,
+            ATOM_TEXT_TETHER_PX,
+            None,
+            false,
+        );
+        let text_tether: Vec<_> = hard_text
+            .iter()
+            .filter_map(|h| match h {
+                HardConstraint::MaxDist { dist, .. } => Some(*dist),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(text_tether.len(), 1);
+        assert!(
+            (text_tether[0] - ATOM_TEXT_TETHER_PX).abs() < 1e-9,
+            "kit must honor caller tether_px; got {}",
+            text_tether[0]
         );
     }
 
@@ -2626,7 +2682,7 @@ mod tests {
         let mut cs = Vec::new();
         let mut hard = Vec::new();
         let ink = Aabb::new(16.0, -2.0, 22.0, 2.0);
-        let _ = atom_number_kit(&mut w, &mut cs, &mut hard, 0, ink, 3.0, None, false);
+        let _ = atom_number_kit(&mut w, &mut cs, &mut hard, 0, ink, 3.0, ATOM_NUMBER_TETHER_PX, None, false);
         let tether: Vec<_> = hard
             .iter()
             .filter_map(|h| match h {
@@ -2657,7 +2713,7 @@ mod tests {
         let mut hard = Vec::new();
         // Seed far from atom 0 — soft PreferPose would hold it; MaxDist must pull in.
         let ink = Aabb::new(200.0, -2.0, 208.0, 2.0);
-        let id = atom_number_kit(&mut w, &mut cs, &mut hard, 0, ink, 3.0, None, false);
+        let id = atom_number_kit(&mut w, &mut cs, &mut hard, 0, ink, 3.0, ATOM_NUMBER_TETHER_PX, None, false);
         let g0 = hard
             .iter()
             .filter_map(|h| match h {
@@ -2695,7 +2751,7 @@ mod tests {
             .world_shape();
         let d = edge_signed_distance(&box_, &coord);
         assert!(
-            d <= ATOM_LABEL_TETHER_PX + opts.al_tol + 1e-6,
+            d <= ATOM_NUMBER_TETHER_PX + opts.al_tol + 1e-6,
             "label edge gap to atom must be ≤ tether, d={d}"
         );
     }
@@ -2714,7 +2770,7 @@ mod tests {
         let clash = 3.0;
         // PreferPose seed sits on the bond — soft alone can leave residual.
         let ink = Aabb::new(18.0, -2.0, 22.0, 2.0);
-        let id = atom_number_kit(&mut w, &mut cs, &mut hard, 0, ink, clash, None, false);
+        let id = atom_number_kit(&mut w, &mut cs, &mut hard, 0, ink, clash, ATOM_NUMBER_TETHER_PX, None, false);
         let g0 = max_hard_violation(&w, &hard);
         assert!(g0 > 1.0, "seed must violate hard bond clear, g0={g0}");
         let opts = SolveOpts {

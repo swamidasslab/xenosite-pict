@@ -17,7 +17,7 @@ use crate::doc::chrome::{
 };
 use crate::doc::layout_constraints::{
     bezier_path_from_proxy, hull_proxy, refine_atom_number, refine_callout, refine_region_text,
-    Shape, ATOM_LABEL_TETHER_PX,
+    Shape, ATOM_NUMBER_TETHER_PX, ATOM_TEXT_TETHER_PX,
 };
 use crate::doc::layout_items::{
     callout_arrow, place_greedy, place_region_edge, tip_standoff_clearing, Aabb, InkAtOrigin,
@@ -551,6 +551,11 @@ fn atom_label_primitive(
         LabelRole::Number => NUMBER_GAP_PX,
         LabelRole::Text => TEXT_GAP_PX,
     };
+    // Index/mapno: short tether; custom atom_label text: a bit longer.
+    let tether = match role {
+        LabelRole::Number => ATOM_NUMBER_TETHER_PX,
+        LabelRole::Text => ATOM_TEXT_TETHER_PX,
+    };
     let anchor = "middle";
     let (bx0, by0, bx1, by1) = markup_bounds_at_origin(content, font_px, anchor)?;
     let ink = InkAtOrigin {
@@ -577,9 +582,8 @@ fn atom_label_primitive(
             ink,
             preferred,
             min_gap,
-            // Keep seeds inside the hard MaxDist tether (~0.3 bond) — a 2.5·bond
-            // search was PreferPose-locking numbers far from home before AL ran.
-            max_gap: min_gap + ATOM_LABEL_TETHER_PX,
+            // Keep seeds inside the hard MaxDist tether for this role.
+            max_gap: min_gap + tether,
             gap_step: 0.5,
             margin: CLASH_MARGIN_PX + STROKE_PX.max(0.8) * 0.5,
             tip_standoff: None,
@@ -612,6 +616,7 @@ fn atom_label_primitive(
         atom_idx,
         seed,
         CLASH_MARGIN_PX,
+        tether,
         None,
         false,
     );
@@ -629,7 +634,7 @@ fn atom_label_primitive(
         &clear_segs,
         CLASH_MARGIN_PX + STROKE_PX.max(0.8) * 0.5,
         home,
-        ATOM_LABEL_TETHER_PX,
+        tether,
     );
     let origin_x = greedy.x + dtx + nudge_x;
     let origin_y = greedy.y + dty + nudge_y;
@@ -2431,7 +2436,7 @@ mod tests {
         let (nx, ny) = num2.expect("atom-number 2");
         let dist = (nx - ox).hypot(ny - oy);
         assert!(
-            dist < ATOM_LABEL_TETHER_PX + 20.0,
+            dist < ATOM_NUMBER_TETHER_PX + 20.0,
             "index number '2' centroid ({nx},{ny}) far from OH center ({ox},{oy}); dist={dist}"
         );
     }
@@ -2500,7 +2505,7 @@ mod tests {
             "number 1 should be snug (near clash margin), gap={gap} (margin={CLASH_MARGIN_PX})"
         );
         assert!(
-            gap <= ATOM_LABEL_TETHER_PX + 1e-3,
+            gap <= ATOM_NUMBER_TETHER_PX + 1e-3,
             "number 1 must stay inside MaxDist tether; gap={gap}"
         );
 
@@ -2555,7 +2560,7 @@ mod tests {
         let (nx, ny) = m22.expect("mapno 22 on O");
         let dist = (nx - ox).hypot(ny - oy);
         assert!(
-            dist < ATOM_LABEL_TETHER_PX + 20.0,
+            dist < ATOM_NUMBER_TETHER_PX + 20.0,
             "mapno '22' centroid ({nx},{ny}) far from OH center ({ox},{oy}); dist={dist}"
         );
         // Carbon with no chem text: tether to atom point.
@@ -2572,7 +2577,7 @@ mod tests {
         let (nx, ny) = m11.expect("mapno 11 on C");
         let dist = (nx - c_xy.0).hypot(ny - c_xy.1);
         assert!(
-            dist < ATOM_LABEL_TETHER_PX + 20.0,
+            dist < ATOM_NUMBER_TETHER_PX + 20.0,
             "mapno '11' centroid ({nx},{ny}) far from C ({}, {}); dist={dist}",
             c_xy.0,
             c_xy.1
