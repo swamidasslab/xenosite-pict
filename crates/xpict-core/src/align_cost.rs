@@ -4,8 +4,11 @@
 //! unique ring sizes preferred) so fused scaffolds lock before the house
 //! budget is spent. Chains still map onto rings: no query ring means the
 //! usual atom-pair seeds run (hexane onto cyclohexane). Cyclic atoms with no
-//! shared Relevant-Ring size are not paired (12-crown vs 15-crown); fusion
-//! atoms that also sit in the matched ring still map.
+//! shared Relevant-Ring size are not *seeded* (12-crown vs 15-crown), but a
+//! locked equal-size ring may grow onto a size-adjacent ring (14- vs 15-
+//! macrolide). Fusion atoms that also sit in the matched ring still map.
+//! Ring-seed orientation uses exocyclic neighbor elements so a sugar does
+//! not flip NMe2 onto a ring methyl.
 //!
 //! [`cost_mapping`] / [`cost_mapping_with_generators`] stay unbounded (library
 //! exact API). Depict / EdgePlan search uses [`SearchLimits`]: a house time and
@@ -75,6 +78,9 @@ pub struct SearchLimits {
     /// Depict house: do not pair atoms with non-positive atom gain (element
     /// mismatch). Unbounded [`cost_mapping`] keeps N→C when that is cheapest.
     pub strict_atoms: bool,
+    /// Depict house: after an equal-size ring seed, grow onto disjoint ring
+    /// sizes (14- vs 15-macrolide). Unbounded search does not wrap mixed sizes.
+    pub expand_ring_size: bool,
 }
 
 impl SearchLimits {
@@ -98,6 +104,7 @@ impl SearchLimits {
             max_states: Some(ALIGN_HOUSE_MAX_STATES),
             greedy_only: false,
             strict_atoms: true,
+            expand_ring_size: true,
         }
     }
 
@@ -208,10 +215,10 @@ pub const COST_CHARGE_RADICAL: i32 = 2;
 pub const COST_BOND_ORDER: i32 = 3;
 pub const COST_UNMATCHED: i32 = 5;
 pub const COST_RING: i32 = 1;
-/// Both atoms cyclic with no shared Relevant-Ring size (12-crown vs 15-crown).
-/// High enough that a mismatched-size path is worse than unmatched; chain↔ring
-/// is free, and fusion atoms that also sit in the matched ring still pair.
-pub const COST_RING_SIZE: i32 = 21;
+/// Both atoms cyclic with no shared Relevant-Ring size. Mild tie-break only:
+/// seeds still refuse a 12-cycle on a 15-cycle, but a sugar seed may grow
+/// onto a 14- vs 15-macrolide. Chain↔ring is free.
+pub const COST_RING_SIZE: i32 = 1;
 const NONE: usize = usize::MAX;
 type AtomType = (u8, i8, u8, bool, usize, bool);
 
@@ -721,13 +728,21 @@ impl Search<'_> {
             && self.forbidden[a][b / 64] & (1u64 << (b % 64)) == 0
     }
     fn pair_ok(&self, a: usize, b: usize) -> bool {
-        if ring_size_mismatch(&self.q, &self.r, a, b) {
-            return false;
-        }
         if self.limits.strict_atoms && self.atom_gain[a * self.r.n + b] <= 0 {
             return false;
         }
+        if ring_size_mismatch(&self.q, &self.r, a, b) && !self.limits.expand_ring_size {
+            return false;
+        }
         true
+    }
+    /// Atom-pair seeds must not start on disjoint ring sizes (12-crown vs 15).
+    /// House extensions from an equal-size seed may grow onto a 14- vs 15-ring.
+    fn seed_ok(&self, a: usize, b: usize) -> bool {
+        if ring_size_mismatch(&self.q, &self.r, a, b) {
+            return false;
+        }
+        self.pair_ok(a, b)
     }
     fn forbid(&mut self, a: usize, b: usize) {
         let bit = 1u64 << (b % 64);
@@ -1010,14 +1025,26 @@ fn cyclic_ring_pairs(q_ring: &[usize], r_ring: &[usize]) -> Vec<Vec<(usize, usiz
     out
 }
 
-/// Strict cyclic-map score: element (via atom gain), degree, and ring bit.
-/// Wrong rotations of an all-carbon fused ring fail degree at the fusion atoms.
+fn exo_atomic_numbers(g: &Graph<'_>, a: usize, ring: &HashSet<usize>) -> Vec<u8> {
+    let mut zs: Vec<u8> = g.adj[a]
+        .iter()
+        .filter(|(n, _)| !ring.contains(n))
+        .map(|(n, _)| g.mol.atoms[*n].atomic_number)
+        .collect();
+    zs.sort_unstable();
+    zs
+}
+
+/// Strict cyclic-map score: element (via atom gain), degree, ring bit, and
+/// exocyclic neighbor elements. A flipped sugar fails NMe2 vs ring-methyl.
 fn ring_map_atom_score(
     q: &Graph<'_>,
     r: &Graph<'_>,
     pairs: &[(usize, usize)],
     atom_gain: &[i64],
 ) -> Option<i64> {
+    let q_ring: HashSet<usize> = pairs.iter().map(|&(a, _)| a).collect();
+    let r_ring: HashSet<usize> = pairs.iter().map(|&(_, b)| b).collect();
     let mut score = 0i64;
     for &(a, b) in pairs {
         let g = atom_gain[a * r.n + b];
@@ -1028,6 +1055,9 @@ fn ring_map_atom_score(
             return None;
         }
         if q.ring[a] != r.ring[b] {
+            return None;
+        }
+        if exo_atomic_numbers(q, a, &q_ring) != exo_atomic_numbers(r, b, &r_ring) {
             return None;
         }
         score += g;
@@ -1295,7 +1325,7 @@ pub fn cost_mapping_with_generators_limited(
         if s.best_score == unmatched_baseline(query, reference) {
             break;
         }
-        if !s.pair_ok(a, b) {
+        if !s.seed_ok(a, b) {
             continue;
         }
         // Every connected map is considered under its lowest-ranked query atom.
@@ -2262,6 +2292,48 @@ mod exact_tests {
             "must not overlay a 12-cycle on a 15-cycle: {:?}",
             res
         );
+    }
+
+    fn pyranose_nme2_and_methyl() -> MolGraph {
+        // 6-ring O0–C1(N)–C2–C3(Me)–C4–C5. Flip would pair C(N) with C(Me).
+        MolGraph::new(
+            vec![
+                atom(8),
+                atom(6),
+                atom(6),
+                atom(6),
+                atom(6),
+                atom(6),
+                atom(7),
+                atom(6),
+            ],
+            vec![
+                edge(0, 1),
+                edge(1, 2),
+                edge(2, 3),
+                edge(3, 4),
+                edge(4, 5),
+                edge(5, 0),
+                edge(1, 6),
+                edge(3, 7),
+            ],
+        )
+    }
+
+    #[test]
+    fn sugar_ring_seed_does_not_flip_nme2_onto_methyl() {
+        let g = pyranose_nme2_and_methyl();
+        let (res, _) =
+            cost_mapping_with_generators_limited(&g, &g, &[], &SearchLimits::house()).unwrap();
+        let res = res.expect("map");
+        assert_eq!(res.map.get(&6), Some(&6), "N must stay on N: {:?}", res.map);
+        assert_eq!(
+            res.map.get(&7),
+            Some(&7),
+            "Me must stay on Me: {:?}",
+            res.map
+        );
+        assert_eq!(res.map.get(&0), Some(&0), "ring O: {:?}", res.map);
     }
 
     #[test]

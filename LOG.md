@@ -2,6 +2,10 @@
 
 ## 2026-10-20
 
+- Erythromycin/azithromycin is a 14→15 ring expansion with the same sugars. House was locking the sugars (24 atoms) and leaving the lactone unmatched, so CoordGen drew a snake and could flip desosamine (NMe2 vs ring-methyl). Ring seeds now require matching *exocyclic* neighbor elements (blocks that flip). House may *grow* from an equal-size seed onto disjoint ring sizes; atom-pair seeds still refuse a bare 12-cycle on a 15-cycle. Result: 48/53 mapped, NMe2→NMe2, insertion N unmatched.
+
+## 2026-10-20
+
 - House align was pairing the wrong atoms: MCS extended O→C (testosterone 17-OH onto a cholesterol side-chain carbon) and wrapped a 12-cycle onto a 15-cycle because bonds still paid. Fix in `xpict-core`: cyclic atoms pair only when Relevant-Ring *size sets* overlap (fusion 6+18 still maps onto a plain 18-crown; 12 vs 15 does not; chain↔ring stays free). Depict `SearchLimits::house` also sets `strict_atoms` so element-mismatch pairs are not seeded or grown; unbounded `cost_mapping` still maps N→C when that is cheapest. Degree-strict ring seeds already locked fused all-carbon rings (morphine/codeine 21-atom identity-with-skip-methyl).
 
 ## 2026-10-20

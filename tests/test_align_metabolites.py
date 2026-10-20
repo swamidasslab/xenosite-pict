@@ -15,6 +15,14 @@ MORPHINE = "CN1CCC23c4c5ccc(O)c4OC2C(O)C=CC3C1C5"
 CODEINE = "CN1CCC23c4c5ccc(OC)c4OC2C(O)C=CC3C1C5"
 CHOLESTEROL = "CC(C)CCCC(C)C1CCC2C3CC=C4CC(O)CCC4(C)C3CCC12C"
 TESTOSTERONE = "CC12CCC3C(CCC4=CC(=O)CCC34C)C1CCC2O"
+ERYTHROMYCIN = (
+    "CCC1OC(=O)C(C)C(OC2CC(C)(OC)C(O)C(C)O2)C(C)C(OC2OC(C)CC(N(C)C)C2O)"
+    "C(C)(O)CC(C)C(=O)C(C)C(O)C1(C)O"
+)
+AZITHROMYCIN = (
+    "CCC1CC(C)(O)C(O)C(C)N(C)CC(C)CC(C)(O)C(OC2OC(C)CC(N(C)C)C2O)C(C)C"
+    "(OC2CC(C)(OC)C(O)C(C)O2)C(C)C(=O)O1"
+)
 
 
 def _align(parent: str, query: str) -> tuple[dict, dict, list[tuple[int, int]]]:
@@ -37,6 +45,27 @@ def _el(frame: dict, idx: int) -> str:
     raise KeyError(idx)
 
 
+def _nme2(frame: dict) -> int:
+    nbrs: dict[int, list[int]] = {}
+    for bond in frame["bonds"]:
+        u, v = int(bond["begin"]), int(bond["end"])
+        nbrs.setdefault(u, []).append(v)
+        nbrs.setdefault(v, []).append(u)
+    deg = {i: len(nbrs.get(i, [])) for i in range(len(frame["atoms"]))}
+    for atom in frame["atoms"]:
+        i = int(atom["index"])
+        if atom.get("element") != "N":
+            continue
+        terms = [
+            j
+            for j in nbrs.get(i, [])
+            if _el(frame, j) == "C" and deg.get(j, 0) == 1
+        ]
+        if len(terms) >= 2:
+            return i
+    raise AssertionError("no NMe2")
+
+
 def test_codeine_maps_onto_morphine_scaffold() -> None:
     ref, qry, tags = _align(MORPHINE, CODEINE)
     by_q = dict(tags)
@@ -46,6 +75,22 @@ def test_codeine_maps_onto_morphine_scaffold() -> None:
     assert unmatched == {11}  # extra methoxy carbon
     assert by_q[10] == 10  # phenolic / methoxy oxygen
     assert by_q[12] == 11  # skip the extra methyl
+
+
+def test_azithromycin_maps_onto_erythromycin_without_flipping_desosamine() -> None:
+    ref, qry, tags = _align(ERYTHROMYCIN, AZITHROMYCIN)
+    by_q = dict(tags)
+    assert len(tags) >= 40, tags
+    assert all(_el(qry, q) == _el(ref, r) for q, r in tags)
+    q_n = _nme2(qry)
+    r_n = _nme2(ref)
+    assert by_q.get(q_n) == r_n, by_q
+    ring_n = [
+        int(a["index"])
+        for a in qry["atoms"]
+        if a.get("element") == "N" and int(a["index"]) != q_n
+    ]
+    assert ring_n and ring_n[0] not in by_q
 
 
 def test_testosterone_does_not_map_oxygen_onto_cholesterol_carbon() -> None:
