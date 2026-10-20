@@ -158,20 +158,34 @@ impl Occupancy {
     }
 
     pub fn clashes(&self, cand: Aabb, margin: f64) -> bool {
+        self.clash_penalty(cand, margin) > 0.0
+    }
+
+    /// How badly `cand` overlaps obstacles (0 = clear). Bond crossings weigh
+    /// more than soft AABB overlaps so greedy fallbacks avoid straddling ink.
+    pub fn clash_penalty(&self, cand: Aabb, margin: f64) -> f64 {
+        let mut pen = 0.0;
         let padded = cand.inflate(margin);
         for &a in &self.aabbs {
             if padded.overlaps(a) {
-                return true;
+                let ox = (padded.x1.min(a.x1) - padded.x0.max(a.x0)).max(0.0);
+                let oy = (padded.y1.min(a.y1) - padded.y0.max(a.y0)).max(0.0);
+                pen += ox * oy;
             }
         }
+        let need = self.seg_half + margin;
         for &s in &self.segs {
             // Edge distance to the segment (not a loose stadium AABB) so diagonal
             // bonds don't false-clear labels that sit on the stroke.
-            if seg_aabb_min_dist(s.x0, s.y0, s.x1, s.y1, cand) < self.seg_half + margin {
-                return true;
+            let d = seg_aabb_min_dist(s.x0, s.y0, s.x1, s.y1, cand);
+            if d < need {
+                let depth = need - d;
+                // Quadratic: deep crossings (label on a bond) dominate shallow
+                // grazes so the least-clash seed won't pick a straddling side.
+                pen += 200.0 * depth * depth;
             }
         }
-        false
+        pen
     }
 }
 
@@ -261,30 +275,57 @@ pub struct Placement {
 }
 
 /// Greedy place: try preferred side, grow gap, then rotate through alternates.
+///
+/// Returns the first **clear** pose. If every (side, gap) in range still hits
+/// ink, returns the candidate with the **lowest** [`Occupancy::clash_penalty`]
+/// (preferred side / smaller gap as tiny tie-breaks) — never the last CW slot
+/// by accident, which could seed a label across a bond.
 pub fn place_greedy(occ: &Occupancy, req: &PlaceRequest) -> Placement {
     let sides = req.preferred.all_cw_from();
-    let mut best: Option<Placement> = None;
-    for side in sides {
+    let mut best_clash: Option<(f64, Placement)> = None;
+    for (si, side) in sides.into_iter().enumerate() {
         let mut gap = req.min_gap;
         while gap <= req.max_gap + 1e-9 {
-            if let Some(p) = try_place(occ, req, side, gap) {
+            let p = force_place(req, side, gap);
+            let pen = occ.clash_penalty(p.bounds, req.margin);
+            if pen <= 1e-12 {
                 return p;
             }
-            // Keep last attempt as fallback (even if clashing).
-            best = Some(force_place(req, side, gap));
+            // Prefer lower penalty; then earlier side (preferred first); then
+            // smaller gap (snugger seed for the AL refine).
+            let score = pen + si as f64 * 1e-3 + (gap - req.min_gap) * 1e-6;
+            let replace = match &best_clash {
+                None => true,
+                Some((s, _)) => score < *s,
+            };
+            if replace {
+                best_clash = Some((score, p));
+            }
             gap += req.gap_step;
         }
     }
-    best.unwrap_or_else(|| force_place(req, req.preferred, req.min_gap))
+    best_clash
+        .map(|(_, p)| p)
+        .unwrap_or_else(|| force_place(req, req.preferred, req.min_gap))
 }
 
-fn try_place(occ: &Occupancy, req: &PlaceRequest, side: Side, gap: f64) -> Option<Placement> {
-    let p = force_place(req, side, gap);
-    if occ.clashes(p.bounds, req.margin) {
-        None
-    } else {
-        Some(p)
+/// Side with the lowest clash at `min_gap` (preferred as tie-break).
+///
+/// Used for wide `atom_label` text so the seed does not start on a bond just
+/// because the chem-travel alternate pointed that way.
+pub fn least_clash_side(occ: &Occupancy, req: &PlaceRequest) -> Side {
+    let mut best = req.preferred;
+    let mut best_score = f64::INFINITY;
+    for (si, side) in req.preferred.all_cw_from().into_iter().enumerate() {
+        let p = force_place(req, side, req.min_gap);
+        let pen = occ.clash_penalty(p.bounds, req.margin);
+        let score = pen + si as f64 * 1e-6;
+        if score < best_score {
+            best_score = score;
+            best = side;
+        }
     }
+    best
 }
 
 fn force_place(req: &PlaceRequest, side: Side, gap: f64) -> Placement {
@@ -586,6 +627,44 @@ mod tests {
             p.bounds
         );
         assert_eq!(p.side, Side::Right);
+    }
+
+    #[test]
+    fn greedy_fallback_avoids_bond_straddle() {
+        // Horizontal bond through the anchor: left/right seeds sit on the stroke.
+        // With a short max_gap, preferred Right cannot clear — pick Above/Below.
+        let mut occ = Occupancy::new();
+        occ.seg_half = 1.5;
+        occ.segs.push(Seg::new(-50.0, 0.0, 50.0, 0.0));
+        let ink = InkAtOrigin {
+            x0: -12.0,
+            y0: -5.0,
+            x1: 12.0,
+            y1: 5.0,
+        };
+        let req = PlaceRequest {
+            anchor: (0.0, 0.0),
+            ink,
+            preferred: Side::Right,
+            min_gap: 2.0,
+            max_gap: 5.0,
+            gap_step: 1.0,
+            margin: 1.0,
+            tip_standoff: None,
+            label_pullback: 0.0,
+        };
+        let p = place_greedy(&occ, &req);
+        assert!(
+            matches!(p.side, Side::Above | Side::Below),
+            "least-clash fallback should leave the bond, got {:?}",
+            p.side
+        );
+        assert!(
+            !occ.clashes(p.bounds, req.margin),
+            "vertical seed should clear the horizontal bond: {:?}",
+            p.bounds
+        );
+        assert_eq!(least_clash_side(&occ, &req), p.side);
     }
 
     #[test]

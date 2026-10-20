@@ -20,8 +20,9 @@ use crate::doc::layout_constraints::{
     Shape, ATOM_NUMBER_TETHER_PX, ATOM_TEXT_TETHER_PX,
 };
 use crate::doc::layout_items::{
-    callout_arrow, place_greedy, place_region_edge, tip_standoff_clearing, Aabb, InkAtOrigin,
-    Occupancy, PlaceRequest, Seg, Side, ATOM_DISK_R_PX, CLASH_MARGIN_PX, CONTAIN_MARGIN_PX,
+    callout_arrow, least_clash_side, place_greedy, place_region_edge, tip_standoff_clearing,
+    Aabb, InkAtOrigin, Occupancy, PlaceRequest, Seg, Side, ATOM_DISK_R_PX, CLASH_MARGIN_PX,
+    CONTAIN_MARGIN_PX,
     HALF_BOND_PX,
 };
 use crate::doc::spec::{LabelPos, MolNode};
@@ -546,7 +547,7 @@ fn atom_label_primitive(
         neighbors.get(atom).map(|v| v.as_slice()).unwrap_or(&[]),
     );
     let side = annotation_side(role, chem_side);
-    let preferred = label_side_to_side(side);
+    let chem_preferred = label_side_to_side(side);
     let min_gap = match role {
         LabelRole::Number => NUMBER_GAP_PX,
         LabelRole::Text => TEXT_GAP_PX,
@@ -575,6 +576,27 @@ fn atom_label_primitive(
     for box_ in chem_text_boxes(mol, dx, dy).values() {
         occ.add_aabb(*box_);
     }
+    let margin = CLASH_MARGIN_PX + STROKE_PX.max(0.8) * 0.5;
+    // Wide atom_label text: chem-travel alternate can point into a bond. Pick
+    // the side with least clash at min_gap first so the seed does not start
+    // straddling ink (AL cannot always recover from a bad PreferPose-like start).
+    let preferred = match role {
+        LabelRole::Text => least_clash_side(
+            &occ,
+            &PlaceRequest {
+                anchor: (ax, ay),
+                ink,
+                preferred: chem_preferred,
+                min_gap,
+                max_gap: min_gap + tether,
+                gap_step: 0.5,
+                margin,
+                tip_standoff: None,
+                label_pullback: 0.0,
+            },
+        ),
+        LabelRole::Number => chem_preferred,
+    };
     let greedy = place_greedy(
         &occ,
         &PlaceRequest {
@@ -585,7 +607,7 @@ fn atom_label_primitive(
             // Keep seeds inside the hard MaxDist tether for this role.
             max_gap: min_gap + tether,
             gap_step: 0.5,
-            margin: CLASH_MARGIN_PX + STROKE_PX.max(0.8) * 0.5,
+            margin,
             tip_standoff: None,
             label_pullback: 0.0,
         },
@@ -2919,6 +2941,70 @@ mod tests {
                     b.end
                 );
             }
+        }
+    }
+
+    /// Middle carbon of CCC: chem free-space alternate can point along the
+    /// chain. Wide "substituent" must still seed off the bonds, not across them.
+    #[test]
+    fn atom_label_on_chain_avoids_bond_seed() {
+        let mol = propane();
+        let (dx, dy) = frame_offset(&mol);
+        let scene = crate::depict::depict_molecule(&mol);
+        let node = MolNode {
+            atom_label: Some(crate::doc::chrome::AtomLabelSpec::Map(
+                [("1".into(), MolText::Plain("substituent".into()))]
+                    .into_iter()
+                    .collect(),
+            )),
+            ..Default::default()
+        };
+        let out = apply_mol_chrome(&node, &mol, scene);
+        let lb = layer_prims(&out)
+            .into_iter()
+            .find_map(|p| match p {
+                Primitive::Path {
+                    d,
+                    class: Some(c),
+                    data_text: Some(t),
+                    ..
+                } if c.contains("atom-label") && t == "substituent" => {
+                    let nums = path_nums(d);
+                    let mut x0 = f64::INFINITY;
+                    let mut y0 = f64::INFINITY;
+                    let mut x1 = f64::NEG_INFINITY;
+                    let mut y1 = f64::NEG_INFINITY;
+                    let mut i = 0;
+                    while i + 1 < nums.len() {
+                        x0 = x0.min(nums[i]);
+                        y0 = y0.min(nums[i + 1]);
+                        x1 = x1.max(nums[i]);
+                        y1 = y1.max(nums[i + 1]);
+                        i += 2;
+                    }
+                    Some(Aabb::new(x0, y0, x1, y1))
+                }
+                _ => None,
+            })
+            .expect("substituent label");
+        for b in &mol.bonds {
+            let a = mol.atoms.iter().find(|a| a.index == b.begin).unwrap();
+            let c = mol.atoms.iter().find(|a| a.index == b.end).unwrap();
+            let d = crate::doc::layout_constraints::edge_signed_distance(
+                &Shape::Aabb(lb),
+                &Shape::Line {
+                    x0: a.x + dx,
+                    y0: a.y + dy,
+                    x1: c.x + dx,
+                    y1: c.y + dy,
+                },
+            );
+            assert!(
+                d + 1e-6 >= CLASH_MARGIN_PX,
+                "substituent {lb:?} crosses bond {}-{}: d={d}",
+                b.begin,
+                b.end
+            );
         }
     }
 
