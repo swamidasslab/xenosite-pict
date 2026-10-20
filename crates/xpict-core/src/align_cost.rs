@@ -3,12 +3,14 @@
 //! Equal-size Relevant Rings are tried first as connected seeds (cyclic maps,
 //! unique ring sizes preferred) so fused scaffolds lock before the house
 //! budget is spent. Chains still map onto rings: no query ring means the
-//! usual atom-pair seeds run (hexane onto cyclohexane). Different-size
-//! rings are not seeded as cycles; ordinary MCS may still map a path.
+//! usual atom-pair seeds run (hexane onto cyclohexane). Cyclic atoms with no
+//! shared Relevant-Ring size are not paired (12-crown vs 15-crown); fusion
+//! atoms that also sit in the matched ring still map.
 //!
 //! [`cost_mapping`] / [`cost_mapping_with_generators`] stay unbounded (library
 //! exact API). Depict / EdgePlan search uses [`SearchLimits`]: a house time and
-//! node cap, optional greedy-only, and timeout returns the greedy/BnB incumbent.
+//! node cap, `strict_atoms` (no element-mismatch pairs), optional greedy-only,
+//! and timeout returns the greedy/BnB incumbent.
 //! Worst-case search remains exponential when uncapped.
 //! Unmatched atoms and bonds are penalized on BOTH sides (query and reference).
 //! Bond correspondence is inferred from atom endpoints; missing bonds are allowed.
@@ -70,6 +72,9 @@ pub struct SearchLimits {
     pub max_states: Option<u64>,
     /// Greedy incumbent only — skip branch-and-bound `dfs`.
     pub greedy_only: bool,
+    /// Depict house: do not pair atoms with non-positive atom gain (element
+    /// mismatch). Unbounded [`cost_mapping`] keeps N→C when that is cheapest.
+    pub strict_atoms: bool,
 }
 
 impl SearchLimits {
@@ -92,6 +97,7 @@ impl SearchLimits {
             deadline: deadline_from_ms(ms),
             max_states: Some(ALIGN_HOUSE_MAX_STATES),
             greedy_only: false,
+            strict_atoms: true,
         }
     }
 
@@ -202,6 +208,10 @@ pub const COST_CHARGE_RADICAL: i32 = 2;
 pub const COST_BOND_ORDER: i32 = 3;
 pub const COST_UNMATCHED: i32 = 5;
 pub const COST_RING: i32 = 1;
+/// Both atoms cyclic with no shared Relevant-Ring size (12-crown vs 15-crown).
+/// High enough that a mismatched-size path is worse than unmatched; chain↔ring
+/// is free, and fusion atoms that also sit in the matched ring still pair.
+pub const COST_RING_SIZE: i32 = 21;
 const NONE: usize = usize::MAX;
 type AtomType = (u8, i8, u8, bool, usize, bool);
 
@@ -229,6 +239,8 @@ struct Graph<'a> {
     edge: Vec<usize>,
     adj: Vec<Vec<(usize, usize)>>,
     ring: Vec<bool>,
+    /// Bit `sz` set when the atom is in a Relevant Ring of size `sz` (`0` = acyclic).
+    ring_bits: Vec<u64>,
     stereo_bonds: Vec<usize>,
     stereo_designated: Vec<bool>,
 }
@@ -313,12 +325,33 @@ impl<'a> Graph<'a> {
                 ring[b.end as usize] = true;
             }
         }
+        let mut adj_i32: HashMap<i32, Vec<i32>> = (0..n as i32).map(|i| (i, Vec::new())).collect();
+        let mut ring_bonds = Vec::with_capacity(mol.n_bonds());
+        for b in &mol.bonds {
+            let u = i32::from(b.begin);
+            let v = i32::from(b.end);
+            adj_i32.entry(u).or_default().push(v);
+            adj_i32.entry(v).or_default().push(u);
+            ring_bonds.push((u, v));
+        }
+        let mut ring_bits = vec![0u64; n];
+        for cyc in find_relevant_rings_from_adj(&adj_i32, ring_bonds, ALIGN_RING_MAX) {
+            let sz = cyc.size();
+            if sz >= 64 {
+                continue;
+            }
+            let bit = 1u64 << sz;
+            for &a in &cyc.atoms {
+                ring_bits[a as usize] |= bit;
+            }
+        }
         Ok(Self {
             mol,
             n,
             edge,
             adj,
             ring,
+            ring_bits,
             stereo_bonds,
             stereo_designated,
         })
@@ -341,12 +374,22 @@ impl<'a> Graph<'a> {
         self.edge[a * self.n + b]
     }
 }
+/// Different-size rings: both cyclic and no shared Relevant-Ring size.
+/// Fusion atoms in an 18-crown (sizes 6 and 18) still pair with a plain 18-crown.
+/// Chain↔ring stays free (either side acyclic).
+fn ring_size_mismatch(q: &Graph<'_>, r: &Graph<'_>, a: usize, b: usize) -> bool {
+    let qa = q.ring_bits[a];
+    let rb = r.ring_bits[b];
+    qa != 0 && rb != 0 && qa & rb == 0
+}
+
 fn atom_cost(q: &Graph<'_>, r: &Graph<'_>, a: usize, b: usize) -> i64 {
     let (x, y) = (&q.mol.atoms[a], &r.mol.atoms[b]);
     i64::from(COST_ELEMENT) * i64::from(x.atomic_number != y.atomic_number)
         + i64::from(COST_CHARGE_RADICAL)
             * i64::from(x.formal_charge != y.formal_charge || x.radical != y.radical)
         + i64::from(COST_RING) * i64::from(q.ring[a] != r.ring[b])
+        + i64::from(COST_RING_SIZE) * i64::from(ring_size_mismatch(q, r, a, b))
 }
 /// Unmatched atoms and bonds cost on BOTH sides, so matching a pair saves
 /// two unmatched penalties (one query, one reference) minus its mismatch.
@@ -677,6 +720,15 @@ impl Search<'_> {
             && self.rank[a] >= self.root_rank
             && self.forbidden[a][b / 64] & (1u64 << (b % 64)) == 0
     }
+    fn pair_ok(&self, a: usize, b: usize) -> bool {
+        if ring_size_mismatch(&self.q, &self.r, a, b) {
+            return false;
+        }
+        if self.limits.strict_atoms && self.atom_gain[a * self.r.n + b] <= 0 {
+            return false;
+        }
+        true
+    }
     fn forbid(&mut self, a: usize, b: usize) {
         let bit = 1u64 << (b % 64);
         if self.forbidden[a][b / 64] & bit == 0 {
@@ -767,6 +819,9 @@ impl Search<'_> {
             let mut candidates = Vec::new();
             for b in 0..self.r.n {
                 if !self.allowed(a, b) {
+                    continue;
+                }
+                if !self.pair_ok(a, b) {
                     continue;
                 }
                 let (gain, attached) = self.delta(a, b);
@@ -955,11 +1010,24 @@ fn cyclic_ring_pairs(q_ring: &[usize], r_ring: &[usize]) -> Vec<Vec<(usize, usiz
     out
 }
 
-fn ring_map_atom_score(pairs: &[(usize, usize)], atom_gain: &[i64], nr: usize) -> Option<i64> {
+/// Strict cyclic-map score: element (via atom gain), degree, and ring bit.
+/// Wrong rotations of an all-carbon fused ring fail degree at the fusion atoms.
+fn ring_map_atom_score(
+    q: &Graph<'_>,
+    r: &Graph<'_>,
+    pairs: &[(usize, usize)],
+    atom_gain: &[i64],
+) -> Option<i64> {
     let mut score = 0i64;
     for &(a, b) in pairs {
-        let g = atom_gain[a * nr + b];
+        let g = atom_gain[a * r.n + b];
         if g <= 0 {
+            return None;
+        }
+        if q.adj[a].len() != r.adj[b].len() {
+            return None;
+        }
+        if q.ring[a] != r.ring[b] {
             return None;
         }
         score += g;
@@ -1025,7 +1093,7 @@ fn ring_seed_partials(q: &Graph<'_>, r: &Graph<'_>, atom_gain: &[i64]) -> Vec<Ve
                 continue;
             }
             for pairs in cyclic_ring_pairs(qr, rr) {
-                let Some(score) = ring_map_atom_score(&pairs, atom_gain, r.n) else {
+                let Some(score) = ring_map_atom_score(q, r, &pairs, atom_gain) else {
                     continue;
                 };
                 let mut key: Vec<(usize, usize)> = pairs.clone();
@@ -1226,6 +1294,9 @@ pub fn cost_mapping_with_generators_limited(
         }
         if s.best_score == unmatched_baseline(query, reference) {
             break;
+        }
+        if !s.pair_ok(a, b) {
+            continue;
         }
         // Every connected map is considered under its lowest-ranked query atom.
         // Reference orbit reduction is independent of that query restriction.
@@ -1862,7 +1933,7 @@ mod exact_tests {
                 map[a] = NONE;
                 rec(q, r, map, used, a + 1, best);
                 for b in 0..r.n {
-                    if !used[b] {
+                    if !used[b] && !ring_size_mismatch(q, r, a, b) {
                         used[b] = true;
                         map[a] = b;
                         rec(q, r, map, used, a + 1, best);
@@ -1915,10 +1986,18 @@ mod exact_tests {
         best
     }
     fn assert_solution(r: &MolGraph, q: &MolGraph, gens: &[Vec<u16>]) {
-        let result = cost_mapping_with_generators(r, q, gens).unwrap().0.unwrap();
+        let got = cost_mapping_with_generators(r, q, gens).unwrap().0;
+        let brute_cost = brute(r, q);
+        let Some(result) = got else {
+            assert_eq!(
+                brute_cost,
+                i32::MAX,
+                "search empty but brute={brute_cost} q={q:?} r={r:?}"
+            );
+            return;
+        };
         assert_eq!(
-            result.cost,
-            brute(r, q),
+            result.cost, brute_cost,
             "q={q:?} r={r:?} map={:?}",
             result.map
         );
@@ -2162,10 +2241,13 @@ mod exact_tests {
             res.map
         );
         assert!(!res.map.contains_key(&(extra as u16)));
+        // Fusion atoms stay on fusion atoms (degree 3), not on methylenes.
+        assert_eq!(res.map.get(&0), Some(&0), "map={:?}", res.map);
+        assert_eq!(res.map.get(&5), Some(&5), "map={:?}", res.map);
     }
 
     #[test]
-    fn different_size_rings_still_map_as_path() {
+    fn different_size_rings_do_not_wrap() {
         let twelve = MolGraph::new(
             vec![atom(6); 12],
             (0..12).map(|i| edge(i, (i + 1) % 12)).collect(),
@@ -2174,8 +2256,46 @@ mod exact_tests {
             vec![atom(6); 15],
             (0..15).map(|i| edge(i, (i + 1) % 15)).collect(),
         );
-        let res = cost_mapping(&twelve, &fifteen).expect("map");
-        assert_eq!(res.map.len(), 12, "map={:?}", res.map);
+        let res = cost_mapping(&twelve, &fifteen);
+        assert!(
+            res.as_ref().map(|m| m.map.len()).unwrap_or(0) < 12,
+            "must not overlay a 12-cycle on a 15-cycle: {:?}",
+            res
+        );
+    }
+
+    #[test]
+    fn fused_macrocycle_still_maps_shared_ring() {
+        // 18-cycle fused to a 6-ring along bond 0–1. Fusion atoms have sizes
+        // {6,18}; the query 18-cycle still shares 18.
+        let eighteen = MolGraph::new(
+            vec![atom(6); 18],
+            (0..18).map(|i| edge(i, (i + 1) % 18)).collect(),
+        );
+        let mut bonds: Vec<_> = (0..18).map(|i| edge(i, (i + 1) % 18)).collect();
+        bonds.push(edge(1, 18));
+        bonds.push(edge(18, 19));
+        bonds.push(edge(19, 20));
+        bonds.push(edge(20, 21));
+        bonds.push(edge(21, 0));
+        let fused = MolGraph::new(vec![atom(6); 22], bonds);
+        let res = cost_mapping(&eighteen, &fused).expect("map");
+        assert_eq!(res.map.len(), 18, "map={:?}", res.map);
+    }
+
+    #[test]
+    fn house_does_not_pair_oxygen_onto_carbon() {
+        // C–O onto C–C: unbounded maps O→C (cheaper than unmatched); house does not.
+        let ethane = MolGraph::new(vec![atom(6), atom(6)], vec![edge(0, 1)]);
+        let methanol = MolGraph::new(vec![atom(6), atom(8)], vec![edge(0, 1)]);
+        let unbounded = cost_mapping(&ethane, &methanol).expect("map");
+        assert_eq!(unbounded.map.len(), 2, "exact may pay COST_ELEMENT");
+        let (house, _) =
+            cost_mapping_with_generators_limited(&ethane, &methanol, &[], &SearchLimits::house())
+                .unwrap();
+        let house = house.expect("C→C seed");
+        assert_eq!(house.map.len(), 1, "map={:?}", house.map);
+        assert_eq!(house.map.get(&0), Some(&0));
     }
 
     #[test]

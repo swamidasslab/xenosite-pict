@@ -1,7 +1,7 @@
 # TODO
 
-- Align pose lock: Relevant-Ring seeds fix fused-scaffold correspondence; CoordGen soft-constrain still rotates morphine-like pentacycles; size-mismatched rings still over-match as paths
-- Parent–metabolite align tests from xenosite-forest hydroxylation hops
+- Align pose lock: atom maps for fused scaffolds / metabolites are element-true; CoordGen soft-constrain still rotates morphine-like pentacycles (skip already shares the pose)
+- Size-mismatched macrocycles (14 vs 15 macrolide) now map sugars only; decide whether a looser expand should grow the lactone path
 - Constraint layout: richer discrete side flips; tune kit strengths from notebook visuals; cap route-point birth harder on dense mols
 - Lift remaining legacy Pict gaps onto live DepictSpec (titles, rgroups/annots, radical dots) or delete those tests
 - JS host still uses RDKit edge processor — fold onto the same in-core Chematic+CoordGen path as Python/Rust

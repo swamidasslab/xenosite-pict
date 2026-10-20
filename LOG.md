@@ -2,6 +2,10 @@
 
 ## 2026-10-20
 
+- House align was pairing the wrong atoms: MCS extended O→C (testosterone 17-OH onto a cholesterol side-chain carbon) and wrapped a 12-cycle onto a 15-cycle because bonds still paid. Fix in `xpict-core`: cyclic atoms pair only when Relevant-Ring *size sets* overlap (fusion 6+18 still maps onto a plain 18-crown; 12 vs 15 does not; chain↔ring stays free). Depict `SearchLimits::house` also sets `strict_atoms` so element-mismatch pairs are not seeded or grown; unbounded `cost_mapping` still maps N→C when that is cheapest. Degree-strict ring seeds already locked fused all-carbon rings (morphine/codeine 21-atom identity-with-skip-methyl).
+
+## 2026-10-20
+
 - Align ring seeds use **Relevant Rings** (union of all smallest cycles through each bond), not one SSSR cover. Cubane: SSSR 5 faces, relevant 6. Depiction (aromatic circles / interiors) still uses SSSR. Chain→ring is unchanged: no query ring means ordinary atom-pair MCS (hexane onto cyclohexane). Different-size rings are not seeded as cycles.
 - House `+` align on fused pairs was scrambling the map (morphine/codeine 19 atoms, 1 identity). Seeding equal-size Relevant Rings then greedy-extend recovers the 21-atom scaffold map; CoordGen soft-constrain can still rotate the pentacycle. Simple aromatic hydroxylations overlay tightly.
 

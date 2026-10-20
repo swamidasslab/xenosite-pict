@@ -1383,6 +1383,43 @@ wheels = [
 ]
 
 [[package]]
+name = "xenosite-forest"
+version = "0.10.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ee/f8/0a2da6cb0dcb45f4b8d3a991c1238ebc7e68ff2aea49be42967542943a63/xenosite_forest-0.10.2.tar.gz", hash = "sha256:e6345bd7d1dab9fa5aebb8b2f42e8b49296844a5ea106e910307ade67d67b737", size = 558811, upload-time = "2026-10-01T05:05:56.561Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5a/8e/05ebf929b304be6634f11025c18d1422f60ab0cf92b276c96b034b83a10d/xenosite_forest-0.10.2-cp311-cp311-macosx_10_12_x86_64.whl", hash = "sha256:2233267234f1d7c90d62d59e30fe937b18b6424eb89a93bf795468f7307422ec", size = 1915865, upload-time = "2026-10-01T05:05:00.191Z" },
+    { url = "https://files.pythonhosted.org/packages/59/f5/89a853c8eb184023062abf999afbe7bda4a3fc6e39ea6f6c161ce5c418a5/xenosite_forest-0.10.2-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:afe0e981e11d9e6b62f2de2eeb6668f1f3a5fbd6f630b03e0ee22aff92c0f188", size = 1809678, upload-time = "2026-10-01T05:05:01.986Z" },
+    { url = "https://files.pythonhosted.org/packages/2d/a4/c4af87e65075562bc2f542c8a5803b46b03c584a6645d453902bb91526e3/xenosite_forest-0.10.2-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:6dc099888fc82fb2932f0a2ff3748f34bbb04c87ef2d1b97f0c5964ccb256f21", size = 1901962, upload-time = "2026-10-01T05:05:03.712Z" },
+    { url = "https://files.pythonhosted.org/packages/27/1e/3a101ff5c3930217a89c0dd8ab073fee051980be1acf6af37da2ecfe7105/xenosite_forest-0.10.2-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:40bf29a8a1ac9fdce0196167f8a97aeb1f36fd0bcd98e953266ed43a267b8d69", size = 2003692, upload-time = "2026-10-01T05:05:05.451Z" },
+    { url = "https://files.pythonhosted.org/packages/d1/82/484f1973e11c192339a228666c8a8fbd12a5c055c5c23ffb2b74278c242f/xenosite_forest-0.10.2-cp311-cp311-musllinux_1_2_aarch64.whl", hash = "sha256:79c4906212b04369d5183cbd833b753ab74f49bf5ece972097e8b3ae1d9ee551", size = 2068249, upload-time = "2026-10-01T05:05:07.235Z" },
+    { url = "https://files.pythonhosted.org/packages/41/43/b4bea3ff2fbe9fe1305066c48ffe90a7863ede5285aac52daef01cdec577/xenosite_forest-0.10.2-cp311-cp311-musllinux_1_2_x86_64.whl", hash = "sha256:22967899ace4f34ded1a29b6275344b3188457b5f70abd60e5c5b941933a25df", size = 2208828, upload-time = "2026-10-01T05:05:08.781Z" },
+    { url = "https://files.pythonhosted.org/packages/fd/aa/8c922f32d19e53b6131ed736d6a1e2408774d35e71ab2a12ebb179b68b8e/xenosite_forest-0.10.2-cp311-cp311-win_amd64.whl", hash = "sha256:ed826b4c102c7e4ad907c00172004574d55b4b0072712fc9727dd95ca79e7334", size = 1701259, upload-time = "2026-10-01T05:05:10.473Z" },
+    { url = "https://files.pythonhosted.org/packages/7d/0e/161ef86d198b0cffc863e7e588156f99e34c138f653c2704470899fecafe/xenosite_forest-0.10.2-cp312-cp312-macosx_10_12_x86_64.whl", hash = "sha256:aa95c8cfdbf1b4c0bdcaada095c74f36238c48eb160ed2487589a88f8502104e", size = 1909957, upload-time = "2026-10-01T05:05:11.933Z" },
+    { url = "https://files.pythonhosted.org/packages/f4/1f/fe965404fe0c4fe8548a96d193a00b23837730784e7a18043a8d01fa7660/xenosite_forest-0.10.2-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:3d9e28cfd31b202e8bfbe912beb870b1ca2c6e4005b39649b96775ef812f7b15", size = 1796172, upload-time = "2026-10-01T05:05:13.636Z" },
+    { url = "https://files.pythonhosted.org/packages/86/f3/f7179e786bee47464ba498cc1771d5649daa48564a21136bdd038fc963ec/xenosite_forest-0.10.2-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:d3b55c3be685a541b360ca6956261b2575399622dbb7d4f39f12ecd05a636aa3", size = 1901561, upload-time = "2026-10-01T05:05:15.066Z" },
+    { url = "https://files.pythonhosted.org/packages/cc/4b/54152ab620721223f554ce86f3777f1ed022df20eda33fccb92b1800253f/xenosite_forest-0.10.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:59aa864d7b4848f09e9cfb6708086492c909762f8efe644cae8b39fba457e859", size = 2007161, upload-time = "2026-10-01T05:05:16.41Z" },
+    { url = "https://files.pythonhosted.org/packages/db/33/e12a15a13b8ec73392aa96e223f67d45c64b86ac9ad92269e7c4798e330d/xenosite_forest-0.10.2-cp312-cp312-musllinux_1_2_aarch64.whl", hash = "sha256:577d9d399892e28a90abd89b2601af61ee53fc17a14799fb3354d7e47f7d347e", size = 2067494, upload-time = "2026-10-01T05:05:18.156Z" },
+    { url = "https://files.pythonhosted.org/packages/d4/41/0f919d018a476304661faa9f40a3cbd7648c835e9ce65f961ecab36ef3af/xenosite_forest-0.10.2-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:98be36e2d85e5f0f8090010158b3c79bdb8d61aa66331355d1594427f499ffdf", size = 2211285, upload-time = "2026-10-01T05:05:19.948Z" },
+    { url = "https://files.pythonhosted.org/packages/47/c1/5562f7f5b18a8c1037fd3935e138a644310e3439eb2455bcfa9c22cecdd3/xenosite_forest-0.10.2-cp312-cp312-win_amd64.whl", hash = "sha256:0e49170ae80b335410ac4fa58daf0f782e03fbdcaecdaa487eff75e74febc86f", size = 1700731, upload-time = "2026-10-01T05:05:21.429Z" },
+    { url = "https://files.pythonhosted.org/packages/24/dc/9e3846899631f92263da23c2b4d3b5951ad2dafd24fe50f88cd3adf19afe/xenosite_forest-0.10.2-cp312-cp312-win_arm64.whl", hash = "sha256:a97ed354671854063b09ff9e00760980e8d1762ab8425f9fdbc19999f256455f", size = 1586432, upload-time = "2026-10-01T05:05:23.003Z" },
+    { url = "https://files.pythonhosted.org/packages/32/a8/f0cddd3f316ac8148e964467582d74ad1f5750a4d6fc10c4425c0b633a81/xenosite_forest-0.10.2-cp313-cp313-macosx_10_12_x86_64.whl", hash = "sha256:1f7ea3961794f2e5225cf7bc07c3309f76f205327220f50fca8e6be790eeb946", size = 1909393, upload-time = "2026-10-01T05:05:24.514Z" },
+    { url = "https://files.pythonhosted.org/packages/d8/f3/ec39e653b5e788dccb2e620c232974b8fe864212d23217a18f90329de518/xenosite_forest-0.10.2-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:99a744d29909a7db3988ca9c6ab46adf6a6983ff8dda0a4eb3bebe1b47119da7", size = 1795946, upload-time = "2026-10-01T05:05:26.409Z" },
+    { url = "https://files.pythonhosted.org/packages/e6/d8/39225744f8b0836deab2bc39eb1acd2dce18a35f24a6fa66e91c3135789e/xenosite_forest-0.10.2-cp313-cp313-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:9dedaeafc6c48a5a4be925bdbe3d12a9d9c3d445fbd86cadc7c43df6719ee32f", size = 1901124, upload-time = "2026-10-01T05:05:28.149Z" },
+    { url = "https://files.pythonhosted.org/packages/6d/9e/67cce2ae01dc28e454c177ef522047d83846fe00e52c909ca15283d412ea/xenosite_forest-0.10.2-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:73acc5bd9d25cfedcb913841a82e5715dbb37714966b767d4dca447af076b856", size = 2006521, upload-time = "2026-10-01T05:05:29.634Z" },
+    { url = "https://files.pythonhosted.org/packages/a3/10/e23e64bed234dc8fb616c422a0c70b69a5690cbe8978f9ae04286114a274/xenosite_forest-0.10.2-cp313-cp313-musllinux_1_2_aarch64.whl", hash = "sha256:2a4c0b05caa6208fd557b3cd7aed833bf3b542860ab35c45248ad4024b6ef13a", size = 2066999, upload-time = "2026-10-01T05:05:31.238Z" },
+    { url = "https://files.pythonhosted.org/packages/c5/11/2f0cce8bba86574920ec3df64e9776956564666fe8f3c79791b2ef970c90/xenosite_forest-0.10.2-cp313-cp313-musllinux_1_2_x86_64.whl", hash = "sha256:d4e0c4ad88907a337d30c23810f9c745aa2bce9c10ed5de259e986f7998be9c0", size = 2210522, upload-time = "2026-10-01T05:05:32.943Z" },
+    { url = "https://files.pythonhosted.org/packages/89/e4/a4f0055f158840a15a2978cfc61a72586bc082b01b5af3b7530b3f5c0919/xenosite_forest-0.10.2-cp313-cp313-win_amd64.whl", hash = "sha256:7fe9d986930b6a49f91df361e488d342e925c4c3dc65c6b23e865398ba9a5d92", size = 1700794, upload-time = "2026-10-01T05:05:34.351Z" },
+    { url = "https://files.pythonhosted.org/packages/1b/ce/4fe81b4e0e85ad634e98e79d2023cf5e03f437a7ea8ae09f32a4af480156/xenosite_forest-0.10.2-cp313-cp313-win_arm64.whl", hash = "sha256:eda77e2a21615b45ae5003c1e5a5f95c8bcabb409bb1b33a7f540186bc64fc47", size = 1586122, upload-time = "2026-10-01T05:05:36.007Z" },
+    { url = "https://files.pythonhosted.org/packages/4b/ae/0c305a0297259adee2fdda843a7904dae3d7e88d12d11ae54aa8d90ce1b8/xenosite_forest-0.10.2-cp313-cp313t-musllinux_1_2_aarch64.whl", hash = "sha256:a3567809f148e2a2493495a5d9ad953b6c68f7808e4e3666b2e5ed35e6f9cb35", size = 2067505, upload-time = "2026-10-01T05:05:37.606Z" },
+    { url = "https://files.pythonhosted.org/packages/25/6f/3947e07693c9b6689af7d4f988bc6ff380be74b2982cecd24180da80970a/xenosite_forest-0.10.2-cp313-cp313t-musllinux_1_2_x86_64.whl", hash = "sha256:065fe08fcf8b19ff0ab24bea139e3ac0cd7341b6219131ab880a068716359315", size = 2207410, upload-time = "2026-10-01T05:05:39.583Z" },
+    { url = "https://files.pythonhosted.org/packages/24/60/471ee0f13c98bd1113af00ce0dcaacf8e5aee32a71fc5d4c26f590939e69/xenosite_forest-0.10.2-pp311-pypy311_pp73-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:2d4ebddc1a7cc333eba4cabadd9cf2c2bb0cf4006c0b9e745b70a6b80f7eb934", size = 1900798, upload-time = "2026-10-01T05:05:50.266Z" },
+    { url = "https://files.pythonhosted.org/packages/c2/bc/75101af88dd7e1066074d0ccb28a8763fc5cb28d11f25f009bf5d2f40a1c/xenosite_forest-0.10.2-pp311-pypy311_pp73-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:c187b8aa822b27e672b89e0d34bc89fc06da0307f078749bb4995a4cb41a4c60", size = 2008109, upload-time = "2026-10-01T05:05:51.698Z" },
+    { url = "https://files.pythonhosted.org/packages/3f/b4/07446b3de862f39c6e788837f2c334cdb26b9f16844c3bee2fbd4dd3e905/xenosite_forest-0.10.2-pp311-pypy311_pp73-musllinux_1_2_aarch64.whl", hash = "sha256:4b394df38b784f97ab78d320191d23d2aec64f9ac17924c417eada1b0976907e", size = 2067205, upload-time = "2026-10-01T05:05:53.523Z" },
+    { url = "https://files.pythonhosted.org/packages/68/58/52a261da55e2aa874face47b93068bc4f720cc2696d596fd9fba7ab845ef/xenosite_forest-0.10.2-pp311-pypy311_pp73-musllinux_1_2_x86_64.whl", hash = "sha256:7ae4ea3c1a8c2165184b81ce36f3e4fadc7f3b904dec17835cc4a87b22c4af08", size = 2212392, upload-time = "2026-10-01T05:05:55.171Z" },
+]
+
+[[package]]
 name = "xpict"
 version = "0.4.0"
 source = { editable = "." }
@@ -1409,6 +1446,7 @@ dev = [
     { name = "pytest" },
     { name = "ruff" },
     { name = "vulture" },
+    { name = "xenosite-forest" },
 ]
 docs = [
     { name = "mkdocs" },
@@ -1435,6 +1473,7 @@ dev = [
     { name = "pytest", specifier = ">=8.0" },
     { name = "ruff", specifier = ">=0.6" },
     { name = "vulture", specifier = ">=2.16" },
+    { name = "xenosite-forest", specifier = ">=0.10" },
 ]
 docs = [
     { name = "mkdocs", specifier = ">=1.6,<2" },
