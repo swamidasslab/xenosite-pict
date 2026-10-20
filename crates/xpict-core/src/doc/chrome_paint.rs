@@ -854,8 +854,9 @@ fn region_primitives(
         }
     };
 
-    // Circle geometry (may grow for an inside label seeded as outside).
-    let (circ_cx, circ_cy, mut circ_r) = {
+    // Circle geometry (may grow for an inside label seeded as outside, then
+    // shrink again after the label snugs).
+    let (mut circ_cx, mut circ_cy, mut circ_r) = {
         let (cx, cy, r0) = covering_circle(&cover);
         (cx, cy, (r0 + pad).max(pad))
     };
@@ -886,9 +887,17 @@ fn region_primitives(
                     x1: bx1,
                     y1: by1,
                 };
+                // Inside seeds: bonds only. Shade in occupancy shoved Left seeds
+                // to the top of the edge and the grown box stayed tall.
                 let mut occ = Occupancy::from_bonds(mol, dx, dy, STROKE_PX.max(0.8));
-                for &(_, cx, cy, r) in shades {
-                    occ.add_aabb(Aabb::new(cx - r, cy - r, cx + r, cy + r));
+                let place_inside = matches!(
+                    styled.place.unwrap_or(RegionTextPlace::Outside),
+                    RegionTextPlace::Inside
+                );
+                if !place_inside {
+                    for &(_, cx, cy, r) in shades {
+                        occ.add_aabb(Aabb::new(cx - r, cy - r, cx + r, cy + r));
+                    }
                 }
                 for &box_ in caption_boxes {
                     occ.add_aabb(box_);
@@ -957,13 +966,24 @@ fn region_primitives(
     // Solver hull for text refine (box AABB / circle / bezier proxy).
     let mut solve_hull = Shape::Aabb(region_box);
 
+    let inside_label = spec.text.as_ref().is_some_and(|t| {
+        let s = t.as_styled();
+        !s.content.trim().is_empty() && matches!(s.place.unwrap_or(RegionTextPlace::Outside), RegionTextPlace::Inside)
+    });
+
     match spec.style {
         RegionStyle::Box => {
-            let Aabb { x0, y0, x1, y1 } = region_box;
-            let d = format!(
-                "M {:.2} {:.2} L {:.2} {:.2} L {:.2} {:.2} L {:.2} {:.2} Z",
-                x0, y0, x1, y0, x1, y1, x0, y1
-            );
+            // Placeholder when an inside label will snug — final AABB is written
+            // after refine so a far seed does not permanently inflate the box.
+            let d = if inside_label {
+                String::new()
+            } else {
+                let Aabb { x0, y0, x1, y1 } = region_box;
+                format!(
+                    "M {:.2} {:.2} L {:.2} {:.2} L {:.2} {:.2} L {:.2} {:.2} Z",
+                    x0, y0, x1, y0, x1, y1, x0, y1
+                )
+            };
             out.push(Primitive::Path {
                 d,
                 stroke: stroke.0.clone(),
@@ -985,7 +1005,7 @@ fn region_primitives(
             out.push(Primitive::Circle {
                 cx: circ_cx,
                 cy: circ_cy,
-                r: circ_r,
+                r: if inside_label { 0.0 } else { circ_r },
                 fill: fill.clone(),
                 stroke: stroke.0.clone(),
                 stroke_width: stroke.1,
@@ -1039,14 +1059,16 @@ fn region_primitives(
                     x1: bx1,
                     y1: by1,
                 };
+                let inside = matches!(place, RegionTextPlace::Inside);
                 let mut occ = Occupancy::from_bonds(mol, dx, dy, STROKE_PX.max(0.8));
-                for &(_, cx, cy, r) in shades {
-                    occ.add_aabb(Aabb::new(cx - r, cy - r, cx + r, cy + r));
+                if !inside {
+                    for &(_, cx, cy, r) in shades {
+                        occ.add_aabb(Aabb::new(cx - r, cy - r, cx + r, cy + r));
+                    }
                 }
                 for &box_ in caption_boxes {
                     occ.add_aabb(box_);
                 }
-                let inside = matches!(place, RegionTextPlace::Inside);
                 let side = label_pos_side(pos);
                 let bonds = bond_segs(mol, dx, dy);
                 let atoms: Vec<(usize, f64, f64)> = included
@@ -1121,23 +1143,47 @@ fn region_primitives(
                     arrow_from: None,
                     arrow_to: None,
                 };
-                // After snug, rebuild Bezier around atoms + final label so the
-                // outline shrinks toward the molecule instead of staying large.
-                if matches!(spec.style, RegionStyle::Bezier) && inside {
-                    let mut snug_cover = cover.clone();
-                    let b = placed.bounds.inflate(CONTAIN_MARGIN_PX);
-                    snug_cover.push((b.x0, b.y0));
-                    snug_cover.push((b.x1, b.y0));
-                    snug_cover.push((b.x1, b.y1));
-                    snug_cover.push((b.x0, b.y1));
-                    pad_hull = grow_pad_until_hull_contains(
-                        &snug_cover,
-                        &exclude_xy,
-                        pad,
-                        placed.bounds,
-                        CONTAIN_MARGIN_PX,
-                    );
-                    cover_hull = snug_cover;
+                // After snug, rebuild region geometry around atoms + final label
+                // so a far clash-free seed does not permanently inflate the outline.
+                if inside {
+                    match spec.style {
+                        RegionStyle::Box => {
+                            let (ax0, ay0, ax1, ay1) = aabb(&cover, pad);
+                            region_box = grow_aabb_to_contain(
+                                Aabb::new(ax0, ay0, ax1, ay1),
+                                placed.bounds,
+                                CONTAIN_MARGIN_PX,
+                            );
+                        }
+                        RegionStyle::Circle => {
+                            let (cx0, cy0, r0) = covering_circle(&cover);
+                            circ_cx = cx0;
+                            circ_cy = cy0;
+                            circ_r = grow_circle_to_contain_aabb(
+                                circ_cx,
+                                circ_cy,
+                                (r0 + pad).max(pad),
+                                placed.bounds,
+                                CONTAIN_MARGIN_PX,
+                            );
+                        }
+                        RegionStyle::Bezier => {
+                            let mut snug_cover = cover.clone();
+                            let b = placed.bounds.inflate(CONTAIN_MARGIN_PX);
+                            snug_cover.push((b.x0, b.y0));
+                            snug_cover.push((b.x1, b.y0));
+                            snug_cover.push((b.x1, b.y1));
+                            snug_cover.push((b.x0, b.y1));
+                            pad_hull = grow_pad_until_hull_contains(
+                                &snug_cover,
+                                &exclude_xy,
+                                pad,
+                                placed.bounds,
+                                CONTAIN_MARGIN_PX,
+                            );
+                            cover_hull = snug_cover;
+                        }
+                    }
                 }
                 if let Some((d, data_text, _)) =
                     outline_markup(content, placed.x, placed.y, font_px, anchor)
@@ -1186,6 +1232,39 @@ fn region_primitives(
             )
         }) {
             *slot = d;
+        }
+    }
+    if matches!(spec.style, RegionStyle::Box) {
+        let Aabb { x0, y0, x1, y1 } = region_box;
+        let d = format!(
+            "M {:.2} {:.2} L {:.2} {:.2} L {:.2} {:.2} L {:.2} {:.2} Z",
+            x0, y0, x1, y0, x1, y1, x0, y1
+        );
+        if let Some(Primitive::Path { d: slot, .. }) = out.iter_mut().find(|p| {
+            matches!(
+                p,
+                Primitive::Path {
+                    class: Some(c),
+                    ..
+                } if c == "region box"
+            )
+        }) {
+            *slot = d;
+        }
+    }
+    if matches!(spec.style, RegionStyle::Circle) {
+        if let Some(Primitive::Circle { r, cx, cy, .. }) = out.iter_mut().find(|p| {
+            matches!(
+                p,
+                Primitive::Circle {
+                    class: Some(c),
+                    ..
+                } if c == "region circle"
+            )
+        }) {
+            *cx = circ_cx;
+            *cy = circ_cy;
+            *r = circ_r;
         }
     }
     out
@@ -3225,6 +3304,205 @@ mod tests {
 
     /// Ex6 ethylbenzene: ring include + ethyl exclude + inside "aryl".
     /// Must not emit a self-cutting path with wild cubic handles.
+    #[test]
+    fn region_box_ex6_inside_label_snugs_and_shrinks() {
+        // Notebook Ex6: box + exclude ethyl + inside aryl left — label must
+        // move toward the ring and the box must not stay at the far-seed size.
+        let mut atoms = Vec::new();
+        for i in 0..6 {
+            let t = std::f64::consts::TAU * i as f64 / 6.0 - std::f64::consts::FRAC_PI_2;
+            atoms.push(AtomIn {
+                index: i as i32,
+                element: Some("C".into()),
+                z: Some(6),
+                x: 50.0 + 30.0 * t.cos(),
+                y: 50.0 + 30.0 * t.sin(),
+                label: None,
+                charge: 0,
+                mapno: None,
+            });
+        }
+        atoms.push(AtomIn {
+            index: 6,
+            element: Some("C".into()),
+            z: Some(6),
+            x: 50.0,
+            y: 50.0 - 30.0 - 26.0,
+            label: None,
+            charge: 0,
+            mapno: None,
+        });
+        atoms.push(AtomIn {
+            index: 7,
+            element: Some("C".into()),
+            z: Some(6),
+            x: 50.0 + 20.0,
+            y: 50.0 - 30.0 - 26.0 - 20.0,
+            label: None,
+            charge: 0,
+            mapno: None,
+        });
+        let mut bonds = Vec::new();
+        for i in 0..6 {
+            bonds.push(BondIn {
+                index: i as i32,
+                begin: i as i32,
+                end: ((i + 1) % 6) as i32,
+                order: 1.0,
+                stereo: None,
+                interior: None,
+            });
+        }
+        bonds.push(BondIn {
+            index: 6,
+            begin: 0,
+            end: 6,
+            order: 1.0,
+            stereo: None,
+            interior: None,
+        });
+        bonds.push(BondIn {
+            index: 7,
+            begin: 6,
+            end: 7,
+            order: 1.0,
+            stereo: None,
+            interior: None,
+        });
+        let mol = MoleculeIn {
+            id: Some("ex6".into()),
+            atoms,
+            bonds,
+            color: None,
+            atom_shade: None,
+            bond_shade: None,
+            shade_vmin: None,
+            shade_vmax: None,
+            mark_atoms: vec![],
+            mark_bonds: vec![],
+            scale: 1.0,
+            weight: 1.0,
+            aromatic: Default::default(),
+            debug_box: false,
+            debug_align: false,
+            align_debug: None,
+        };
+        let (dx, dy) = frame_offset(&mol);
+        let mean = (
+            (0..6)
+                .map(|i| {
+                    let t = std::f64::consts::TAU * i as f64 / 6.0 - std::f64::consts::FRAC_PI_2;
+                    50.0 + dx + 30.0 * t.cos()
+                })
+                .sum::<f64>()
+                / 6.0,
+            (0..6)
+                .map(|i| {
+                    let t = std::f64::consts::TAU * i as f64 / 6.0 - std::f64::consts::FRAC_PI_2;
+                    50.0 + dy + 30.0 * t.sin()
+                })
+                .sum::<f64>()
+                / 6.0,
+        );
+        let scene = crate::depict::depict_molecule(&mol);
+        let mk = |place: RegionTextPlace| {
+            let node = MolNode {
+                region: Some(crate::doc::chrome::RegionField::One(RegionSpec {
+                    style: RegionStyle::Box,
+                    atoms: vec![0, 1, 2, 3, 4, 5],
+                    exclude: vec![6, 7],
+                    fill: Some(FillSpec {
+                        color: Some("#eee".into()),
+                        opacity: None,
+                    }),
+                    stroke: Some(StrokeSpec {
+                        color: Some("#c44".into()),
+                        width: Some(1.2),
+                        dash: None,
+                    }),
+                    text: Some(MolText::Styled(crate::doc::chrome::MolTextSpec {
+                        content: "aryl".into(),
+                        place: Some(place),
+                        pos: Some(LabelPos::Left),
+                        ..Default::default()
+                    })),
+                    z: None,
+                })),
+                ..Default::default()
+            };
+            apply_mol_chrome(&node, &mol, scene.clone())
+        };
+        let out_in = mk(RegionTextPlace::Inside);
+        let out_none = {
+            let node = MolNode {
+                region: Some(crate::doc::chrome::RegionField::One(RegionSpec {
+                    style: RegionStyle::Box,
+                    atoms: vec![0, 1, 2, 3, 4, 5],
+                    exclude: vec![6, 7],
+                    fill: None,
+                    stroke: None,
+                    text: None,
+                    z: None,
+                })),
+                ..Default::default()
+            };
+            apply_mol_chrome(&node, &mol, scene.clone())
+        };
+        let box_aabb = |out: &Scene| {
+            layer_prims(out)
+                .into_iter()
+                .find_map(|p| match p {
+                    Primitive::Path {
+                        d, class: Some(c), ..
+                    } if c.contains("region") && c.contains("box") => {
+                        let nums = path_nums(d);
+                        let xs: Vec<_> = nums.iter().step_by(2).copied().collect();
+                        let ys: Vec<_> = nums.iter().skip(1).step_by(2).copied().collect();
+                        Some(Aabb::new(
+                            xs.iter().cloned().fold(f64::INFINITY, f64::min),
+                            ys.iter().cloned().fold(f64::INFINITY, f64::min),
+                            xs.iter().cloned().fold(f64::NEG_INFINITY, f64::max),
+                            ys.iter().cloned().fold(f64::NEG_INFINITY, f64::max),
+                        ))
+                    }
+                    _ => None,
+                })
+                .expect("region box")
+        };
+        let label = layer_prims(&out_in)
+            .into_iter()
+            .find_map(|p| match p {
+                Primitive::Path {
+                    d,
+                    class: Some(c),
+                    data_text: Some(t),
+                    ..
+                } if c.contains("region-label") && t == "aryl" => Some(path_centroid(d)),
+                _ => None,
+            })
+            .expect("aryl");
+        let bin = box_aabb(&out_in);
+        let b0 = box_aabb(&out_none);
+        assert!(
+            label.0 < mean.0 - 5.0,
+            "pos=Left: label {:?} should be left of atom mean {:?}",
+            label,
+            mean
+        );
+        assert!(
+            (label.1 - mean.1).abs() < 28.0,
+            "label should sit near ring height, not pull the box up: label={:?} mean={:?}",
+            label,
+            mean
+        );
+        assert!(
+            bin.height() < b0.height() + 40.0,
+            "inside box should shrink toward atoms: in_h={} bare_h={}",
+            bin.height(),
+            b0.height()
+        );
+    }
+
     #[test]
     fn region_bezier_exclude_inside_label_stays_sane() {
         // Regular hexagon (side ~30) + ethyl up from atom 0.

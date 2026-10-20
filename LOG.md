@@ -2,6 +2,7 @@
 
 ## 2026-10-19
 
+- Ex6 inside region label: drop PreferPose + hard Inside of the grown seed hull (they pinned the label and inflated the box). Soft snug to chem; PreferSide also aligns along the edge; seed stays on `pos` (slide=0 first, no side flip); rebuild box/circle/bezier after snug. Shade omitted from inside-seed occupancy.
 - Mol `name` is **not** a layout constraint. Pipeline is chrome solve → place caption clear of structure + annotations (regions/callouts/shade). Regions must not overlap the name; caption nudges along `pos` until clear. `caption_kit` remains for solver benches only.
 - Region `pos` (Left/Right/Above/Below) is relative to the **mean of contained atoms**, not the hull / cover AABB or full-mol chem box. Seed slide uses that centroid; PreferSide targets a fixed `side_ref` Point at the mean.
 - Inside region label snug: strong PreferPose pinned the clash-free outside seed so “aryl” never moved closer. Soft energy is now **MinimizeDist to mol/chem** (opt=clash) + PreferSide vs chem + mild PreferPose; larger NM simplex when inside. After snug, Bezier cover is **rebuilt** from atoms + final label so the outline shrinks too. Ex6 exclude test asserts nearest ring atom < 42 px and left of center.

@@ -469,37 +469,43 @@ pub fn place_region_edge(
     // `about`: reference for `pos` (Left/Right/Above/Below) — mean of contained atoms.
     about: (f64, f64),
 ) -> Placement {
-    let sides = preferred.all_cw_from();
+    // Stay on the requested `pos` side. Rotating Left→Above parked inside seeds
+    // above the ring so the grown hull stayed tall; refine then could not pull
+    // the label around the ring onto the left.
     let best = force_region(region, ink, inside, preferred, edge_margin, 0.0, about);
-    // Outside labels stay within half a bond of the hull edge.
-    let max_bump = if inside {
-        HALF_BOND_PX.max(12.0)
-    } else {
-        (HALF_BOND_PX - edge_margin).max(0.0)
-    };
-    let bumps = [0.0, 2.0, 4.0, 6.0, 8.0, 12.0, 16.0];
+    // Outside / clash-free inside seeds may bump out before the hull grows.
+    let max_bump = BOND_PX.max(24.0);
+    let bumps = [
+        0.0, 2.0, 4.0, 6.0, 8.0, 12.0, 16.0, 20.0, 24.0, 28.0, 32.0,
+    ];
+    // Prefer slide=0 (aligned with `about`) before skirting up/down the edge —
+    // early negative slides parked Left seeds above the ring.
     let slides = [
-        -0.7, -0.55, -0.45, -0.3, -0.15, 0.0, 0.15, 0.3, 0.45, 0.55, 0.7,
+        0.0, 0.15, -0.15, 0.3, -0.3, 0.45, -0.45, 0.55, -0.55, 0.7, -0.7,
     ];
     let mut least_bad = best;
     let mut least_pen = f64::INFINITY;
-    for side in sides {
-        for &bump in &bumps {
-            if bump > max_bump + 1e-9 {
-                continue;
+    for &bump in &bumps {
+        if bump > max_bump + 1e-9 {
+            continue;
+        }
+        for &t in &slides {
+            let p = force_region(
+                region,
+                ink,
+                inside,
+                preferred,
+                edge_margin + bump,
+                t,
+                about,
+            );
+            if !occ.clashes(p.bounds, clash_margin) {
+                return p;
             }
-            for &t in &slides {
-                let p = force_region(region, ink, inside, side, edge_margin + bump, t, about);
-                if !occ.clashes(p.bounds, clash_margin) {
-                    return p;
-                }
-                // Track shallowest clash so we never prefer the zero-bump seed
-                // when every candidate hits a bond.
-                let pen = clash_penalty(occ, p.bounds, clash_margin);
-                if pen < least_pen {
-                    least_pen = pen;
-                    least_bad = p;
-                }
+            let pen = clash_penalty(occ, p.bounds, clash_margin);
+            if pen < least_pen {
+                least_pen = pen;
+                least_bad = p;
             }
         }
     }

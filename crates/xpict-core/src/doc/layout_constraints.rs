@@ -845,7 +845,14 @@ fn constraint_energy(world: &LayoutWorld, c: &Constraint) -> f64 {
                 Side::Below => dy,
                 Side::Above => -dy,
             };
-            strength * hinge_below(good, 0.0)
+            // Also hug the reference along the edge (Left/Right → match y).
+            // Without this, MinimizeDist alone can leave a Left label at the
+            // top of the chem AABB and permanently inflate a grown hull.
+            let ortho = match side {
+                Side::Left | Side::Right => dy,
+                Side::Above | Side::Below => dx,
+            };
+            strength * hinge_below(good, 0.0) + 0.35 * strength * ortho * ortho
         }
         Constraint::PointStandoff {
             tip,
@@ -1521,28 +1528,23 @@ pub fn region_text_kit(
         true,
     );
     if inside {
-        // Soft guide + hard contain. Seed may sit far (clash-free outside
-        // then hull-grown); soft snug to chem pulls it toward the mol while
-        // bonds/shade stay clear. Mild PreferPose only — a strong well pinned
-        // the label at the grown edge and it never moved closer.
+        // Soft contain only while snugging. A hard Inside of the *grown* seed
+        // hull pinned the label at the far edge (with PreferPose) so the
+        // outline never shrank. Soft Inside + strong MinimizeDist lets the
+        // label travel toward chem; paint rebuilds the hull around the result.
+        // No PreferPose.
         constraints.push(Constraint::Inside {
             a: text_id.clone(),
             b: hull_id.clone(),
             pad: CONTAIN_MARGIN_PX,
-            strength: 6.0,
-        });
-        hard.push(HardConstraint::Inside {
-            a: text_id.clone(),
-            b: hull_id.clone(),
-            pad: CONTAIN_MARGIN_PX,
+            strength: 2.0,
         });
         constraints.push(Constraint::MinimizeDist {
             a: text_id.clone(),
             b: "mol/chem".into(),
             opt_dist: clash_dist,
-            strength: 12.0,
+            strength: 16.0,
         });
-        push_placement_pose(constraints, &text_id, &Shape::Aabb(text_ink));
     } else {
         constraints.push(Constraint::Outside {
             a: text_id.clone(),
@@ -1562,21 +1564,22 @@ pub fn region_text_kit(
         a: text_id.clone(),
         b: side_ref,
         side: preferred,
-        strength: 2.0,
+        strength: if inside { 4.0 } else { 2.0 },
     });
     push_clear_bonds(world, hard, &text_id, clash_dist);
     // Avoid shade disks (labels sit in front, but still clear painted wash).
+    // Inside snug: mild shade Outside so shade cannot pin the seed far out.
     for (id, n) in world.nodes.clone() {
         if n.object_type == ObjectType::Shade {
             constraints.push(Constraint::Outside {
                 a: text_id.clone(),
                 b: id,
                 clash_dist: 1.0,
-                strength: 3.0,
+                strength: if inside { 1.5 } else { 3.0 },
             });
         }
     }
-    // Shade / atom disks Inside hull (contain margin around the disk edge).
+    // Shade / atom disks soft-Inside hull (paint will rebuild hull after snug).
     for (id, n) in world.nodes.clone() {
         if matches!(n.object_type, ObjectType::Shade | ObjectType::Coord) {
             constraints.push(Constraint::Inside {
@@ -2361,10 +2364,10 @@ pub fn refine_region_text(
     // Inside seeds often start far (clash-free outside, hull grown around them);
     // allow a larger simplex so soft snug to chem can travel inward.
     let opts = SolveOpts {
-        max_iters: if inside { 120 } else { 80 },
+        max_iters: if inside { 160 } else { 80 },
         noise: 0.0,
         epsilon_px: 0.75,
-        initial_simplex_scale: if inside { 10.0 } else { 4.0 },
+        initial_simplex_scale: if inside { 14.0 } else { 4.0 },
         ..SolveOpts::default()
     };
     let _ = solve(&mut world, &cs, &hard, &opts);
