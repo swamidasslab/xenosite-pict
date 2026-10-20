@@ -1740,7 +1740,8 @@ pub fn callout_kit(
 /// Hard / AL (feasibility only, not placement preference):
 /// - [`HardConstraint::MaxDist`] ceiling (`tether_px`: ~0.3 bond for numbers,
 ///   ~0.5 for custom text);
-/// - hard Outside vs bonds and vs chem atom text.
+/// - hard Outside vs bonds, chem atom text, and prior annotation boxes
+///   (`t{10000+}`). Keep-off-labels is Lagrangian — a soft hinge loses to snug.
 ///
 /// No PreferPose — a greedy seed is only the NM start; pinning it made numbers
 /// look randomly parked. Shade is **not** a layout obstacle.
@@ -1829,52 +1830,22 @@ pub fn atom_number_kit(
             });
         }
     }
-    // Chem text: hard Outside + mild soft twin. Prior annotations (`t{10000+}`):
-    // soft Outside unless they sit in this label's tether neighborhood — then
-    // they compete for the same atom (kitchen-sink "2" vs "ortho") and must
-    // be hard-cleared. Hard-clearing *every* earlier number flung later
-    // indices off-atom.
-    let home_shape = anchor
-        .as_ref()
-        .and_then(|a| world.get(a).map(|n| n.world_shape()));
+    // Chem text and prior annotation boxes (`t{10000+}`): hard Outside + mild
+    // soft twin. Keep-off-labels is AL — a soft hinge loses to snug MinimizeDist
+    // (kitchen-sink "2" vs "ortho").
     if let Some(texts) = world.get("mol/chem/atom_texts") {
         for tid in texts.children.clone() {
-            let annot_box = tid
-                .rsplit_once('t')
-                .and_then(|(_, s)| s.parse::<usize>().ok())
-                .is_some_and(|i| i >= 10_000);
-            if annot_box {
-                let compete = home_shape.as_ref().is_some_and(|home| {
-                    world
-                        .get(&tid)
-                        .is_some_and(|n| edge_signed_distance(&n.world_shape(), home) < tether_px)
-                });
-                if compete {
-                    hard.push(HardConstraint::Outside {
-                        a: id.clone(),
-                        b: tid.clone(),
-                        clash_dist,
-                    });
-                }
-                constraints.push(Constraint::Outside {
-                    a: id.clone(),
-                    b: tid,
-                    clash_dist,
-                    strength: ATOM_MILD_REPEL,
-                });
-            } else {
-                hard.push(HardConstraint::Outside {
-                    a: id.clone(),
-                    b: tid.clone(),
-                    clash_dist,
-                });
-                constraints.push(Constraint::Outside {
-                    a: id.clone(),
-                    b: tid,
-                    clash_dist,
-                    strength: ATOM_MILD_REPEL,
-                });
-            }
+            hard.push(HardConstraint::Outside {
+                a: id.clone(),
+                b: tid.clone(),
+                clash_dist,
+            });
+            constraints.push(Constraint::Outside {
+                a: id.clone(),
+                b: tid,
+                clash_dist,
+                strength: ATOM_MILD_REPEL,
+            });
         }
     }
     // Intentionally no Outside vs shade — wash is not a placement obstacle.
@@ -3236,6 +3207,45 @@ mod tests {
             );
         }
         let _ = id;
+    }
+
+    #[test]
+    fn atom_number_kit_clears_prior_labels_hard() {
+        let mut w = LayoutWorld::new("mol");
+        install_chem_with_texts(
+            &mut w,
+            &[(0.0, 0.0, 30.0, 0.0)],
+            &[(0, 0.0, 0.0), (1, 30.0, 0.0)],
+            &[],
+            &[(10_000, Aabb::new(6.0, -5.0, 14.0, 5.0))],
+        );
+        let mut cs = Vec::new();
+        let mut hard = Vec::new();
+        let _ = atom_number_kit(
+            &mut w,
+            &mut cs,
+            &mut hard,
+            0,
+            Aabb::new(5.0, -6.0, 25.0, 6.0),
+            3.0,
+            ATOM_TEXT_TETHER_PX,
+            None,
+            false,
+        );
+        let prior_h: Vec<_> = hard
+            .iter()
+            .filter_map(|h| match h {
+                HardConstraint::Outside { b, clash_dist, .. } if b.ends_with("/t10000") => {
+                    Some(*clash_dist)
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            prior_h,
+            vec![3.0],
+            "keep-off-labels must be hard Outside (AL), not a soft hinge"
+        );
     }
 
     #[test]

@@ -2,7 +2,7 @@
 
 ## 2026-10-19
 
-- Kitchen-sink "ortho" vs index 2: prior annotation boxes inside this label's tether are **hard** Outside. Soft-only vs `t{10000+}` let MinimizeDist pull custom text onto the number. Distant earlier indices stay soft so later numbers are not flung off-atom.
+- Keep-off-labels is Lagrangian: prior annotation boxes (`t{10000+}`) are always hard Outside, same as chem text. A soft hinge lost to snug (kitchen-sink "ortho" on index 2).
 - Solver energy is constraint data + shared geometry helpers. PreferSide edge-align is `align_along` (region 0.35 vs atom-mean; caption/callout 0) — no Point vs AABB branch. Soft/hard Inside share `inside_g`; energy is always `strength · g⁺²`. PointStandoff uses `shape_anchor`.
 - Region paint cleanup: shared cover-corner / occupancy / seed helpers; emit box/circle/bezier once after snug (no placeholder patch). Dropped unused inside-of-circle seed. Tests share an ethylbenzene fixture and pin covering-circle exclude + label-shift.
 - Ex6 circle (`style: circle`, inside aryl left, exclude ethyl): do not grow r about a fixed atom-centroid. Snug the label first; rebuild the **smallest enclosing circle** of atoms + label (Welzl) so the center shifts toward the text. Exclude atoms push the center, then r is recomputed. Notebook cell 14.
