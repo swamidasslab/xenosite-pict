@@ -446,16 +446,20 @@ pub enum Constraint {
     },
 }
 
+/// No-overlap (Outside). Strongest hard group.
+pub const LAGRANGIAN_CLEAR: u8 = 0;
+/// Association ceiling (MaxDist). After clearance, before containment.
+pub const LAGRANGIAN_TETHER: u8 = 1;
+/// Stay inside a hull / cover. Weakest of the three — cannot re-introduce overlap.
+pub const LAGRANGIAN_CONTAIN: u8 = 2;
+
 /// Inequality constraints `g(x) ≤ 0` enforced via augmented Lagrangian.
 ///
 /// Soft [`Constraint`] hinges can leave residual overlap when PreferPose /
 /// PreferSide fight them. Hard rows here get Powell–Hestenes–Rockafellar
-/// multipliers so bond (and similar) clearance converges to feasibility.
-/// Clearance (no overlap) is a stronger Lagrangian than tether.
-pub const LAGRANGIAN_CLEAR: u8 = 0;
-/// Association ceiling (MaxDist). Solved after clearance and held weaker.
-pub const LAGRANGIAN_TETHER: u8 = 1;
-
+/// multipliers so clearance, tether, and contain converge to feasibility.
+/// The `lagrangian` field groups rows: lower is stronger —
+/// [`LAGRANGIAN_CLEAR`], then [`LAGRANGIAN_TETHER`], then [`LAGRANGIAN_CONTAIN`].
 #[derive(Debug, Clone)]
 pub enum HardConstraint {
     /// Require `edge_signed(a,b) ≥ clash_dist` (`g = clash_dist - d`).
@@ -463,10 +467,13 @@ pub enum HardConstraint {
         a: NodeId,
         b: NodeId,
         clash_dist: f64,
-        /// Lower is stronger. [`LAGRANGIAN_CLEAR`] vs [`LAGRANGIAN_TETHER`].
+        /// Lower is stronger. Clear (0) then tether (1) then contain (2).
         lagrangian: u8,
     },
     /// Require `a` inside `b` by at least `pad` (`g` = protrusion / shallow depth).
+    ///
+    /// Kits put this on [`LAGRANGIAN_CONTAIN`] so snug / keep-off / tether can
+    /// finish first; a shared PHR with PreferPose used to pin inside labels.
     Inside {
         a: NodeId,
         b: NodeId,
@@ -1052,7 +1059,7 @@ fn al_energy(
 ///
 /// Hard rows are grouped by [`HardConstraint`] `lagrangian` (lower = stronger).
 /// Each group is its own PHR loop; stronger groups are then held at `al_rho_max`
-/// so a weaker tether cannot re-introduce overlap.
+/// so tether / contain cannot undo no-overlap.
 pub fn solve(
     world: &mut LayoutWorld,
     constraints: &[Constraint],
@@ -1583,16 +1590,20 @@ pub fn region_text_kit(
         true,
     );
     if inside {
-        // Soft contain only while snugging. A hard Inside of the *grown* seed
-        // hull pinned the label at the far edge (with PreferPose) so the
-        // outline never shrank. Soft Inside + strong MinimizeDist lets the
-        // label travel toward chem; paint rebuilds the hull around the result.
-        // No PreferPose.
+        // Soft Inside is the snug gradient. Hard contain is a *weaker*
+        // Lagrangian than keep-off and tether, so it cannot pin the seed at
+        // the far edge the way a shared AL + PreferPose used to.
         constraints.push(Constraint::Inside {
             a: text_id.clone(),
             b: hull_id.clone(),
             pad: CONTAIN_MARGIN_PX,
             strength: 2.0,
+        });
+        hard.push(HardConstraint::Inside {
+            a: text_id.clone(),
+            b: hull_id.clone(),
+            pad: CONTAIN_MARGIN_PX,
+            lagrangian: LAGRANGIAN_CONTAIN,
         });
         constraints.push(Constraint::MinimizeDist {
             a: text_id.clone(),
@@ -2384,8 +2395,9 @@ pub fn refine_caption(
 /// Refine region text after greedy edge place.
 ///
 /// `atoms` are `(index, x, y)` centers — installed as ~0.3-bond disks so
-/// contain / clash treat them as area, not points. PreferPose stays on the
-/// seed (no pull-to-center).
+/// contain / clash treat them as area, not points. Inside labels get hard
+/// [`LAGRANGIAN_CONTAIN`] on the (grown) hull; PreferPose stays off so snug
+/// can travel inward.
 pub fn refine_region_text(
     bonds: &[(f64, f64, f64, f64)],
     atoms: &[(usize, f64, f64)],
@@ -2893,6 +2905,82 @@ mod tests {
             vec![0.35],
             "region pos vs atom-mean Point requests edge-align on the constraint"
         );
+        let contain: Vec<u8> = reg_h
+            .iter()
+            .filter_map(|h| match h {
+                HardConstraint::Inside { lagrangian, .. } => Some(*lagrangian),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            contain,
+            vec![LAGRANGIAN_CONTAIN],
+            "inside region contain is the third Lagrangian, after clear and tether"
+        );
+    }
+
+    #[test]
+    fn lagrangian_order_is_clear_then_tether_then_contain() {
+        assert!(LAGRANGIAN_CLEAR < LAGRANGIAN_TETHER);
+        assert!(LAGRANGIAN_TETHER < LAGRANGIAN_CONTAIN);
+    }
+
+    #[test]
+    fn keep_off_outranks_containment() {
+        let mut w = LayoutWorld::new("mol");
+        w.insert(
+            "hull",
+            "mol",
+            ObjectType::Group,
+            Shape::Aabb(Aabb::new(0.0, 0.0, 40.0, 40.0)),
+            true,
+        );
+        w.insert(
+            "obs",
+            "mol",
+            ObjectType::Group,
+            Shape::Aabb(Aabb::new(12.0, 16.0, 28.0, 24.0)),
+            true,
+        );
+        w.insert(
+            "lab",
+            "mol",
+            ObjectType::Group,
+            Shape::Aabb(Aabb::new(-6.0, -3.0, 6.0, 3.0)),
+            false,
+        );
+        w.set_pose("lab", 20.0, 20.0);
+        let hard = vec![
+            HardConstraint::Outside {
+                a: "lab".into(),
+                b: "obs".into(),
+                clash_dist: 2.0,
+                lagrangian: LAGRANGIAN_CLEAR,
+            },
+            HardConstraint::Inside {
+                a: "lab".into(),
+                b: "hull".into(),
+                pad: 1.0,
+                lagrangian: LAGRANGIAN_CONTAIN,
+            },
+        ];
+        let opts = SolveOpts {
+            max_iters: 80,
+            noise: 0.0,
+            epsilon_px: 0.5,
+            w_travel: 0.0,
+            initial_simplex_scale: 8.0,
+            al_outer_max: 8,
+            ..SolveOpts::default()
+        };
+        let _ = solve(&mut w, &[], &hard, &opts);
+        let lab = w.get("lab").unwrap().world_shape();
+        let obs = w.get("obs").unwrap().world_shape();
+        let d = edge_signed_distance(&lab, &obs);
+        assert!(
+            d + 1e-6 >= 2.0 - opts.al_tol,
+            "no-overlap must outrank contain: d={d} lab={lab:?}"
+        );
     }
 
     #[test]
@@ -2936,7 +3024,7 @@ mod tests {
                 a: "lab".into(),
                 b: b.into(),
                 pad: 1.0,
-                lagrangian: LAGRANGIAN_CLEAR,
+                lagrangian: LAGRANGIAN_CONTAIN,
             };
             let e = constraint_energy(&w, &soft);
             let g = hard_g(&w, &hard).max(0.0);

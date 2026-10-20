@@ -2,6 +2,7 @@
 
 ## 2026-10-20
 
+- Containment is a third hard Lagrangian (`LAGRANGIAN_CONTAIN` = 2), after no-overlap then tether. Inside region text gets `HardConstraint::Inside` at that rank so keep-off cannot be spent to stay in the hull.
 - Keep-off and tether are **different Lagrangians** (`lagrangian` 0 vs 1 on `HardConstraint`). No-overlap solves first and is held at max ρ; MaxDist cannot re-cover a number. Custom text beside an index gets a 1-bond tether. Notebook kitchen-sink test failed first (`ortho` AABB swallowed `2`), then passed.
 
 ## 2026-10-19
