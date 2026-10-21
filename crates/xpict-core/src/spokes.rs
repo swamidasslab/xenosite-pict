@@ -117,12 +117,7 @@ fn resolve_ring_endpts(
     if listed.len() < 3 {
         return None;
     }
-    let map = adj_map_without_dummy(adj, dummy);
-    let rest_bonds = bonds
-        .iter()
-        .copied()
-        .filter(|&(a, b)| a != dummy && b != dummy);
-    let rings = find_relevant_rings_from_adj(&map, rest_bonds, 32);
+    let rings = rings_without_dummy(adj, bonds, dummy);
     if rings.is_empty() {
         return None;
     }
@@ -132,66 +127,23 @@ fn resolve_ring_endpts(
         .filter(|a| rings.iter().any(|r| r.atoms.contains(a)))
         .collect();
     if cyclic_listed.len() >= 3 {
-        let mut covering: Vec<&Ring> = rings
+        if let Some(ring) = rings
             .iter()
             .filter(|r| cyclic_listed.iter().all(|a| r.atoms.contains(a)))
-            .collect();
-        covering.sort_by_key(|r| r.size());
-        if let Some(ring) = covering.first() {
+            .min_by_key(|r| r.size())
+        {
             if ring.size() >= 3 {
                 return Some(ring.atoms.clone());
             }
         }
-        if endpts_are_ring_system(adj, bonds, dummy, &cyclic_listed) {
+        if endpts_fit_rings(adj, &cyclic_listed, &rings) {
             return Some(cyclic_listed);
         }
     }
-    if endpts_are_ring_system(adj, bonds, dummy, listed) {
+    if endpts_fit_rings(adj, listed, &rings) {
         return Some(listed.to_vec());
     }
     None
-}
-
-/// Endpoints are a ring (or fused/bridged ring system).
-///
-/// Fusion / bridgehead atoms have degree >2 in the induced subgraph, so we
-/// do **not** require 2-regular cycles. Each endpoint must be cyclic, and
-/// the induced subgraph must be connected. Dummy–endpoint bonds are ignored
-/// so a haptic-style dummy cannot fake a ring.
-fn endpts_are_ring_system(
-    adj: &[Vec<i32>],
-    bonds: &[(i32, i32)],
-    dummy: i32,
-    endpts: &[i32],
-) -> bool {
-    if endpts.len() < 3 {
-        return false;
-    }
-    let set: HashSet<i32> = endpts.iter().copied().collect();
-    if set.len() != endpts.len() {
-        return false;
-    }
-    if !induced_connected(adj, endpts) {
-        return false;
-    }
-    let map = adj_map_without_dummy(adj, dummy);
-    let rest_bonds = bonds
-        .iter()
-        .copied()
-        .filter(|&(a, b)| a != dummy && b != dummy);
-    let rings = find_relevant_rings_from_adj(&map, rest_bonds, 32);
-    if rings.is_empty() {
-        return false;
-    }
-    if rings
-        .iter()
-        .any(|r| endpts.iter().all(|a| r.atoms.contains(a)))
-    {
-        return true;
-    }
-    endpts
-        .iter()
-        .all(|&a| rings.iter().any(|r| r.atoms.contains(&a)))
 }
 
 fn induced_connected(adj: &[Vec<i32>], endpts: &[i32]) -> bool {
@@ -213,6 +165,42 @@ fn induced_connected(adj: &[Vec<i32>], endpts: &[i32]) -> bool {
         }
     }
     seen.len() == set.len()
+}
+
+fn rings_without_dummy(adj: &[Vec<i32>], bonds: &[(i32, i32)], dummy: i32) -> Vec<Ring> {
+    let map = adj_map_without_dummy(adj, dummy);
+    let rest_bonds = bonds
+        .iter()
+        .copied()
+        .filter(|&(a, b)| a != dummy && b != dummy);
+    find_relevant_rings_from_adj(&map, rest_bonds, 32)
+}
+
+/// Endpoints are a ring (or fused/bridged ring system) given precomputed rings.
+///
+/// Fusion / bridgehead atoms have degree >2 in the induced subgraph, so we
+/// do **not** require 2-regular cycles. Each endpoint must be cyclic, and
+/// the induced subgraph must be connected.
+fn endpts_fit_rings(adj: &[Vec<i32>], endpts: &[i32], rings: &[Ring]) -> bool {
+    if endpts.len() < 3 {
+        return false;
+    }
+    let set: HashSet<i32> = endpts.iter().copied().collect();
+    if set.len() != endpts.len() {
+        return false;
+    }
+    if rings.is_empty() || !induced_connected(adj, endpts) {
+        return false;
+    }
+    if rings
+        .iter()
+        .any(|r| endpts.iter().all(|a| r.atoms.contains(a)))
+    {
+        return true;
+    }
+    endpts
+        .iter()
+        .all(|&a| rings.iter().any(|r| r.atoms.contains(&a)))
 }
 
 fn adj_map_without_dummy(adj: &[Vec<i32>], dummy: i32) -> HashMap<i32, Vec<i32>> {
@@ -275,21 +263,9 @@ pub fn bisector_angles(
     bonds: &[(i32, i32)],
 ) -> Vec<f64> {
     let mut out = Vec::new();
-    let set: HashSet<i32> = ring_xy.iter().map(|&(i, _, _)| i).collect();
-    let xy: std::collections::HashMap<i32, (f64, f64)> =
-        ring_xy.iter().map(|&(i, x, y)| (i, (x, y))).collect();
-    for &(a, b) in bonds {
-        if !set.contains(&a) || !set.contains(&b) {
-            continue;
-        }
-        let Some(&(ax, ay)) = xy.get(&a) else {
-            continue;
-        };
-        let Some(&(bx, by)) = xy.get(&b) else {
-            continue;
-        };
-        let mx = 0.5 * (ax + bx);
-        let my = 0.5 * (ay + by);
+    for (a, b) in ring_bond_ends(ring_xy, bonds) {
+        let mx = 0.5 * (a.0 + b.0);
+        let my = 0.5 * (a.1 + b.1);
         let dx = mx - centroid.0;
         let dy = my - centroid.1;
         if dx.hypot(dy) < 1e-9 {
@@ -321,19 +297,9 @@ pub fn ring_exit_along_ray(
     bonds: &[(i32, i32)],
 ) -> f64 {
     let u = (angle.cos(), angle.sin());
-    let set: HashSet<i32> = ring_xy.iter().map(|&(i, _, _)| i).collect();
-    let xy: HashMap<i32, (f64, f64)> = ring_xy.iter().map(|&(i, x, y)| (i, (x, y))).collect();
+    let segs: Vec<((f64, f64), (f64, f64))> = ring_bond_ends(ring_xy, bonds).collect();
     let mut hit = f64::INFINITY;
-    for &(a, b) in bonds {
-        if !set.contains(&a) || !set.contains(&b) {
-            continue;
-        }
-        let Some(&pa) = xy.get(&a) else {
-            continue;
-        };
-        let Some(&pb) = xy.get(&b) else {
-            continue;
-        };
+    for &(pa, pb) in &segs {
         if let Some(t) = ray_segment_t(centroid, u, pa, pb) {
             if t > 1e-6 {
                 hit = hit.min(t);
@@ -344,16 +310,7 @@ pub fn ring_exit_along_ray(
         return hit;
     }
     let mut inr = f64::INFINITY;
-    for &(a, b) in bonds {
-        if !set.contains(&a) || !set.contains(&b) {
-            continue;
-        }
-        let Some(&(x1, y1)) = xy.get(&a) else {
-            continue;
-        };
-        let Some(&(x2, y2)) = xy.get(&b) else {
-            continue;
-        };
+    for &((x1, y1), (x2, y2)) in &segs {
         let dx = x2 - x1;
         let dy = y2 - y1;
         let len = dx.hypot(dy).max(1e-9);
@@ -369,6 +326,20 @@ pub fn ring_exit_along_ray(
             .sum::<f64>()
             / ring_xy.len().max(1) as f64
     }
+}
+
+fn ring_bond_ends<'a>(
+    ring_xy: &'a [(i32, f64, f64)],
+    bonds: &'a [(i32, i32)],
+) -> impl Iterator<Item = ((f64, f64), (f64, f64))> + 'a {
+    let set: HashSet<i32> = ring_xy.iter().map(|&(i, _, _)| i).collect();
+    let xy: HashMap<i32, (f64, f64)> = ring_xy.iter().map(|&(i, x, y)| (i, (x, y))).collect();
+    bonds.iter().filter_map(move |&(a, b)| {
+        if !set.contains(&a) || !set.contains(&b) {
+            return None;
+        }
+        Some((*xy.get(&a)?, *xy.get(&b)?))
+    })
 }
 
 fn ray_segment_t(origin: (f64, f64), dir: (f64, f64), a: (f64, f64), b: (f64, f64)) -> Option<f64> {
@@ -533,6 +504,11 @@ pub fn greedy_spoke_angle(
     taken: &[f64],
     obstacles: &[(f64, f64)],
 ) -> f64 {
+    let energy = |th: f64| {
+        spoke_angle_energy(
+            th, centroid, bond_len, ring_xy, bonds, disk, bisectors, taken, obstacles,
+        )
+    };
     let mut best_th = bisectors.first().copied().unwrap_or(0.0);
     let mut best_e = f64::INFINITY;
     let candidates: Vec<f64> = if bisectors.is_empty() {
@@ -543,9 +519,7 @@ pub fn greedy_spoke_angle(
         bisectors.to_vec()
     };
     for &th in &candidates {
-        let e = spoke_angle_energy(
-            th, centroid, bond_len, ring_xy, bonds, disk, bisectors, taken, obstacles,
-        );
+        let e = energy(th);
         if e < best_e {
             best_e = e;
             best_th = th;
@@ -560,9 +534,7 @@ pub fn greedy_spoke_angle(
     for i in 0..steps {
         let t = i as f64 / (steps - 1) as f64;
         let th = best_th - window + 2.0 * window * t;
-        let e = spoke_angle_energy(
-            th, centroid, bond_len, ring_xy, bonds, disk, bisectors, taken, obstacles,
-        );
+        let e = energy(th);
         if e < best_e {
             best_e = e;
             best_th = th;

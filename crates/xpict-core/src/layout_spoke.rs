@@ -6,6 +6,8 @@
 //! 4. 1-D refine (same hard no-cross / soft bisector energy).
 //! 5. Write coords; chrome then treats the molecule as fixed.
 
+use std::collections::HashSet;
+
 use crate::align_layout::layout_or_align;
 use crate::cxsmiles::cx_multicenters;
 use crate::edge::AlignOpts;
@@ -37,8 +39,8 @@ pub fn layout_or_align_with_spokes(
         .collect();
     let groups = cx_multicenters(source);
     let comps = detect_ring_spokes(query.n_atoms(), &bonds, &groups);
-    if comps.is_empty() {
-        return layout_or_align(
+    let fallback = || {
+        layout_or_align(
             query,
             query_atom_indices,
             reference,
@@ -46,10 +48,13 @@ pub fn layout_or_align_with_spokes(
             atom_map,
             peer_id,
             align,
-        );
+        )
+    };
+    if comps.is_empty() {
+        return fallback();
     }
 
-    let spoke_atom_set: std::collections::HashSet<i32> = comps
+    let spoke_atom_set: HashSet<i32> = comps
         .iter()
         .flat_map(|c| c.atoms.iter().copied().chain(std::iter::once(c.dummy)))
         .collect();
@@ -57,15 +62,7 @@ pub fn layout_or_align_with_spokes(
         .filter(|i| !spoke_atom_set.contains(&(*i as i32)))
         .collect();
     if rest_atoms.is_empty() {
-        return layout_or_align(
-            query,
-            query_atom_indices,
-            reference,
-            ref_atom_indices,
-            atom_map,
-            peer_id,
-            align,
-        );
+        return fallback();
     }
 
     let (rest_layout, rest_from_sub) = subgraph(query, &rest_atoms);
@@ -74,7 +71,7 @@ pub fn layout_or_align_with_spokes(
         .map(|&i| query_atom_indices.get(i).copied().unwrap_or(i as i32))
         .collect();
     let rest_map = atom_map.map(|pairs| {
-        let rest_pub: std::collections::HashSet<i32> = rest_indices.iter().copied().collect();
+        let rest_pub: HashSet<i32> = rest_indices.iter().copied().collect();
         pairs
             .iter()
             .copied()
@@ -101,6 +98,10 @@ pub fn layout_or_align_with_spokes(
 
     let bond_len = mean_bond_len(&rest_coords, &rest_layout).max(0.5);
     let disk = 0.3 * bond_len;
+    let obstacles: Vec<(f64, f64)> = rest_atoms
+        .iter()
+        .map(|&i| (f64::from(x[i]), f64::from(y[i])))
+        .collect();
 
     let mut taken_angles: Vec<f64> = Vec::new();
     // Larger substituents first so they claim the open bisector slots.
@@ -124,10 +125,6 @@ pub fn layout_or_align_with_spokes(
         let cy: f64 = ring_xy.iter().map(|p| p.2).sum::<f64>() / ring_xy.len() as f64;
         let centroid = (cx, cy);
         let bis = bisector_angles(centroid, &ring_xy, &bonds);
-        let obstacles: Vec<(f64, f64)> = rest_atoms
-            .iter()
-            .map(|&i| (f64::from(x[i]), f64::from(y[i])))
-            .collect();
         let theta = greedy_spoke_angle(
             centroid,
             f64::from(bond_len),
@@ -151,22 +148,7 @@ pub fn layout_or_align_with_spokes(
             continue;
         }
         let (spoke_layout, _) = subgraph(query, &spoke_keep);
-        let spoke_coords = if spoke_layout.n_atoms() == 0 {
-            LayoutResult {
-                x: Vec::new(),
-                y: Vec::new(),
-            }
-        } else if spoke_layout.n_atoms() == 1 {
-            LayoutResult {
-                x: vec![0.0],
-                y: vec![0.0],
-            }
-        } else {
-            generate_2d_coordinates(&spoke_layout).unwrap_or(LayoutResult {
-                x: vec![0.0; spoke_layout.n_atoms()],
-                y: vec![0.0; spoke_layout.n_atoms()],
-            })
-        };
+        let spoke_coords = layout_spoke_graph(&spoke_layout);
 
         let local: Vec<(f64, f64)> = (0..spoke_keep.len())
             .map(|i| {
@@ -183,31 +165,16 @@ pub fn layout_or_align_with_spokes(
         let neighbor = first_spoke_neighbor(&bonds, comp.atom, &comp.atoms, comp.dummy);
         let neighbor_idx = neighbor.and_then(|nb| spoke_keep.iter().position(|&u| u as i32 == nb));
         let stem = spoke_stem_len(centroid, theta, &ring_xy, &bonds, f64::from(bond_len));
-        let pos = place_spoke(
-            &local,
-            attach_idx,
-            neighbor_idx,
-            centroid,
-            theta,
-            stem,
-            CHAIN_BOND_OFFSET,
-        );
-        let neg = place_spoke(
-            &local,
-            attach_idx,
-            neighbor_idx,
-            centroid,
-            theta,
-            stem,
-            -CHAIN_BOND_OFFSET,
-        );
-        let chosen = if clearance_cost(&pos, attach_idx, &obstacles, f64::from(disk))
-            <= clearance_cost(&neg, attach_idx, &obstacles, f64::from(disk))
-        {
-            pos
-        } else {
-            neg
-        };
+        let disk_f = f64::from(disk);
+        let chosen = [CHAIN_BOND_OFFSET, -CHAIN_BOND_OFFSET]
+            .into_iter()
+            .map(|off| place_spoke(&local, attach_idx, neighbor_idx, centroid, theta, stem, off))
+            .min_by(|a, b| {
+                clearance_cost(a, attach_idx, &obstacles, disk_f)
+                    .partial_cmp(&clearance_cost(b, attach_idx, &obstacles, disk_f))
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .unwrap_or_else(|| local.clone());
         for (i, &old) in spoke_keep.iter().enumerate() {
             if let Some(&(px, py)) = chosen.get(i) {
                 x[old] = px as f32;
@@ -218,6 +185,23 @@ pub fn layout_or_align_with_spokes(
     }
 
     Ok((LayoutResult { x, y }, dbg))
+}
+
+fn layout_spoke_graph(layout: &LayoutMolecule) -> LayoutResult {
+    match layout.n_atoms() {
+        0 => LayoutResult {
+            x: Vec::new(),
+            y: Vec::new(),
+        },
+        1 => LayoutResult {
+            x: vec![0.0],
+            y: vec![0.0],
+        },
+        n => generate_2d_coordinates(layout).unwrap_or(LayoutResult {
+            x: vec![0.0; n],
+            y: vec![0.0; n],
+        }),
+    }
 }
 
 fn mean_bond_len(coords: &LayoutResult, layout: &LayoutMolecule) -> f32 {

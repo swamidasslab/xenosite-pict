@@ -1739,11 +1739,7 @@ fn bond_segs(mol: &MoleculeIn, dx: f64, dy: f64) -> Vec<(f64, f64, f64, f64)> {
 
 fn aromatic_clear_bonds(mol: &MoleculeIn, dx: f64, dy: f64) -> Vec<(f64, f64, f64, f64)> {
     let dummies: HashSet<i32> = mol.spokes.iter().filter_map(|s| s.dummy).collect();
-    if dummies.is_empty() {
-        bond_segs(mol, dx, dy)
-    } else {
-        bond_segs_filtered(mol, dx, dy, Some(&dummies))
-    }
+    bond_segs_filtered(mol, dx, dy, Some(&dummies))
 }
 
 fn bond_segs_filtered(
