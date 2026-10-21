@@ -2,6 +2,10 @@
 
 ## 2026-10-20
 
+- `Cl*.c1ccc(CC)cc1 |m:1:2.3.4.5.6.7|` used the benzene-style index run, so the ethyl carbons were in `m:` and spoke detect failed. CoordGen then drew `Cl*` as a separate fragment; `apply_cx_by_index` stamped a fake spoke with `atom = dummy`. Resolve `m:` onto the Relevant Ring that covers the cyclic listed atoms (drop the ethyl, complete the hexagon). Stem energy also clears rest atoms so Cl does not sit on the ethyl.
+
+## 2026-10-20
+
 - Spoke stem length is ring-exit along the ray plus one house bond, not centroid plus one bond. `O*.c1ccccc1 |m:1:2.3.4.5.6.7|` sat on the perimeter (ring radius ≈ 1 bond). The painted stem still runs from the centroid to the substituent; chrome `circle_clear_bonds` ignores that dummy bond so the aromatic circle is not collapsed. Clipping the stem to the ring edge was wrong.
 
 ## 2026-10-20

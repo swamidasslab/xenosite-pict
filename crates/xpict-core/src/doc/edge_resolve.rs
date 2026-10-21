@@ -976,6 +976,40 @@ mod tests {
     }
 
     #[test]
+    fn cl_star_on_ethylbenzene_stems_from_the_ring() {
+        let mol = free_layout("Cl*.c1ccc(CC)cc1 |m:1:2.3.4.5.6.7|", "s")
+            .unwrap()
+            .molecule;
+        assert_eq!(mol.spokes.len(), 1);
+        let sp = &mol.spokes[0];
+        assert_eq!(sp.atom, 0, "Cl is the substituent, not the dummy");
+        let mut endpts = sp.endpts.clone();
+        endpts.sort_unstable();
+        assert_eq!(endpts, vec![2, 3, 4, 5, 8, 9]);
+        let c = mol.centroid_of(&sp.endpts).expect("centroid");
+        let dummy = xy(&mol, sp.dummy.expect("dummy"));
+        let attach = xy(&mol, sp.atom);
+        let bond = crate::metrics::BOND_PX;
+        let dummy_from_c = (dummy.0 - c.0).hypot(dummy.1 - c.1);
+        assert!(
+            dummy_from_c < 0.2 * bond,
+            "dummy must sit at the ring centroid, d={dummy_from_c:.1}"
+        );
+        let from_ring = min_dist_to_ring(&mol, attach, &sp.endpts);
+        assert!(
+            from_ring > 0.7 * bond && from_ring < 1.4 * bond,
+            "Cl should be ~1 bond off the ring, got {from_ring:.1}"
+        );
+        let ethyl = xy(&mol, 6);
+        let d_ethyl =
+            crate::spokes::point_segment_dist(ethyl.0, ethyl.1, c.0, c.1, attach.0, attach.1);
+        assert!(
+            d_ethyl > 0.25 * bond,
+            "stem must miss the ethyl, d={d_ethyl:.1}"
+        );
+    }
+
+    #[test]
     fn two_cc_star_spokes_take_different_slots() {
         let mol = free_layout("CC*.CC*.c1ccccc1 |m:2:6.7.8.9.10.11,5:6.7.8.9.10.11|", "s")
             .unwrap()

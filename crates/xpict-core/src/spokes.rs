@@ -9,7 +9,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::cxsmiles::Multicenter;
-use crate::rings::find_relevant_rings_from_adj;
+use crate::rings::{find_relevant_rings_from_adj, Ring};
 
 /// One ring-center substituent after dropping the dummy from the spoke graph.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,10 +48,10 @@ pub fn detect_ring_spokes(
         {
             continue;
         }
-        if !endpts_are_ring_system(&adj, bonds, dummy, &g.endpts) {
+        let Some(endpts) = resolve_ring_endpts(&adj, bonds, dummy, &g.endpts) else {
             continue;
-        }
-        let blocked: HashSet<i32> = g.endpts.iter().copied().collect();
+        };
+        let blocked: HashSet<i32> = endpts.iter().copied().collect();
         let mut spoke = bfs_component(&adj, dummy, &blocked);
         spoke.sort_unstable();
         spoke.dedup();
@@ -79,7 +79,7 @@ pub fn detect_ring_spokes(
             dummy,
             atom,
             atoms,
-            endpts: g.endpts.clone(),
+            endpts,
         });
     }
     out
@@ -99,6 +99,57 @@ fn adjacency(n: usize, bonds: &[(i32, i32)]) -> Vec<Vec<i32>> {
         adj[bu].push(a);
     }
     adj
+}
+
+/// Map a CX ``m:`` atom list onto the ring the dummy should stem from.
+///
+/// Consecutive SMILES indices often swallow an exocyclic substituent
+/// (``c1ccc(CC)cc1`` with ``m:…:2.3.4.5.6.7`` includes the ethyl). Drop
+/// acyclic listed atoms and, when the rest all sit on one Relevant Ring,
+/// expand to that full ring. Fused lists that already span more than one
+/// ring stay a connected cyclic system.
+fn resolve_ring_endpts(
+    adj: &[Vec<i32>],
+    bonds: &[(i32, i32)],
+    dummy: i32,
+    listed: &[i32],
+) -> Option<Vec<i32>> {
+    if listed.len() < 3 {
+        return None;
+    }
+    let map = adj_map_without_dummy(adj, dummy);
+    let rest_bonds = bonds
+        .iter()
+        .copied()
+        .filter(|&(a, b)| a != dummy && b != dummy);
+    let rings = find_relevant_rings_from_adj(&map, rest_bonds, 32);
+    if rings.is_empty() {
+        return None;
+    }
+    let cyclic_listed: Vec<i32> = listed
+        .iter()
+        .copied()
+        .filter(|a| rings.iter().any(|r| r.atoms.contains(a)))
+        .collect();
+    if cyclic_listed.len() >= 3 {
+        let mut covering: Vec<&Ring> = rings
+            .iter()
+            .filter(|r| cyclic_listed.iter().all(|a| r.atoms.contains(a)))
+            .collect();
+        covering.sort_by_key(|r| r.size());
+        if let Some(ring) = covering.first() {
+            if ring.size() >= 3 {
+                return Some(ring.atoms.clone());
+            }
+        }
+        if endpts_are_ring_system(adj, bonds, dummy, &cyclic_listed) {
+            return Some(cyclic_listed);
+        }
+    }
+    if endpts_are_ring_system(adj, bonds, dummy, listed) {
+        return Some(listed.to_vec());
+    }
+    None
 }
 
 /// Endpoints are a ring (or fused/bridged ring system).
@@ -423,6 +474,7 @@ pub fn spoke_angle_energy(
     disk: f64,
     bisectors: &[f64],
     taken: &[f64],
+    obstacles: &[(f64, f64)],
 ) -> f64 {
     let ux = theta.cos();
     let uy = theta.sin();
@@ -430,12 +482,20 @@ pub fn spoke_angle_energy(
     let ax = centroid.0 + stem * ux;
     let ay = centroid.1 + stem * uy;
     let mut e = 0.0;
-    for &(_, x, y) in ring_xy {
+    let hit = |x: f64, y: f64| {
         let d = point_segment_dist(x, y, centroid.0, centroid.1, ax, ay);
         if d < disk {
             let g = disk - d;
-            e += HARD * g * g;
+            HARD * g * g
+        } else {
+            0.0
         }
+    };
+    for &(_, x, y) in ring_xy {
+        e += hit(x, y);
+    }
+    for &(x, y) in obstacles {
+        e += hit(x, y);
     }
     if let Some(best) = bisectors
         .iter()
@@ -464,6 +524,7 @@ pub fn greedy_spoke_angle(
     disk: f64,
     bisectors: &[f64],
     taken: &[f64],
+    obstacles: &[(f64, f64)],
 ) -> f64 {
     let mut best_th = bisectors.first().copied().unwrap_or(0.0);
     let mut best_e = f64::INFINITY;
@@ -476,7 +537,7 @@ pub fn greedy_spoke_angle(
     };
     for &th in &candidates {
         let e = spoke_angle_energy(
-            th, centroid, bond_len, ring_xy, bonds, disk, bisectors, taken,
+            th, centroid, bond_len, ring_xy, bonds, disk, bisectors, taken, obstacles,
         );
         if e < best_e {
             best_e = e;
@@ -493,7 +554,7 @@ pub fn greedy_spoke_angle(
         let t = i as f64 / (steps - 1) as f64;
         let th = best_th - window + 2.0 * window * t;
         let e = spoke_angle_energy(
-            th, centroid, bond_len, ring_xy, bonds, disk, bisectors, taken,
+            th, centroid, bond_len, ring_xy, bonds, disk, bisectors, taken, obstacles,
         );
         if e < best_e {
             best_e = e;
@@ -576,6 +637,31 @@ mod tests {
         let bonds = [(0, 1), (1, 2), (3, 4), (4, 5), (5, 6)];
         let g = cx_multicenters("CC*.CCCC |m:2:3.4.5.6|");
         assert!(detect_ring_spokes(7, &bonds, &g).is_empty());
+    }
+
+    #[test]
+    fn ethylbenzene_m_range_drops_ethyl_and_completes_ring() {
+        // Cl0-*1 . c2-c3-c4-c5(C6-C7)-c8-c9
+        // `m:1:2.3.4.5.6.7` is the benzene-style index run and swallows the ethyl.
+        let bonds = [
+            (0, 1),
+            (2, 3),
+            (3, 4),
+            (4, 5),
+            (5, 6),
+            (6, 7),
+            (5, 8),
+            (8, 9),
+            (2, 9),
+        ];
+        let g = cx_multicenters("Cl*.c1ccc(CC)cc1 |m:1:2.3.4.5.6.7|");
+        let comps = detect_ring_spokes(10, &bonds, &g);
+        assert_eq!(comps.len(), 1);
+        assert_eq!(comps[0].dummy, 1);
+        assert_eq!(comps[0].atom, 0);
+        let mut endpts = comps[0].endpts.clone();
+        endpts.sort_unstable();
+        assert_eq!(endpts, vec![2, 3, 4, 5, 8, 9]);
     }
 
     #[test]

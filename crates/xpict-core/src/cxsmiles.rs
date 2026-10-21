@@ -3,7 +3,7 @@
 //! Shared by paint chrome ([`crate::doc`]) and language edges. No RDKit.
 //! Chematic's CX reader ignores ``m:``; we keep it here.
 
-use crate::scene::{Attach, MoleculeIn, SpokeIn};
+use crate::scene::MoleculeIn;
 
 /// One CX ``m:dummy:a.b.c`` multicenter S-group.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -195,22 +195,7 @@ pub fn apply_cx_by_index(mut molecule: MoleculeIn, source: &str) -> MoleculeIn {
             }
         }
     }
-    if molecule.spokes.is_empty() {
-        molecule.spokes = spoke_ins_from_source(source);
-    }
     molecule
-}
-
-fn spoke_ins_from_source(source: &str) -> Vec<SpokeIn> {
-    cx_multicenters(source)
-        .into_iter()
-        .map(|g| SpokeIn {
-            dummy: Some(g.dummy),
-            atom: g.dummy,
-            endpts: g.endpts,
-            attach: Attach::Any,
-        })
-        .collect()
 }
 
 /// CX source string for a mol node (prefer ``cxsmiles``, else ``smiles``).

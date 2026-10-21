@@ -124,6 +124,10 @@ pub fn layout_or_align_with_spokes(
         let cy: f64 = ring_xy.iter().map(|p| p.2).sum::<f64>() / ring_xy.len() as f64;
         let centroid = (cx, cy);
         let bis = bisector_angles(centroid, &ring_xy, &bonds);
+        let obstacles: Vec<(f64, f64)> = rest_atoms
+            .iter()
+            .map(|&i| (f64::from(x[i]), f64::from(y[i])))
+            .collect();
         let theta = greedy_spoke_angle(
             centroid,
             f64::from(bond_len),
@@ -132,6 +136,7 @@ pub fn layout_or_align_with_spokes(
             f64::from(disk),
             &bis,
             &taken_angles,
+            &obstacles,
         );
 
         let dummy_u = comp.dummy as usize;

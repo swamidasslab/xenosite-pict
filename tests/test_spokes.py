@@ -82,6 +82,33 @@ def _seg_dist(p, a, b) -> float:
     return math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy))
 
 
+def test_cl_star_on_ethylbenzene_uses_ring_not_ethyl():
+    m = render(mol("Cl*.c1ccc(CC)cc1 |m:1:2.3.4.5.6.7|")).molecule
+    assert len(m.spokes) == 1
+    sp = m.spokes[0]
+    assert sp.atom == 0
+    assert sorted(sp.endpts) == [2, 3, 4, 5, 8, 9]
+    pts = [_xy(m, i) for i in sp.endpts]
+    cx = sum(p[0] for p in pts) / len(pts)
+    cy = sum(p[1] for p in pts) / len(pts)
+    dummy = _xy(m, sp.dummy)
+    attach = _xy(m, sp.atom)
+    endpt_set = set(sp.endpts)
+    ring_lens = []
+    for b in m.bonds:
+        if b.begin in endpt_set and b.end in endpt_set:
+            p, q = _xy(m, b.begin), _xy(m, b.end)
+            ring_lens.append(math.hypot(p[0] - q[0], p[1] - q[1]))
+    bond = sum(ring_lens) / len(ring_lens)
+    assert math.hypot(dummy[0] - cx, dummy[1] - cy) < 0.2 * bond
+    d_ring = min(
+        _seg_dist(attach, _xy(m, b.begin), _xy(m, b.end))
+        for b in m.bonds
+        if b.begin in endpt_set and b.end in endpt_set
+    )
+    assert 0.7 * bond < d_ring < 1.4 * bond, d_ring
+
+
 def test_two_spokes_on_benzene():
     m = render(mol("CC*.CC*.c1ccccc1 |m:2:6.7.8.9.10.11,5:6.7.8.9.10.11|")).molecule
     assert len(m.spokes) == 2
