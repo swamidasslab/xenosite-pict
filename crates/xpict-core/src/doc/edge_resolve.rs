@@ -883,6 +883,92 @@ mod tests {
         );
     }
 
+    fn min_dist_to_ring(mol: &MoleculeIn, attach: (f64, f64), endpts: &[i32]) -> f64 {
+        let set: HashMap<i32, (f64, f64)> = endpts
+            .iter()
+            .filter_map(|&i| mol.atom(i).map(|a| (i, (a.x, a.y))))
+            .collect();
+        let mut best = f64::INFINITY;
+        for b in &mol.bonds {
+            let Some(&pa) = set.get(&b.begin) else {
+                continue;
+            };
+            let Some(&pb) = set.get(&b.end) else {
+                continue;
+            };
+            best = best.min(crate::spokes::point_segment_dist(
+                attach.0, attach.1, pa.0, pa.1, pb.0, pb.1,
+            ));
+        }
+        best
+    }
+
+    fn aromatic_radii(scene: &crate::scene::Scene) -> Vec<f64> {
+        scene
+            .viewports
+            .iter()
+            .flat_map(|v| v.layers.iter())
+            .flat_map(|l| l.primitives.iter())
+            .filter_map(|p| match p {
+                crate::scene::Primitive::Circle { r, class, .. }
+                    if class.as_deref().is_some_and(|c| c.contains("aromatic")) =>
+                {
+                    Some(*r)
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn o_star_sits_one_bond_outside_ring_and_keeps_aromatic_circle() {
+        let source = "O*.c1ccccc1 |m:1:2.3.4.5.6.7|";
+        let mol = free_layout(source, "s").unwrap().molecule;
+        assert_eq!(mol.spokes.len(), 1);
+        let sp = &mol.spokes[0];
+        let c = mol.centroid_of(&sp.endpts).expect("centroid");
+        let attach = xy(&mol, sp.atom);
+        let ring: Vec<(i32, f64, f64)> = sp
+            .endpts
+            .iter()
+            .map(|&i| {
+                let (x, y) = xy(&mol, i);
+                (i, x, y)
+            })
+            .collect();
+        let bonds: Vec<(i32, i32)> = mol.bonds.iter().map(|b| (b.begin, b.end)).collect();
+        let ang = (attach.1 - c.1).atan2(attach.0 - c.0);
+        let exit = crate::spokes::ring_exit_along_ray(c, ang, &ring, &bonds);
+        let from_c = (attach.0 - c.0).hypot(attach.1 - c.1);
+        let from_ring = min_dist_to_ring(&mol, attach, &sp.endpts);
+        let bond = crate::metrics::BOND_PX;
+        assert!(
+            from_c > 1.4 * bond,
+            "O must sit past the ring, not on it: from_c={from_c:.1} exit={exit:.1}"
+        );
+        assert!(
+            (from_c - (exit + bond)).abs() < 0.35 * bond,
+            "stem should be ring-exit + 1 bond: from_c={from_c:.1} want={:.1}",
+            exit + bond
+        );
+        assert!(
+            from_ring > 0.7 * bond && from_ring < 1.4 * bond,
+            "O should be ~1 bond off the ring, got {from_ring:.1} (bond={bond:.1})"
+        );
+
+        let spec: crate::doc::DepictSpec = serde_json::from_value(serde_json::json!({
+            "type": "mol",
+            "smiles": source,
+        }))
+        .unwrap();
+        let painted = crate::doc::depict(&spec).unwrap();
+        let rs = aromatic_radii(&painted[0].scene);
+        assert!(
+            rs.iter().any(|&r| r > 0.25 * bond),
+            "aromatic circle vanished (radii={rs:?})"
+        );
+    }
+
     #[test]
     fn two_cc_star_spokes_take_different_slots() {
         let mol = free_layout("CC*.CC*.c1ccccc1 |m:2:6.7.8.9.10.11,5:6.7.8.9.10.11|", "s")

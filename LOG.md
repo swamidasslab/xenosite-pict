@@ -2,6 +2,10 @@
 
 ## 2026-10-20
 
+- Spoke stem length is ring-exit along the ray plus one house bond, not centroid plus one bond. `O*.c1ccccc1 |m:1:2.3.4.5.6.7|` sat on the perimeter (ring radius ≈ 1 bond) and the dummy→O line through the centroid collapsed the aromatic circle in chrome `circle_clear_bonds`. Dummy stays at the centroid for layout; paint clips the visible stem to the ring edge.
+
+## 2026-10-20
+
 - Ring-center spokes from CXSMILES `m:` in `xpict-core`. Dummy `*` and the `*`-bond are dropped from the **spoke graph** before CoordGen, so `CC*` is a straight stem (centroid → CH2 → CH3 collinear) instead of an extra kink at the dummy. Rest and spoke layout separately; greedy stem along a ring-bond perp bisector; 1-D refine so the stem misses ring atoms. Fusion/bridgehead endpoints are allowed (not a 2-regular induced cycle). Molfiles / haptic `C:` still later.
 
 ## 2026-10-20

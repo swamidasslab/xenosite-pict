@@ -1743,7 +1743,16 @@ fn bond_segs(mol: &MoleculeIn, dx: f64, dy: f64) -> Vec<(f64, f64, f64, f64)> {
         let Some(c) = find_atom(mol, b.end as u32) else {
             continue;
         };
-        out.push((a.x + dx, a.y + dy, c.x + dx, c.y + dy));
+        let (x1, y1, x2, y2) = crate::spokes::clip_mol_spoke_stem(
+            mol,
+            b.begin,
+            b.end,
+            a.x + dx,
+            a.y + dy,
+            c.x + dx,
+            c.y + dy,
+        );
+        out.push((x1, y1, x2, y2));
     }
     out
 }

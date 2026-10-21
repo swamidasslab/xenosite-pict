@@ -15,6 +15,7 @@ use crate::layout_coordgen::{
 use crate::scene::AlignDebug;
 use crate::spokes::{
     bisector_angles, detect_ring_spokes, first_spoke_neighbor, greedy_spoke_angle, place_spoke,
+    spoke_stem_len,
 };
 
 /// Layout ``query``, placing CX ``m:`` ring-center spokes after the scaffold.
@@ -127,6 +128,7 @@ pub fn layout_or_align_with_spokes(
             centroid,
             f64::from(bond_len),
             &ring_xy,
+            &bonds,
             f64::from(disk),
             &bis,
             &taken_angles,
@@ -175,14 +177,8 @@ pub fn layout_or_align_with_spokes(
             .unwrap_or(0);
         let neighbor = first_spoke_neighbor(&bonds, comp.atom, &comp.atoms, comp.dummy);
         let neighbor_idx = neighbor.and_then(|nb| spoke_keep.iter().position(|&u| u as i32 == nb));
-        let placed = place_spoke(
-            &local,
-            attach_idx,
-            neighbor_idx,
-            centroid,
-            theta,
-            f64::from(bond_len),
-        );
+        let stem = spoke_stem_len(centroid, theta, &ring_xy, &bonds, f64::from(bond_len));
+        let placed = place_spoke(&local, attach_idx, neighbor_idx, centroid, theta, stem);
         for (i, &old) in spoke_keep.iter().enumerate() {
             if let Some(&(px, py)) = placed.get(i) {
                 x[old] = px as f32;

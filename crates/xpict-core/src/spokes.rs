@@ -3,12 +3,14 @@
 //! The SMILES dummy ``*`` and its bond are **dropped from the spoke graph**.
 //! CoordGen therefore never sees ``*`` as a neighbor of the attachment atom,
 //! so ``CC*`` stays a straight two-bond stem (no extra kink at a dummy vertex).
-//! A silent dummy may still sit at the centroid for paint / clash.
+//! A silent dummy may still sit at the centroid for layout; paint clips the
+//! stem to the ring perimeter so it does not cross the aromatic circle.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::cxsmiles::Multicenter;
 use crate::rings::find_relevant_rings_from_adj;
+use crate::scene::MoleculeIn;
 
 /// One ring-center substituent after dropping the dummy from the spoke graph.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -258,6 +260,185 @@ pub fn ang_diff(a: f64, b: f64) -> f64 {
     d
 }
 
+/// Distance from the ring centroid along ``angle`` to the ring perimeter.
+///
+/// Hits the first ring-bond segment the ray meets (a bond-gap exit). Falls
+/// back to inradius if the ray misses every segment.
+pub fn ring_exit_along_ray(
+    centroid: (f64, f64),
+    angle: f64,
+    ring_xy: &[(i32, f64, f64)],
+    bonds: &[(i32, i32)],
+) -> f64 {
+    let u = (angle.cos(), angle.sin());
+    let set: HashSet<i32> = ring_xy.iter().map(|&(i, _, _)| i).collect();
+    let xy: HashMap<i32, (f64, f64)> = ring_xy.iter().map(|&(i, x, y)| (i, (x, y))).collect();
+    let mut hit = f64::INFINITY;
+    for &(a, b) in bonds {
+        if !set.contains(&a) || !set.contains(&b) {
+            continue;
+        }
+        let Some(&pa) = xy.get(&a) else {
+            continue;
+        };
+        let Some(&pb) = xy.get(&b) else {
+            continue;
+        };
+        if let Some(t) = ray_segment_t(centroid, u, pa, pb) {
+            if t > 1e-6 {
+                hit = hit.min(t);
+            }
+        }
+    }
+    if hit.is_finite() {
+        return hit;
+    }
+    let mut inr = f64::INFINITY;
+    for &(a, b) in bonds {
+        if !set.contains(&a) || !set.contains(&b) {
+            continue;
+        }
+        let Some(&(x1, y1)) = xy.get(&a) else {
+            continue;
+        };
+        let Some(&(x2, y2)) = xy.get(&b) else {
+            continue;
+        };
+        let dx = x2 - x1;
+        let dy = y2 - y1;
+        let len = dx.hypot(dy).max(1e-9);
+        let d = ((centroid.0 - x1) * dy - (centroid.1 - y1) * dx).abs() / len;
+        inr = inr.min(d);
+    }
+    if inr.is_finite() {
+        inr
+    } else {
+        ring_xy
+            .iter()
+            .map(|&(_, x, y)| (x - centroid.0).hypot(y - centroid.1))
+            .sum::<f64>()
+            / ring_xy.len().max(1) as f64
+    }
+}
+
+fn ray_segment_t(origin: (f64, f64), dir: (f64, f64), a: (f64, f64), b: (f64, f64)) -> Option<f64> {
+    let vx = b.0 - a.0;
+    let vy = b.1 - a.1;
+    let cross = dir.0 * vy - dir.1 * vx;
+    if cross.abs() < 1e-12 {
+        return None;
+    }
+    let acx = a.0 - origin.0;
+    let acy = a.1 - origin.1;
+    let t = (acx * vy - acy * vx) / cross;
+    let s = (acx * dir.1 - acy * dir.0) / cross;
+    if t > 0.0 && (0.0..=1.0).contains(&s) {
+        Some(t)
+    } else {
+        None
+    }
+}
+
+/// Stem length: ring perimeter along the ray, plus one house bond — not from
+/// the centroid (too close) and not an extra bond past the ring (too far).
+pub fn spoke_stem_len(
+    centroid: (f64, f64),
+    angle: f64,
+    ring_xy: &[(i32, f64, f64)],
+    bonds: &[(i32, i32)],
+    bond_len: f64,
+) -> f64 {
+    ring_exit_along_ray(centroid, angle, ring_xy, bonds) + bond_len.max(0.0)
+}
+
+/// Pull the dummy end of a paint-space stem to the ring perimeter.
+///
+/// Dummy stays at the centroid for layout; the visible bond starts at the
+/// ring so it does not run through the aromatic circle.
+pub fn clip_spoke_dummy_end(
+    dummy: i32,
+    ring_xy: &[(i32, f64, f64)],
+    bonds: &[(i32, i32)],
+    begin: i32,
+    end: i32,
+    x1: f64,
+    y1: f64,
+    x2: f64,
+    y2: f64,
+) -> (f64, f64, f64, f64) {
+    if ring_xy.len() < 3 {
+        return (x1, y1, x2, y2);
+    }
+    let dummy_is_begin = begin == dummy;
+    let dummy_is_end = end == dummy;
+    if !dummy_is_begin && !dummy_is_end {
+        return (x1, y1, x2, y2);
+    }
+    let cx = ring_xy.iter().map(|p| p.1).sum::<f64>() / ring_xy.len() as f64;
+    let cy = ring_xy.iter().map(|p| p.2).sum::<f64>() / ring_xy.len() as f64;
+    let (ax, ay) = if dummy_is_begin { (x2, y2) } else { (x1, y1) };
+    let ang = (ay - cy).atan2(ax - cx);
+    let exit = ring_exit_along_ray((cx, cy), ang, ring_xy, bonds);
+    if !exit.is_finite() || exit <= 1e-6 {
+        return (x1, y1, x2, y2);
+    }
+    let reach = (ax - cx).hypot(ay - cy);
+    if reach <= exit + 1e-6 {
+        return (x1, y1, x2, y2);
+    }
+    let ox = cx + exit * ang.cos();
+    let oy = cy + exit * ang.sin();
+    if dummy_is_begin {
+        (ox, oy, x2, y2)
+    } else {
+        (x1, y1, ox, oy)
+    }
+}
+
+/// Clip a spoke dummy–attach segment whose endpoints are already in paint space.
+pub fn clip_mol_spoke_stem(
+    mol: &MoleculeIn,
+    begin: i32,
+    end: i32,
+    x1: f64,
+    y1: f64,
+    x2: f64,
+    y2: f64,
+) -> (f64, f64, f64, f64) {
+    if mol.spokes.is_empty() {
+        return (x1, y1, x2, y2);
+    }
+    let bonds: Vec<(i32, i32)> = mol.bonds.iter().map(|b| (b.begin, b.end)).collect();
+    let mut out = (x1, y1, x2, y2);
+    for sp in &mol.spokes {
+        let Some(dummy) = sp.dummy else {
+            continue;
+        };
+        if begin != dummy && end != dummy {
+            continue;
+        }
+        let Some(da) = mol.atom(dummy) else {
+            continue;
+        };
+        let (px, py) = if begin == dummy {
+            (out.0, out.1)
+        } else {
+            (out.2, out.3)
+        };
+        let dx = px - da.x;
+        let dy = py - da.y;
+        let ring_xy: Vec<(i32, f64, f64)> = sp
+            .endpts
+            .iter()
+            .filter_map(|&i| mol.atom(i).map(|a| (i, a.x + dx, a.y + dy)))
+            .collect();
+        out = clip_spoke_dummy_end(
+            dummy, &ring_xy, &bonds, begin, end, out.0, out.1, out.2, out.3,
+        );
+    }
+    out
+}
+
 pub fn point_segment_dist(px: f64, py: f64, x0: f64, y0: f64, x1: f64, y1: f64) -> f64 {
     let dx = x1 - x0;
     let dy = y1 - y0;
@@ -278,13 +459,13 @@ pub fn place_spoke(
     neighbor_idx: Option<usize>,
     centroid: (f64, f64),
     angle: f64,
-    bond_len: f64,
+    stem_len: f64,
 ) -> Vec<(f64, f64)> {
     if local.is_empty() || attach_idx >= local.len() {
         return local.to_vec();
     }
     let u = (angle.cos(), angle.sin());
-    let target = (centroid.0 + bond_len * u.0, centroid.1 + bond_len * u.1);
+    let target = (centroid.0 + stem_len * u.0, centroid.1 + stem_len * u.1);
     let a = local[attach_idx];
     let (c, s) = if let Some(ni) = neighbor_idx.filter(|&i| i < local.len() && i != attach_idx) {
         let n = local[ni];
@@ -327,14 +508,16 @@ pub fn spoke_angle_energy(
     centroid: (f64, f64),
     bond_len: f64,
     ring_xy: &[(i32, f64, f64)],
+    bonds: &[(i32, i32)],
     disk: f64,
     bisectors: &[f64],
     taken: &[f64],
 ) -> f64 {
     let ux = theta.cos();
     let uy = theta.sin();
-    let ax = centroid.0 + bond_len * ux;
-    let ay = centroid.1 + bond_len * uy;
+    let stem = spoke_stem_len(centroid, theta, ring_xy, bonds, bond_len);
+    let ax = centroid.0 + stem * ux;
+    let ay = centroid.1 + stem * uy;
     let mut e = 0.0;
     for &(_, x, y) in ring_xy {
         let d = point_segment_dist(x, y, centroid.0, centroid.1, ax, ay);
@@ -366,6 +549,7 @@ pub fn greedy_spoke_angle(
     centroid: (f64, f64),
     bond_len: f64,
     ring_xy: &[(i32, f64, f64)],
+    bonds: &[(i32, i32)],
     disk: f64,
     bisectors: &[f64],
     taken: &[f64],
@@ -380,7 +564,9 @@ pub fn greedy_spoke_angle(
         bisectors.to_vec()
     };
     for &th in &candidates {
-        let e = spoke_angle_energy(th, centroid, bond_len, ring_xy, disk, bisectors, taken);
+        let e = spoke_angle_energy(
+            th, centroid, bond_len, ring_xy, bonds, disk, bisectors, taken,
+        );
         if e < best_e {
             best_e = e;
             best_th = th;
@@ -395,7 +581,9 @@ pub fn greedy_spoke_angle(
     for i in 0..steps {
         let t = i as f64 / (steps - 1) as f64;
         let th = best_th - window + 2.0 * window * t;
-        let e = spoke_angle_energy(th, centroid, bond_len, ring_xy, disk, bisectors, taken);
+        let e = spoke_angle_energy(
+            th, centroid, bond_len, ring_xy, bonds, disk, bisectors, taken,
+        );
         if e < best_e {
             best_e = e;
             best_th = th;
@@ -477,6 +665,28 @@ mod tests {
         let bonds = [(0, 1), (1, 2), (3, 4), (4, 5), (5, 6)];
         let g = cx_multicenters("CC*.CCCC |m:2:3.4.5.6|");
         assert!(detect_ring_spokes(7, &bonds, &g).is_empty());
+    }
+
+    #[test]
+    fn hexagon_stem_is_inradius_plus_one_bond() {
+        let r3 = 3.0_f64.sqrt();
+        let ring = [
+            (0, 1.0, 0.0),
+            (1, 0.5, r3 / 2.0),
+            (2, -0.5, r3 / 2.0),
+            (3, -1.0, 0.0),
+            (4, -0.5, -r3 / 2.0),
+            (5, 0.5, -r3 / 2.0),
+        ];
+        let bonds = [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (5, 0)];
+        let ang = std::f64::consts::PI / 6.0;
+        let exit = ring_exit_along_ray((0.0, 0.0), ang, &ring, &bonds);
+        assert!(
+            (exit - r3 / 2.0).abs() < 1e-9,
+            "bisector should hit inradius, exit={exit}"
+        );
+        let stem = spoke_stem_len((0.0, 0.0), ang, &ring, &bonds, 1.0);
+        assert!((stem - (exit + 1.0)).abs() < 1e-9);
     }
 
     #[test]
