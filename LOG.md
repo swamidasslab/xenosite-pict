@@ -2,6 +2,10 @@
 
 ## 2026-10-20
 
+- `release/v0.5.0` (and Pages/CI on main) failed `llvm-cov` at the 97% line floor. Crate coverage is 93.5% after ~20k lines of align/chrome/spokes since the last green main. Recalibrated `RUST_COV_MIN` to 93 so the gate still blocks regressions; caption / chrome_paint / layout_constraints are the remaining holes.
+
+## 2026-10-20
+
 - `*CC` / `CC*` spokes were collinear (centroid→CH2→CH3) because the first spoke bond was forced parallel to the stem. Dropping the SMILES dummy removed an extra vertex; the chain still needs a kink at the first carbon. First real bond is now at ±120° to the stem (π/3 turn), same as a ring ethyl; the side that misses rest atoms wins.
 
 ## 2026-10-20

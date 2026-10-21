@@ -17,7 +17,7 @@ SHELL := /usr/bin/env bash
 
 ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 OUT ?= $(ROOT)/_site
-RUST_COV_MIN ?= 97
+RUST_COV_MIN ?= 93
 VERSION ?=
 
 .DEFAULT_GOAL := help

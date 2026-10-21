@@ -546,7 +546,7 @@ pub fn greedy_spoke_angle(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cxsmiles::cx_multicenters;
+    use crate::cxsmiles::{cx_multicenters, Multicenter};
     use std::collections::HashSet;
 
     #[test]
@@ -709,5 +709,50 @@ mod tests {
         assert_eq!(comps.len(), 2);
         assert_eq!(comps[0].dummy, 2);
         assert_eq!(comps[1].dummy, 5);
+    }
+
+    #[test]
+    fn detect_rejects_out_of_range_dummy_and_short_endpts() {
+        let bonds = [(0, 1), (1, 2), (2, 0)];
+        let g = [Multicenter {
+            dummy: 9,
+            endpts: vec![0, 1, 2],
+        }];
+        assert!(detect_ring_spokes(3, &bonds, &g).is_empty());
+        let g = [Multicenter {
+            dummy: 0,
+            endpts: vec![1, 2],
+        }];
+        assert!(detect_ring_spokes(3, &bonds, &g).is_empty());
+        let g = [Multicenter {
+            dummy: 0,
+            endpts: vec![0, 1, 2],
+        }];
+        assert!(detect_ring_spokes(3, &bonds, &g).is_empty());
+    }
+
+    #[test]
+    fn ring_exit_falls_back_when_ray_misses_and_when_bonds_are_absent() {
+        let ring = [(0, 1.0, 0.0), (1, 0.0, 1.0), (2, -1.0, 0.0)];
+        let miss = ring_exit_along_ray((0.0, 0.0), 0.0, &ring, &[]);
+        assert!(miss.is_finite() && miss > 0.0);
+        let parallel = [(0, 1), (1, 2), (2, 0)];
+        let exit = ring_exit_along_ray((10.0, 10.0), 0.0, &ring, &parallel);
+        assert!(exit.is_finite() && exit > 0.0);
+    }
+
+    #[test]
+    fn greedy_angle_works_without_bisectors() {
+        let ring = [
+            (0, 1.0, 0.0),
+            (1, 0.5, 0.87),
+            (2, -0.5, 0.87),
+            (3, -1.0, 0.0),
+            (4, -0.5, -0.87),
+            (5, 0.5, -0.87),
+        ];
+        let bonds = [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (5, 0)];
+        let th = greedy_spoke_angle((0.0, 0.0), 1.0, &ring, &bonds, 0.3, &[], &[], &[]);
+        assert!(th.is_finite());
     }
 }

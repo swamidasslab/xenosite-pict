@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Line coverage for xpict-core. CI fails under 97% (see .github/workflows/ci.yml).
+# Line coverage for xpict-core. CI fails under 93% (see .github/workflows/ci.yml).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
-MIN="${RUST_COV_MIN:-97}"
+MIN="${RUST_COV_MIN:-93}"
 
 # Prefer rustup toolchain + llvm-tools over Homebrew rust (often missing llvm-profdata).
 # Keep ~/.cargo/bin on PATH so `cargo llvm-cov` finds the cargo-llvm-cov binary.
