@@ -2,7 +2,7 @@
 
 ## 2026-10-20
 
-- Spoke stem length is ring-exit along the ray plus one house bond, not centroid plus one bond. `O*.c1ccccc1 |m:1:2.3.4.5.6.7|` sat on the perimeter (ring radius ≈ 1 bond) and the dummy→O line through the centroid collapsed the aromatic circle in chrome `circle_clear_bonds`. Dummy stays at the centroid for layout; paint clips the visible stem to the ring edge.
+- Spoke stem length is ring-exit along the ray plus one house bond, not centroid plus one bond. `O*.c1ccccc1 |m:1:2.3.4.5.6.7|` sat on the perimeter (ring radius ≈ 1 bond). The painted stem still runs from the centroid to the substituent; chrome `circle_clear_bonds` ignores that dummy bond so the aromatic circle is not collapsed. Clipping the stem to the ring edge was wrong.
 
 ## 2026-10-20
 

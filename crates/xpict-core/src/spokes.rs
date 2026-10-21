@@ -3,14 +3,13 @@
 //! The SMILES dummy ``*`` and its bond are **dropped from the spoke graph**.
 //! CoordGen therefore never sees ``*`` as a neighbor of the attachment atom,
 //! so ``CC*`` stays a straight two-bond stem (no extra kink at a dummy vertex).
-//! A silent dummy may still sit at the centroid for layout; paint clips the
-//! stem to the ring perimeter so it does not cross the aromatic circle.
+//! A silent dummy sits at the centroid; the painted stem runs from there to
+//! the substituent (one bond past the ring).
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::cxsmiles::Multicenter;
 use crate::rings::find_relevant_rings_from_adj;
-use crate::scene::MoleculeIn;
 
 /// One ring-center substituent after dropping the dummy from the spoke graph.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -349,94 +348,6 @@ pub fn spoke_stem_len(
     bond_len: f64,
 ) -> f64 {
     ring_exit_along_ray(centroid, angle, ring_xy, bonds) + bond_len.max(0.0)
-}
-
-/// Pull the dummy end of a paint-space stem to the ring perimeter.
-///
-/// Dummy stays at the centroid for layout; the visible bond starts at the
-/// ring so it does not run through the aromatic circle.
-pub fn clip_spoke_dummy_end(
-    dummy: i32,
-    ring_xy: &[(i32, f64, f64)],
-    bonds: &[(i32, i32)],
-    begin: i32,
-    end: i32,
-    x1: f64,
-    y1: f64,
-    x2: f64,
-    y2: f64,
-) -> (f64, f64, f64, f64) {
-    if ring_xy.len() < 3 {
-        return (x1, y1, x2, y2);
-    }
-    let dummy_is_begin = begin == dummy;
-    let dummy_is_end = end == dummy;
-    if !dummy_is_begin && !dummy_is_end {
-        return (x1, y1, x2, y2);
-    }
-    let cx = ring_xy.iter().map(|p| p.1).sum::<f64>() / ring_xy.len() as f64;
-    let cy = ring_xy.iter().map(|p| p.2).sum::<f64>() / ring_xy.len() as f64;
-    let (ax, ay) = if dummy_is_begin { (x2, y2) } else { (x1, y1) };
-    let ang = (ay - cy).atan2(ax - cx);
-    let exit = ring_exit_along_ray((cx, cy), ang, ring_xy, bonds);
-    if !exit.is_finite() || exit <= 1e-6 {
-        return (x1, y1, x2, y2);
-    }
-    let reach = (ax - cx).hypot(ay - cy);
-    if reach <= exit + 1e-6 {
-        return (x1, y1, x2, y2);
-    }
-    let ox = cx + exit * ang.cos();
-    let oy = cy + exit * ang.sin();
-    if dummy_is_begin {
-        (ox, oy, x2, y2)
-    } else {
-        (x1, y1, ox, oy)
-    }
-}
-
-/// Clip a spoke dummy–attach segment whose endpoints are already in paint space.
-pub fn clip_mol_spoke_stem(
-    mol: &MoleculeIn,
-    begin: i32,
-    end: i32,
-    x1: f64,
-    y1: f64,
-    x2: f64,
-    y2: f64,
-) -> (f64, f64, f64, f64) {
-    if mol.spokes.is_empty() {
-        return (x1, y1, x2, y2);
-    }
-    let bonds: Vec<(i32, i32)> = mol.bonds.iter().map(|b| (b.begin, b.end)).collect();
-    let mut out = (x1, y1, x2, y2);
-    for sp in &mol.spokes {
-        let Some(dummy) = sp.dummy else {
-            continue;
-        };
-        if begin != dummy && end != dummy {
-            continue;
-        }
-        let Some(da) = mol.atom(dummy) else {
-            continue;
-        };
-        let (px, py) = if begin == dummy {
-            (out.0, out.1)
-        } else {
-            (out.2, out.3)
-        };
-        let dx = px - da.x;
-        let dy = py - da.y;
-        let ring_xy: Vec<(i32, f64, f64)> = sp
-            .endpts
-            .iter()
-            .filter_map(|&i| mol.atom(i).map(|a| (i, a.x + dx, a.y + dy)))
-            .collect();
-        out = clip_spoke_dummy_end(
-            dummy, &ring_xy, &bonds, begin, end, out.0, out.1, out.2, out.3,
-        );
-    }
-    out
 }
 
 pub fn point_segment_dist(px: f64, py: f64, x0: f64, y0: f64, x1: f64, y1: f64) -> f64 {

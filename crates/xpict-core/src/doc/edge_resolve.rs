@@ -955,6 +955,12 @@ mod tests {
             from_ring > 0.7 * bond && from_ring < 1.4 * bond,
             "O should be ~1 bond off the ring, got {from_ring:.1} (bond={bond:.1})"
         );
+        let dummy = xy(&mol, sp.dummy.expect("dummy"));
+        let dummy_from_c = (dummy.0 - c.0).hypot(dummy.1 - c.1);
+        assert!(
+            dummy_from_c < 0.2 * bond,
+            "stem dummy must sit at the centroid, d={dummy_from_c:.1}"
+        );
 
         let spec: crate::doc::DepictSpec = serde_json::from_value(serde_json::json!({
             "type": "mol",

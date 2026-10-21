@@ -66,6 +66,8 @@ def test_o_star_sits_one_bond_outside_ring_and_keeps_aromatic_circle():
     cy = sum(p[1] for p in pts) / len(pts)
     from_c = math.hypot(attach[0] - cx, attach[1] - cy)
     assert from_c > 1.4 * bond, from_c
+    dummy = _xy(m, sp.dummy)
+    assert math.hypot(dummy[0] - cx, dummy[1] - cy) < 0.2 * bond
     svg = to_svg(rendered.scene)
     assert "aromatic" in svg
     assert 'r="0"' not in svg and "r='0'" not in svg

@@ -163,10 +163,9 @@ pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
             .as_ref()
             .and_then(|m| m.get(&key).copied())
             .unwrap_or(bond.order);
-        let (x1, y1, x2, y2) = crate::spokes::clip_mol_spoke_stem(
-            mol, bond.begin, bond.end, ends.x1, ends.y1, ends.x2, ends.y2,
+        let mut db = DrawnBond::new(
+            bond.index, bond.begin, bond.end, ends.x1, ends.y1, ends.x2, ends.y2, order,
         );
-        let mut db = DrawnBond::new(bond.index, bond.begin, bond.end, x1, y1, x2, y2, order);
         db.stereo = bond.stereo.clone();
         // Ring membership overrules centered/extend; else keep caller interior.
         db.interior = ring_normals.get(&key).copied().or(bond.interior);

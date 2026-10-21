@@ -33,7 +33,7 @@ use crate::metrics::{
 };
 use crate::rings::{aromatic_ring_circles, find_sssr};
 use crate::scene::{AromaticStyle, AtomIn, Layer, LayerName, MoleculeIn, Primitive, Scene};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 const NUMBER_FONT_FRAC: f64 = 0.72;
 const TEXT_FONT_FRAC: f64 = 0.85;
@@ -256,7 +256,9 @@ fn aromatic_circle_primitives(mol: &MoleculeIn, dx: f64, dy: f64) -> Vec<Primiti
         .filter(|s| !s.is_empty())
         .unwrap_or("#111")
         .to_string();
-    let bonds = bond_segs(mol, dx, dy);
+    // Spoke stems run to the ring centroid by design; they must not shrink
+    // the aromatic circle to zero.
+    let bonds = aromatic_clear_bonds(mol, dx, dy);
     let floor_r = FONT_PX * 0.35;
     aromatic_ring_circles(mol, &rings, &coords)
         .into_iter()
@@ -1732,10 +1734,33 @@ fn grow_pad_until_hull_contains(
 }
 
 fn bond_segs(mol: &MoleculeIn, dx: f64, dy: f64) -> Vec<(f64, f64, f64, f64)> {
+    bond_segs_filtered(mol, dx, dy, None)
+}
+
+fn aromatic_clear_bonds(mol: &MoleculeIn, dx: f64, dy: f64) -> Vec<(f64, f64, f64, f64)> {
+    let dummies: HashSet<i32> = mol.spokes.iter().filter_map(|s| s.dummy).collect();
+    if dummies.is_empty() {
+        bond_segs(mol, dx, dy)
+    } else {
+        bond_segs_filtered(mol, dx, dy, Some(&dummies))
+    }
+}
+
+fn bond_segs_filtered(
+    mol: &MoleculeIn,
+    dx: f64,
+    dy: f64,
+    skip_dummies: Option<&HashSet<i32>>,
+) -> Vec<(f64, f64, f64, f64)> {
     let mut out = Vec::new();
     for b in &mol.bonds {
         if b.begin < 0 || b.end < 0 {
             continue;
+        }
+        if let Some(skip) = skip_dummies {
+            if skip.contains(&b.begin) || skip.contains(&b.end) {
+                continue;
+            }
         }
         let Some(a) = find_atom(mol, b.begin as u32) else {
             continue;
@@ -1743,16 +1768,7 @@ fn bond_segs(mol: &MoleculeIn, dx: f64, dy: f64) -> Vec<(f64, f64, f64, f64)> {
         let Some(c) = find_atom(mol, b.end as u32) else {
             continue;
         };
-        let (x1, y1, x2, y2) = crate::spokes::clip_mol_spoke_stem(
-            mol,
-            b.begin,
-            b.end,
-            a.x + dx,
-            a.y + dy,
-            c.x + dx,
-            c.y + dy,
-        );
-        out.push((x1, y1, x2, y2));
+        out.push((a.x + dx, a.y + dy, c.x + dx, c.y + dy));
     }
     out
 }
