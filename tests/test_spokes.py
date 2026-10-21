@@ -22,7 +22,7 @@ def _turn(a: tuple[float, float], b: tuple[float, float], c: tuple[float, float]
     return abs(math.atan2(ux * vy - uy * vx, ux * vx + uy * vy))
 
 
-def test_cc_star_benzene_spoke_is_collinear():
+def test_cc_star_benzene_spoke_has_chain_kink():
     m = render(mol("CC*.c1ccccc1 |m:2:3.4.5.6.7.8|")).molecule
     assert len(m.spokes) == 1
     sp = m.spokes[0]
@@ -32,9 +32,23 @@ def test_cc_star_benzene_spoke_is_collinear():
     cy = sum(p[1] for p in pts) / len(pts)
     attach = _xy(m, sp.atom)
     methyl = _xy(m, 0)
-    assert _turn((cx, cy), attach, methyl) < 0.15
+    turn = _turn((cx, cy), attach, methyl)
+    assert 0.7 < turn < 1.5, turn
     dummy = next(a for a in m.atoms if a.index == sp.dummy)
     assert dummy.label in (None, "")
+
+
+def test_star_cc_ethylbenzene_spoke_has_kink():
+    m = render(mol("c1ccccc1CC.*CC |m:8:0.1.2.3.4.5|")).molecule
+    assert len(m.spokes) == 1
+    sp = m.spokes[0]
+    pts = [_xy(m, i) for i in sp.endpts]
+    cx = sum(p[0] for p in pts) / len(pts)
+    cy = sum(p[1] for p in pts) / len(pts)
+    attach = _xy(m, sp.atom)
+    methyl = _xy(m, 10)
+    turn = _turn((cx, cy), attach, methyl)
+    assert 0.7 < turn < 1.5, turn
 
 
 def test_o_star_sits_one_bond_outside_ring_and_keeps_aromatic_circle():

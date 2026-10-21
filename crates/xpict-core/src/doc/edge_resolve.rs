@@ -836,7 +836,7 @@ mod tests {
     }
 
     #[test]
-    fn cc_star_on_benzene_is_collinear_no_extra_kink() {
+    fn cc_star_on_benzene_has_chain_kink() {
         let mol = free_layout("CC*.c1ccccc1 |m:2:3.4.5.6.7.8|", "s")
             .unwrap()
             .molecule;
@@ -848,8 +848,8 @@ mod tests {
         let methyl = xy(&mol, 0);
         let turn = crate::spokes::kink_turn(c, attach, methyl);
         assert!(
-            turn < 0.15,
-            "CC* must be collinear after dropping *; turn={turn:.3} rad"
+            turn > 0.7 && turn < 1.5,
+            "CC* should zigzag at CH2, not sit collinear; turn={turn:.3} rad"
         );
         let dummy = mol.atom(sp.dummy.expect("dummy")).unwrap();
         assert_eq!(dummy.label.as_deref(), Some(""));
@@ -1010,6 +1010,27 @@ mod tests {
     }
 
     #[test]
+    fn star_cc_on_ethylbenzene_has_kink_at_first_carbon() {
+        let mol = free_layout("c1ccccc1CC.*CC |m:8:0.1.2.3.4.5|", "s")
+            .unwrap()
+            .molecule;
+        assert_eq!(mol.spokes.len(), 1);
+        let sp = &mol.spokes[0];
+        assert_eq!(sp.atom, 9);
+        let c = mol.centroid_of(&sp.endpts).expect("centroid");
+        let attach = xy(&mol, 9);
+        let methyl = xy(&mol, 10);
+        let turn = crate::spokes::kink_turn(c, attach, methyl);
+        assert!(
+            turn > 0.7 && turn < 1.5,
+            "*CC must kink at the first carbon, turn={turn:.3} rad"
+        );
+        let dummy = xy(&mol, sp.dummy.expect("dummy"));
+        let bond = crate::metrics::BOND_PX;
+        assert!((dummy.0 - c.0).hypot(dummy.1 - c.1) < 0.2 * bond);
+    }
+
+    #[test]
     fn two_cc_star_spokes_take_different_slots() {
         let mol = free_layout("CC*.CC*.c1ccccc1 |m:2:6.7.8.9.10.11,5:6.7.8.9.10.11|", "s")
             .unwrap()
@@ -1030,7 +1051,11 @@ mod tests {
             let methyl_idx = if sp.atom == 1 { 0 } else { 3 };
             let methyl = xy(&mol, methyl_idx);
             let turn = crate::spokes::kink_turn(c, attach, methyl);
-            assert!(turn < 0.15, "spoke {} extra kink {turn:.3}", sp.atom);
+            assert!(
+                turn > 0.7 && turn < 1.5,
+                "spoke {} should zigzag at CH2, turn={turn:.3}",
+                sp.atom
+            );
         }
     }
 }

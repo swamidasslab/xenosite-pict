@@ -15,7 +15,7 @@ use crate::layout_coordgen::{
 use crate::scene::AlignDebug;
 use crate::spokes::{
     bisector_angles, detect_ring_spokes, first_spoke_neighbor, greedy_spoke_angle, place_spoke,
-    spoke_stem_len,
+    spoke_stem_len, CHAIN_BOND_OFFSET,
 };
 
 /// Layout ``query``, placing CX ``m:`` ring-center spokes after the scaffold.
@@ -183,9 +183,33 @@ pub fn layout_or_align_with_spokes(
         let neighbor = first_spoke_neighbor(&bonds, comp.atom, &comp.atoms, comp.dummy);
         let neighbor_idx = neighbor.and_then(|nb| spoke_keep.iter().position(|&u| u as i32 == nb));
         let stem = spoke_stem_len(centroid, theta, &ring_xy, &bonds, f64::from(bond_len));
-        let placed = place_spoke(&local, attach_idx, neighbor_idx, centroid, theta, stem);
+        let pos = place_spoke(
+            &local,
+            attach_idx,
+            neighbor_idx,
+            centroid,
+            theta,
+            stem,
+            CHAIN_BOND_OFFSET,
+        );
+        let neg = place_spoke(
+            &local,
+            attach_idx,
+            neighbor_idx,
+            centroid,
+            theta,
+            stem,
+            -CHAIN_BOND_OFFSET,
+        );
+        let chosen = if clearance_cost(&pos, attach_idx, &obstacles, f64::from(disk))
+            <= clearance_cost(&neg, attach_idx, &obstacles, f64::from(disk))
+        {
+            pos
+        } else {
+            neg
+        };
         for (i, &old) in spoke_keep.iter().enumerate() {
-            if let Some(&(px, py)) = placed.get(i) {
+            if let Some(&(px, py)) = chosen.get(i) {
                 x[old] = px as f32;
                 y[old] = py as f32;
             }
@@ -250,4 +274,27 @@ fn subgraph(src: &LayoutMolecule, keep: &[usize]) -> (LayoutMolecule, Vec<usize>
     }
     let id = (0..keep.len()).collect();
     (out, id)
+}
+
+fn clearance_cost(
+    placed: &[(f64, f64)],
+    attach_idx: usize,
+    obstacles: &[(f64, f64)],
+    disk: f64,
+) -> f64 {
+    let reach = (3.0 * disk).max(disk);
+    let mut e = 0.0;
+    for (i, &(x, y)) in placed.iter().enumerate() {
+        if i == attach_idx {
+            continue;
+        }
+        for &(ox, oy) in obstacles {
+            let d = (x - ox).hypot(y - oy);
+            if d < reach {
+                let g = reach - d;
+                e += g * g;
+            }
+        }
+    }
+    e
 }

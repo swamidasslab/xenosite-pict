@@ -1,10 +1,10 @@
 //! Ring-center spoke detection and rigid placement (CX ``m:``).
 //!
-//! The SMILES dummy ``*`` and its bond are **dropped from the spoke graph**.
-//! CoordGen therefore never sees ``*`` as a neighbor of the attachment atom,
-//! so ``CC*`` stays a straight two-bond stem (no extra kink at a dummy vertex).
-//! A silent dummy sits at the centroid; the painted stem runs from there to
-//! the substituent (one bond past the ring).
+//! The SMILES dummy ``*`` is **dropped from the spoke graph** so it is not an
+//! extra CoordGen vertex. The first real bond is placed at a 120° chain angle
+//! to the stem (ethyl zigzag), not collinear with the centroid. A silent dummy
+//! sits at the centroid; the painted stem runs from there to the substituent
+//! (one bond past the ring).
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -413,8 +413,13 @@ pub fn point_segment_dist(px: f64, py: f64, x0: f64, y0: f64, x1: f64, y1: f64) 
     (px - (x0 + t * dx)).hypot(py - (y0 + t * dy))
 }
 
-/// Rotate/translate ``local`` so ``attach`` sits at ``centroid + L·u(θ)`` and
-/// the first spoke bond is **parallel** to the stem (same sense, outward).
+/// 120° chain bond at the attachment carbon (turn of π/3 off the stem).
+pub const CHAIN_BOND_OFFSET: f64 = std::f64::consts::PI / 3.0;
+
+/// Rotate/translate ``local`` so ``attach`` sits at ``centroid + L·u(θ)``.
+///
+/// ``neighbor_idx`` is the first real spoke atom. Its bond is placed at
+/// ``angle + bond_offset`` (house chain zigzag is ``±π/3``, not collinear).
 pub fn place_spoke(
     local: &[(f64, f64)],
     attach_idx: usize,
@@ -422,6 +427,7 @@ pub fn place_spoke(
     centroid: (f64, f64),
     angle: f64,
     stem_len: f64,
+    bond_offset: f64,
 ) -> Vec<(f64, f64)> {
     if local.is_empty() || attach_idx >= local.len() {
         return local.to_vec();
@@ -433,7 +439,7 @@ pub fn place_spoke(
         let n = local[ni];
         let lv = (n.0 - a.0, n.1 - a.1);
         let local_ang = lv.1.atan2(lv.0);
-        let rot = angle - local_ang;
+        let rot = angle + bond_offset - local_ang;
         (rot.cos(), rot.sin())
     } else {
         (1.0, 0.0)
@@ -457,8 +463,9 @@ pub fn kink_turn(a: (f64, f64), b: (f64, f64), c: (f64, f64)) -> f64 {
     if lu < 1e-9 || lv < 1e-9 {
         return 0.0;
     }
-    let dot = (u.0 * v.0 + u.1 * v.1) / (lu * lv);
-    let cross = u.0 * v.1 - u.1 * v.0;
+    let inv = 1.0 / (lu * lv);
+    let dot = (u.0 * v.0 + u.1 * v.1) * inv;
+    let cross = (u.0 * v.1 - u.1 * v.0) * inv;
     cross.atan2(dot).abs()
 }
 
@@ -687,7 +694,7 @@ mod tests {
     }
 
     #[test]
-    fn place_spoke_keeps_first_bond_parallel() {
+    fn place_spoke_puts_first_bond_at_chain_angle() {
         let local = [(0.0, 0.0), (1.5, 0.0)];
         let placed = place_spoke(
             &local,
@@ -696,21 +703,19 @@ mod tests {
             (0.0, 0.0),
             std::f64::consts::FRAC_PI_2,
             1.0,
+            CHAIN_BOND_OFFSET,
         );
         let attach = placed[0];
         let next = placed[1];
-        let stem = (attach.0, attach.1);
-        let bond = (next.0 - attach.0, next.1 - attach.1);
-        let cross = stem.0 * bond.1 - stem.1 * bond.0;
-        assert!(
-            cross.abs() < 1e-9,
-            "stem not parallel to first spoke bond: stem={stem:?} bond={bond:?}"
-        );
         assert!(
             attach.1 > 0.5,
             "attachment should sit on +y stem, got {attach:?}"
         );
-        assert!(kink_turn((0.0, 0.0), attach, next) < 1e-6);
+        let turn = kink_turn((0.0, 0.0), attach, next);
+        assert!(
+            (turn - CHAIN_BOND_OFFSET).abs() < 1e-6,
+            "first bond should sit π/3 off the stem, turn={turn:.3}"
+        );
     }
 
     #[test]

@@ -2,6 +2,10 @@
 
 ## 2026-10-20
 
+- `*CC` / `CC*` spokes were collinear (centroid→CH2→CH3) because the first spoke bond was forced parallel to the stem. Dropping the SMILES dummy removed an extra vertex; the chain still needs a kink at the first carbon. First real bond is now at ±120° to the stem (π/3 turn), same as a ring ethyl; the side that misses rest atoms wins.
+
+## 2026-10-20
+
 - `Cl*.c1ccc(CC)cc1 |m:1:2.3.4.5.6.7|` used the benzene-style index run, so the ethyl carbons were in `m:` and spoke detect failed. CoordGen then drew `Cl*` as a separate fragment; `apply_cx_by_index` stamped a fake spoke with `atom = dummy`. Resolve `m:` onto the Relevant Ring that covers the cyclic listed atoms (drop the ethyl, complete the hexagon). Stem energy also clears rest atoms so Cl does not sit on the ethyl.
 
 ## 2026-10-20
