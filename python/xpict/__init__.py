@@ -33,7 +33,7 @@ from xpict.native_bridge import plan_edge, render_doc, validate_edge_plan
 from xpict.rendered import Rendered, SvgAtom, SvgBond, to_svg
 from xpict.spec import DepictSpec, Mol, MolRenderOptions, mol, render_mol
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 __all__ = [
     "DepictSpec",
