@@ -24,11 +24,10 @@ use crate::scene::{
 
 /// Paint one molecule into a single-viewport [`Scene`].
 ///
-/// Layers (bottom → top): shading → bonds → labels. Circle overlays land on
-/// the marks layer from document chrome after this paint.
-/// SVG-frame shift applied by [`depict_molecule`] (chem coords → viewBox ink).
-///
-/// Chrome paint must use the same `(dx, dy)` so annotations land on atoms.
+/// Layers (bottom → top): shading → halo → bonds → labels. Chrome annotations
+/// (regions, circles, callouts) join those layers on the same viewport so a
+/// mol-group transform applies to the whole tree. [`depict_molecule`] scales
+/// after chem paint; the document path scales once after chrome + captions.
 pub fn frame_offset(mol: &MoleculeIn) -> (f64, f64) {
     let mut min_x = f64::INFINITY;
     let mut min_y = f64::INFINITY;
@@ -60,6 +59,13 @@ pub fn frame_offset(mol: &MoleculeIn) -> (f64, f64) {
 }
 
 pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
+    depict_chem(mol).scale_uniform(mol.diagram_scale())
+}
+
+/// Chem ink in framed SVG space, **unscaled**. Document paint applies chrome
+/// and captions here, then one [`Scene::scale_uniform`] so annotations share
+/// `mol.scale`.
+pub(crate) fn depict_chem(mol: &MoleculeIn) -> Scene {
     let color = mol.color.as_deref().unwrap_or("#111");
     let face = FaceStyle::Regular;
     // User-facing weight (default 1 = house). Helpers convert via diagram_weight.
@@ -285,6 +291,12 @@ pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
             primitives: shade_prims,
         });
     }
+    if !halo_prims.is_empty() {
+        layers.push(Layer {
+            name: LayerName::Halo,
+            primitives: halo_prims,
+        });
+    }
     if !bond_prims.is_empty() {
         layers.push(Layer {
             name: LayerName::Bonds,
@@ -303,6 +315,7 @@ pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
             primitives: debug_prims,
         });
     }
+    layers.sort_by_key(|l| l.name.paint_order());
 
     let mut overlays = Vec::new();
     if mol.debug_box {
@@ -316,15 +329,16 @@ pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
             id: mol.id.clone(),
             x: 0.0,
             y: 0.0,
+            ox: 0.0,
+            oy: 0.0,
             width,
             height,
             layers,
         }],
         overlays,
-        halo: halo_prims,
+        halo: Vec::new(),
     };
-    // Uniform diagram scale (font outlines, stroke, pad, geometry).
-    scene.scale_uniform(mol.diagram_scale())
+    scene
 }
 
 /// Explicit ``label``, else heteroatom / charged symbol (carbons stay silent).
@@ -1239,7 +1253,14 @@ mod tests {
                 f.starts_with("rgb(") && !f.starts_with("rgb(255,222"),
             _ => false,
         }));
-        assert!(!scene.halo.is_empty(), "expected bond/label halo knockout");
+        let has_halo = scene.viewports[0]
+            .layers
+            .iter()
+            .any(|l| l.name == LayerName::Halo && !l.primitives.is_empty());
+        assert!(
+            has_halo,
+            "expected bond/label halo knockout in mol Halo layer"
+        );
     }
 
     #[test]
@@ -1812,7 +1833,11 @@ mod tests {
             ..Default::default()
         };
         let scene = depict_molecule(&mol);
-        assert!(!scene.halo.is_empty());
+        let has_halo = scene.viewports[0]
+            .layers
+            .iter()
+            .any(|l| l.name == LayerName::Halo && !l.primitives.is_empty());
+        assert!(has_halo, "expected mol Halo layer");
         let bonds = scene.viewports[0]
             .layers
             .iter()

@@ -41,7 +41,7 @@ pub use spec::*;
 use std::collections::HashMap;
 
 use crate::cxsmiles::{apply_cx_by_index, cx_source};
-use crate::depict::depict_molecule;
+use crate::depict::depict_chem;
 use crate::edge::{
     AlignOpts, CoordGenMoleculeResult, EdgePlan, EdgeResult, EdgeTask, EdgeTaskResult, MolTemplate,
 };
@@ -406,13 +406,16 @@ pub(crate) fn paint_laid_mols(
         let chrome = spec.resolve_mol_chrome(i);
         validate_mol_shade_colormap(node, &chrome)?;
         let molecule = apply_doc_chrome(base, node, id, &chrome);
-        // Chrome constraints first (regions/callouts/labels). Mol `name` is
+        // Chrome constraints first (regions/callouts/labels) in the same
+        // unscaled chem space. Then one mol-tree scale so hub `scale` applies
+        // to regions, aromatic circles, and bonds together. Mol `name` is
         // **not** in the solver — place it afterward clear of structure + chrome
         // (including regions). Fit last. Do **not** mutate chem atom text for
         // `atom_label` — that is `star_labels` on `*` atoms only.
-        let scene = depict_molecule(&molecule);
+        let scene = depict_chem(&molecule);
         let scene = chrome_paint::apply_mol_chrome(node, &molecule, scene);
         let scene = caption::apply_mol_captions(spec, node, scene);
+        let scene = scene.scale_uniform(molecule.diagram_scale());
         // House pad scales with mol.scale so the fitted SVG doubles; an
         // explicit `pad` is output pixels and stays as given.
         let margin = match chrome.pad {

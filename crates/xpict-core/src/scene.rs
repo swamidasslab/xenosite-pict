@@ -27,6 +27,8 @@ pub enum TextAnchor {
 }
 
 /// Layer name inside a molecule viewport.
+///
+/// Paint order is the nesting order inside `g.xpict-mol` (bottom → top).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 #[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
@@ -38,6 +40,20 @@ pub enum LayerName {
     Labels,
     Marks,
     Overlay,
+}
+
+impl LayerName {
+    /// Bottom → top inside one mol group (shading under halo under chem).
+    pub fn paint_order(self) -> u8 {
+        match self {
+            LayerName::Shading => 0,
+            LayerName::Halo => 1,
+            LayerName::Bonds => 2,
+            LayerName::Labels => 3,
+            LayerName::Marks => 4,
+            LayerName::Overlay => 5,
+        }
+    }
 }
 
 /// How fully aromatic rings are drawn.
@@ -148,7 +164,16 @@ pub struct Layer {
     pub primitives: Vec<Primitive>,
 }
 
+fn skip_zero(v: &f64) -> bool {
+    v.abs() < 1e-12
+}
+
 /// One molecule viewport in a diagram (after ELK/grid placement).
+///
+/// `x`/`y` are the mol group's placement in the parent. `ox`/`oy` are the
+/// leftover fit origin of local primitive coords. SVG is
+/// `translate(x,y) translate(ox,oy)` around nested layer groups — primitives
+/// stay in paint space; the group carries the transform.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
 #[cfg_attr(feature = "codegen", ts(export))]
@@ -160,10 +185,59 @@ pub struct Viewport {
     pub x: f64,
     #[serde(default)]
     pub y: f64,
+    /// Local leftover origin (fit). Nested inside the mol group, not baked
+    /// into path `d`.
+    #[serde(default, skip_serializing_if = "skip_zero")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub ox: f64,
+    #[serde(default, skip_serializing_if = "skip_zero")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub oy: f64,
     pub width: f64,
     pub height: f64,
     #[serde(default)]
     pub layers: Vec<Layer>,
+}
+
+impl Viewport {
+    /// Document-space origin of this mol's local primitive coords.
+    pub fn local_origin(&self) -> (f64, f64) {
+        (self.x + self.ox, self.y + self.oy)
+    }
+
+    /// Append primitives to the named layer, creating it if needed.
+    pub fn extend_layer(&mut self, name: LayerName, mut prims: Vec<Primitive>) {
+        if prims.is_empty() {
+            return;
+        }
+        if let Some(layer) = self.layers.iter_mut().find(|l| l.name == name) {
+            layer.primitives.append(&mut prims);
+            return;
+        }
+        self.layers.push(Layer {
+            name,
+            primitives: prims,
+        });
+    }
+
+    /// Put primitives under existing ink of the named layer (regions under shade).
+    pub fn prepend_layer(&mut self, name: LayerName, mut prims: Vec<Primitive>) {
+        if prims.is_empty() {
+            return;
+        }
+        if let Some(layer) = self.layers.iter_mut().find(|l| l.name == name) {
+            prims.append(&mut layer.primitives);
+            layer.primitives = prims;
+            return;
+        }
+        self.layers.insert(
+            0,
+            Layer {
+                name,
+                primitives: prims,
+            },
+        );
+    }
 }
 
 /// Full drawable document before SVG/HTML serialization.
@@ -180,7 +254,8 @@ pub struct Scene {
     /// Document-space primitives (reaction arrows) above viewports.
     #[serde(default)]
     pub overlays: Vec<Primitive>,
-    /// Single document-space unioned knockout under molecule ink.
+    /// Document-space knockout (scheme compose). Per-mol halo lives in the
+    /// viewport `Halo` layer so it nests inside `g.xpict-mol`.
     #[serde(default)]
     pub halo: Vec<Primitive>,
 }
@@ -600,6 +675,8 @@ impl Viewport {
             id: self.id.clone(),
             x: self.x * s,
             y: self.y * s,
+            ox: self.ox * s,
+            oy: self.oy * s,
             width: self.width * s,
             height: self.height * s,
             layers: self
@@ -661,6 +738,8 @@ mod tests {
                 id: Some("m0".into()),
                 x: 0.0,
                 y: 0.0,
+                ox: 0.0,
+                oy: 0.0,
                 width: 70.0,
                 height: 75.0,
                 layers: vec![Layer {
@@ -921,6 +1000,8 @@ mod tests {
             id: Some("m0".into()),
             x: 1.0,
             y: 2.0,
+            ox: 0.0,
+            oy: 0.0,
             width: 10.0,
             height: 20.0,
             layers: vec![Layer {

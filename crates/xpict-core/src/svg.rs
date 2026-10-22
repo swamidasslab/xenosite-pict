@@ -163,22 +163,34 @@ fn layer_name(n: LayerName) -> &'static str {
     }
 }
 
-fn render_viewport_layers(vp: &Viewport, names: &[&str]) -> String {
+fn render_viewport_layers(vp: &Viewport) -> String {
+    let mut layers: Vec<&crate::scene::Layer> = vp
+        .layers
+        .iter()
+        .filter(|l| !l.primitives.is_empty())
+        .collect();
+    layers.sort_by_key(|l| l.name.paint_order());
     let mut chunks = String::new();
-    for layer in &vp.layers {
+    for layer in layers {
         let name = layer_name(layer.name);
-        if !names.contains(&name) || layer.primitives.is_empty() {
-            continue;
-        }
         let body: String = layer.primitives.iter().map(render_primitive).collect();
         chunks.push_str(&format!("<g class=\"xpict-layer xpict-{name}\">{body}</g>"));
     }
     chunks
 }
 
-/// One molecule group: `g.xpict-mol[data-id]` with the viewport's spec id.
-fn render_viewport(vp: &Viewport, names: &[&str]) -> String {
-    let body = render_viewport_layers(vp, names);
+fn mol_transform(vp: &Viewport) -> String {
+    let t = format!("translate({},{})", fmt(vp.x), fmt(vp.y));
+    if vp.ox.abs() < 1e-12 && vp.oy.abs() < 1e-12 {
+        t
+    } else {
+        format!("{t} translate({},{})", fmt(vp.ox), fmt(vp.oy))
+    }
+}
+
+/// One molecule group: `g.xpict-mol[data-id]` with nested layer groups.
+fn render_viewport(vp: &Viewport) -> String {
+    let body = render_viewport_layers(vp);
     if body.is_empty() {
         return String::new();
     }
@@ -186,33 +198,24 @@ fn render_viewport(vp: &Viewport, names: &[&str]) -> String {
     if let Some(id) = vp.id.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
         g.push_str(&format!(" data-id=\"{}\"", esc(id)));
     }
-    g.push_str(&format!(
-        " transform=\"translate({},{})\">{body}</g>",
-        fmt(vp.x),
-        fmt(vp.y)
-    ));
+    g.push_str(&format!(" transform=\"{}\">{body}</g>", mol_transform(vp)));
     g
 }
 
 /// Serialize a [`Scene`] to inline SVG (no XML declaration).
 ///
-/// Viewport ids from the spec are `data-id` on each `g.xpict-mol`.
+/// Each viewport is one `g.xpict-mol`. Layers (shading, halo, bonds, …) nest
+/// inside that group so a mol transform applies to regions and chem together.
 pub fn scene_to_svg(scene: &Scene) -> String {
     let w = fmt(scene.width);
     let h = fmt(scene.height);
     let mut parts = String::new();
-    for vp in &scene.viewports {
-        parts.push_str(&render_viewport(vp, &["shading"]));
-    }
     if !scene.halo.is_empty() {
         let body: String = scene.halo.iter().map(render_primitive).collect();
         parts.push_str(&format!("<g class=\"xpict-halo\" id=\"halo\">{body}</g>"));
     }
     for vp in &scene.viewports {
-        parts.push_str(&render_viewport(
-            vp,
-            &["bonds", "labels", "marks", "overlay"],
-        ));
+        parts.push_str(&render_viewport(vp));
     }
     if !scene.overlays.is_empty() {
         let body: String = scene.overlays.iter().map(render_primitive).collect();
@@ -259,6 +262,8 @@ mod tests {
                 id: id.map(str::to_string),
                 x,
                 y,
+                ox: 0.0,
+                oy: 0.0,
                 width: 10.0,
                 height: 20.0,
                 layers: vec![Layer {
@@ -302,5 +307,40 @@ mod tests {
         let svg = scene_to_svg_json(&json).unwrap();
         assert!(svg.contains(r#"data-id="A""#), "{svg}");
         assert!(svg.contains(r#"transform="translate(1,2)""#), "{svg}");
+    }
+
+    #[test]
+    fn shading_nests_inside_one_mol_group() {
+        let mut scene = scene_with_id(Some("m3"), 10.0, 20.0);
+        scene.viewports[0].ox = -6.0;
+        scene.viewports[0].oy = -8.0;
+        scene.viewports[0].layers.insert(
+            0,
+            Layer {
+                name: LayerName::Shading,
+                primitives: vec![circle()],
+            },
+        );
+        let svg = scene_to_svg(&scene);
+        assert_eq!(
+            svg.matches(r#"class="xpict-mol""#).count(),
+            1,
+            "one mol group, not a sibling shade copy: {svg}"
+        );
+        let mol = svg.find(r#"class="xpict-mol""#).expect("mol");
+        let shade = svg
+            .find(r#"class="xpict-layer xpict-shading""#)
+            .expect("shading");
+        let bonds = svg
+            .find(r#"class="xpict-layer xpict-bonds""#)
+            .expect("bonds");
+        assert!(
+            mol < shade && shade < bonds,
+            "layers nest inside mol: {svg}"
+        );
+        assert!(
+            svg.contains(r#"transform="translate(10,20) translate(-6,-8)""#),
+            "leftover origin is a nested translate, not baked coords: {svg}"
+        );
     }
 }

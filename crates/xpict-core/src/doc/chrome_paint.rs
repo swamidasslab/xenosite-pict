@@ -32,7 +32,7 @@ use crate::metrics::{
     halo_gap_for_weight, halo_stroke_for_weight, BOND_PX, FONT_PX, HALO_OPACITY, STROKE_PX,
 };
 use crate::rings::{aromatic_ring_circles, find_sssr};
-use crate::scene::{AromaticStyle, AtomIn, Layer, LayerName, MoleculeIn, Primitive, Scene};
+use crate::scene::{AromaticStyle, AtomIn, LayerName, MoleculeIn, Primitive, Scene};
 use std::collections::{HashMap, HashSet};
 
 const NUMBER_FONT_FRAC: f64 = 0.72;
@@ -197,39 +197,25 @@ pub fn apply_mol_chrome(node: &MolNode, mol: &MoleculeIn, mut scene: Scene) -> S
     if let Some(vp) = scene.viewports.first_mut() {
         if !underlay_prims.is_empty() {
             let prims: Vec<_> = underlay_prims.into_iter().map(|(_, p)| p).collect();
-            prepend_layer(vp, LayerName::Shading, prims);
+            vp.prepend_layer(LayerName::Shading, prims);
+        }
+        if !halo_prims.is_empty() {
+            vp.extend_layer(LayerName::Halo, halo_prims);
         }
         if !circle_prims.is_empty() {
             let prims: Vec<_> = circle_prims.into_iter().map(|(_, p)| p).collect();
-            merge_layer(vp, LayerName::Marks, prims);
+            vp.extend_layer(LayerName::Marks, prims);
         }
         if !label_prims.is_empty() {
             let prims: Vec<_> = label_prims.into_iter().map(|(_, p)| p).collect();
-            merge_layer(vp, LayerName::Labels, prims);
+            vp.extend_layer(LayerName::Labels, prims);
         }
         if !callout_prims.is_empty() {
             let prims: Vec<_> = callout_prims.into_iter().map(|(_, p)| p).collect();
-            merge_layer(vp, LayerName::Overlay, prims);
+            vp.extend_layer(LayerName::Overlay, prims);
         }
     }
-    scene.halo.extend(halo_prims);
     scene
-}
-
-fn prepend_layer(vp: &mut crate::scene::Viewport, name: LayerName, prims: Vec<Primitive>) {
-    if let Some(layer) = vp.layers.iter_mut().find(|l| l.name == name) {
-        let mut combined = prims;
-        combined.append(&mut layer.primitives);
-        layer.primitives = combined;
-    } else {
-        vp.layers.insert(
-            0,
-            Layer {
-                name,
-                primitives: prims,
-            },
-        );
-    }
 }
 
 fn strip_depict_aromatic_circles(scene: &mut Scene) {
@@ -471,17 +457,6 @@ fn find_atom<'a>(mol: &'a MoleculeIn, atom: u32) -> Option<&'a AtomIn> {
         .iter()
         .find(|a| a.index == atom as i32)
         .or_else(|| mol.atoms.get(atom as usize))
-}
-
-fn merge_layer(vp: &mut crate::scene::Viewport, name: LayerName, prims: Vec<Primitive>) {
-    if let Some(layer) = vp.layers.iter_mut().find(|l| l.name == name) {
-        layer.primitives.extend(prims);
-    } else {
-        vp.layers.push(Layer {
-            name,
-            primitives: prims,
-        });
-    }
 }
 
 fn neighbor_coords(mol: &MoleculeIn) -> Vec<Vec<(f64, f64)>> {
@@ -1972,19 +1947,32 @@ fn circle_label_at(
 
 fn caption_aabbs_from_scene(scene: &Scene) -> Vec<Aabb> {
     let mut out = Vec::new();
-    for p in &scene.overlays {
+    let mut consider = |p: &Primitive| {
         let Primitive::Path {
             d, class: Some(c), ..
         } = p
         else {
-            continue;
+            return;
         };
         if !(c.contains("mol-caption-metrics") || c.contains("mol-caption")) {
-            continue;
+            return;
         }
         if let Some(box_) = path_aabb(d) {
             out.push(box_);
         }
+    };
+    for vp in &scene.viewports {
+        for layer in &vp.layers {
+            if layer.name != LayerName::Overlay {
+                continue;
+            }
+            for p in &layer.primitives {
+                consider(p);
+            }
+        }
+    }
+    for p in &scene.overlays {
+        consider(p);
     }
     out
 }
@@ -2633,8 +2621,11 @@ mod tests {
         // Chem depict also emits class="halo" (bond knockout). Chrome text uses
         // "chrome-halo" — match that specifically.
         let (halo_d, stroke, stroke_w) = out
-            .halo
+            .viewports
             .iter()
+            .flat_map(|vp| vp.layers.iter())
+            .filter(|l| l.name == LayerName::Halo)
+            .flat_map(|l| l.primitives.iter())
             .find_map(|p| match p {
                 Primitive::Path {
                     d,

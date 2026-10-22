@@ -32,6 +32,9 @@ pub fn fit_scene(mut scene: Scene, margin: f64) -> Scene {
     let dy = margin - min_y;
     if dx.abs() > 1e-12 || dy.abs() > 1e-12 {
         for vp in &mut scene.viewports {
+            // Document-space leftover: move the mol group's placement so
+            // arrows (overlays) and boxes stay aligned. Mol-local leftover
+            // from per-mol fit lives on x/y until compose folds it into ox/oy.
             vp.x += dx;
             vp.y += dy;
         }
@@ -69,11 +72,10 @@ fn content_aabb(scene: &Scene) -> Option<(f64, f64, f64, f64)> {
 
     for vp in &scene.viewports {
         let mut layer_ink = false;
+        let (ox, oy) = vp.local_origin();
         for layer in &vp.layers {
             for p in &layer.primitives {
-                expand_prim(
-                    p, vp.x, vp.y, &mut min_x, &mut min_y, &mut max_x, &mut max_y,
-                );
+                expand_prim(p, ox, oy, &mut min_x, &mut min_y, &mut max_x, &mut max_y);
                 layer_ink = true;
                 any = true;
             }
@@ -331,6 +333,8 @@ mod tests {
                 id: Some("m".into()),
                 x: 0.0,
                 y: 0.0,
+                ox: 0.0,
+                oy: 0.0,
                 width: 0.0,
                 height: 0.0,
                 layers: vec![Layer {

@@ -1,5 +1,9 @@
 # Lab log
 
+## 2026-10-22
+
+- Network GSH region / hub aromatic bugs were hierarchy, not path-command special cases. One `g.xpict-mol` with nested layer groups (shading, halo, bonds, …). Fit leftover lives on viewport `ox`/`oy` (nested translate). Chrome+captions paint in chem space, then one mol-tree `scale`. Regions and GSH labels share the group transform.
+
 ## 2026-10-21
 
 - Dropped leftover xenopict `MoleculeIn.mark_*` / host `MolRenderOptions.mark_*` (never reached CircleSpec). Publication marks are `circle` overlays only. Removed JS SVG stub, unused frame math, elkjs POC, and the `xpict_depict_molecule` C alias.

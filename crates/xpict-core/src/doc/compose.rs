@@ -147,13 +147,14 @@ fn compose_reaction(
         let vp = placed_viewport(&p.scene, &p.id, x, y, w, h);
         max_r = max_r.max(x + w);
         max_b = max_b.max(y + h);
+        let (lx, ly) = vp.local_origin();
         for prim in &p.scene.halo {
-            halo.push(translate_prim(prim, x, y));
+            halo.push(translate_prim(prim, lx, ly));
         }
-        // Mol `name` / caption overlays live on the painted scene, not in the
-        // viewport layers — keep them when packing a scheme.
+        // Document-space leftovers (debug scene box). Mol captions/regions
+        // live in viewport layers and follow the mol group.
         for prim in &p.scene.overlays {
-            overlays.push(translate_prim(prim, x, y));
+            overlays.push(translate_prim(prim, lx, ly));
         }
         viewports.push(vp);
     }
@@ -244,25 +245,23 @@ fn compose_reaction(
 }
 
 /// Viewport as an SVG group: `x`/`y` are the group translate (ELK / row
-/// placement). Leftover fit origin is baked into local primitives so they sit
-/// in the box — otherwise arrows (document space) miss the ink.
+/// placement). Fit leftover stays on `ox`/`oy` so nested layer groups
+/// (regions, halo, chem) share one transform — no path-`d` rewrite.
 fn placed_viewport(src: &Scene, id: &str, x: f64, y: f64, w: f64, h: f64) -> Viewport {
     let mut vp = src.viewports.first().cloned().unwrap_or(Viewport {
         id: Some(id.to_string()),
         x: 0.0,
         y: 0.0,
+        ox: 0.0,
+        oy: 0.0,
         width: w,
         height: h,
         layers: vec![],
     });
-    let (ox, oy) = (vp.x, vp.y);
-    if ox.abs() > 1e-12 || oy.abs() > 1e-12 {
-        for layer in &mut vp.layers {
-            for prim in &mut layer.primitives {
-                *prim = translate_prim(prim, ox, oy);
-            }
-        }
-    }
+    // Per-mol fit leftover is on x/y. Fold it into the nested origin so
+    // placement can be the ELK/row box; primitives stay unbaked.
+    vp.ox += vp.x;
+    vp.oy += vp.y;
     vp.id = Some(id.to_string());
     vp.x = x;
     vp.y = y;
@@ -300,11 +299,12 @@ fn place_row(paints: &[DocPaint], gap: f64) -> Scene {
         let vp = placed_viewport(&p.scene, &p.id, x, y, w, h);
         max_r = max_r.max(x + w);
         max_b = max_b.max(y + h);
+        let (lx, ly) = vp.local_origin();
         for prim in &p.scene.halo {
-            halo.push(translate_prim(prim, x, y));
+            halo.push(translate_prim(prim, lx, ly));
         }
         for prim in &p.scene.overlays {
-            overlays.push(translate_prim(prim, x, y));
+            overlays.push(translate_prim(prim, lx, ly));
         }
         viewports.push(vp);
         x += w + gap;
@@ -870,6 +870,8 @@ mod tests {
                     id: Some(id.into()),
                     x: 0.0,
                     y: 0.0,
+                    ox: 0.0,
+                    oy: 0.0,
                     width: w,
                     height: h,
                     layers: vec![Layer {
@@ -944,8 +946,8 @@ mod tests {
     fn paint_shifted(id: &str, w: f64, h: f64, ox: f64, oy: f64, cx: f64, cy: f64) -> DocPaint {
         let mut p = paint(id, w, h);
         let vp = p.scene.viewports.first_mut().unwrap();
-        vp.x = ox;
-        vp.y = oy;
+        vp.ox = ox;
+        vp.oy = oy;
         vp.layers[0].primitives.push(Primitive::Circle {
             cx,
             cy,
@@ -961,9 +963,8 @@ mod tests {
 
     #[test]
     fn scheme_group_transform_keeps_fit_origin_in_local_space() {
-        // Real fit_scene leaves vp at a negative origin while primitives stay
-        // in paint coords. Placement must bake that origin so SVG
-        // translate(elk) lines up with document-space arrows.
+        // Real fit_scene leaves leftover on ox/oy while primitives stay in
+        // paint coords. The mol group carries that origin; arrows use x/y.
         let a = paint_shifted("A", 80.0, 60.0, -20.0, -25.0, 50.0, 55.0);
         let b = paint_shifted("B", 80.0, 60.0, -20.0, -25.0, 50.0, 55.0);
         let spec = DepictSpec::ReactionScheme {
@@ -1014,12 +1015,13 @@ mod tests {
                 _ => None,
             })
             .expect("circle");
-        // Local after bake: 55 + (-25) = 30. Group translate is placement, not origin.
+        // Local paint coords stay; leftover is the nested group origin
+        // (compose fit may add more to oy — do not bake into the circle).
         assert!(
-            (cy - 30.0).abs() < 1e-6,
-            "local cy {cy} should be canvas-space 30"
+            (cy - 55.0).abs() < 1e-6,
+            "local cy {cy} should stay at paint 55"
         );
-        let ink_y = vp.y + cy;
+        let ink_y = vp.y + vp.oy + cy;
         let mut shaft_y = None;
         for p in &scene.overlays {
             if let Primitive::Path {
@@ -1096,11 +1098,15 @@ mod tests {
             for layer in &vp.layers {
                 for p in &layer.primitives {
                     match p {
-                        Primitive::Circle { cy, .. } => ink_y.push(vp.y + *cy),
+                        Primitive::Circle { cy, .. } => ink_y.push(vp.y + vp.oy + *cy),
                         Primitive::Path { d, .. } => {
-                            ink_y.extend(super::path_coords(d).into_iter().map(|(_, y)| vp.y + y));
+                            ink_y.extend(
+                                super::path_coords(d)
+                                    .into_iter()
+                                    .map(|(_, y)| vp.y + vp.oy + y),
+                            );
                         }
-                        Primitive::Text { y, .. } => ink_y.push(vp.y + *y),
+                        Primitive::Text { y, .. } => ink_y.push(vp.y + vp.oy + *y),
                     }
                 }
             }

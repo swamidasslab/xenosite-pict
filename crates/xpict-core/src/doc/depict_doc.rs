@@ -220,10 +220,12 @@ mod tests {
     use super::*;
     use crate::doc::chrome::{
         AtomLabelSpec, AtomNumberBy, AtomNumberSpec, CalloutField, CalloutSpec, CircleField,
-        CircleSpec, MolText, RegionField, RegionSpec, RegionStyle, StrokeSpec,
+        CircleSpec, FillSpec, MolText, RegionField, RegionSpec, RegionStyle, StrokeSpec,
     };
-    use crate::doc::{AlignTo, MolIds, MolNode, Node, ShadeSpec};
-    use crate::scene::Primitive;
+    use crate::doc::{
+        AlignTo, EdgeArrow, EdgeNode, EdgeNodeKind, MolIds, MolNode, Node, ShadeSpec,
+    };
+    use crate::scene::{LayerName, Primitive};
     use std::collections::BTreeMap;
 
     fn scene_classes(scene: &Scene) -> Vec<String> {
@@ -556,5 +558,217 @@ mod tests {
         let svg = crate::scene_to_svg(&painted[0].scene);
         assert!(svg.contains("bond-circle"), "{svg}");
         assert!(svg.contains("#c00"), "{svg}");
+    }
+
+    #[test]
+    fn mol_svg_is_one_group_with_nested_shading() {
+        let spec = DepictSpec::Mol(MolNode {
+            smiles: Some("*C |$GSH;$|".into()),
+            region: Some(RegionField::One(RegionSpec {
+                style: RegionStyle::Bezier,
+                atoms: vec![0],
+                exclude: vec![],
+                fill: Some(FillSpec {
+                    color: Some("#2a9d8f".into()),
+                    opacity: Some(0.25),
+                }),
+                stroke: None,
+                text: None,
+                z: None,
+            })),
+            ..Default::default()
+        });
+        let painted = render(&spec).unwrap();
+        let svg = crate::scene_to_svg(&painted[0].scene);
+        assert_eq!(
+            svg.matches(r#"class="xpict-mol""#).count(),
+            1,
+            "shading must nest inside the mol, not a sibling group: {svg}"
+        );
+        let mol = svg.find(r#"class="xpict-mol""#).unwrap();
+        let shade = svg
+            .find(r#"class="xpict-layer xpict-shading""#)
+            .expect("shading layer");
+        assert!(mol < shade, "shading group nested in mol: {svg}");
+    }
+
+    #[test]
+    fn scaled_mol_aromatic_circle_sits_in_the_ring() {
+        let spec = DepictSpec::Mol(MolNode {
+            smiles: Some("NCCc1ccccc1".into()),
+            scale: Some(0.6),
+            ..Default::default()
+        });
+        let painted = render(&spec).unwrap();
+        let vp = &painted[0].scene.viewports[0];
+        let circle = vp
+            .layers
+            .iter()
+            .filter(|l| l.name == LayerName::Marks)
+            .flat_map(|l| l.primitives.iter())
+            .find_map(|p| match p {
+                Primitive::Circle {
+                    cx,
+                    cy,
+                    r,
+                    class: Some(c),
+                    ..
+                } if c.contains("aromatic") => Some((*cx, *cy, *r)),
+                _ => None,
+            })
+            .expect("aromatic circle");
+        let mut near = 0usize;
+        for layer in &vp.layers {
+            if layer.name != LayerName::Bonds {
+                continue;
+            }
+            for p in &layer.primitives {
+                let Primitive::Path {
+                    d, class: Some(c), ..
+                } = p
+                else {
+                    continue;
+                };
+                if !c.contains("bond-skeleton") {
+                    continue;
+                }
+                for (x, y) in path_xy(d) {
+                    if (x - circle.0).hypot(y - circle.1) <= 2.5 * circle.2 {
+                        near += 1;
+                    }
+                }
+            }
+        }
+        assert!(
+            near >= 6,
+            "scale must apply to chrome and chem together; circle {:?} only near {near} skeleton ends",
+            circle
+        );
+    }
+
+    #[test]
+    fn scheme_gsh_region_covers_star_label() {
+        let spec = DepictSpec::ReactionScheme {
+            id: None,
+            children: vec![
+                Node::Mol(MolNode {
+                    id: Some("a".into()),
+                    smiles: Some("CCO".into()),
+                    ..Default::default()
+                }),
+                Node::Mol(MolNode {
+                    id: Some("b".into()),
+                    smiles: Some("*C |$GSH;$|".into()),
+                    region: Some(RegionField::One(RegionSpec {
+                        style: RegionStyle::Bezier,
+                        atoms: vec![0],
+                        exclude: vec![],
+                        fill: Some(FillSpec {
+                            color: Some("#2a9d8f".into()),
+                            opacity: Some(0.25),
+                        }),
+                        stroke: None,
+                        text: None,
+                        z: None,
+                    })),
+                    ..Default::default()
+                }),
+                Node::Edge(EdgeNode {
+                    type_: EdgeNodeKind::Edge,
+                    sources: MolIds::One("a".into()),
+                    targets: MolIds::One("b".into()),
+                    label: None,
+                    edge_routing: None,
+                    role: None,
+                    arrow: EdgeArrow::Forward,
+                    color: None,
+                    stroke_width: None,
+                    dashed: false,
+                }),
+            ],
+            layout: None,
+            opts: None,
+            color: None,
+            scale: None,
+            aromatic: None,
+            debug_box: None,
+            debug_align: None,
+            pad: None,
+        };
+        let painted = render(&spec).unwrap();
+        let scene = &painted[0].scene;
+        let gsh = scene
+            .viewports
+            .iter()
+            .find(|vp| vp.id.as_deref() == Some("b"))
+            .expect("GSH mol");
+        let region = gsh
+            .layers
+            .iter()
+            .filter(|l| l.name == LayerName::Shading)
+            .flat_map(|l| l.primitives.iter())
+            .find_map(|p| match p {
+                Primitive::Path {
+                    d, class: Some(c), ..
+                } if c.contains("region") => Some(path_aabb_pts(d)),
+                _ => None,
+            })
+            .expect("region hull");
+        let label = gsh
+            .layers
+            .iter()
+            .filter(|l| l.name == LayerName::Labels)
+            .flat_map(|l| l.primitives.iter())
+            .find_map(|p| match p {
+                Primitive::Path {
+                    d,
+                    data_text: Some(t),
+                    ..
+                } if t.contains("GSH") => Some(path_aabb_pts(d)),
+                _ => None,
+            })
+            .expect("GSH label");
+        let overlap_x = region.0 < label.2 && label.0 < region.2;
+        let overlap_y = region.1 < label.3 && label.1 < region.3;
+        assert!(
+            overlap_x && overlap_y,
+            "region {region:?} must cover GSH label {label:?} (same mol group, leftover not baked)"
+        );
+    }
+
+    fn path_xy(d: &str) -> Vec<(f64, f64)> {
+        let mut nums = Vec::new();
+        let mut cur = String::new();
+        for ch in d.chars() {
+            if ch.is_ascii_digit() || ch == '.' || ch == '-' || ch == '+' || ch == 'e' || ch == 'E'
+            {
+                cur.push(ch);
+            } else if !cur.is_empty() {
+                if let Ok(v) = cur.parse::<f64>() {
+                    nums.push(v);
+                }
+                cur.clear();
+            }
+        }
+        if !cur.is_empty() {
+            if let Ok(v) = cur.parse::<f64>() {
+                nums.push(v);
+            }
+        }
+        nums.chunks(2)
+            .filter_map(|c| (c.len() == 2).then_some((c[0], c[1])))
+            .collect()
+    }
+
+    fn path_aabb_pts(d: &str) -> (f64, f64, f64, f64) {
+        let pts = path_xy(d);
+        let xs = pts.iter().map(|p| p.0);
+        let ys = pts.iter().map(|p| p.1);
+        (
+            xs.clone().fold(f64::INFINITY, f64::min),
+            ys.clone().fold(f64::INFINITY, f64::min),
+            xs.fold(f64::NEG_INFINITY, f64::max),
+            ys.fold(f64::NEG_INFINITY, f64::max),
+        )
     }
 }

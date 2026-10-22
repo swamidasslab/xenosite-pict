@@ -6,7 +6,7 @@ use crate::doc::layout_items::{Aabb, Occupancy, CLASH_MARGIN_PX};
 use crate::doc::spec::{DepictSpec, Label, LabelItem, LabelPos, MolNode, Node, TextNode};
 use crate::doc::text_paint::{markup_ascent_descent_px, markup_bounds_at_origin, outline_markup};
 use crate::metrics::{BOND_PX, FONT_PX};
-use crate::scene::{Primitive, Scene};
+use crate::scene::{LayerName, Primitive, Scene};
 
 /// Caption em size vs atom-label [`FONT_PX`] (1.5× house atom labels).
 pub const CAPTION_FONT_FRAC: f64 = 1.5;
@@ -38,14 +38,13 @@ fn structure_aabb(scene: &Scene) -> Option<(f64, f64, f64, f64)> {
     let mut max_y = f64::NEG_INFINITY;
     let mut any = false;
     for vp in &scene.viewports {
+        let (ox, oy) = vp.local_origin();
         for layer in &vp.layers {
             for p in &layer.primitives {
                 if !is_structure_class(prim_class(p)) {
                     continue;
                 }
-                expand_prim_aabb(
-                    p, vp.x, vp.y, &mut min_x, &mut min_y, &mut max_x, &mut max_y,
-                );
+                expand_prim_aabb(p, ox, oy, &mut min_x, &mut min_y, &mut max_x, &mut max_y);
                 any = true;
             }
         }
@@ -75,7 +74,7 @@ fn annotation_occupancy_from_scene(scene: &Scene) -> Occupancy {
                 if is_structure_class(prim_class(p)) {
                     continue;
                 }
-                add_prim_to_occupancy(&mut occ, p, vp.x, vp.y);
+                add_prim_to_occupancy(&mut occ, p, vp.local_origin().0, vp.local_origin().1);
             }
         }
     }
@@ -485,54 +484,27 @@ pub fn apply_mol_captions(spec: &DepictSpec, node: &MolNode, mut scene: Scene) -
         }
     }
 
-    // Shift so all content (mol + captions) sits in positive document space.
-    let mut min_x = mol_x0;
-    let mut min_y = mol_y0;
     let mut max_x = mol_x1;
     let mut max_y = mol_y1;
     for p in &placed {
-        min_x = min_x.min(p.bounds.0);
-        min_y = min_y.min(p.bounds.1);
         max_x = max_x.max(p.bounds.2);
         max_y = max_y.max(p.bounds.3);
-    }
-    // Keep content non-negative; final SVG pad comes from post-layout fit.
-    let dx = if min_x < 0.0 { -min_x } else { 0.0 };
-    let dy = if min_y < 0.0 { -min_y } else { 0.0 };
-
-    for vp in &mut scene.viewports {
-        vp.x += dx;
-        vp.y += dy;
-    }
-    if dx != 0.0 || dy != 0.0 {
-        scene.halo = scene.halo.iter().map(|p| shift_prim(p, dx, dy)).collect();
-        scene.overlays = scene
-            .overlays
-            .iter()
-            .map(|p| shift_prim(p, dx, dy))
-            .collect();
     }
 
     let mut prims: Vec<Primitive> = Vec::new();
     for p in &placed {
         let Some((d, data_text, _)) =
-            outline_markup(&p.ink.text, p.x + dx, p.y + dy, p.ink.font_px, p.anchor)
+            outline_markup(&p.ink.text, p.x, p.y, p.ink.font_px, p.anchor)
         else {
             continue;
         };
         // Invisible typographic em box so fit/viewBox uses ascent/descent, not
         // glyph outline (keeps baselines aligned across captions).
         let (x0, y0, x1, y1) = p.bounds;
-        let mx0 = x0 + dx;
-        let my0 = y0 + dy;
-        let mx1 = x1 + dx;
-        let my1 = y1 + dy;
-        max_x = max_x.max(x1);
-        max_y = max_y.max(y1);
         prims.push(Primitive::Path {
             d: format!(
                 "M {:.3} {:.3} L {:.3} {:.3} L {:.3} {:.3} L {:.3} {:.3} Z",
-                mx0, my0, mx1, my0, mx1, my1, mx0, my1
+                x0, y0, x1, y0, x1, y1, x0, y1
             ),
             stroke: Some("none".into()),
             fill: Some("none".into()),
@@ -556,149 +528,14 @@ pub fn apply_mol_captions(spec: &DepictSpec, node: &MolNode, mut scene: Scene) -
         });
     }
 
-    scene.width = (max_x + dx).max(mol_w + dx);
-    scene.height = (max_y + dy).max(mol_h + dy);
-    scene.overlays.extend(prims);
+    scene.width = max_x.max(mol_w);
+    scene.height = max_y.max(mol_h);
+    if let Some(vp) = scene.viewports.first_mut() {
+        vp.width = scene.width;
+        vp.height = scene.height;
+        vp.extend_layer(LayerName::Overlay, prims);
+    }
     scene
-}
-
-fn shift_prim(p: &Primitive, dx: f64, dy: f64) -> Primitive {
-    match p {
-        Primitive::Path {
-            d,
-            stroke,
-            fill,
-            stroke_width,
-            opacity,
-            stroke_dasharray,
-            stroke_linecap,
-            class,
-            data_text,
-        } => Primitive::Path {
-            d: shift_ml_path(d, dx, dy),
-            stroke: stroke.clone(),
-            fill: fill.clone(),
-            stroke_width: *stroke_width,
-            opacity: *opacity,
-            stroke_dasharray: stroke_dasharray.clone(),
-            stroke_linecap: stroke_linecap.clone(),
-            class: class.clone(),
-            data_text: data_text.clone(),
-        },
-        Primitive::Circle {
-            cx,
-            cy,
-            r,
-            fill,
-            stroke,
-            stroke_width,
-            opacity,
-            class,
-        } => Primitive::Circle {
-            cx: cx + dx,
-            cy: cy + dy,
-            r: *r,
-            fill: fill.clone(),
-            stroke: stroke.clone(),
-            stroke_width: *stroke_width,
-            opacity: *opacity,
-            class: class.clone(),
-        },
-        Primitive::Text {
-            x,
-            y,
-            text,
-            fill,
-            font_size,
-            anchor,
-            class,
-        } => Primitive::Text {
-            x: x + dx,
-            y: y + dy,
-            text: text.clone(),
-            fill: fill.clone(),
-            font_size: *font_size,
-            anchor: *anchor,
-            class: class.clone(),
-        },
-    }
-}
-
-/// Shift absolute M/L coordinate pairs (depict halo paths).
-fn shift_ml_path(d: &str, dx: f64, dy: f64) -> String {
-    if dx.abs() < 1e-12 && dy.abs() < 1e-12 {
-        return d.to_string();
-    }
-    let mut out = String::with_capacity(d.len() + 16);
-    let mut chars = d.chars().peekable();
-    let mut cmd = 'M';
-    while let Some(c) = chars.next() {
-        if c.is_ascii_alphabetic() {
-            cmd = c;
-            out.push(c);
-            continue;
-        }
-        if c.is_whitespace() || c == ',' {
-            out.push(c);
-            continue;
-        }
-        let mut num = String::new();
-        num.push(c);
-        while let Some(&n) = chars.peek() {
-            if n.is_ascii_digit() || n == '.' || n == 'e' || n == 'E' || n == '+' || n == '-' {
-                if (n == '-' || n == '+')
-                    && !num.is_empty()
-                    && !num.ends_with('e')
-                    && !num.ends_with('E')
-                {
-                    break;
-                }
-                num.push(n);
-                chars.next();
-            } else {
-                break;
-            }
-        }
-        if matches!(cmd, 'M' | 'L') {
-            while matches!(chars.peek(), Some(ch) if ch.is_whitespace() || *ch == ',') {
-                chars.next();
-            }
-            let mut num2 = String::new();
-            if let Some(&n0) = chars.peek() {
-                if n0 == '-' || n0 == '+' || n0.is_ascii_digit() || n0 == '.' {
-                    num2.push(n0);
-                    chars.next();
-                    while let Some(&n) = chars.peek() {
-                        if n.is_ascii_digit()
-                            || n == '.'
-                            || n == 'e'
-                            || n == 'E'
-                            || n == '+'
-                            || n == '-'
-                        {
-                            if (n == '-' || n == '+')
-                                && !num2.is_empty()
-                                && !num2.ends_with('e')
-                                && !num2.ends_with('E')
-                            {
-                                break;
-                            }
-                            num2.push(n);
-                            chars.next();
-                        } else {
-                            break;
-                        }
-                    }
-                }
-            }
-            if let (Ok(x), Ok(y)) = (num.parse::<f64>(), num2.parse::<f64>()) {
-                out.push_str(&format!("{} {}", x + dx, y + dy));
-                continue;
-            }
-        }
-        out.push_str(&num);
-    }
-    out
 }
 
 #[cfg(test)]
@@ -707,6 +544,17 @@ mod tests {
     use crate::doc::chrome::{MolText, MolTextSpec};
     use crate::metrics::FONT_PX;
     use crate::scene::{AtomIn, BondIn, MoleculeIn};
+
+    fn overlay_prims(scene: &Scene) -> Vec<&Primitive> {
+        scene
+            .viewports
+            .iter()
+            .flat_map(|vp| vp.layers.iter())
+            .filter(|l| l.name == LayerName::Overlay)
+            .flat_map(|l| l.primitives.iter())
+            .chain(scene.overlays.iter())
+            .collect()
+    }
 
     fn ethanol() -> MoleculeIn {
         MoleculeIn {
@@ -798,7 +646,7 @@ mod tests {
         let base = crate::depict::depict_molecule(&ethanol());
         let out = apply_mol_captions(&spec, &node, base);
         // Caption snugs into house PAD below ink — height may stay flat.
-        let hit = out.overlays.iter().any(|p| {
+        let hit = overlay_prims(&out).iter().any(|p| {
             matches!(
                 p,
                 Primitive::Path {
@@ -808,7 +656,11 @@ mod tests {
                 } if t == "ethanol" && c.contains("mol-caption")
             )
         });
-        assert!(hit, "expected mol-caption overlay, got {:?}", out.overlays);
+        assert!(
+            hit,
+            "expected mol-caption overlay, got {:?}",
+            overlay_prims(&out)
+        );
     }
 
     #[test]
@@ -825,7 +677,7 @@ mod tests {
         assert!(node.name.is_some());
         let base = crate::depict::depict_molecule(&ethanol());
         let out = apply_mol_captions(&spec, &node, base);
-        let hit = out.overlays.iter().any(|p| {
+        let hit = overlay_prims(&out).iter().any(|p| {
             matches!(
                 p,
                 Primitive::Path {
@@ -835,7 +687,7 @@ mod tests {
                 } if t == "ethanol" && c.contains("mol-caption")
             )
         });
-        assert!(hit, "expected name caption, got {:?}", out.overlays);
+        assert!(hit, "expected name caption, got {:?}", overlay_prims(&out));
     }
 
     #[test]
@@ -850,8 +702,7 @@ mod tests {
         .unwrap();
         let node = spec.mols()[0].clone();
         let out = apply_mol_captions(&spec, &node, crate::depict::depict_molecule(&ethanol()));
-        let data: Vec<_> = out
-            .overlays
+        let data: Vec<_> = overlay_prims(&out)
             .iter()
             .filter_map(|p| match p {
                 Primitive::Path {
@@ -924,7 +775,7 @@ mod tests {
         let out = apply_mol_captions(&spec, &node, base);
         let mut metric_top = f64::INFINITY;
         let mut metric_bottom = f64::NEG_INFINITY;
-        for p in &out.overlays {
+        for p in overlay_prims(&out) {
             if let Primitive::Path {
                 d, class: Some(c), ..
             } = p
@@ -971,7 +822,7 @@ mod tests {
             let out = apply_mol_captions(&spec, &node, crate::depict::depict_molecule(&ethanol()));
             let mut bottom = f64::NEG_INFINITY;
             let mut baseline = f64::NAN;
-            for p in &out.overlays {
+            for p in overlay_prims(&out) {
                 if let Primitive::Path {
                     d, class: Some(c), ..
                 } = p
@@ -1046,9 +897,10 @@ mod tests {
                         Primitive::Path {
                             d, class: Some(c), ..
                         } if c.contains("region") => {
+                            let (ox, oy) = vp.local_origin();
                             let pts = path_xy(d);
-                            let xs: Vec<_> = pts.iter().map(|p| vp.x + p.0).collect();
-                            let ys: Vec<_> = pts.iter().map(|p| vp.y + p.1).collect();
+                            let xs: Vec<_> = pts.iter().map(|p| ox + p.0).collect();
+                            let ys: Vec<_> = pts.iter().map(|p| oy + p.1).collect();
                             Some(Aabb::new(
                                 xs.iter().cloned().fold(f64::INFINITY, f64::min),
                                 ys.iter().cloned().fold(f64::INFINITY, f64::min),
@@ -1061,9 +913,8 @@ mod tests {
                 })
             })
             .expect("region box");
-        let caption = out
-            .overlays
-            .iter()
+        let caption = overlay_prims(&out)
+            .into_iter()
             .find_map(|p| match p {
                 Primitive::Path {
                     d, class: Some(c), ..
