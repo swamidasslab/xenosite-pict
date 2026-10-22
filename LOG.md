@@ -2,6 +2,8 @@
 
 ## 2026-10-21
 
+- Product 0.6.0: one Rust scene_to_svg (`g.xpict-mol[data-id]`, no XML decl); scheme arrows follow the viewport group.
+
 - Scheme arrows were high vs mols: compose overwrote fit's leftover viewport origin. Placement `x`/`y` is the SVG group translate; bake origin into local primitives so ink sits in the box.
 
 - Product 0.5.2: one Rust `scene_to_svg` for all hosts; `g.xpict-mol[data-id]`; no XML declaration.
