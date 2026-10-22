@@ -2,9 +2,11 @@
 
 ## 2026-10-22
 
+- Scheme arrow ink standoff is 1.5 bonds. Endpoints initialize on the centroid-aiming ray (not ELK box ports). Energy is MinimizeDist to the centroid plus Collinear so the shaft tangent aims at the center; hard chem clearance keeps them from reaching it.
+
 - Product 0.7.0: ELK-then-energy reaction-scheme refine (`LayoutOpts.refine`; `false` keeps stock ELK). Nested mol SVG groups; leftover fit on viewport `ox`/`oy`.
 
-- Reaction-scheme default is ELK seed then constraint refine (`LayoutOpts.refine`; `false` keeps stock ELK). Mols stay fixed; movable DOF are ELK control points and edge labels. Shafts paint as open centripetal Catmull–Rom from a shared `catmull` module (not duplicated in `arrows`, not via `doc`). Standoff is from chem ink (~2 bonds), not the mol AABB. ParallelClear is hard; PolyCross only for pairs that did not already cross at the seed. Labels rotate with the shaft and MaxDist-tether to it.
+- Reaction-scheme default is ELK seed then constraint refine (`LayoutOpts.refine`; `false` keeps stock ELK). Mols stay fixed; movable DOF are ELK control points and edge labels. Shafts paint as open centripetal Catmull–Rom from a shared `catmull` module (not duplicated in `arrows`, not via `doc`). Standoff is from chem ink (1.5 bonds), not the mol AABB. ParallelClear is hard; PolyCross only for pairs that did not already cross at the seed. Labels rotate with the shaft and MaxDist-tether to it.
 
 - Network GSH region / hub aromatic bugs were hierarchy, not path-command special cases. One `g.xpict-mol` with nested layer groups (shading, halo, bonds, …). Fit leftover lives on viewport `ox`/`oy` (nested translate). Chrome+captions paint in chem space, then one mol-tree `scale`. Regions and GSH labels share the group transform.
 

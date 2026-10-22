@@ -15,12 +15,17 @@ use super::layout_constraints::{
 use super::layout_items::Aabb;
 use super::{DepictSpec, DocPaint, LayoutOpts};
 
-/// Arrow / label standoff from painted chem (not the mol AABB).
-pub const SCHEME_INK_STANDOFF: f64 = 2.0 * BOND_PX;
+/// Arrow standoff from painted chem (not the mol AABB).
+pub const SCHEME_INK_STANDOFF: f64 = 1.5 * BOND_PX;
+/// Edge labels sit closer than shafts; shaft-scale chem clearance is infeasible
+/// in a tight ELK gap and would drag the tethered shaft away.
+const SCHEME_LABEL_INK_STANDOFF: f64 = 0.5 * BOND_PX;
 /// Minimum gap between nearly-parallel overlapping shafts.
 pub const SCHEME_EDGE_CLEARANCE: f64 = BOND_PX;
 const LABEL_TETHER_PX: f64 = 8.0;
 const POSE_STRENGTH: f64 = 0.35;
+/// Endpoint → centroid and shaft-tangent → centroid springs.
+const ENDPOINT_POSE_STRENGTH: f64 = 2.0;
 
 /// Refined shaft polylines and optional label poses `(x, y, rotate_deg)`.
 pub struct RefinedEdges {
@@ -72,6 +77,14 @@ pub fn refine_scheme_edges(
                 &[],
             );
         }
+        let (cx, cy) = mol_centroid(&paint_of, positions, &size_of, id);
+        world.insert(
+            format!("{mid}/centroid"),
+            &mid,
+            ObjectType::Group,
+            Shape::Point { x: cx, y: cy },
+            true,
+        );
         mol_ids.push(id.clone());
     }
 
@@ -134,16 +147,6 @@ pub fn refine_scheme_edges(
             Shape::Polyline(vec![]),
             true,
         );
-        let pts = &seed_pts[i];
-        for (k, &(x, y)) in pts.iter().enumerate() {
-            world.insert(
-                format!("{eid}/p{k}"),
-                &eid,
-                ObjectType::EdgePoint,
-                Shape::Point { x, y },
-                false,
-            );
-        }
         let src = edge
             .sources
             .as_slice()
@@ -156,13 +159,58 @@ pub fn refine_scheme_edges(
             .first()
             .map(String::as_str)
             .unwrap_or("");
-        if let Some(&(sx, sy)) = pts.first() {
-            let (cx, cy) = endpoint_pose(&paint_of, positions, &size_of, src, sx, sy);
-            cs.push(Constraint::PreferPose {
+        let src_c = mol_centroid(&paint_of, positions, &size_of, src);
+        let tgt_c = mol_centroid(&paint_of, positions, &size_of, tgt);
+        let pts = &seed_pts[i];
+        let toward0 = if pts.len() >= 3 { pts[1] } else { tgt_c };
+        let toward1 = if pts.len() >= 3 {
+            pts[pts.len() - 2]
+        } else {
+            src_c
+        };
+        // ELK ports sit on the box. Seed on the ray toward the other end /
+        // next bend, at ink standoff — not on the centroid, and not past
+        // the midpoint (tight packing).
+        let sep0 = (toward0.0 - src_c.0).hypot(toward0.1 - src_c.1);
+        let sep1 = (toward1.0 - tgt_c.0).hypot(toward1.1 - tgt_c.1);
+        let stand0 = SCHEME_INK_STANDOFF.min(sep0 * 0.45);
+        let stand1 = SCHEME_INK_STANDOFF.min(sep1 * 0.45);
+        let aim0 = ray_at_dist(src_c, toward0, stand0);
+        let aim1 = ray_at_dist(tgt_c, toward1, stand1);
+        for (k, &(x, y)) in pts.iter().enumerate() {
+            let (px, py) = if k == 0 {
+                aim0
+            } else if k + 1 == pts.len() {
+                aim1
+            } else {
+                (x, y)
+            };
+            world.insert(
+                format!("{eid}/p{k}"),
+                &eid,
+                ObjectType::EdgePoint,
+                Shape::Point { x: px, y: py },
+                false,
+            );
+        }
+        if pts.len() >= 2 {
+            let last = pts.len() - 1;
+            let src_centroid = format!("scheme/mols/{src}/centroid");
+            let tgt_centroid = format!("scheme/mols/{tgt}/centroid");
+            // Pull the endpoint toward the centroid (ink standoff stops it).
+            cs.push(Constraint::MinimizeDist {
                 a: format!("{eid}/p0"),
-                x: cx,
-                y: cy,
-                strength: POSE_STRENGTH,
+                b: src_centroid.clone(),
+                opt_dist: 0.0,
+                strength: ENDPOINT_POSE_STRENGTH,
+            });
+            // Pull the shaft tangent onto the ray from the next point through
+            // the centroid, so the arrow points at the center.
+            cs.push(Constraint::Collinear {
+                a: format!("{eid}/p1"),
+                b: format!("{eid}/p0"),
+                c: src_centroid,
+                strength: ENDPOINT_POSE_STRENGTH,
             });
             push_clear_leaves(
                 &world,
@@ -171,16 +219,17 @@ pub fn refine_scheme_edges(
                 &format!("scheme/mols/{src}/chem"),
                 SCHEME_INK_STANDOFF,
             );
-        }
-        if pts.len() >= 2 {
-            let last = pts.len() - 1;
-            let (sx, sy) = pts[last];
-            let (cx, cy) = endpoint_pose(&paint_of, positions, &size_of, tgt, sx, sy);
-            cs.push(Constraint::PreferPose {
+            cs.push(Constraint::MinimizeDist {
                 a: format!("{eid}/p{last}"),
-                x: cx,
-                y: cy,
-                strength: POSE_STRENGTH,
+                b: tgt_centroid.clone(),
+                opt_dist: 0.0,
+                strength: ENDPOINT_POSE_STRENGTH,
+            });
+            cs.push(Constraint::Collinear {
+                a: format!("{eid}/p{}", last.saturating_sub(1)),
+                b: format!("{eid}/p{last}"),
+                c: tgt_centroid,
+                strength: ENDPOINT_POSE_STRENGTH,
             });
             push_clear_leaves(
                 &world,
@@ -234,7 +283,7 @@ pub fn refine_scheme_edges(
                     &mut hard,
                     &format!("{eid}/label"),
                     &format!("scheme/mols/{mid}/chem"),
-                    SCHEME_INK_STANDOFF,
+                    SCHEME_LABEL_INK_STANDOFF,
                 );
             }
         }
@@ -322,29 +371,32 @@ fn mol_box(
     (x, y, w, h)
 }
 
-fn endpoint_pose(
+fn mol_centroid(
     paints: &HashMap<&str, &DocPaint>,
     positions: &HashMap<String, (f64, f64)>,
     sizes: &HashMap<&str, (f64, f64)>,
     id: &str,
-    seed_x: f64,
-    seed_y: f64,
 ) -> (f64, f64) {
     if let Some(paint) = paints.get(id) {
-        if paint.molecule.atoms.is_empty() && paint.molecule.bonds.is_empty() {
-            return (seed_x, seed_y);
-        }
-        let (x, y) = positions.get(id).copied().unwrap_or((0.0, 0.0));
-        let origin = mol_origin(paint, (x, y));
         if !paint.molecule.atoms.is_empty() {
+            let (x, y) = positions.get(id).copied().unwrap_or((0.0, 0.0));
+            let origin = mol_origin(paint, (x, y));
             let n = paint.molecule.atoms.len() as f64;
             let sx: f64 = paint.molecule.atoms.iter().map(|a| a.x).sum();
             let sy: f64 = paint.molecule.atoms.iter().map(|a| a.y).sum();
             return (origin.0 + sx / n, origin.1 + sy / n);
         }
     }
-    let _ = sizes;
-    (seed_x, seed_y)
+    let (x, y, w, h) = mol_box(positions, sizes, id);
+    (x + w * 0.5, y + h * 0.5)
+}
+
+/// Point `dist` from `from` toward `toward` (centroid-aiming standoff).
+fn ray_at_dist(from: (f64, f64), toward: (f64, f64), dist: f64) -> (f64, f64) {
+    let dx = toward.0 - from.0;
+    let dy = toward.1 - from.1;
+    let l = dx.hypot(dy).max(1e-9);
+    (from.0 + dx / l * dist, from.1 + dy / l * dist)
 }
 
 fn mol_origin(paint: &DocPaint, elk: (f64, f64)) -> (f64, f64) {
@@ -455,95 +507,24 @@ mod tests {
     };
 
     #[test]
-    fn ink_standoff_constant_is_two_bonds() {
-        assert!((SCHEME_INK_STANDOFF - 2.0 * BOND_PX).abs() < 1e-12);
+    fn ink_standoff_constant_is_one_and_half_bonds() {
+        assert!((SCHEME_INK_STANDOFF - 1.5 * BOND_PX).abs() < 1e-12);
     }
 
     #[test]
-    fn endpoint_pose_aims_at_atom_centroid() {
-        use crate::doc::DocPaint;
-        use crate::scene::{AtomIn, Layer, LayerName, MoleculeIn, Scene, Viewport};
-
-        let paint = DocPaint {
-            id: "A".into(),
-            frame_json: String::new(),
-            molecule: MoleculeIn {
-                id: Some("A".into()),
-                atoms: vec![
-                    AtomIn {
-                        index: 0,
-                        element: Some("C".into()),
-                        z: Some(6),
-                        x: 0.0,
-                        y: 0.0,
-                        label: None,
-                        charge: 0,
-                        mapno: None,
-                    },
-                    AtomIn {
-                        index: 1,
-                        element: Some("C".into()),
-                        z: Some(6),
-                        x: 20.0,
-                        y: 10.0,
-                        label: None,
-                        charge: 0,
-                        mapno: None,
-                    },
-                ],
-                bonds: vec![],
-                color: None,
-                atom_shade: None,
-                bond_shade: None,
-                shade_vmin: None,
-                shade_vmax: None,
-                scale: 1.0,
-                weight: 1.0,
-                aromatic: Default::default(),
-                debug_box: false,
-                debug_align: false,
-                align_debug: None,
-                ..Default::default()
-            },
-            scene: Scene {
-                width: 40.0,
-                height: 20.0,
-                viewports: vec![Viewport {
-                    id: Some("A".into()),
-                    x: 0.0,
-                    y: 0.0,
-                    ox: 0.0,
-                    oy: 0.0,
-                    width: 40.0,
-                    height: 20.0,
-                    layers: vec![Layer {
-                        name: LayerName::Bonds,
-                        primitives: vec![],
-                    }],
-                }],
-                overlays: vec![],
-                halo: vec![],
-            },
-        };
-        let mut paints = HashMap::new();
-        paints.insert("A", &paint);
-        let positions = HashMap::from([("A".into(), (100.0, 50.0))]);
-        let sizes = HashMap::from([("A", (40.0, 20.0))]);
-        let (x, y) = endpoint_pose(&paints, &positions, &sizes, "A", 0.0, 0.0);
-        assert!((x - 110.0).abs() < 1e-9, "x={x}");
-        assert!((y - 55.0).abs() < 1e-9, "y={y}");
-        let mut empty_mol = paint.molecule.clone();
-        empty_mol.atoms.clear();
-        empty_mol.bonds.clear();
-        let empty = DocPaint {
-            id: "A".into(),
-            frame_json: String::new(),
-            molecule: empty_mol,
-            scene: paint.scene.clone(),
-        };
-        paints.insert("A", &empty);
-        let (sx, sy) = endpoint_pose(&paints, &positions, &sizes, "A", 7.0, 9.0);
-        assert_eq!((sx, sy), (7.0, 9.0));
+    fn ray_standoff_aims_at_other_centroid() {
+        let from = (0.0, 0.0);
+        let toward = (100.0, 0.0);
+        let p = ray_at_dist(from, toward, 60.0);
+        assert!((p.0 - 60.0).abs() < 1e-9 && p.1.abs() < 1e-9, "{p:?}");
+        let paints = HashMap::new();
+        let positions = HashMap::from([("A".into(), (10.0, 20.0))]);
+        let sizes = HashMap::from([("A", (40.0, 30.0))]);
+        let c = mol_centroid(&paints, &positions, &sizes, "A");
+        assert!(
+            (c.0 - 30.0).abs() < 1e-9 && (c.1 - 35.0).abs() < 1e-9,
+            "{c:?}"
+        );
     }
 
     #[test]
@@ -761,16 +742,31 @@ mod tests {
             (400.0..=600.0).contains(&x1) && (0.0..=200.0).contains(&y1),
             "tgt endpoint should enter B's AABB: ({x1},{y1})"
         );
-        let da = (x0 - 100.0).hypot(y0 - 100.0);
-        let db = (x1 - 500.0).hypot(y1 - 100.0);
+        let ca = (100.0, 100.0);
+        let cb = (500.0, 100.0);
+        let da = (x0 - ca.0).hypot(y0 - ca.1);
+        let db = (x1 - cb.0).hypot(y1 - cb.1);
         assert!(
             da >= SCHEME_INK_STANDOFF * 0.75,
-            "src standoff from chem: {da}"
+            "src must not reach centroid: {da}"
         );
         assert!(
             db >= SCHEME_INK_STANDOFF * 0.75,
-            "tgt standoff from chem: {db}"
+            "tgt must not reach centroid: {db}"
         );
+        let line_a = point_to_line(ca.0, ca.1, x0, y0, x1, y1);
+        let line_b = point_to_line(cb.0, cb.1, x0, y0, x1, y1);
+        assert!(
+            line_a < 8.0 && line_b < 8.0,
+            "shaft should aim through centroids: dA={line_a} dB={line_b} pts={pts:?}"
+        );
+    }
+
+    fn point_to_line(px: f64, py: f64, x0: f64, y0: f64, x1: f64, y1: f64) -> f64 {
+        let vx = x1 - x0;
+        let vy = y1 - y0;
+        let l = vx.hypot(vy).max(1e-9);
+        ((px - x0) * vy - (py - y0) * vx).abs() / l
     }
 
     #[test]

@@ -599,6 +599,15 @@ pub enum Constraint {
     /// intersection. Kits that should not uncross an existing X simply omit
     /// this row for that pair.
     PolyCross { a: NodeId, b: NodeId, strength: f64 },
+    /// `b` should sit on the ray `a → c` (squared perp distance, plus a hinge
+    /// if `b` is behind `a`). Scheme arrows use this so the shaft tangent
+    /// aims at a mol centroid without requiring `b` to reach `c`.
+    Collinear {
+        a: NodeId,
+        b: NodeId,
+        c: NodeId,
+        strength: f64,
+    },
 }
 
 /// No-overlap (Outside). Strongest hard group.
@@ -1002,6 +1011,21 @@ fn spring(d: f64, d_star: f64) -> f64 {
     e * e
 }
 
+/// `b` on ray `a → c`: perp distance plus wrong-side hinge (px²).
+fn collinear_energy(a: (f64, f64), b: (f64, f64), c: (f64, f64), strength: f64) -> f64 {
+    let vx = c.0 - a.0;
+    let vy = c.1 - a.1;
+    let l2 = vx * vx + vy * vy;
+    if l2 < 1e-18 {
+        return 0.0;
+    }
+    let l = l2.sqrt();
+    let perp = ((b.0 - a.0) * vy - (b.1 - a.1) * vx) / l;
+    let t = ((b.0 - a.0) * vx + (b.1 - a.1) * vy) / l2;
+    let back = if t < 0.0 { t * l } else { 0.0 };
+    strength * (perp * perp + back * back)
+}
+
 /// Evaluate soft energy for the current world poses.
 pub fn energy(
     world: &LayoutWorld,
@@ -1137,6 +1161,26 @@ fn constraint_energy(world: &LayoutWorld, c: &Constraint) -> f64 {
             };
             let n = poly_cross_count(&sa, &sb) as f64;
             strength * n * n
+        }
+        Constraint::Collinear { a, b, c, strength } => {
+            let sa = match world.eval_shape(a) {
+                Some(s) => s,
+                None => return 0.0,
+            };
+            let sb = match world.eval_shape(b) {
+                Some(s) => s,
+                None => return 0.0,
+            };
+            let sc = match world.eval_shape(c) {
+                Some(s) => s,
+                None => return 0.0,
+            };
+            collinear_energy(
+                shape_anchor(&sa),
+                shape_anchor(&sb),
+                shape_anchor(&sc),
+                *strength,
+            )
         }
     }
 }
@@ -3830,6 +3874,46 @@ mod tests {
             energy(&w, &[], &[], 0.0),
             0.0,
             "omitting PolyCross must cost nothing (ELK crossings stay)"
+        );
+    }
+
+    #[test]
+    fn collinear_energy_zero_on_ray_positive_off() {
+        let mut w = LayoutWorld::rooted("scheme", ObjectType::Scheme);
+        w.insert(
+            "a",
+            "scheme",
+            ObjectType::EdgePoint,
+            Shape::Point { x: 0.0, y: 0.0 },
+            true,
+        );
+        w.insert(
+            "b",
+            "scheme",
+            ObjectType::EdgePoint,
+            Shape::Point { x: 10.0, y: 0.0 },
+            false,
+        );
+        w.insert(
+            "c",
+            "scheme",
+            ObjectType::Group,
+            Shape::Point { x: 40.0, y: 0.0 },
+            true,
+        );
+        let row = Constraint::Collinear {
+            a: "a".into(),
+            b: "b".into(),
+            c: "c".into(),
+            strength: 1.0,
+        };
+        assert!(energy(&w, &[row.clone()], &[], 0.0) < 1e-9);
+        w.set_pose("b", 0.0, 8.0);
+        assert!(energy(&w, &[row.clone()], &[], 0.0) > 0.0);
+        w.set_pose("b", -12.0, 0.0);
+        assert!(
+            energy(&w, &[row], &[], 0.0) > 0.0,
+            "behind the origin of the ray must cost"
         );
     }
 
