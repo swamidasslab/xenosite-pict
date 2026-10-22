@@ -38,6 +38,16 @@
     "width": {
       "type": "number",
       "format": "double"
+    },
+    "x": {
+      "description": "viewBox min-x. Size is [`Self::width`] × [`Self::height`]. Default 0.",
+      "type": "number",
+      "format": "double"
+    },
+    "y": {
+      "description": "viewBox min-y. Default 0.",
+      "type": "number",
+      "format": "double"
     }
   },
   "definitions": {

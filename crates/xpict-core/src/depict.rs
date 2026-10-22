@@ -325,6 +325,8 @@ pub(crate) fn depict_chem(mol: &MoleculeIn) -> Scene {
     let scene = Scene {
         width,
         height,
+        x: 0.0,
+        y: 0.0,
         viewports: vec![Viewport {
             id: mol.id.clone(),
             x: 0.0,

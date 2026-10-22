@@ -76,3 +76,5 @@ class SceneDict(TypedDict, total=False):
     width: Required[float]
     halo: NotRequired[list[PrimitiveDict]]
     overlays: NotRequired[list[PrimitiveDict]]
+    x: NotRequired[float]
+    y: NotRequired[float]

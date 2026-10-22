@@ -2,6 +2,8 @@
 
 ## 2026-10-22
 
+- Fit leftover (`shift_path_d`, origin-0 viewBox) was a workaround that broke cubics. Crop is now the SVG viewBox (`Scene.x`/`y` + size). Geometry and path `d` stay put; mol `ox`/`oy` still maps paint space onto the ELK box.
+
 - Fit was shifting only SVG `M`/`L` on overlays. Catmull shafts are `C` cubics, so the filled head (an `M L L Z`) moved and the Glutathionation curve did not. `shift_path_d` now translates cubic controls too. The JS loader cache-busts wasm by content hash so a rebuilt blob actually loads.
 
 - Arrow head is the last route control, pulled back along that last chord. Shaft interpolates the same `base`. No SVG `d` scrape for the join (that rounded a cubic trim and left the triangle off the Glutathionation shaft). Bond halo uses `StrokePath.pts` the same way. Tests rebuild the expected triangle from the controls; a 1.5 px path-parse gap no longer hides a miss.

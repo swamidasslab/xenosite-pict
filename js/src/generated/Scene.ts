@@ -8,7 +8,15 @@ import type { Viewport } from "./Viewport";
  * Python `contracts.scene.Scene` and JS consumers should mirror this shape
  * (JSON round-trip is the ABI).
  */
-export type Scene = { width: number, height: number, viewports: Array<Viewport>, 
+export type Scene = { width: number, height: number, 
+/**
+ * viewBox min-x. Size is [`Self::width`] × [`Self::height`]. Default 0.
+ */
+x: number, 
+/**
+ * viewBox min-y. Default 0.
+ */
+y: number, viewports: Array<Viewport>, 
 /**
  * Document-space primitives (reaction arrows) above viewports.
  */

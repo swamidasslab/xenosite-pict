@@ -29,7 +29,7 @@ export type SceneLayer = Layer;
 /** @deprecated Prefer {@link Viewport}. */
 export type SceneViewport = Viewport;
 
-/** Serialize a Scene document to SVG (width/height = viewBox = SCALE units). */
+/** Serialize a Scene document to SVG (width/height = viewBox size; origin is `x`/`y`). */
 export function sceneToSvg(scene: Scene): string {
   return sceneToSvgJson(JSON.stringify(scene));
 }

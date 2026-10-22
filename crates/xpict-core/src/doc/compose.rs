@@ -11,8 +11,8 @@ use crate::arrows::{
     edge_anchors, edge_primitives as paint_edge, simplify_route, EdgePaintIn, EdgePrim, ANCHOR_GAP,
     KINK_PX,
 };
-use crate::debug_box::scene_debug_rect;
-use crate::scene::{Primitive, Scene, TextAnchor, Viewport};
+use crate::debug_box::debug_rect;
+use crate::scene::{LayerName, Primitive, Scene, TextAnchor, Viewport};
 
 use super::{fit, DepictSpec, DocPaint, EdgeNode, EdgeRouting, LabelPos, LayoutOpts, Node};
 
@@ -34,13 +34,7 @@ pub fn compose_scheme(spec: &DepictSpec, paints: &[DocPaint]) -> Result<Scene, S
             if paints.len() == 1 {
                 paints[0].scene.clone()
             } else if paints.is_empty() {
-                Scene {
-                    width: 0.0,
-                    height: 0.0,
-                    viewports: vec![],
-                    overlays: vec![],
-                    halo: vec![],
-                }
+                Scene::empty(0.0, 0.0)
             } else {
                 // Multi-mol group / flat grid: simple row (no edges).
                 place_row(paints, 16.0)
@@ -86,9 +80,13 @@ fn with_scene_debug_box(spec: &DepictSpec, paints: &[DocPaint], mut scene: Scene
         return scene;
     }
     if scene.width > 0.0 && scene.height > 0.0 {
-        scene
-            .overlays
-            .push(scene_debug_rect(scene.width, scene.height));
+        scene.overlays.push(debug_rect(
+            scene.x,
+            scene.y,
+            scene.width,
+            scene.height,
+            "debug-box debug-box-scene",
+        ));
     }
     scene
 }
@@ -107,13 +105,7 @@ fn compose_reaction(
     layout: &LayoutOpts,
 ) -> Result<Scene, String> {
     if paints.is_empty() {
-        return Ok(Scene {
-            width: 0.0,
-            height: 0.0,
-            viewports: vec![],
-            overlays: vec![],
-            halo: vec![],
-        });
+        return Ok(Scene::empty(0.0, 0.0));
     }
 
     let by_id: HashMap<&str, &DocPaint> = paints.iter().map(|p| (p.id.as_str(), p)).collect();
@@ -132,7 +124,6 @@ fn compose_reaction(
     };
 
     let mut viewports = Vec::with_capacity(paints.len());
-    let mut halo = Vec::new();
     let mut overlays = Vec::new();
     let mut max_r = 0.0_f64;
     let mut max_b = 0.0_f64;
@@ -144,18 +135,10 @@ fn compose_reaction(
             .copied()
             .unwrap_or((0.0, 0.0));
         let (w, h) = scene_size(&p.scene);
-        let vp = placed_viewport(&p.scene, &p.id, x, y, w, h);
+        let mut vp = placed_viewport(&p.scene, &p.id, x, y, w, h);
         max_r = max_r.max(x + w);
         max_b = max_b.max(y + h);
-        let (lx, ly) = vp.local_origin();
-        for prim in &p.scene.halo {
-            halo.push(translate_prim(prim, lx, ly));
-        }
-        // Document-space leftovers (debug scene box). Mol captions/regions
-        // live in viewport layers and follow the mol group.
-        for prim in &p.scene.overlays {
-            overlays.push(translate_prim(prim, lx, ly));
-        }
+        absorb_mol_document_prims(&mut vp, &p.scene);
         viewports.push(vp);
     }
 
@@ -242,15 +225,17 @@ fn compose_reaction(
     Ok(Scene {
         width: max_r.max(placement.width.unwrap_or(0.0)),
         height: max_b.max(placement.height.unwrap_or(0.0)),
+        x: 0.0,
+        y: 0.0,
         viewports,
         overlays,
-        halo,
+        halo: Vec::new(),
     })
 }
 
 /// Viewport as an SVG group: `x`/`y` are the group translate (ELK / row
-/// placement). Fit leftover stays on `ox`/`oy` so nested layer groups
-/// (regions, halo, chem) share one transform — no path-`d` rewrite.
+/// placement). The mol's fitted viewBox origin folds into `ox`/`oy` so the
+/// ELK box is the crop top-left and primitives stay in paint space.
 fn placed_viewport(src: &Scene, id: &str, x: f64, y: f64, w: f64, h: f64) -> Viewport {
     let mut vp = src.viewports.first().cloned().unwrap_or(Viewport {
         id: Some(id.to_string()),
@@ -262,16 +247,22 @@ fn placed_viewport(src: &Scene, id: &str, x: f64, y: f64, w: f64, h: f64) -> Vie
         height: h,
         layers: vec![],
     });
-    // Per-mol fit leftover is on x/y. Fold it into the nested origin so
-    // placement can be the ELK/row box; primitives stay unbaked.
-    vp.ox += vp.x;
-    vp.oy += vp.y;
+    // Map this mol's viewBox origin onto the ELK/row box. `src.x`/`src.y` are
+    // the crop; any prior group leftover on vp.x/y comes along.
+    vp.ox += vp.x - src.x;
+    vp.oy += vp.y - src.y;
     vp.id = Some(id.to_string());
     vp.x = x;
     vp.y = y;
     vp.width = w;
     vp.height = h;
     vp
+}
+
+/// Per-mol document leftovers (debug box, extra halo) belong in the mol group.
+fn absorb_mol_document_prims(vp: &mut Viewport, src: &Scene) {
+    vp.extend_layer(LayerName::Halo, src.halo.clone());
+    vp.extend_layer(LayerName::Overlay, src.overlays.clone());
 }
 
 fn scene_size(scene: &Scene) -> (f64, f64) {
@@ -292,33 +283,27 @@ fn place_row(paints: &[DocPaint], gap: f64) -> Scene {
         .collect();
     let max_h = sizes.iter().map(|(_, _, h)| *h).fold(0.0_f64, f64::max);
     let mut viewports = Vec::new();
-    let mut halo = Vec::new();
-    let mut overlays = Vec::new();
     let mut max_r = 0.0_f64;
     let mut max_b = 0.0_f64;
     let mut x = 0.0_f64;
     for p in paints {
         let (w, h) = scene_size(&p.scene);
         let y = (max_h - h) * 0.5;
-        let vp = placed_viewport(&p.scene, &p.id, x, y, w, h);
+        let mut vp = placed_viewport(&p.scene, &p.id, x, y, w, h);
         max_r = max_r.max(x + w);
         max_b = max_b.max(y + h);
-        let (lx, ly) = vp.local_origin();
-        for prim in &p.scene.halo {
-            halo.push(translate_prim(prim, lx, ly));
-        }
-        for prim in &p.scene.overlays {
-            overlays.push(translate_prim(prim, lx, ly));
-        }
+        absorb_mol_document_prims(&mut vp, &p.scene);
         viewports.push(vp);
         x += w + gap;
     }
     Scene {
         width: max_r,
         height: max_b,
+        x: 0.0,
+        y: 0.0,
         viewports,
-        overlays,
-        halo,
+        overlays: Vec::new(),
+        halo: Vec::new(),
     }
 }
 
@@ -660,6 +645,7 @@ fn edge_prim_to_scene(p: &EdgePrim) -> Primitive {
     }
 }
 
+#[cfg(test)]
 fn translate_prim(p: &Primitive, dx: f64, dy: f64) -> Primitive {
     match p {
         Primitive::Path {
@@ -673,7 +659,7 @@ fn translate_prim(p: &Primitive, dx: f64, dy: f64) -> Primitive {
             class,
             data_text,
         } => Primitive::Path {
-            d: crate::scene::shift_path_d(d, dx, dy),
+            d: d.clone(),
             stroke: stroke.clone(),
             fill: fill.clone(),
             stroke_width: *stroke_width,
@@ -810,6 +796,8 @@ mod tests {
             scene: Scene {
                 width: w,
                 height: h,
+                x: 0.0,
+                y: 0.0,
                 viewports: vec![Viewport {
                     id: Some(id.into()),
                     x: 0.0,
@@ -908,8 +896,8 @@ mod tests {
 
     #[test]
     fn scheme_group_transform_keeps_fit_origin_in_local_space() {
-        // Real fit_scene leaves leftover on ox/oy while primitives stay in
-        // paint coords. The mol group carries that origin; arrows use x/y.
+        // Mol paint stays in local coords. Nested ox/oy maps the mol viewBox
+        // origin onto the ELK box; arrows live in document space.
         let a = paint_shifted("A", 80.0, 60.0, -20.0, -25.0, 50.0, 55.0);
         let b = paint_shifted("B", 80.0, 60.0, -20.0, -25.0, 50.0, 55.0);
         let spec = DepictSpec::ReactionScheme {
@@ -1169,7 +1157,10 @@ mod tests {
         let shifted = translate_prim(&path, 1.0, 2.0);
         match shifted {
             Primitive::Path { d, .. } => {
-                assert!(d.contains("1.00") && d.contains("2.00"));
+                assert_eq!(
+                    d, "M 0.00 0.00 L 10.00 5.00",
+                    "paths are not moved by rewriting d"
+                );
             }
             _ => panic!("expected path"),
         }
@@ -1275,6 +1266,8 @@ mod tests {
             scene: Scene {
                 width: 30.0,
                 height: 20.0,
+                x: 0.0,
+                y: 0.0,
                 viewports: vec![],
                 overlays: vec![],
                 halo: vec![],
@@ -1349,7 +1342,13 @@ mod tests {
             pad: None,
         };
         let scene = compose_scheme(&spec, &[a, paint("B", 50.0, 40.0)]).unwrap();
-        assert!(!scene.halo.is_empty());
+        assert!(
+            scene.viewports.iter().any(|vp| vp
+                .layers
+                .iter()
+                .any(|l| l.name == LayerName::Halo && !l.primitives.is_empty())),
+            "mol halo rides the viewport group, not a rewritten document path"
+        );
         assert!(!scene.overlays.is_empty());
         assert_eq!(routing_name(EdgeRouting::Orthogonal), "ORTHOGONAL");
         assert_eq!(routing_name(EdgeRouting::Splines), "SPLINES");
@@ -1470,7 +1469,13 @@ mod tests {
         });
         let row = place_row(&[a, paint("B", 40.0, 30.0)], 8.0);
         assert_eq!(row.viewports.len(), 2);
-        assert!(!row.halo.is_empty());
+        assert!(
+            row.viewports.iter().any(|vp| vp
+                .layers
+                .iter()
+                .any(|l| l.name == LayerName::Halo && !l.primitives.is_empty())),
+            "row halo stays on the mol group"
+        );
 
         // Relative path cmds left as-is; covers the else branch.
         let rel = translate_prim(

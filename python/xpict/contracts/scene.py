@@ -90,3 +90,5 @@ class Scene(StrictModel):
     width: float
     halo: list[Primitive] = Field(default_factory=list, description='Document-space knockout (scheme compose). Per-mol halo lives in the viewport `Halo` layer so it nests inside `g.xpict-mol`.')
     overlays: list[Primitive] = Field(default_factory=list, description='Document-space primitives (reaction arrows) above viewports.')
+    x: Annotated[float | None, Field(description='viewBox min-x. Size is [`Self::width`] × [`Self::height`]. Default 0.')] = None
+    y: Annotated[float | None, Field(description='viewBox min-y. Default 0.')] = None

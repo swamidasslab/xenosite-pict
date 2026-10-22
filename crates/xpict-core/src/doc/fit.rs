@@ -11,11 +11,11 @@ pub fn resolve_viewport_margin(pad: Option<f64>) -> f64 {
         .unwrap_or(VIEWPORT_MARGIN_DEFAULT)
 }
 
-/// Recompute [`Scene::width`] / [`Scene::height`] from painted ink after layout.
+/// Recompute the SVG viewBox from painted ink after layout.
 ///
-/// Collects an AABB over viewport layers (document space), overlays, and halo,
-/// then shifts content so the box sits at `(margin, margin)` and sets the
-/// canvas to content size + `2 * margin`.
+/// AABB over viewport layers (document space), overlays, and halo. The camera
+/// is `viewBox = (min - margin) + content size + 2·margin`. Geometry is not
+/// translated; path `d` is not rewritten.
 pub fn fit_scene(mut scene: Scene, margin: f64) -> Scene {
     let margin = if margin.is_finite() && margin >= 0.0 {
         margin
@@ -28,24 +28,8 @@ pub fn fit_scene(mut scene: Scene, margin: f64) -> Scene {
         return scene;
     };
 
-    let dx = margin - min_x;
-    let dy = margin - min_y;
-    if dx.abs() > 1e-12 || dy.abs() > 1e-12 {
-        for vp in &mut scene.viewports {
-            // Document-space leftover: move the mol group's placement so
-            // arrows (overlays) and boxes stay aligned. Mol-local leftover
-            // from per-mol fit lives on x/y until compose folds it into ox/oy.
-            vp.x += dx;
-            vp.y += dy;
-        }
-        scene.halo = scene.halo.iter().map(|p| shift_prim(p, dx, dy)).collect();
-        scene.overlays = scene
-            .overlays
-            .iter()
-            .map(|p| shift_prim(p, dx, dy))
-            .collect();
-    }
-
+    scene.x = min_x - margin;
+    scene.y = min_y - margin;
     let content_w = (max_x - min_x).max(0.0);
     let content_h = (max_y - min_y).max(0.0);
     scene.width = content_w + 2.0 * margin;
@@ -175,70 +159,6 @@ fn path_coords(d: &str) -> Vec<(f64, f64)> {
     out
 }
 
-fn shift_prim(p: &Primitive, dx: f64, dy: f64) -> Primitive {
-    match p {
-        Primitive::Path {
-            d,
-            stroke,
-            fill,
-            stroke_width,
-            opacity,
-            stroke_dasharray,
-            stroke_linecap,
-            class,
-            data_text,
-        } => Primitive::Path {
-            d: crate::scene::shift_path_d(d, dx, dy),
-            stroke: stroke.clone(),
-            fill: fill.clone(),
-            stroke_width: *stroke_width,
-            opacity: *opacity,
-            stroke_dasharray: stroke_dasharray.clone(),
-            stroke_linecap: stroke_linecap.clone(),
-            class: class.clone(),
-            data_text: data_text.clone(),
-        },
-        Primitive::Circle {
-            cx,
-            cy,
-            r,
-            fill,
-            stroke,
-            stroke_width,
-            opacity,
-            class,
-        } => Primitive::Circle {
-            cx: cx + dx,
-            cy: cy + dy,
-            r: *r,
-            fill: fill.clone(),
-            stroke: stroke.clone(),
-            stroke_width: *stroke_width,
-            opacity: *opacity,
-            class: class.clone(),
-        },
-        Primitive::Text {
-            x,
-            y,
-            text,
-            fill,
-            font_size,
-            anchor,
-            class,
-            rotate,
-        } => Primitive::Text {
-            x: x + dx,
-            y: y + dy,
-            text: text.clone(),
-            fill: fill.clone(),
-            font_size: *font_size,
-            anchor: *anchor,
-            class: class.clone(),
-            rotate: *rotate,
-        },
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -274,6 +194,8 @@ mod tests {
             }],
             overlays: vec![],
             halo: vec![],
+            x: 0.0,
+            y: 0.0,
         }
     }
 
@@ -282,6 +204,11 @@ mod tests {
         let scene = path_scene("M 10 10 L 30 10 L 30 40");
         let margin = 4.0;
         let out = fit_scene(scene, margin);
+        assert!(
+            (out.x - (10.0 - 0.5 - margin)).abs() < 1.5,
+            "viewBox min-x should be ink min minus pad: x={}",
+            out.x
+        );
         // Ink AABB ≈ (10,10)-(30,40) plus half stroke.
         assert!(
             (out.width - (20.0 + 1.0 + 2.0 * margin)).abs() < 1.5,
@@ -376,40 +303,46 @@ mod tests {
                 _ => None,
             })
             .collect();
+        let before: Vec<String> = overlays
+            .iter()
+            .filter_map(|p| match p {
+                Primitive::Path { d, .. } => Some(d.clone()),
+                _ => None,
+            })
+            .collect();
         let scene = Scene {
             width: 400.0,
             height: 400.0,
+            x: 0.0,
+            y: 0.0,
             viewports: vec![],
             overlays,
             halo: vec![],
         };
         let out = fit_scene(scene, 4.0);
-        let shaft = out
+        let after: Vec<String> = out
             .overlays
             .iter()
-            .find_map(|p| match p {
-                Primitive::Path { d, class, .. }
-                    if class.as_deref().unwrap_or("").contains("edge")
-                        && !class.as_deref().unwrap_or("").contains("head") =>
-                {
-                    Some(d.as_str())
-                }
+            .filter_map(|p| match p {
+                Primitive::Path { d, .. } => Some(d.clone()),
                 _ => None,
             })
-            .expect("shaft");
-        let head = out
-            .overlays
+            .collect();
+        assert_eq!(
+            after, before,
+            "fit crops with viewBox; it must not rewrite d"
+        );
+        assert!(
+            out.x.abs() > 1.0 || out.y.abs() > 1.0,
+            "viewBox origin should track ink, not stay at 0: ({}, {})",
+            out.x,
+            out.y
+        );
+        let shaft = after.iter().find(|d| d.contains('C')).expect("cubic shaft");
+        let head = after
             .iter()
-            .find_map(|p| match p {
-                Primitive::Path { d, class, .. }
-                    if class.as_deref().unwrap_or("").contains("head") =>
-                {
-                    Some(d.as_str())
-                }
-                _ => None,
-            })
+            .find(|d| d.contains('Z') || d.contains('z'))
             .expect("head");
-        assert!(shaft.contains('C'), "need a cubic shaft: {shaft}");
         let (sx, sy) = last_xy(shaft);
         let hnums: Vec<f64> = head
             .split(|c: char| !(c.is_ascii_digit() || c == '.' || c == '-'))
@@ -419,7 +352,7 @@ mod tests {
         let gap = (sx - bx).hypot(sy - by);
         assert!(
             gap < 0.6,
-            "fit must shift cubics with the head; gap={gap} shaft={shaft} head={head}"
+            "head stays on the shaft because neither d moved; gap={gap}"
         );
     }
 }

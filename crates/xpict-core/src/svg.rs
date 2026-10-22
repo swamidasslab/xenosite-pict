@@ -237,9 +237,11 @@ pub fn scene_to_svg(scene: &Scene) -> String {
             "<g class=\"xpict-overlays\" id=\"overlays\">{body}</g>"
         ));
     }
+    let vx = fmt(scene.x);
+    let vy = fmt(scene.y);
     format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{w}\" height=\"{h}\" \
-         viewBox=\"0 0 {w} {h}\" class=\"xpict\" \
+         viewBox=\"{vx} {vy} {w} {h}\" class=\"xpict\" \
          style=\"background:transparent;max-width:100%;max-height:100%\">{parts}</svg>"
     )
 }
@@ -272,6 +274,8 @@ mod tests {
         Scene {
             width: 10.0,
             height: 20.0,
+            x: 0.0,
+            y: 0.0,
             viewports: vec![Viewport {
                 id: id.map(str::to_string),
                 x,
@@ -363,6 +367,8 @@ mod tests {
         let scene = Scene {
             width: 40.0,
             height: 20.0,
+            x: 0.0,
+            y: 0.0,
             viewports: vec![],
             overlays: vec![Primitive::Text {
                 x: 12.0,
@@ -398,5 +404,18 @@ mod tests {
         let u = scene_to_svg(&upright);
         assert!(u.contains(r#"dominant-baseline="alphabetic""#), "{u}");
         assert!(!u.contains("rotate("), "{u}");
+    }
+
+    #[test]
+    fn viewbox_uses_scene_origin() {
+        let mut scene = scene_with_id(Some("m"), 0.0, 0.0);
+        scene.x = 12.4;
+        scene.y = -3.1;
+        let svg = scene_to_svg(&scene);
+        assert!(
+            svg.contains(r#"viewBox="12.4 -3.1 10 20""#),
+            "crop is the viewBox, not a leftover translate: {svg}"
+        );
+        assert!(!svg.contains(r#"viewBox="0 0"#), "{svg}");
     }
 }
