@@ -66,7 +66,7 @@
           ]
         },
         "circle": {
-          "description": "Atom / ring highlight circle(s).",
+          "description": "Atom / bond / ring highlight circle(s).",
           "anyOf": [
             {
               "$ref": "#/definitions/CircleField"
@@ -841,7 +841,7 @@
       ]
     },
     "CircleSpec": {
-      "description": "Atom or ring highlight circle.",
+      "description": "Atom, bond, or ring highlight.",
       "type": "object",
       "properties": {
         "atoms": {
@@ -851,6 +851,27 @@
             "type": "integer",
             "format": "uint32",
             "minimum": 0.0
+          }
+        },
+        "bonds": {
+          "description": "Bond endpoint pairs — one circle at each bond midpoint (`[begin, end]`, order-insensitive).",
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": [
+              {
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0.0
+              },
+              {
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0.0
+              }
+            ],
+            "maxItems": 2,
+            "minItems": 2
           }
         },
         "fill": {
@@ -968,7 +989,7 @@
               ]
             },
             "circle": {
-              "description": "Atom / ring highlight circle(s).",
+              "description": "Atom / bond / ring highlight circle(s).",
               "anyOf": [
                 {
                   "$ref": "#/definitions/CircleField"
@@ -1894,7 +1915,7 @@
           ]
         },
         "circle": {
-          "description": "Atom / ring highlight circle(s).",
+          "description": "Atom / bond / ring highlight circle(s).",
           "anyOf": [
             {
               "$ref": "#/definitions/CircleField"

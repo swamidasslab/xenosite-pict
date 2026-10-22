@@ -220,7 +220,7 @@ mod tests {
     use super::*;
     use crate::doc::chrome::{
         AtomLabelSpec, AtomNumberBy, AtomNumberSpec, CalloutField, CalloutSpec, CircleField,
-        CircleSpec, MolText, RegionField, RegionSpec, RegionStyle,
+        CircleSpec, MolText, RegionField, RegionSpec, RegionStyle, StrokeSpec,
     };
     use crate::doc::{AlignTo, MolIds, MolNode, Node, ShadeSpec};
     use crate::scene::Primitive;
@@ -397,6 +397,7 @@ mod tests {
             )]))),
             circle: Some(CircleField::One(CircleSpec {
                 atoms: vec![6],
+                bonds: vec![],
                 ring: None,
                 fill: None,
                 stroke: None,
@@ -528,5 +529,32 @@ mod tests {
         let painted = render(&DepictSpec::Mol(kitchen_sink_mol())).unwrap();
         assert_eq!(painted.len(), 1);
         assert_annotation_classes(&scene_classes(&painted[0].scene).join(" "));
+    }
+
+    #[test]
+    fn render_paints_circle_bond_midpoints() {
+        let spec = DepictSpec::Mol(MolNode {
+            smiles: Some("CCO".into()),
+            circle: Some(CircleField::One(CircleSpec {
+                atoms: vec![],
+                bonds: vec![(0, 1), (1, 2)],
+                ring: None,
+                fill: None,
+                stroke: Some(StrokeSpec {
+                    color: Some("#c00".into()),
+                    width: Some(1.4),
+                    dash: None,
+                }),
+                scale: None,
+                z: None,
+            })),
+            ..Default::default()
+        });
+        let painted = render(&spec).unwrap();
+        let classes = scene_classes(&painted[0].scene).join(" ");
+        assert!(classes.contains("bond-circle"), "{classes}");
+        let svg = crate::scene_to_svg(&painted[0].scene);
+        assert!(svg.contains("bond-circle"), "{svg}");
+        assert!(svg.contains("#c00"), "{svg}");
     }
 }

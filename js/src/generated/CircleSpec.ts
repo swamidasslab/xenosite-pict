@@ -3,13 +3,17 @@ import type { FillSpec } from "./FillSpec";
 import type { StrokeSpec } from "./StrokeSpec";
 
 /**
- * Atom or ring highlight circle.
+ * Atom, bond, or ring highlight.
  */
 export type CircleSpec = { 
 /**
  * One circle centered on each atom index.
  */
 atoms: Array<number>, 
+/**
+ * Bond endpoint pairs — one circle at each bond midpoint (`[begin, end]`, order-insensitive).
+ */
+bonds: Array<[number, number]>, 
 /**
  * Ordered ring atoms — one circle at the ring centroid (aromatic-style).
  */

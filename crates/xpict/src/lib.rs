@@ -41,7 +41,8 @@ mod depict_spec;
 mod edge_plan;
 
 pub use depict_spec::{
-    depict, AlignTo, AlignToSpec, DepictSpec, MolNode, MolSpec, Node, ShadeSpec,
+    depict, AlignTo, AlignToSpec, CircleField, CircleSpec, DepictSpec, FillSpec, MolNode, MolSpec,
+    Node, ShadeSpec, StrokeSpec,
 };
 pub use edge_plan::{build_align_plan, process_edge_plan, process_edge_plan_with_frames};
 pub use xpict_core::{cx_atom_labels, smiles_base};
@@ -184,6 +185,8 @@ pub struct MolRenderOptions {
     pub shade_vmax: Option<f64>,
     pub mark_atoms: Option<Vec<i32>>,
     pub mark_bonds: Option<Vec<(i32, i32)>>,
+    /// Atom / bond / ring highlight overlay (same as document ``MolNode.circle``).
+    pub circle: Option<xpict_core::CircleField>,
     pub star_labels: Option<Vec<Option<String>>>,
     /// Uniform diagram scale (``1.0`` = house size).
     pub scale: Option<f64>,
@@ -240,6 +243,7 @@ fn mol_node_from(source: &str, opts: &MolRenderOptions, id: Option<String>) -> M
         aromatic: opts.aromatic,
         debug_box: opts.debug_box,
         debug_align: opts.debug_align,
+        circle: opts.circle.clone(),
         ..Default::default()
     }
 }

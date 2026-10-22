@@ -547,7 +547,7 @@ pub struct MolNode {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub region: Option<RegionField>,
-    /// Atom / ring highlight circle(s).
+    /// Atom / bond / ring highlight circle(s).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub circle: Option<CircleField>,

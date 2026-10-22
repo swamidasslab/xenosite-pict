@@ -86,8 +86,16 @@ pub fn apply_mol_chrome(node: &MolNode, mol: &MoleculeIn, mut scene: Scene) -> S
     for ann in &anns {
         if let Annotation::Circle { spec, z, .. } = ann {
             for p in circle_primitives(mol, node, spec, dx, dy) {
-                if let Primitive::Circle { cx, cy, r, .. } = &p {
-                    placed_label_boxes.push(Aabb::new(cx - r, cy - r, cx + r, cy + r));
+                match &p {
+                    Primitive::Circle { cx, cy, r, .. } => {
+                        placed_label_boxes.push(Aabb::new(cx - r, cy - r, cx + r, cy + r));
+                    }
+                    Primitive::Path { d, .. } => {
+                        if let Some(box_) = path_aabb(d) {
+                            placed_label_boxes.push(box_);
+                        }
+                    }
+                    _ => {}
                 }
                 circle_prims.push((*z, p));
             }
@@ -347,6 +355,10 @@ fn circle_clear_bonds(
     let allowed = max_r_at(bx, by);
     let r = allowed.min(r0).max(floor_r.min(allowed.max(0.0)));
     (bx, by, r.max(0.0))
+}
+
+fn near(x0: f64, y0: f64, x1: f64, y1: f64) -> bool {
+    (x0 - x1).hypot(y0 - y1) < 1e-6
 }
 
 fn point_to_seg(px: f64, py: f64, x0: f64, y0: f64, x1: f64, y1: f64) -> f64 {
@@ -2199,6 +2211,42 @@ fn circle_primitives(
         }
     }
 
+    let opacity = fill_opacity(spec.fill.as_ref());
+    for &(a, b) in &spec.bonds {
+        let Some(a0) = find_atom(mol, a) else {
+            continue;
+        };
+        let Some(a1) = find_atom(mol, b) else {
+            continue;
+        };
+        let (x0, y0) = atom_xy(a0, dx, dy);
+        let (x1, y1) = atom_xy(a1, dx, dy);
+        let (mx, my) = ((x0 + x1) * 0.5, (y0 + y1) * 0.5);
+        let r0 = atom_circle_radius(None, r_scale);
+        // This bond may enter the disk (it is the highlight); others must stay clear.
+        let foreign: Vec<_> = bonds
+            .iter()
+            .copied()
+            .filter(|&(sx0, sy0, sx1, sy1)| {
+                let same = (near(sx0, sy0, x0, y0) && near(sx1, sy1, x1, y1))
+                    || (near(sx0, sy0, x1, y1) && near(sx1, sy1, x0, y0));
+                !same
+            })
+            .collect();
+        let (cx, cy, r) =
+            circle_clear_bonds(mx, my, r0, mx, my, &foreign, floor_r, CLASH_MARGIN_PX);
+        out.push(Primitive::Circle {
+            cx,
+            cy,
+            r,
+            fill: fill.clone(),
+            stroke: stroke.0.clone(),
+            stroke_width: stroke.1,
+            opacity,
+            class: Some(format!("bond-circle atom-{a} atom-{b}")),
+        });
+    }
+
     if let Some(ref ring) = spec.ring {
         if ring.len() >= 3 {
             let mut sx = 0.0;
@@ -2887,6 +2935,7 @@ mod tests {
         let node = MolNode {
             circle: Some(crate::doc::chrome::CircleField::One(CircleSpec {
                 atoms: vec![2],
+                bonds: vec![],
                 ring: None,
                 fill: None,
                 stroke: Some(StrokeSpec {
@@ -2957,6 +3006,107 @@ mod tests {
                 b.end
             );
         }
+    }
+
+    #[test]
+    fn circle_bonds_paint_midpoint_circle() {
+        let mol = ethanol();
+        let (dx, dy) = frame_offset(&mol);
+        let scene = crate::depict::depict_molecule(&mol);
+        let node = MolNode {
+            circle: Some(crate::doc::chrome::CircleField::Many(vec![
+                CircleSpec {
+                    atoms: vec![],
+                    bonds: vec![(0, 1)],
+                    ring: None,
+                    fill: None,
+                    stroke: Some(StrokeSpec {
+                        color: Some("#c00".into()),
+                        width: Some(1.4),
+                        dash: None,
+                    }),
+                    scale: None,
+                    z: None,
+                },
+                CircleSpec {
+                    atoms: vec![],
+                    bonds: vec![(2, 1)],
+                    ring: None,
+                    fill: Some(FillSpec {
+                        color: Some("#2a9d8f".into()),
+                        opacity: Some(0.3),
+                    }),
+                    stroke: Some(StrokeSpec {
+                        color: Some("#2a9d8f".into()),
+                        width: Some(1.2),
+                        dash: None,
+                    }),
+                    scale: Some(1.3),
+                    z: None,
+                },
+            ])),
+            ..Default::default()
+        };
+        let out = apply_mol_chrome(&node, &mol, scene);
+        let marks: Vec<_> = layer_prims(&out)
+            .into_iter()
+            .filter_map(|p| match p {
+                Primitive::Circle {
+                    cx,
+                    cy,
+                    r,
+                    class: Some(c),
+                    stroke,
+                    fill,
+                    ..
+                } if c.contains("bond-circle") => {
+                    Some((c.as_str(), *cx, *cy, *r, stroke.clone(), fill.clone()))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(marks.len(), 2, "expected two bond circles, got {marks:?}");
+        let red = marks
+            .iter()
+            .find(|(c, ..)| c.contains("atom-0") && c.contains("atom-1"))
+            .expect("C–C circle");
+        assert_eq!(red.4.as_deref(), Some("#c00"));
+        let (ax, ay) = (mol.atoms[0].x + dx, mol.atoms[0].y + dy);
+        let (bx, by) = (mol.atoms[1].x + dx, mol.atoms[1].y + dy);
+        let (mx, my) = ((ax + bx) * 0.5, (ay + by) * 0.5);
+        assert!(
+            (red.1 - mx).hypot(red.2 - my) < 1.5,
+            "C–C circle ({},{}) off midpoint ({mx},{my})",
+            red.1,
+            red.2
+        );
+        let floor = FONT_PX * 0.55;
+        assert!(
+            (red.3 - floor).abs() < 1.5,
+            "house bond-circle r={}, expected ~{floor}",
+            red.3
+        );
+        let teal = marks
+            .iter()
+            .find(|(c, ..)| c.contains("atom-1") && c.contains("atom-2"))
+            .expect("C–O circle (reversed pair)");
+        assert_eq!(teal.4.as_deref(), Some("#2a9d8f"));
+        assert_eq!(teal.5.as_deref(), Some("#2a9d8f"));
+        assert!(
+            teal.3 > red.3 + 0.5,
+            "scale 1.3 should enlarge the C–O circle ({} vs {})",
+            teal.3,
+            red.3
+        );
+        let ox = mol.atoms[2].x + dx;
+        let oy = mol.atoms[2].y + dy;
+        let (cmx, cmy) = ((bx + ox) * 0.5, (by + oy) * 0.5);
+        assert!(
+            (teal.1 - cmx).hypot(teal.2 - cmy) < 1.5,
+            "C–O circle ({},{}) off midpoint ({cmx},{cmy})",
+            teal.1,
+            teal.2
+        );
     }
 
     #[test]
@@ -3430,6 +3580,7 @@ mod tests {
             )),
             circle: Some(crate::doc::chrome::CircleField::One(CircleSpec {
                 atoms: vec![6],
+                bonds: vec![],
                 ring: None,
                 fill: None,
                 stroke: Some(StrokeSpec {

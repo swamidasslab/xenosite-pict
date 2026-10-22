@@ -71,6 +71,34 @@ fn mark_atoms_land_in_scene() {
 }
 
 #[test]
+fn circle_bonds_land_in_svg() {
+    use xpict::{CircleField, CircleSpec, StrokeSpec};
+
+    let mut m = mol("CCO").unwrap();
+    let r = m
+        .render(MolRenderOptions {
+            circle: Some(CircleField::One(CircleSpec {
+                atoms: vec![],
+                bonds: vec![(0, 1)],
+                ring: None,
+                fill: None,
+                stroke: Some(StrokeSpec {
+                    color: Some("#c00".into()),
+                    width: Some(1.4),
+                    dash: None,
+                }),
+                scale: None,
+                z: None,
+            })),
+            ..Default::default()
+        })
+        .unwrap();
+    let svg = r.to_svg();
+    assert!(svg.contains("bond-circle"), "{svg}");
+    assert!(svg.contains("#c00"), "{svg}");
+}
+
+#[test]
 fn align_to_rendered_pose() {
     let mut a = mol("CCO").unwrap();
     let home = a.render(MolRenderOptions::default()).unwrap();

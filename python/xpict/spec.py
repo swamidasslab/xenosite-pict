@@ -8,6 +8,7 @@ from xpict.contracts.depict import (
     AlignTo,
     AlignToSpec,
     AromaticStyle,
+    CircleField,
     GroupNode,
     LabelPos,
     MolNode,
@@ -113,12 +114,18 @@ class Mol(PictBase):
             return DepictSpec(self.to_node())
         shade = opts.shade_scores()
 
+        overlay: dict[str, object] = {}
+        if opts.star_labels is not None:
+            overlay["star_labels"] = opts.star_labels
+        if shade is not None:
+            overlay["shade"] = shade
+        if opts.circle is not None:
+            overlay["circle"] = opts.circle
+
         if opts.align_to is None:
             node = self.to_node(id=opts.id)
-            if opts.star_labels is not None:
-                node = node.model_copy(update={"star_labels": opts.star_labels})
-            if shade is not None:
-                node = node.model_copy(update={"shade": shade})
+            if overlay:
+                node = node.model_copy(update=overlay)
             doc = DepictSpec(node)
         else:
             ref = opts.reference_mol()
@@ -129,12 +136,7 @@ class Mol(PictBase):
             query = self.to_node(id=qid).model_copy(
                 update={
                     "align_to": opts.align_wire(),
-                    **(
-                        {"star_labels": opts.star_labels}
-                        if opts.star_labels is not None
-                        else {}
-                    ),
-                    **({"shade": shade} if shade is not None else {}),
+                    **overlay,
                 }
             )
             doc = DepictSpec(
@@ -159,6 +161,7 @@ class MolRenderOptions:
     bond_shade: list[float] | None = None
     mark_atoms: list[int] | None = None
     mark_bonds: list[tuple[int, int]] | None = None
+    circle: CircleField | None = None
     star_labels: list[str | None] | None = None
     weight: float | None = None
     scale: float | None = None

@@ -3,12 +3,38 @@
 from __future__ import annotations
 
 from xpict import DepictSpec, Mol, MolRenderOptions, PictBase, depict, mol, render, to_svg
+from xpict.contracts.depict import CircleSpec, StrokeSpec
 
 
 def test_mol_constructs():
     m = mol("CCO")
     assert isinstance(m, Mol)
     assert m.source == "CCO"
+
+
+def test_circle_bonds_paint_capsule():
+    svg = render(
+        mol("CCO"),
+        MolRenderOptions(
+            circle=CircleSpec(
+                bonds=[(0, 1)],
+                stroke=StrokeSpec(color="#c00", width=1.4),
+            )
+        ),
+    ).to_svg()
+    assert "bond-circle" in svg
+    assert "#c00" in svg
+    doc = render(
+        {
+            "type": "mol",
+            "smiles": "CCO",
+            "circle": [
+                {"bonds": [[1, 2]], "fill": {"color": "#2a9d8f", "opacity": 0.3}},
+            ],
+        }
+    )
+    assert "bond-circle" in doc
+    assert "#2a9d8f" in doc
 
 
 def test_ethanol_svg():

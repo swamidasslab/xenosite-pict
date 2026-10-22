@@ -51,7 +51,7 @@ atom_label?: AtomLabelSpec,
  */
 region?: RegionField, 
 /**
- * Atom / ring highlight circle(s).
+ * Atom / bond / ring highlight circle(s).
  */
 circle?: CircleField, 
 /**

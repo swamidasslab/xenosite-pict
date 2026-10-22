@@ -97,8 +97,9 @@ class StrokeSpecDict(TypedDict, total=False):
 
 
 class CircleSpecDict(TypedDict, total=False):
-    """Atom or ring highlight circle."""
+    """Atom, bond, or ring highlight."""
     atoms: NotRequired[list[int]]
+    bonds: NotRequired[list[tuple[int, int]]]
     fill: NotRequired[FillSpecDict]
     ring: NotRequired[list[int]]
     scale: NotRequired[float]

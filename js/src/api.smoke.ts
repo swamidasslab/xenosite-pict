@@ -220,6 +220,22 @@ const richStar = await xpict.render(xpict.mol("*C"), { star_labels: ["$R_1$"] })
   }
 }
 
+const marked = await xpict.render(xpict.mol("CCO"), {
+  circle: {
+    bonds: [[0, 1]],
+    stroke: { color: "#c00", width: 1.4 },
+  },
+});
+{
+  const markedSvg = xpict.toSvg(marked.scene);
+  if (!markedSvg.includes("bond-circle")) {
+    throw new Error(`circle.bonds should paint bond-circle, got ${markedSvg.slice(0, 400)}`);
+  }
+  if (!markedSvg.includes("#c00")) {
+    throw new Error("circle.bonds should keep the requested stroke color");
+  }
+}
+
 console.log("api smoke ok", {
   svgBytes: svg.length,
   alignToMol: xpict.toSvg(alignedToMol.scene).length,

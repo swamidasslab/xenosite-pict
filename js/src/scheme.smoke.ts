@@ -169,7 +169,11 @@ function overlayClasses(scene: Scene): string[] {
         shade: { atoms: [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0], vmin: 0, vmax: 1 },
         atom_number: "index",
         atom_label: { "2": "ortho", "6": "exo" },
-        circle: { atoms: [6], stroke: { color: "#06c", width: 1.4 } },
+        circle: {
+          atoms: [6],
+          bonds: [[5, 6]],
+          stroke: { color: "#06c", width: 1.4 },
+        },
         region: {
           style: "box",
           atoms: [0, 1, 2, 3, 4, 5],
@@ -194,6 +198,7 @@ function overlayClasses(scene: Scene): string[] {
     "region",
     "callout",
     "atom-circle",
+    "bond-circle",
     "atom-number",
     "atom-label",
     "mol-caption",

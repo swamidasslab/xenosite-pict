@@ -111,8 +111,9 @@ class StrokeSpec(StrictModel):
 
 
 class CircleSpec(StrictModel):
-    """Atom or ring highlight circle."""
+    """Atom, bond, or ring highlight."""
     atoms: list[int] = Field(default_factory=list, description='One circle centered on each atom index.')
+    bonds: list[tuple[int, int]] = Field(default_factory=list, description='Bond endpoint pairs — one circle at each bond midpoint (`[begin, end]`, order-insensitive).')
     fill: FillSpec | None = None
     ring: Annotated[list[int] | None, Field(description='Ordered ring atoms — one circle at the ring centroid (aromatic-style).')] = None
     scale: Annotated[float | None, Field(description='Radius scale vs house default.')] = None
@@ -284,7 +285,7 @@ class MolNode(StrictModel):
     atom_label: Annotated[AtomLabelSpec | None, Field(description='Per-atom arbitrary text map (`{ "1": "α" }` or `{ "labels": {…}, "scale"? }`).')] = None
     atom_number: Annotated[AtomNumberSpec | None, Field(description='Atom index / map-number labels (`"index"` | `"mapno"` | policy object).')] = None
     callout: Annotated[CalloutField | None, Field(description='Callout annotation(s).')] = None
-    circle: Annotated[CircleField | None, Field(description='Atom / ring highlight circle(s).')] = None
+    circle: Annotated[CircleField | None, Field(description='Atom / bond / ring highlight circle(s).')] = None
     color: str | None = None
     cxsmiles: str | None = None
     debug_align: Annotated[bool | None, Field(description='Paint alignment correspondence (matched atom tags + mol role badge).')] = None

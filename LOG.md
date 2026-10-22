@@ -2,6 +2,8 @@
 
 ## 2026-10-21
 
+- `circle.bonds` is a circle at the bond midpoint, same fill/stroke/scale and bond-clearance as `circle.atoms`. Capsule geometry is unused. Class `bond-circle`.
+
 - Product 0.6.0: one Rust scene_to_svg (`g.xpict-mol[data-id]`, no XML decl); scheme arrows follow the viewport group.
 
 - Scheme arrows were high vs mols: compose overwrote fit's leftover viewport origin. Placement `x`/`y` is the SVG group translate; bake origin into local primitives so ink sits in the box.
