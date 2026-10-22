@@ -2,6 +2,8 @@
 
 ## 2026-10-21
 
+- Product 0.6.1: `circle.bonds` midpoint circles; ELK scheme ports slide toward the other mol (`PORT_POSITION`).
+
 - ELK scheme default: `portConstraints=FIXED_SIDE` and network-simplex `nodeFlexibility=PORT_POSITION` so dummy ports slide along the flow side toward the other mol (straighter arrows).
 
 - `circle.bonds` is a circle at the bond midpoint, same fill/stroke/scale and bond-clearance as `circle.atoms`. Capsule geometry is unused. Class `bond-circle`.
