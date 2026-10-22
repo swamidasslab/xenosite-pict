@@ -206,7 +206,8 @@ fn filleted_path_d(pts_json: &str, radius: Option<f64>) -> PyResult<String> {
 /// Build edge overlay primitives JSON from an edge paint request.
 ///
 /// Request keys: ``pts``, ``arrow``, ``routing?``, ``color?``, ``stroke_width?``,
-/// ``dashed?``, ``label?``, ``label_pos?``, ``index?``.
+/// ``dashed?``, ``label?``, ``label_pos?``, ``index?``, ``curve_catmull?``,
+/// ``label_xy?``, ``label_rotate?``.
 #[pyfunction]
 fn edge_overlay_primitives(edge_json: &str) -> PyResult<String> {
     #[derive(serde::Deserialize)]
@@ -228,6 +229,12 @@ fn edge_overlay_primitives(edge_json: &str) -> PyResult<String> {
         label_pos: Option<String>,
         #[serde(default)]
         index: usize,
+        #[serde(default)]
+        curve_catmull: bool,
+        #[serde(default)]
+        label_xy: Option<(f64, f64)>,
+        #[serde(default)]
+        label_rotate: Option<f64>,
     }
     let raw: In = serde_json::from_str(edge_json)
         .map_err(|e| PyRuntimeError::new_err(format!("edge JSON: {e}")))?;
@@ -241,6 +248,9 @@ fn edge_overlay_primitives(edge_json: &str) -> PyResult<String> {
         label: raw.label,
         label_pos: raw.label_pos,
         index: raw.index,
+        curve_catmull: raw.curve_catmull,
+        label_xy: raw.label_xy,
+        label_rotate: raw.label_rotate,
     };
     let prims = xpict_core::arrow_edge_primitives(&edge);
     // Serialize as a list of tagged dicts for Python PathPrim/TextPrim rebuild.
