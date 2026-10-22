@@ -2,6 +2,8 @@
 
 ## 2026-10-22
 
+- Scheme arrow ink standoff is BOND_PX/3 (~10 px). One bond left heads sitting in the ELK gap instead of reaching the chem.
+
 - Scheme arrow standoff is from chem ink (one bond), along a ray through the mol centroid. Energy is RayThrough (min |signed distance of the infinite shaft line to the centroid|²). The ray may cross ink; only the painted end stops. Not isotropic Outside vs chem — that shoved shafts off the aiming line.
 
 - Scheme arrow standoff is MinimizeDist at 1.5 bonds from the framed centroid, on the ELK-facing ray (capped at 40% of the centroid–centroid span). Not a hard ink wall: that shoved infeasible ELK ports off the ray and reversed shafts.

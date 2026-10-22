@@ -15,8 +15,8 @@ use super::layout_constraints::{
 use super::layout_items::Aabb;
 use super::{DepictSpec, DocPaint, LayoutOpts};
 
-/// Gap from chem ink (bonds / atom disks) to a shaft endpoint. One bond of air.
-pub const SCHEME_INK_STANDOFF: f64 = BOND_PX;
+/// Gap from chem ink (bonds / atom disks) to a shaft endpoint (~⅓ bond).
+pub const SCHEME_INK_STANDOFF: f64 = BOND_PX / 3.0;
 #[allow(dead_code)]
 const SCHEME_LABEL_INK_STANDOFF: f64 = 0.5 * BOND_PX;
 /// Minimum gap between nearly-parallel overlapping shafts.
@@ -562,8 +562,8 @@ mod tests {
     use crate::doc::layout_items::ATOM_DISK_R_PX;
 
     #[test]
-    fn ink_standoff_constant_is_one_bond() {
-        assert!((SCHEME_INK_STANDOFF - BOND_PX).abs() < 1e-12);
+    fn ink_standoff_constant_is_one_third_bond() {
+        assert!((SCHEME_INK_STANDOFF - BOND_PX / 3.0).abs() < 1e-12);
     }
 
     #[test]
@@ -693,11 +693,11 @@ mod tests {
         let db1 = paint_ink_signed(&paints[1], positions["B"], (x1, y1));
         assert!(
             da0 + 4.0 >= SCHEME_INK_STANDOFF,
-            "src should sit ≥1 bond from A's ink: {da0} pts={pts:?} ca={ca:?}"
+            "src should sit ≥⅓ bond from A's ink: {da0} pts={pts:?} ca={ca:?}"
         );
         assert!(
             db1 + 4.0 >= SCHEME_INK_STANDOFF,
-            "tgt should sit ≥1 bond from B's ink: {db1} pts={pts:?} cb={cb:?}"
+            "tgt should sit ≥⅓ bond from B's ink: {db1} pts={pts:?} cb={cb:?}"
         );
         let line_a = point_to_line(x0, y0, x1, y1, ca.0, ca.1);
         let line_b = point_to_line(x0, y0, x1, y1, cb.0, cb.1);
@@ -999,11 +999,11 @@ mod tests {
         let db = paint_ink_signed(&paints[1], positions["B"], (x1, y1));
         assert!(
             da + 4.0 >= SCHEME_INK_STANDOFF,
-            "src should sit ≥1 bond from A's ink: {da} pts={pts:?} ca={ca:?}"
+            "src should sit ≥⅓ bond from A's ink: {da} pts={pts:?} ca={ca:?}"
         );
         assert!(
             db + 4.0 >= SCHEME_INK_STANDOFF,
-            "tgt should sit ≥1 bond from B's ink: {db} pts={pts:?} cb={cb:?}"
+            "tgt should sit ≥⅓ bond from B's ink: {db} pts={pts:?} cb={cb:?}"
         );
         let line_a = point_to_line(x0, y0, x1, y1, ca.0, ca.1);
         let line_b = point_to_line(x0, y0, x1, y1, cb.0, cb.1);
