@@ -2,6 +2,8 @@
 
 ## 2026-10-22
 
+- Fit was shifting only SVG `M`/`L` on overlays. Catmull shafts are `C` cubics, so the filled head (an `M L L Z`) moved and the Glutathionation curve did not. `shift_path_d` now translates cubic controls too. The JS loader cache-busts wasm by content hash so a rebuilt blob actually loads.
+
 - Arrow head is the last route control, pulled back along that last chord. Shaft interpolates the same `base`. No SVG `d` scrape for the join (that rounded a cubic trim and left the triangle off the Glutathionation shaft). Bond halo uses `StrokePath.pts` the same way. Tests rebuild the expected triangle from the controls; a 1.5 px path-parse gap no longer hides a miss.
 
 - Tight ELK gaps no longer collapse to a 20 px stub: standoff cannot walk past the ELK seed into the neighbor, and the head scales with stroke (4.8 px → 27 px). Lower-left PEITC isocyanate→GSH arrow was a dart on a fat stroke.

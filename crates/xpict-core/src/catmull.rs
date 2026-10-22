@@ -292,5 +292,10 @@ mod tests {
             (base.0 - tip.0 + ux * head).abs() < 1e-9 && (base.1 - tip.1 + uy * head).abs() < 1e-9,
             "base must sit on the last chord"
         );
+        let needle = format!("{:.2} {:.2}", base.0, base.1);
+        assert!(
+            d.trim_end().ends_with(&needle),
+            "cubic shaft must interpolate the head base, not a trimmed curve: d={d} base={needle}"
+        );
     }
 }

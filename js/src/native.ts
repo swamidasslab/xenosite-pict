@@ -6,6 +6,7 @@
 
 import createXpict from "./wasm/xpict_core.js";
 import type { InitInput, XpictWasm } from "./wasm/xpict_core.js";
+import { XPICT_WASM_REV } from "./wasm/rev.js";
 
 let module_: XpictWasm | null = null;
 let ready = false;
@@ -64,6 +65,13 @@ export async function initNative(optsIn?: InitInput | BufferSource): Promise<voi
         opts.wasmBinary = arg;
       } else if (arg && typeof arg === "object") {
         Object.assign(opts, arg as InitInput);
+      }
+      if (!opts.wasmBinary && !opts.locateFile) {
+        // Vite caches @fs wasm by URL. Emscripten's default locateFile has no
+        // query string, so a rebuilt blob 304s and the page keeps old arrows.
+        const wasmUrl = new URL("./wasm/xpict_core.wasm", import.meta.url);
+        wasmUrl.searchParams.set("v", XPICT_WASM_REV);
+        opts.locateFile = (p) => (p.endsWith(".wasm") ? wasmUrl.href : p);
       }
       module_ = await createXpict(opts);
       ready = true;

@@ -673,7 +673,7 @@ fn translate_prim(p: &Primitive, dx: f64, dy: f64) -> Primitive {
             class,
             data_text,
         } => Primitive::Path {
-            d: shift_path_d(d, dx, dy),
+            d: crate::scene::shift_path_d(d, dx, dy),
             stroke: stroke.clone(),
             fill: fill.clone(),
             stroke_width: *stroke_width,
@@ -722,91 +722,6 @@ fn translate_prim(p: &Primitive, dx: f64, dy: f64) -> Primitive {
             rotate: *rotate,
         },
     }
-}
-
-fn shift_path_d(d: &str, dx: f64, dy: f64) -> String {
-    // Best-effort: shift numeric pairs after M/L (absolute). Enough for halo paths.
-    let mut out = String::with_capacity(d.len() + 16);
-    let mut chars = d.chars().peekable();
-    let mut cmd = 'M';
-    while let Some(c) = chars.next() {
-        if c.is_ascii_alphabetic() {
-            cmd = c;
-            out.push(c);
-            continue;
-        }
-        if c.is_whitespace() || c == ',' {
-            out.push(c);
-            continue;
-        }
-        // Parse a number starting at c.
-        let mut num = String::new();
-        num.push(c);
-        while let Some(&n) = chars.peek() {
-            if n.is_ascii_digit() || n == '.' || n == 'e' || n == 'E' || n == '+' || n == '-' {
-                // stop if '-' / '+' not part of exponent
-                if (n == '-' || n == '+')
-                    && !num.is_empty()
-                    && !num.ends_with('e')
-                    && !num.ends_with('E')
-                {
-                    break;
-                }
-                num.push(n);
-                chars.next();
-            } else {
-                break;
-            }
-        }
-        // Need a following number for M/L pairs.
-        if matches!(cmd, 'M' | 'L' | 'm' | 'l') {
-            // skip whitespace
-            while matches!(chars.peek(), Some(ch) if ch.is_whitespace() || *ch == ',') {
-                chars.next();
-            }
-            let mut num2 = String::new();
-            if let Some(&n0) = chars.peek() {
-                if n0.is_ascii_digit() || n0 == '.' || n0 == '-' || n0 == '+' {
-                    num2.push(n0);
-                    chars.next();
-                    while let Some(&n) = chars.peek() {
-                        if n.is_ascii_digit()
-                            || n == '.'
-                            || n == 'e'
-                            || n == 'E'
-                            || n == '+'
-                            || n == '-'
-                        {
-                            if (n == '-' || n == '+')
-                                && !num2.is_empty()
-                                && !num2.ends_with('e')
-                                && !num2.ends_with('E')
-                            {
-                                break;
-                            }
-                            num2.push(n);
-                            chars.next();
-                        } else {
-                            break;
-                        }
-                    }
-                }
-            }
-            if let (Ok(x), Ok(y)) = (num.parse::<f64>(), num2.parse::<f64>()) {
-                if cmd == 'M' || cmd == 'L' {
-                    out.push_str(&format!("{:.2} {:.2}", x + dx, y + dy));
-                } else {
-                    // relative — leave unchanged
-                    out.push_str(&num);
-                    out.push(' ');
-                    out.push_str(&num2);
-                }
-                continue;
-            }
-        }
-        out.push_str(&num);
-    }
-    out
 }
 
 fn expand_bounds_prim(p: &Primitive, max_r: &mut f64, max_b: &mut f64) {

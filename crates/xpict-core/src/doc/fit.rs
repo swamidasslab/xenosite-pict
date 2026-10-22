@@ -188,7 +188,7 @@ fn shift_prim(p: &Primitive, dx: f64, dy: f64) -> Primitive {
             class,
             data_text,
         } => Primitive::Path {
-            d: shift_ml_path(d, dx, dy),
+            d: crate::scene::shift_path_d(d, dx, dy),
             stroke: stroke.clone(),
             fill: fill.clone(),
             stroke_width: *stroke_width,
@@ -237,88 +237,6 @@ fn shift_prim(p: &Primitive, dx: f64, dy: f64) -> Primitive {
             rotate: *rotate,
         },
     }
-}
-
-/// Shift absolute M/L coordinate pairs (depict / caption paths).
-fn shift_ml_path(d: &str, dx: f64, dy: f64) -> String {
-    if dx.abs() < 1e-12 && dy.abs() < 1e-12 {
-        return d.to_string();
-    }
-    let mut out = String::with_capacity(d.len() + 16);
-    let mut chars = d.chars().peekable();
-    let mut cmd = 'M';
-    while let Some(c) = chars.next() {
-        if c.is_ascii_alphabetic() {
-            cmd = c;
-            out.push(c);
-            continue;
-        }
-        if c.is_whitespace() || c == ',' {
-            out.push(c);
-            continue;
-        }
-        let mut num = String::new();
-        num.push(c);
-        while let Some(&n) = chars.peek() {
-            if n.is_ascii_digit() || n == '.' || n == 'e' || n == 'E' || n == '+' || n == '-' {
-                if (n == '-' || n == '+')
-                    && !num.is_empty()
-                    && !num.ends_with('e')
-                    && !num.ends_with('E')
-                {
-                    break;
-                }
-                num.push(n);
-                chars.next();
-            } else {
-                break;
-            }
-        }
-        if matches!(cmd, 'M' | 'L' | 'm' | 'l') {
-            while matches!(chars.peek(), Some(ch) if ch.is_whitespace() || *ch == ',') {
-                chars.next();
-            }
-            let mut num2 = String::new();
-            if let Some(&n0) = chars.peek() {
-                if n0 == '-' || n0 == '+' || n0.is_ascii_digit() || n0 == '.' {
-                    num2.push(n0);
-                    chars.next();
-                    while let Some(&n) = chars.peek() {
-                        if n.is_ascii_digit()
-                            || n == '.'
-                            || n == 'e'
-                            || n == 'E'
-                            || n == '+'
-                            || n == '-'
-                        {
-                            if (n == '-' || n == '+')
-                                && !num2.is_empty()
-                                && !num2.ends_with('e')
-                                && !num2.ends_with('E')
-                            {
-                                break;
-                            }
-                            num2.push(n);
-                            chars.next();
-                        } else {
-                            break;
-                        }
-                    }
-                }
-            }
-            if let (Ok(x), Ok(y)) = (num.parse::<f64>(), num2.parse::<f64>()) {
-                // Relative m/l: only absolute M/L get an origin shift.
-                if matches!(cmd, 'M' | 'L') {
-                    out.push_str(&format!("{} {}", x + dx, y + dy));
-                } else {
-                    out.push_str(&format!("{} {}", x, y));
-                }
-                continue;
-            }
-        }
-        out.push_str(&num);
-    }
-    out
 }
 
 #[cfg(test)]
@@ -405,5 +323,103 @@ mod tests {
         assert!((resolve_viewport_margin(None) - VIEWPORT_MARGIN_DEFAULT).abs() < 1e-12);
         assert!((resolve_viewport_margin(Some(8.0)) - 8.0).abs() < 1e-12);
         assert!((resolve_viewport_margin(Some(-1.0)) - VIEWPORT_MARGIN_DEFAULT).abs() < 1e-12);
+    }
+
+    fn last_xy(d: &str) -> (f64, f64) {
+        let nums: Vec<f64> = d
+            .split(|c: char| !(c.is_ascii_digit() || c == '.' || c == '-'))
+            .filter_map(|s| s.parse().ok())
+            .collect();
+        (nums[nums.len() - 2], nums[nums.len() - 1])
+    }
+
+    #[test]
+    fn fit_keeps_catmull_head_on_the_shaft() {
+        use crate::arrows::{edge_primitives, EdgePaintIn};
+        use crate::doc::EdgeArrow;
+        let edge = EdgePaintIn {
+            pts: vec![(20.0, 10.0), (80.0, 40.0), (90.0, 140.0)],
+            arrow: EdgeArrow::Forward,
+            routing: None,
+            color: Some("#0072b2".into()),
+            stroke_width: Some(4.8),
+            dashed: false,
+            label: None,
+            label_pos: None,
+            index: 0,
+            curve_catmull: true,
+            label_xy: None,
+            label_rotate: None,
+        };
+        let prims = edge_primitives(&edge);
+        let overlays: Vec<Primitive> = prims
+            .into_iter()
+            .filter_map(|p| match p {
+                crate::arrows::EdgePrim::Path {
+                    d,
+                    stroke,
+                    fill,
+                    stroke_width,
+                    class,
+                    ..
+                } => Some(Primitive::Path {
+                    d,
+                    stroke: Some(stroke),
+                    fill: Some(fill),
+                    stroke_width,
+                    opacity: 1.0,
+                    stroke_dasharray: None,
+                    stroke_linecap: None,
+                    class: Some(class),
+                    data_text: None,
+                }),
+                _ => None,
+            })
+            .collect();
+        let scene = Scene {
+            width: 400.0,
+            height: 400.0,
+            viewports: vec![],
+            overlays,
+            halo: vec![],
+        };
+        let out = fit_scene(scene, 4.0);
+        let shaft = out
+            .overlays
+            .iter()
+            .find_map(|p| match p {
+                Primitive::Path { d, class, .. }
+                    if class.as_deref().unwrap_or("").contains("edge")
+                        && !class.as_deref().unwrap_or("").contains("head") =>
+                {
+                    Some(d.as_str())
+                }
+                _ => None,
+            })
+            .expect("shaft");
+        let head = out
+            .overlays
+            .iter()
+            .find_map(|p| match p {
+                Primitive::Path { d, class, .. }
+                    if class.as_deref().unwrap_or("").contains("head") =>
+                {
+                    Some(d.as_str())
+                }
+                _ => None,
+            })
+            .expect("head");
+        assert!(shaft.contains('C'), "need a cubic shaft: {shaft}");
+        let (sx, sy) = last_xy(shaft);
+        let hnums: Vec<f64> = head
+            .split(|c: char| !(c.is_ascii_digit() || c == '.' || c == '-'))
+            .filter_map(|s| s.parse().ok())
+            .collect();
+        let (bx, by) = ((hnums[0] + hnums[4]) * 0.5, (hnums[1] + hnums[5]) * 0.5);
+        let gap = (sx - bx).hypot(sy - by);
+        assert!(
+            gap < 0.6,
+            "fit must shift cubics with the head; gap={gap} shaft={shaft} head={head}"
+        );
     }
 }

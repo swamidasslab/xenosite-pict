@@ -541,6 +541,83 @@ impl MoleculeIn {
     }
 }
 
+/// Translate absolute SVG path points (``M``/``L``/``C``/``S``/``Q``/``T`` pairs,
+/// plus ``H``/``V``). Relative commands stay as-is.
+///
+/// Fit used to shift only ``M``/``L``. Catmull shafts are cubics, so the head
+/// (an ``M L L Z`` triangle) moved and the shaft did not.
+pub fn shift_path_d(d: &str, dx: f64, dy: f64) -> String {
+    if (dx.abs() < 1e-12 && dy.abs() < 1e-12) || d.is_empty() {
+        return d.to_string();
+    }
+    let mut out = String::with_capacity(d.len() + 16);
+    let mut chars = d.chars().peekable();
+    let mut cmd = 'M';
+    while let Some(c) = chars.next() {
+        if c.is_ascii_alphabetic() {
+            cmd = c;
+            out.push(c);
+            continue;
+        }
+        if c.is_whitespace() || c == ',' {
+            out.push(c);
+            continue;
+        }
+        let Some(n0) = parse_svg_num(c, &mut chars) else {
+            out.push(c);
+            continue;
+        };
+        match cmd {
+            'H' => out.push_str(&format!("{:.2}", n0 + dx)),
+            'V' => out.push_str(&format!("{:.2}", n0 + dy)),
+            'M' | 'L' | 'C' | 'S' | 'Q' | 'T' => {
+                while matches!(chars.peek(), Some(ch) if ch.is_whitespace() || *ch == ',') {
+                    chars.next();
+                }
+                let Some(lead) = chars.next() else {
+                    out.push_str(&format!("{n0}"));
+                    continue;
+                };
+                let Some(n1) = parse_svg_num(lead, &mut chars) else {
+                    out.push_str(&format!("{n0}"));
+                    out.push(lead);
+                    continue;
+                };
+                out.push_str(&format!("{:.2} {:.2}", n0 + dx, n1 + dy));
+            }
+            _ => out.push_str(&format!("{n0}")),
+        }
+    }
+    out
+}
+
+fn parse_svg_num<I>(first: char, chars: &mut std::iter::Peekable<I>) -> Option<f64>
+where
+    I: Iterator<Item = char>,
+{
+    if !(first.is_ascii_digit() || first == '.' || first == '-' || first == '+') {
+        return None;
+    }
+    let mut num = String::new();
+    num.push(first);
+    while let Some(&n) = chars.peek() {
+        if n.is_ascii_digit() || n == '.' || n == 'e' || n == 'E' || n == '+' || n == '-' {
+            if (n == '-' || n == '+')
+                && !num.is_empty()
+                && !num.ends_with('e')
+                && !num.ends_with('E')
+            {
+                break;
+            }
+            num.push(n);
+            chars.next();
+        } else {
+            break;
+        }
+    }
+    num.parse().ok()
+}
+
 /// Multiply every numeric token in an SVG path ``d`` (M/L/Z polygons).
 pub fn scale_path_d(d: &str, s: f64) -> String {
     if (s - 1.0).abs() < 1e-12 || d.is_empty() {
@@ -921,6 +998,19 @@ mod tests {
         assert_eq!(scale_dasharray("1,2 3", 2.0), "2.00 4.00 6.00");
         // Non-numeric token preserved.
         assert_eq!(scale_dasharray("1 foo", 2.0), "2.00 foo");
+    }
+
+    #[test]
+    fn shift_path_d_moves_cubics_with_ml() {
+        let d = "M 0.00 0.00 C 10.00 0.00 20.00 10.00 30.00 10.00";
+        let s = shift_path_d(d, 5.0, 7.0);
+        assert!(s.contains("M 5.00 7.00"), "{s}");
+        assert!(
+            s.contains("C 15.00 7.00 25.00 17.00 35.00 17.00"),
+            "cubic controls must move with the interpolating vertices: {s}"
+        );
+        assert_eq!(shift_path_d("M 1 2", 0.0, 0.0), "M 1 2");
+        assert_eq!(shift_path_d("", 1.0, 1.0), "");
     }
 
     #[test]
