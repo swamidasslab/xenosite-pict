@@ -222,6 +222,7 @@ const richStar = await xpict.render(xpict.mol("*C"), { star_labels: ["$R_1$"] })
 
 const marked = await xpict.render(xpict.mol("CCO"), {
   circle: {
+    atoms: [],
     bonds: [[0, 1]],
     stroke: { color: "#c00", width: 1.4 },
   },
