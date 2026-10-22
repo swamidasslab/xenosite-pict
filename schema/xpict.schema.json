@@ -1838,6 +1838,13 @@
             "null"
           ],
           "format": "double"
+        },
+        "refine": {
+          "description": "After ELK, refine edge routes and labels with the constraint solver. Omit or `true` → refine on; `false` → stock ELK placement.",
+          "type": [
+            "boolean",
+            "null"
+          ]
         }
       }
     },

@@ -121,6 +121,7 @@ pub fn paint_align_debug(
             class: Some(format!(
                 "debug-align debug-align-tag atom-{atom_idx} tag-{tag}"
             )),
+            rotate: None,
         });
     }
 
@@ -148,6 +149,7 @@ pub fn paint_align_debug(
                 AlignDebugRole::Query => "query",
             }
         )),
+        rotate: None,
     });
     out
 }

@@ -389,6 +389,7 @@ class LayoutOpts(StrictModel):
     edge_routing: Annotated[EdgeRouting | None, Field(description='Shaft style (`polyline` / `orthogonal` / `splines`).')] = None
     layer_spacing: Annotated[float | None, Field(description='Between-layer gap along the flow axis (px). Smaller → tighter pack.')] = None
     node_spacing: Annotated[float | None, Field(description='Within-layer node gap (px). Smaller → tighter pack.')] = None
+    refine: Annotated[bool | None, Field(description='After ELK, refine edge routes and labels with the constraint solver. Omit or `true` → refine on; `false` → stock ELK placement.')] = None
 
 
 class ReactionSchemeNode(StrictModel):

@@ -230,6 +230,14 @@ pub fn shaft_path_d(pts: &[Pt], routing: Option<EdgeRouting>) -> String {
     }
 }
 
+fn painted_shaft_d(pts: &[Pt], routing: Option<EdgeRouting>, curve_catmull: bool) -> String {
+    if curve_catmull {
+        crate::catmull::centripetal_catmull_rom_open_path(pts)
+    } else {
+        shaft_path_d(pts, routing)
+    }
+}
+
 fn unit(dx: f64, dy: f64) -> (f64, f64) {
     let l = hypot(dx, dy).max(1e-9);
     (dx / l, dy / l)
@@ -313,6 +321,12 @@ pub struct EdgePaintIn {
     pub label: Option<String>,
     pub label_pos: Option<String>,
     pub index: usize,
+    /// Paint the shaft as an open centripetal Catmull–Rom (scheme energy refine).
+    pub curve_catmull: bool,
+    /// Override label position (document px). `None` → longest-segment midpoint.
+    pub label_xy: Option<Pt>,
+    /// Label rotation in degrees (SVG, about the glyph origin).
+    pub label_rotate: Option<f64>,
 }
 
 /// One SVG-ish path or text fragment for overlays.
@@ -334,6 +348,8 @@ pub enum EdgePrim {
         font_size: f64,
         anchor: String,
         class: String,
+        /// Degrees; `0` omits the SVG transform.
+        rotate: f64,
     },
 }
 
@@ -414,6 +430,7 @@ fn harpoon_poly(
     head_size: f64,
     class: &str,
     routing: Option<EdgeRouting>,
+    curve_catmull: bool,
 ) -> Vec<EdgePrim> {
     let (shaft, tip, (ux, uy)) = shorten_polyline_end(pts, head_size);
     let (px, py) = perp(ux, uy);
@@ -423,7 +440,7 @@ fn harpoon_poly(
     let mut out = Vec::new();
     if shaft.len() >= 2 {
         out.push(path_prim(
-            shaft_path_d(&shaft, routing),
+            painted_shaft_d(&shaft, routing, curve_catmull),
             color,
             "none",
             width,
@@ -474,6 +491,7 @@ pub fn edge_primitives(edge: &EdgePaintIn) -> Vec<EdgePrim> {
                 HEAD * 0.85,
                 &format!("{cls} eq-fwd"),
                 routing,
+                edge.curve_catmull,
             ));
             out.extend(harpoon_poly(
                 &rev,
@@ -483,11 +501,12 @@ pub fn edge_primitives(edge: &EdgePaintIn) -> Vec<EdgePrim> {
                 HEAD * 0.85,
                 &format!("{cls} eq-rev"),
                 routing,
+                edge.curve_catmull,
             ));
         }
         EdgeArrow::Line => {
             out.push(path_prim(
-                shaft_path_d(&pts, routing),
+                painted_shaft_d(&pts, routing, edge.curve_catmull),
                 color,
                 "none",
                 width,
@@ -499,7 +518,7 @@ pub fn edge_primitives(edge: &EdgePaintIn) -> Vec<EdgePrim> {
             let (shaft, tip, (ux, uy)) = shorten_polyline_end(&pts, HEAD);
             if shaft.len() >= 2 {
                 out.push(path_prim(
-                    shaft_path_d(&shaft, routing),
+                    painted_shaft_d(&shaft, routing, edge.curve_catmull),
                     color,
                     "none",
                     width,
@@ -532,7 +551,7 @@ pub fn edge_primitives(edge: &EdgePaintIn) -> Vec<EdgePrim> {
             let (shaft, tip, (ux, uy)) = shorten_polyline_end(&pts, HEAD);
             if shaft.len() >= 2 {
                 out.push(path_prim(
-                    shaft_path_d(&shaft, routing),
+                    painted_shaft_d(&shaft, routing, edge.curve_catmull),
                     color,
                     "none",
                     width,
@@ -562,14 +581,19 @@ pub fn edge_primitives(edge: &EdgePaintIn) -> Vec<EdgePrim> {
             px = -px;
             py = -py;
         }
+        let (x, y) = edge
+            .label_xy
+            .unwrap_or((mx + px * 10.0, my + py * 10.0 + 4.0));
+        let rotate = edge.label_rotate.unwrap_or(0.0);
         out.push(EdgePrim::Text {
-            x: mx + px * 10.0,
-            y: my + py * 10.0 + 4.0,
+            x,
+            y,
             text: label.clone(),
             fill: color.to_string(),
             font_size: 11.0,
             anchor: "middle".into(),
             class: format!("{cls} label"),
+            rotate,
         });
     }
     out
@@ -590,6 +614,9 @@ mod tests {
             label: Some("lab".into()),
             label_pos: Some("below".into()),
             index: 1,
+            curve_catmull: false,
+            label_xy: None,
+            label_rotate: None,
         }
     }
 
@@ -674,6 +701,29 @@ mod tests {
         // Trim longer than path.
         let (s, _, _) = shorten_polyline_end(&[(0.0, 0.0), (5.0, 0.0)], 20.0);
         assert!(s.len() <= 2);
+    }
+
+    #[test]
+    fn catmull_shaft_is_shared_open_path() {
+        let pts = vec![(0.0, 0.0), (80.0, 0.0), (80.0, 80.0)];
+        let mut edge = paint(pts.clone(), EdgeArrow::Line, None);
+        edge.curve_catmull = true;
+        edge.label = None;
+        let prims = edge_primitives(&edge);
+        let d = prims.iter().find_map(|p| match p {
+            EdgePrim::Path { d, class, .. }
+                if class.contains("shaft") || class.contains("edge") =>
+            {
+                Some(d.as_str())
+            }
+            _ => None,
+        });
+        let d = d.expect("shaft path");
+        let expected =
+            crate::catmull::centripetal_catmull_rom_open_path(&simplify_route(&pts, KINK_PX));
+        assert_eq!(d, expected);
+        assert!(d.contains('C'), "{d}");
+        assert!(!d.contains('Z'), "{d}");
     }
 
     #[test]

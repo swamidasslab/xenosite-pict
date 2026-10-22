@@ -57,6 +57,7 @@ class TextPrim(StrictModel):
     cls: str | None = None
     fill: str = '#000'
     font_size: float = 12.0
+    rotate: Annotated[float | None, Field(description='Degrees about `(x, y)`. Omit when upright.')] = None
 
 
 Primitive = Annotated[PathPrim | CirclePrim | TextPrim, Field(discriminator='kind')]
@@ -76,6 +77,8 @@ class Viewport(StrictModel):
     width: float
     id: str | None = None
     layers: list[Layer] = Field(default_factory=list)
+    ox: Annotated[float | None, Field(description='Local leftover origin (fit). Nested inside the mol group, not baked into path `d`.')] = None
+    oy: float | None = None
     x: float = 0.0
     y: float = 0.0
 
@@ -85,5 +88,5 @@ class Scene(StrictModel):
     height: float
     viewports: list[Viewport]
     width: float
-    halo: list[Primitive] = Field(default_factory=list, description='Single document-space unioned knockout under molecule ink.')
+    halo: list[Primitive] = Field(default_factory=list, description='Document-space knockout (scheme compose). Per-mol halo lives in the viewport `Halo` layer so it nests inside `g.xpict-mol`.')
     overlays: list[Primitive] = Field(default_factory=list, description='Document-space primitives (reaction arrows) above viewports.')

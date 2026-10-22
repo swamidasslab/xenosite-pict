@@ -12,8 +12,9 @@ mod compose;
 mod depict_doc;
 mod edge_resolve;
 mod fit;
-mod layout_constraints;
+pub(crate) mod layout_constraints;
 mod layout_items;
+mod scheme_layout;
 mod spec;
 mod text_paint;
 
@@ -31,10 +32,10 @@ pub use edge_resolve::{process_edge_plan, process_edge_plan_with_frames};
 pub use fit::{fit_scene, resolve_viewport_margin, VIEWPORT_MARGIN_DEFAULT};
 pub use layout_constraints::{
     atom_number_kit, bezier_path_from_proxy, callout_kit, caption_kit, edge_signed_distance,
-    energy, hard_g, hull_proxy, install_chem, max_hard_violation, refine_atom_number,
-    refine_callout, refine_caption, refine_region_text, region_text_kit, solve,
-    suggest_route_points, Constraint, HardConstraint, LayoutWorld, ObjectType, Shape, SolveOpts,
-    SolveResult,
+    energy, hard_g, hull_proxy, install_chem, install_chem_under, max_hard_violation,
+    push_clear_leaves, refine_atom_number, refine_callout, refine_caption, refine_region_text,
+    region_text_kit, solve, suggest_route_points, Constraint, HardConstraint, LayoutWorld,
+    ObjectType, Shape, SolveOpts, SolveResult,
 };
 pub use spec::*;
 

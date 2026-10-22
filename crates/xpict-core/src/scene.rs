@@ -136,6 +136,10 @@ pub enum Primitive {
         #[serde(default, skip_serializing_if = "Option::is_none", rename = "cls")]
         #[cfg_attr(feature = "codegen", ts(optional, rename = "cls"))]
         class: Option<String>,
+        /// Degrees about `(x, y)`. Omit when upright.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        rotate: Option<f64>,
     },
 }
 
@@ -188,10 +192,8 @@ pub struct Viewport {
     /// Local leftover origin (fit). Nested inside the mol group, not baked
     /// into path `d`.
     #[serde(default, skip_serializing_if = "skip_zero")]
-    #[cfg_attr(feature = "codegen", ts(optional))]
     pub ox: f64,
     #[serde(default, skip_serializing_if = "skip_zero")]
-    #[cfg_attr(feature = "codegen", ts(optional))]
     pub oy: f64,
     pub width: f64,
     pub height: f64,
@@ -653,6 +655,7 @@ impl Primitive {
                 font_size,
                 anchor,
                 class,
+                rotate,
             } => Primitive::Text {
                 x: *x * s,
                 y: *y * s,
@@ -661,6 +664,7 @@ impl Primitive {
                 font_size: *font_size * s,
                 anchor: *anchor,
                 class: class.clone(),
+                rotate: *rotate,
             },
         }
     }
@@ -950,6 +954,7 @@ mod tests {
             font_size: 12.0,
             anchor: TextAnchor::Middle,
             class: None,
+            rotate: None,
         };
 
         // Identity early-outs.

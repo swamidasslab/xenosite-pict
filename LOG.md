@@ -2,6 +2,8 @@
 
 ## 2026-10-22
 
+- Reaction-scheme default is ELK seed then constraint refine (`LayoutOpts.refine`; `false` keeps stock ELK). Mols stay fixed; movable DOF are ELK control points and edge labels. Shafts paint as open centripetal Catmull–Rom from a shared `catmull` module (not duplicated in `arrows`, not via `doc`). Standoff is from chem ink (~2 bonds), not the mol AABB. ParallelClear is hard; PolyCross only for pairs that did not already cross at the seed. Labels rotate with the shaft and MaxDist-tether to it.
+
 - Network GSH region / hub aromatic bugs were hierarchy, not path-command special cases. One `g.xpict-mol` with nested layer groups (shading, halo, bonds, …). Fit leftover lives on viewport `ox`/`oy` (nested translate). Chrome+captions paint in chem space, then one mol-tree `scale`. Regions and GSH labels share the group transform.
 
 ## 2026-10-21

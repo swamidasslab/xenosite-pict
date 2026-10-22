@@ -8,6 +8,7 @@
 pub mod align_cost;
 pub mod arrows;
 pub mod bonds;
+pub mod catmull;
 pub mod colormap;
 pub mod cxsmiles;
 pub mod debug_align;
@@ -53,6 +54,7 @@ pub use bonds::{
     join_centered_multibonds, line_intersect, multi_bond_offset, BondStrokes, DrawnBond,
     StrokePath,
 };
+pub use catmull::{centripetal_catmull_rom_closed_path, centripetal_catmull_rom_open_path};
 pub use colormap::{colormap_rgb, sample_colormap, XENOSITE};
 pub use cxsmiles::{
     apply_cx_by_index, cx_atom_labels, cx_multicenters, cx_source, smiles_base, Multicenter,

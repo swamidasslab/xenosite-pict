@@ -1,20 +1,19 @@
-//! Hierarchical constraint layout for mol chrome.
+//! Hierarchical constraint layout (document tree, not a mol-only mode).
 //!
-//! **Fixed vs movable.** After depict lays out the molecule, chem is frozen:
-//! bonds, atom disks, chem atom text, and shade disks (actual painted radii).
-//! That whole chem subtree is fixed input to the solver — if it ever moves, it
-//! is only a rigid transform of the mol. Annotations (caption, region text,
-//! callout, atom number/label, …) are the only free variables.
+//! **Fixed vs movable.** Kits freeze obstacles (chem ink, scheme mol boxes) and
+//! expose translation DOF on the rest. Mol chrome: chem is frozen after depict;
+//! annotations are the free variables. Reaction schemes: mols stay fixed; edge
+//! control points and edge labels move.
 //!
-//! **Bond clearance is baseline and hard.** Movable annotations share
-//! [`push_clear_bonds`] — [`HardConstraint::Outside`] vs every bond line,
-//! enforced by an augmented-Lagrangian outer loop around Nelder–Mead. Soft
-//! hinges alone leave residual ink-on-bond; do not special-case a weaker bond
-//! gap for atom labels.
+//! **Clearance is baseline and hard.** Kits emit [`HardConstraint::Outside`] vs
+//! primitive leaves (bonds, disks, shafts) via [`push_clear_leaves`]. An
+//! augmented-Lagrangian outer loop around Nelder–Mead enforces them. Soft
+//! hinges alone leave residual ink overlap; do not special-case a weaker gap.
 //!
-//! One layout world per mol: nested node paths (`mol/chem/…`,
-//! `mol/annotations/…`), edge-aware shapes, per-type constraint kits, and a
-//! Nelder–Mead minimizer that stops on **pose motion in CSS-px** (not ΔE).
+//! Nested node paths (`mol/chem/…`, `scheme/edges/e0/…`), edge-aware shapes,
+//! per-type kits, and a Nelder–Mead minimizer that stops on **pose motion in
+//! CSS-px** (not ΔE). `energy` / `hard_g` / `solve` / `apply_params` never
+//! branch on [`ObjectType`] or path prefixes.
 
 use std::collections::HashMap;
 
@@ -45,6 +44,10 @@ pub enum Shape {
     Aabb(Aabb),
     /// Closed polyline / hull proxy (last→first implied if not equal).
     PointSet(Vec<(f64, f64)>),
+    /// Open polyline (no last→first edge). Empty is a group marker: the live
+    /// geometry is the child [`Shape::Point`]s in `children` order
+    /// ([`LayoutWorld::eval_shape`]).
+    Polyline(Vec<(f64, f64)>),
 }
 
 impl Shape {
@@ -54,7 +57,7 @@ impl Shape {
             Shape::Circle { cx, cy, r } => Aabb::new(cx - r, cy - r, cx + r, cy + r),
             Shape::Line { x0, y0, x1, y1 } => Aabb::new(*x0, *y0, *x1, *y1),
             Shape::Aabb(a) => *a,
-            Shape::PointSet(pts) => {
+            Shape::PointSet(pts) | Shape::Polyline(pts) => {
                 if pts.is_empty() {
                     return Aabb::new(0.0, 0.0, 0.0, 0.0);
                 }
@@ -95,6 +98,9 @@ impl Shape {
             Shape::PointSet(pts) => {
                 Shape::PointSet(pts.iter().map(|&(x, y)| (x + dx, y + dy)).collect())
             }
+            Shape::Polyline(pts) => {
+                Shape::Polyline(pts.iter().map(|&(x, y)| (x + dx, y + dy)).collect())
+            }
         }
     }
 
@@ -117,7 +123,7 @@ impl Shape {
                 (a.x0, a.y1),
                 a.center(),
             ],
-            Shape::PointSet(pts) => pts.clone(),
+            Shape::PointSet(pts) | Shape::Polyline(pts) => pts.clone(),
         }
     }
 }
@@ -153,6 +159,7 @@ pub fn edge_signed_distance(a: &Shape, b: &Shape) -> f64 {
             // here use point-pair distance between closest points on edges.
             line_shape_signed(a, b)
         }
+        (Shape::Polyline(_), _) | (_, Shape::Polyline(_)) => polyline_shape_signed(a, b),
         (Shape::PointSet(pts), other) | (other, Shape::PointSet(pts)) => {
             let aa = a.aabb();
             let bb = b.aabb();
@@ -232,6 +239,150 @@ fn point_to_shape_signed(px: f64, py: f64, s: &Shape) -> f64 {
         }
         Shape::Line { x0, y0, x1, y1 } => point_to_seg(px, py, *x0, *y0, *x1, *y1),
         Shape::PointSet(pts) => point_to_polyline_signed(px, py, pts),
+        Shape::Polyline(pts) => point_to_open_polyline(px, py, pts),
+    }
+}
+
+fn point_to_open_polyline(px: f64, py: f64, pts: &[(f64, f64)]) -> f64 {
+    if pts.len() < 2 {
+        return if let Some(&(x, y)) = pts.first() {
+            (px - x).hypot(py - y)
+        } else {
+            0.0
+        };
+    }
+    let mut best = f64::INFINITY;
+    for w in pts.windows(2) {
+        best = best.min(point_to_seg(px, py, w[0].0, w[0].1, w[1].0, w[1].1));
+    }
+    best
+}
+
+fn shape_segments(s: &Shape) -> Vec<(f64, f64, f64, f64)> {
+    match s {
+        Shape::Line { x0, y0, x1, y1 } => vec![(*x0, *y0, *x1, *y1)],
+        Shape::Polyline(pts) if pts.len() >= 2 => pts
+            .windows(2)
+            .map(|w| (w[0].0, w[0].1, w[1].0, w[1].1))
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn polyline_shape_signed(a: &Shape, b: &Shape) -> f64 {
+    let segs_a = shape_segments(a);
+    let segs_b = shape_segments(b);
+    if !segs_a.is_empty() && !segs_b.is_empty() {
+        let mut best = f64::INFINITY;
+        for &(ax0, ay0, ax1, ay1) in &segs_a {
+            for &(bx0, by0, bx1, by1) in &segs_b {
+                best = best.min(seg_seg_dist(ax0, ay0, ax1, ay1, bx0, by0, bx1, by1));
+            }
+        }
+        return best;
+    }
+    let (poly, other) = if matches!(a, Shape::Polyline(_)) {
+        (a, b)
+    } else {
+        (b, a)
+    };
+    let mut best = f64::INFINITY;
+    for &(x0, y0, x1, y1) in &shape_segments(poly) {
+        best = best.min(line_shape_signed(&Shape::Line { x0, y0, x1, y1 }, other));
+    }
+    if best.is_finite() {
+        best
+    } else {
+        aabb_aabb_signed(a.aabb(), b.aabb())
+    }
+}
+
+/// Cosine of 25° — nearly-parallel segment pair for [`HardConstraint::ParallelClear`].
+const PARALLEL_DOT: f64 = 0.906307787;
+
+fn unit_or_zero(dx: f64, dy: f64) -> (f64, f64) {
+    let l = dx.hypot(dy);
+    if l < 1e-12 {
+        (0.0, 0.0)
+    } else {
+        (dx / l, dy / l)
+    }
+}
+
+fn proper_seg_intersect(
+    ax0: f64,
+    ay0: f64,
+    ax1: f64,
+    ay1: f64,
+    bx0: f64,
+    by0: f64,
+    bx1: f64,
+    by1: f64,
+) -> bool {
+    let orient = |px: f64, py: f64, qx: f64, qy: f64, rx: f64, ry: f64| {
+        (qx - px) * (ry - py) - (qy - py) * (rx - px)
+    };
+    let o1 = orient(ax0, ay0, ax1, ay1, bx0, by0);
+    let o2 = orient(ax0, ay0, ax1, ay1, bx1, by1);
+    let o3 = orient(bx0, by0, bx1, by1, ax0, ay0);
+    let o4 = orient(bx0, by0, bx1, by1, ax1, ay1);
+    o1 * o2 < -1e-12 && o3 * o4 < -1e-12
+}
+
+pub(crate) fn shapes_properly_cross(a: &Shape, b: &Shape) -> bool {
+    poly_cross_count(a, b) > 0
+}
+
+fn poly_cross_count(a: &Shape, b: &Shape) -> usize {
+    let mut n = 0usize;
+    for &(ax0, ay0, ax1, ay1) in &shape_segments(a) {
+        for &(bx0, by0, bx1, by1) in &shape_segments(b) {
+            if proper_seg_intersect(ax0, ay0, ax1, ay1, bx0, by0, bx1, by1) {
+                n += 1;
+            }
+        }
+    }
+    n
+}
+
+fn interval_overlap(a0: f64, a1: f64, b0: f64, b1: f64) -> bool {
+    let (alo, ahi) = if a0 <= a1 { (a0, a1) } else { (a1, a0) };
+    let (blo, bhi) = if b0 <= b1 { (b0, b1) } else { (b1, b0) };
+    alo < bhi - 1e-9 && blo < ahi - 1e-9
+}
+
+fn parallel_clear_g(a: &Shape, b: &Shape, clash_dist: f64) -> f64 {
+    let mut worst: f64 = 0.0;
+    let mut any = false;
+    for &(ax0, ay0, ax1, ay1) in &shape_segments(a) {
+        let (ux, uy) = unit_or_zero(ax1 - ax0, ay1 - ay0);
+        if ux == 0.0 && uy == 0.0 {
+            continue;
+        }
+        for &(bx0, by0, bx1, by1) in &shape_segments(b) {
+            let (vx, vy) = unit_or_zero(bx1 - bx0, by1 - by0);
+            if vx == 0.0 && vy == 0.0 {
+                continue;
+            }
+            if (ux * vx + uy * vy).abs() < PARALLEL_DOT {
+                continue;
+            }
+            let pa0 = ax0 * ux + ay0 * uy;
+            let pa1 = ax1 * ux + ay1 * uy;
+            let pb0 = bx0 * ux + by0 * uy;
+            let pb1 = bx1 * ux + by1 * uy;
+            if !interval_overlap(pa0, pa1, pb0, pb1) {
+                continue;
+            }
+            any = true;
+            let d = ((bx0 - ax0) * (-uy) + (by0 - ay0) * ux).abs();
+            worst = worst.max(clash_dist - d);
+        }
+    }
+    if any {
+        worst
+    } else {
+        0.0
     }
 }
 
@@ -444,6 +595,10 @@ pub enum Constraint {
         y: f64,
         strength: f64,
     },
+    /// Soft energy when two open polylines / lines have a proper (transverse)
+    /// intersection. Kits that should not uncross an existing X simply omit
+    /// this row for that pair.
+    PolyCross { a: NodeId, b: NodeId, strength: f64 },
 }
 
 /// No-overlap (Outside). Strongest hard group.
@@ -491,13 +646,22 @@ pub enum HardConstraint {
         dist: f64,
         lagrangian: u8,
     },
+    /// Nearly-parallel overlapping segments must stay `clash_dist` apart
+    /// (`g = clash - d_perp`). Transverse crossings do not activate.
+    ParallelClear {
+        a: NodeId,
+        b: NodeId,
+        clash_dist: f64,
+        lagrangian: u8,
+    },
 }
 
 fn hard_lagrangian(h: &HardConstraint) -> u8 {
     match h {
         HardConstraint::Outside { lagrangian, .. }
         | HardConstraint::Inside { lagrangian, .. }
-        | HardConstraint::MaxDist { lagrangian, .. } => *lagrangian,
+        | HardConstraint::MaxDist { lagrangian, .. }
+        | HardConstraint::ParallelClear { lagrangian, .. } => *lagrangian,
     }
 }
 
@@ -532,21 +696,38 @@ fn push_placement_pose(constraints: &mut Vec<Constraint>, id: &str, rest: &Shape
     });
 }
 
-/// Hard [`HardConstraint::Outside`] vs every fixed bond line under `mol/chem/bonds`.
+/// Hard [`HardConstraint::Outside`] vs every primitive leaf under `under`.
 ///
-/// Baseline for captions, region text, callouts, atom numbers/labels — do not
-/// weaken this per kit. Half stroke width is already in edge distance.
-fn push_clear_bonds(world: &LayoutWorld, hard: &mut Vec<HardConstraint>, a: &str, clash_dist: f64) {
-    if let Some(bonds) = world.get("mol/chem/bonds") {
-        for bid in bonds.children.clone() {
+/// Baseline clearance for captions, region text, callouts, atom numbers, and
+/// scheme arrows — do not weaken this per kit. Half stroke width is already
+/// in edge distance.
+pub fn push_clear_leaves(
+    world: &LayoutWorld,
+    hard: &mut Vec<HardConstraint>,
+    a: &str,
+    under: &str,
+    clash_dist: f64,
+) {
+    let mut stack = vec![under.to_string()];
+    while let Some(id) = stack.pop() {
+        let Some(n) = world.get(&id) else {
+            continue;
+        };
+        stack.extend(n.children.iter().cloned());
+        if n.children.is_empty() {
             hard.push(HardConstraint::Outside {
                 a: a.to_string(),
-                b: bid,
+                b: id,
                 clash_dist,
                 lagrangian: LAGRANGIAN_CLEAR,
             });
         }
     }
+}
+
+/// Mol-kit wrapper: hard Outside vs every bond line under `mol/chem/bonds`.
+fn push_clear_bonds(world: &LayoutWorld, hard: &mut Vec<HardConstraint>, a: &str, clash_dist: f64) {
+    push_clear_leaves(world, hard, a, "mol/chem/bonds", clash_dist);
 }
 
 /// Object kind → which kit installed it (debug / filtering).
@@ -575,6 +756,10 @@ pub enum ObjectType {
     AtomLabels,
     AtomLabel,
     Group,
+    Scheme,
+    Edge,
+    EdgePoint,
+    EdgeLabel,
 }
 
 /// One node in the layout tree.
@@ -604,7 +789,7 @@ impl LayoutNode {
     }
 }
 
-/// Layout world rooted at `mol`.
+/// Layout world rooted at an arbitrary document node.
 #[derive(Debug, Clone)]
 pub struct LayoutWorld {
     pub nodes: HashMap<NodeId, LayoutNode>,
@@ -612,7 +797,7 @@ pub struct LayoutWorld {
 }
 
 impl LayoutWorld {
-    pub fn new(root_id: impl Into<NodeId>) -> Self {
+    pub fn rooted(root_id: impl Into<NodeId>, object_type: ObjectType) -> Self {
         let root = root_id.into();
         let mut nodes = HashMap::new();
         nodes.insert(
@@ -621,7 +806,7 @@ impl LayoutWorld {
                 id: root.clone(),
                 parent: None,
                 children: Vec::new(),
-                object_type: ObjectType::Mol,
+                object_type,
                 shape: Shape::Aabb(Aabb::new(0.0, 0.0, 0.0, 0.0)),
                 fixed: true,
                 tx: 0.0,
@@ -630,6 +815,10 @@ impl LayoutWorld {
             },
         );
         Self { nodes, root }
+    }
+
+    pub fn new(root_id: impl Into<NodeId>) -> Self {
+        Self::rooted(root_id, ObjectType::Mol)
     }
 
     pub fn insert(
@@ -703,6 +892,9 @@ impl LayoutWorld {
             if node.children.is_empty() || !node.fixed {
                 continue;
             }
+            if matches!(node.rest, Shape::Polyline(_)) {
+                continue;
+            }
             if let Some(a) = self.subtree_aabb(&id) {
                 if let Some(n) = self.nodes.get_mut(&id) {
                     n.rest = Shape::Aabb(a);
@@ -750,6 +942,26 @@ impl LayoutWorld {
         }
     }
 
+    /// Live geometry: polyline groups assemble child [`Shape::Point`]s in order.
+    pub fn eval_shape(&self, id: &str) -> Option<Shape> {
+        let n = self.nodes.get(id)?;
+        if matches!(&n.rest, Shape::Polyline(_)) {
+            let mut pts = Vec::new();
+            for cid in &n.children {
+                let Some(c) = self.nodes.get(cid) else {
+                    continue;
+                };
+                if let Shape::Point { x, y } = c.world_shape() {
+                    pts.push((x, y));
+                }
+            }
+            if pts.len() >= 2 {
+                return Some(Shape::Polyline(pts));
+            }
+        }
+        Some(n.world_shape())
+    }
+
     pub fn control_points_movable(&self) -> Vec<(f64, f64)> {
         let mut pts = Vec::new();
         for n in self.nodes.values() {
@@ -760,6 +972,10 @@ impl LayoutWorld {
         }
         pts
     }
+}
+
+fn pair_eval(world: &LayoutWorld, a: &str, b: &str) -> Option<(Shape, Shape)> {
+    Some((world.eval_shape(a)?, world.eval_shape(b)?))
 }
 
 fn hinge_below(x: f64, lo: f64) -> f64 {
@@ -807,9 +1023,9 @@ fn constraint_energy(world: &LayoutWorld, c: &Constraint) -> f64 {
             clash_dist,
             strength,
         } => {
-            let (sa, sb) = match (world.get(a), world.get(b)) {
-                (Some(na), Some(nb)) => (na.world_shape(), nb.world_shape()),
-                _ => return 0.0,
+            let (sa, sb) = match pair_eval(world, a, b) {
+                Some(p) => p,
+                None => return 0.0,
             };
             let d = edge_signed_distance(&sa, &sb);
             strength * hinge_below(d, *clash_dist)
@@ -820,9 +1036,9 @@ fn constraint_energy(world: &LayoutWorld, c: &Constraint) -> f64 {
             pad,
             strength,
         } => {
-            let (sa, sb) = match (world.get(a), world.get(b)) {
-                (Some(na), Some(nb)) => (na.world_shape(), nb.world_shape()),
-                _ => return 0.0,
+            let (sa, sb) = match pair_eval(world, a, b) {
+                Some(p) => p,
+                None => return 0.0,
             };
             let g = inside_g(&sa, &sb, *pad);
             strength * g.max(0.0) * g.max(0.0)
@@ -833,9 +1049,9 @@ fn constraint_energy(world: &LayoutWorld, c: &Constraint) -> f64 {
             dist,
             strength,
         } => {
-            let (sa, sb) = match (world.get(a), world.get(b)) {
-                (Some(na), Some(nb)) => (na.world_shape(), nb.world_shape()),
-                _ => return 0.0,
+            let (sa, sb) = match pair_eval(world, a, b) {
+                Some(p) => p,
+                None => return 0.0,
             };
             let d = edge_signed_distance(&sa, &sb);
             strength * hinge_below(d, *dist)
@@ -847,9 +1063,9 @@ fn constraint_energy(world: &LayoutWorld, c: &Constraint) -> f64 {
             strength,
             align_along,
         } => {
-            let (sa, sb) = match (world.get(a), world.get(b)) {
-                (Some(na), Some(nb)) => (na.world_shape(), nb.world_shape()),
-                _ => return 0.0,
+            let (sa, sb) = match pair_eval(world, a, b) {
+                Some(p) => p,
+                None => return 0.0,
             };
             let (ax, ay) = sa.aabb().center();
             let (bx, by) = sb.aabb().center();
@@ -888,21 +1104,29 @@ fn constraint_energy(world: &LayoutWorld, c: &Constraint) -> f64 {
             opt_dist,
             strength,
         } => {
-            let (sa, sb) = match (world.get(a), world.get(b)) {
-                (Some(na), Some(nb)) => (na.world_shape(), nb.world_shape()),
-                _ => return 0.0,
+            let (sa, sb) = match pair_eval(world, a, b) {
+                Some(p) => p,
+                None => return 0.0,
             };
             let d = edge_signed_distance(&sa, &sb).max(0.0);
             strength * spring(d, *opt_dist)
         }
         Constraint::PreferPose { a, x, y, strength } => {
-            let Some(n) = world.get(a) else {
+            let Some(s) = world.eval_shape(a) else {
                 return 0.0;
             };
-            let (cx, cy) = shape_anchor(&n.world_shape());
+            let (cx, cy) = shape_anchor(&s);
             let dx = cx - x;
             let dy = cy - y;
             strength * (dx * dx + dy * dy)
+        }
+        Constraint::PolyCross { a, b, strength } => {
+            let (sa, sb) = match pair_eval(world, a, b) {
+                Some(p) => p,
+                None => return 0.0,
+            };
+            let n = poly_cross_count(&sa, &sb) as f64;
+            strength * n * n
         }
     }
 }
@@ -997,25 +1221,34 @@ pub fn hard_g(world: &LayoutWorld, h: &HardConstraint) -> f64 {
         HardConstraint::Outside {
             a, b, clash_dist, ..
         } => {
-            let (sa, sb) = match (world.get(a), world.get(b)) {
-                (Some(na), Some(nb)) => (na.world_shape(), nb.world_shape()),
-                _ => return 0.0,
+            let (sa, sb) = match pair_eval(world, a, b) {
+                Some(p) => p,
+                None => return 0.0,
             };
             clash_dist - edge_signed_distance(&sa, &sb)
         }
         HardConstraint::Inside { a, b, pad, .. } => {
-            let (sa, sb) = match (world.get(a), world.get(b)) {
-                (Some(na), Some(nb)) => (na.world_shape(), nb.world_shape()),
-                _ => return 0.0,
+            let (sa, sb) = match pair_eval(world, a, b) {
+                Some(p) => p,
+                None => return 0.0,
             };
             inside_g(&sa, &sb, *pad)
         }
         HardConstraint::MaxDist { a, b, dist, .. } => {
-            let (sa, sb) = match (world.get(a), world.get(b)) {
-                (Some(na), Some(nb)) => (na.world_shape(), nb.world_shape()),
-                _ => return 0.0,
+            let (sa, sb) = match pair_eval(world, a, b) {
+                Some(p) => p,
+                None => return 0.0,
             };
             edge_signed_distance(&sa, &sb) - dist
+        }
+        HardConstraint::ParallelClear {
+            a, b, clash_dist, ..
+        } => {
+            let (sa, sb) = match pair_eval(world, a, b) {
+                Some(p) => p,
+                None => return 0.0,
+            };
+            parallel_clear_g(&sa, &sb, *clash_dist)
         }
     }
 }
@@ -1383,15 +1616,28 @@ pub fn install_chem_with_texts(
     shades: &[(usize, f64, f64, f64)],
     atom_texts: &[(usize, Aabb)],
 ) {
+    let parent = world.root.clone();
+    install_chem_under(world, &parent, bonds, atoms, shades, atom_texts);
+}
+
+/// Install chem ink under `parent` (`{parent}/chem/…`).
+pub fn install_chem_under(
+    world: &mut LayoutWorld,
+    parent: &str,
+    bonds: &[(f64, f64, f64, f64)],
+    atoms: &[(usize, f64, f64)],
+    shades: &[(usize, f64, f64, f64)],
+    atom_texts: &[(usize, Aabb)],
+) -> NodeId {
     let chem = world.insert(
-        "mol/chem",
-        "mol",
+        format!("{parent}/chem"),
+        parent,
         ObjectType::Chem,
         Shape::Aabb(Aabb::new(0.0, 0.0, 0.0, 0.0)),
         true,
     );
     let bonds_id = world.insert(
-        "mol/chem/bonds",
+        format!("{parent}/chem/bonds"),
         &chem,
         ObjectType::Bonds,
         Shape::Aabb(Aabb::new(0.0, 0.0, 0.0, 0.0)),
@@ -1399,7 +1645,7 @@ pub fn install_chem_with_texts(
     );
     for (i, &(x0, y0, x1, y1)) in bonds.iter().enumerate() {
         world.insert(
-            format!("mol/chem/bonds/b{i}"),
+            format!("{parent}/chem/bonds/b{i}"),
             &bonds_id,
             ObjectType::Bonds,
             Shape::Line { x0, y0, x1, y1 },
@@ -1407,7 +1653,7 @@ pub fn install_chem_with_texts(
         );
     }
     let atoms_id = world.insert(
-        "mol/chem/atoms",
+        format!("{parent}/chem/atoms"),
         &chem,
         ObjectType::Atom,
         Shape::Aabb(Aabb::new(0.0, 0.0, 0.0, 0.0)),
@@ -1415,14 +1661,14 @@ pub fn install_chem_with_texts(
     );
     for &(idx, x, y) in atoms {
         let aid = world.insert(
-            format!("mol/chem/atoms/a{idx}"),
+            format!("{parent}/chem/atoms/a{idx}"),
             &atoms_id,
             ObjectType::Atom,
             Shape::Aabb(Aabb::new(0.0, 0.0, 0.0, 0.0)),
             true,
         );
         world.insert(
-            format!("mol/chem/atoms/a{idx}/coord"),
+            format!("{parent}/chem/atoms/a{idx}/coord"),
             &aid,
             ObjectType::Coord,
             Shape::Circle {
@@ -1434,12 +1680,12 @@ pub fn install_chem_with_texts(
         );
     }
     for &(idx, cx, cy, r) in shades {
-        let aid = format!("mol/chem/atoms/a{idx}");
+        let aid = format!("{parent}/chem/atoms/a{idx}");
         if world.get(&aid).is_none() {
             continue;
         }
         world.insert(
-            format!("mol/chem/atoms/a{idx}/shade"),
+            format!("{parent}/chem/atoms/a{idx}/shade"),
             &aid,
             ObjectType::Shade,
             Shape::Circle { cx, cy, r },
@@ -1448,7 +1694,7 @@ pub fn install_chem_with_texts(
     }
     if !atom_texts.is_empty() {
         let texts_id = world.insert(
-            "mol/chem/atom_texts",
+            format!("{parent}/chem/atom_texts"),
             &chem,
             ObjectType::AtomText,
             Shape::Aabb(Aabb::new(0.0, 0.0, 0.0, 0.0)),
@@ -1456,7 +1702,7 @@ pub fn install_chem_with_texts(
         );
         for &(idx, box_) in atom_texts {
             world.insert(
-                format!("mol/chem/atom_texts/t{idx}"),
+                format!("{parent}/chem/atom_texts/t{idx}"),
                 &texts_id,
                 ObjectType::AtomText,
                 Shape::Aabb(box_),
@@ -1465,6 +1711,7 @@ pub fn install_chem_with_texts(
         }
     }
     world.recompute_group_aabbs();
+    chem
 }
 
 /// Caption kit (solver bench / unit tests only).
@@ -1655,25 +1902,39 @@ pub fn region_text_kit(
     }
     // Avoid shade disks (labels sit in front, but still clear painted wash).
     // Inside snug: mild shade Outside so shade cannot pin the seed far out.
-    for (id, n) in world.nodes.clone() {
-        if n.object_type == ObjectType::Shade {
-            constraints.push(Constraint::Outside {
-                a: text_id.clone(),
-                b: id,
-                clash_dist: 1.0,
-                strength: if inside { 1.5 } else { 3.0 },
-            });
-        }
-    }
-    // Shade / atom disks soft-Inside hull (paint will rebuild hull after snug).
-    for (id, n) in world.nodes.clone() {
-        if matches!(n.object_type, ObjectType::Shade | ObjectType::Coord) {
-            constraints.push(Constraint::Inside {
-                a: id,
-                b: format!("mol/annotations/regions/r{region_idx}/hull"),
-                pad: CONTAIN_MARGIN_PX,
-                strength: 2.0,
-            });
+    // Walk the chem subtree (not the whole world) so extra mols in a scheme
+    // world do not leak into this kit.
+    let mut stack = vec!["mol/chem".to_string()];
+    let hull_id = format!("mol/annotations/regions/r{region_idx}/hull");
+    while let Some(nid) = stack.pop() {
+        let Some(n) = world.get(&nid) else {
+            continue;
+        };
+        stack.extend(n.children.iter().cloned());
+        match n.object_type {
+            ObjectType::Shade => {
+                constraints.push(Constraint::Outside {
+                    a: text_id.clone(),
+                    b: nid.clone(),
+                    clash_dist: 1.0,
+                    strength: if inside { 1.5 } else { 3.0 },
+                });
+                constraints.push(Constraint::Inside {
+                    a: nid,
+                    b: hull_id.clone(),
+                    pad: CONTAIN_MARGIN_PX,
+                    strength: 2.0,
+                });
+            }
+            ObjectType::Coord => {
+                constraints.push(Constraint::Inside {
+                    a: nid,
+                    b: hull_id.clone(),
+                    pad: CONTAIN_MARGIN_PX,
+                    strength: 2.0,
+                });
+            }
+            _ => {}
         }
     }
     text_id
@@ -2245,80 +2506,7 @@ pub fn bezier_path_from_proxy(proxy: &Shape, _curve: f64) -> String {
     centripetal_catmull_rom_closed_path(&pts)
 }
 
-/// Centripetal Catmull–Rom (α = 0.5) closed loop as cubic Bézier SVG `d`.
-pub fn centripetal_catmull_rom_closed_path(pts: &[(f64, f64)]) -> String {
-    let pts = dedupe_poly_pts(pts);
-    let n = pts.len();
-    if n < 3 {
-        return String::new();
-    }
-    const ALPHA: f64 = 0.5;
-    let mut d = format!("M {:.2} {:.2}", pts[0].0, pts[0].1);
-    for i in 0..n {
-        let p0 = pts[(i + n - 1) % n];
-        let p1 = pts[i];
-        let p2 = pts[(i + 1) % n];
-        let p3 = pts[(i + 2) % n];
-        let (c1, c2) = catmull_rom_segment_cubic(p0, p1, p2, p3, ALPHA);
-        d.push_str(&format!(
-            " C {:.2} {:.2} {:.2} {:.2} {:.2} {:.2}",
-            c1.0, c1.1, c2.0, c2.1, p2.0, p2.1
-        ));
-    }
-    d.push_str(" Z");
-    d
-}
-
-fn dedupe_poly_pts(pts: &[(f64, f64)]) -> Vec<(f64, f64)> {
-    let mut out: Vec<(f64, f64)> = Vec::with_capacity(pts.len());
-    for &p in pts {
-        if out
-            .last()
-            .is_none_or(|&q| (q.0 - p.0).hypot(q.1 - p.1) > 1e-6)
-        {
-            out.push(p);
-        }
-    }
-    if out.len() >= 2 {
-        let a = out[0];
-        let b = *out.last().unwrap();
-        if (a.0 - b.0).hypot(a.1 - b.1) <= 1e-6 {
-            out.pop();
-        }
-    }
-    out
-}
-
-fn knot_span(a: (f64, f64), b: (f64, f64), alpha: f64) -> f64 {
-    (a.0 - b.0).hypot(a.1 - b.1).powf(alpha).max(1e-9)
-}
-
-/// Non-uniform CR tangent at `p` given neighbors `pm`, `pp` (Yuksel).
-fn catmull_rom_tangent(pm: (f64, f64), p: (f64, f64), pp: (f64, f64), alpha: f64) -> (f64, f64) {
-    let d0 = knot_span(pm, p, alpha);
-    let d1 = knot_span(p, pp, alpha);
-    (
-        (p.0 - pm.0) / d0 - (pp.0 - pm.0) / (d0 + d1) + (pp.0 - p.0) / d1,
-        (p.1 - pm.1) / d0 - (pp.1 - pm.1) / (d0 + d1) + (pp.1 - p.1) / d1,
-    )
-}
-
-/// Cubic Bézier controls for the CR segment from `p1` → `p2`.
-fn catmull_rom_segment_cubic(
-    p0: (f64, f64),
-    p1: (f64, f64),
-    p2: (f64, f64),
-    p3: (f64, f64),
-    alpha: f64,
-) -> ((f64, f64), (f64, f64)) {
-    let m1 = catmull_rom_tangent(p0, p1, p2, alpha);
-    let m2 = catmull_rom_tangent(p1, p2, p3, alpha);
-    let dt = knot_span(p1, p2, alpha);
-    (
-        (p1.0 + m1.0 * dt / 3.0, p1.1 + m1.1 * dt / 3.0),
-        (p2.0 - m2.0 * dt / 3.0, p2.1 - m2.1 * dt / 3.0),
-    )
-}
+pub use crate::catmull::centripetal_catmull_rom_closed_path;
 
 fn convex_hull_pts(pts: &[(f64, f64)]) -> Vec<(f64, f64)> {
     if pts.len() < 2 {
@@ -2701,7 +2889,6 @@ mod tests {
         let d = centripetal_catmull_rom_closed_path(&sq);
         assert!(d.starts_with("M 0.00 0.00"), "d={d}");
         assert!(d.contains("C "), "expected cubic segments: {d}");
-        // Each vertex appears as a cubic end point (interpolating).
         for (x, y) in sq {
             let needle = format!("{x:.2} {y:.2}");
             assert!(
@@ -2709,10 +2896,6 @@ mod tests {
                 "missing interpolating vertex {needle} in {d}"
             );
         }
-        // Uniform (α=0) tangent at a knot is ½(next − prev).
-        let m1 = catmull_rom_tangent(sq[3], sq[0], sq[1], 0.0);
-        assert!((m1.0 - 0.5 * (sq[1].0 - sq[3].0)).abs() < 1e-9);
-        assert!((m1.1 - 0.5 * (sq[1].1 - sq[3].1)).abs() < 1e-9);
     }
 
     #[test]
@@ -3457,6 +3640,144 @@ mod tests {
             d <= ATOM_TEXT_TETHER_PX + 1.0,
             "must stay tethered to the atom: d={d}"
         );
+    }
+
+    #[test]
+    fn install_chem_under_non_mol_parent() {
+        let mut w = LayoutWorld::rooted("scheme", ObjectType::Scheme);
+        let mol = w.insert(
+            "scheme/mols/m0",
+            "scheme",
+            ObjectType::Mol,
+            Shape::Aabb(Aabb::new(0.0, 0.0, 40.0, 20.0)),
+            true,
+        );
+        install_chem_under(
+            &mut w,
+            &mol,
+            &[(2.0, 10.0, 30.0, 10.0)],
+            &[(0, 2.0, 10.0)],
+            &[],
+            &[],
+        );
+        assert!(w.get("scheme/mols/m0/chem/bonds/b0").is_some());
+        let mut hard = Vec::new();
+        push_clear_leaves(
+            &w,
+            &mut hard,
+            "scheme/mols/m0/chem/bonds/b0",
+            "scheme/mols/m0/chem",
+            4.0,
+        );
+        assert!(hard
+            .iter()
+            .any(|h| matches!(h, HardConstraint::Outside { .. })));
+    }
+
+    #[test]
+    fn eval_shape_assembles_child_polyline() {
+        let mut w = LayoutWorld::rooted("scheme", ObjectType::Scheme);
+        w.insert(
+            "e0",
+            "scheme",
+            ObjectType::Edge,
+            Shape::Polyline(vec![]),
+            true,
+        );
+        w.insert(
+            "e0/p0",
+            "e0",
+            ObjectType::EdgePoint,
+            Shape::Point { x: 0.0, y: 0.0 },
+            false,
+        );
+        w.insert(
+            "e0/p1",
+            "e0",
+            ObjectType::EdgePoint,
+            Shape::Point { x: 10.0, y: 0.0 },
+            false,
+        );
+        w.set_pose("e0/p1", 0.0, 5.0);
+        match w.eval_shape("e0").unwrap() {
+            Shape::Polyline(pts) => {
+                assert_eq!(pts.len(), 2);
+                assert!((pts[1].1 - 5.0).abs() < 1e-9);
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn parallel_clear_vs_transverse_cross() {
+        let stacked = parallel_clear_g(
+            &Shape::Line {
+                x0: 0.0,
+                y0: 0.0,
+                x1: 40.0,
+                y1: 0.0,
+            },
+            &Shape::Line {
+                x0: 0.0,
+                y0: 2.0,
+                x1: 40.0,
+                y1: 2.0,
+            },
+            10.0,
+        );
+        assert!(
+            stacked > 0.0,
+            "stacked parallels closer than clearance: {stacked}"
+        );
+        let cross = parallel_clear_g(
+            &Shape::Line {
+                x0: 0.0,
+                y0: 0.0,
+                x1: 40.0,
+                y1: 0.0,
+            },
+            &Shape::Line {
+                x0: 20.0,
+                y0: -20.0,
+                x1: 20.0,
+                y1: 20.0,
+            },
+            10.0,
+        );
+        assert!(
+            cross <= 0.0,
+            "transverse X must not activate ParallelClear: {cross}"
+        );
+        let n = poly_cross_count(
+            &Shape::Line {
+                x0: 0.0,
+                y0: 0.0,
+                x1: 40.0,
+                y1: 0.0,
+            },
+            &Shape::Line {
+                x0: 20.0,
+                y0: -20.0,
+                x1: 20.0,
+                y1: 20.0,
+            },
+        );
+        assert_eq!(n, 1);
+        let miss = poly_cross_count(
+            &Shape::Line {
+                x0: 0.0,
+                y0: 0.0,
+                x1: 10.0,
+                y1: 0.0,
+            },
+            &Shape::Line {
+                x0: 0.0,
+                y0: 10.0,
+                x1: 10.0,
+                y1: 10.0,
+            },
+        );
+        assert_eq!(miss, 0);
     }
 
     /// Wall-clock + iteration stats for paint-style refine kits (noise=0).

@@ -2,5 +2,7 @@
 
 /**
  * Layer name inside a molecule viewport.
+ *
+ * Paint order is the nesting order inside `g.xpict-mol` (bottom → top).
  */
 export type LayerName = "shading" | "halo" | "bonds" | "labels" | "marks" | "overlay";

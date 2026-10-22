@@ -10,7 +10,7 @@
   ],
   "properties": {
     "halo": {
-      "description": "Single document-space unioned knockout under molecule ink.",
+      "description": "Document-space knockout (scheme compose). Per-mol halo lives in the viewport `Halo` layer so it nests inside `g.xpict-mol`.",
       "default": [],
       "type": "array",
       "items": {
@@ -60,7 +60,7 @@
       }
     },
     "LayerName": {
-      "description": "Layer name inside a molecule viewport.",
+      "description": "Layer name inside a molecule viewport.\n\nPaint order is the nesting order inside `g.xpict-mol` (bottom → top).",
       "type": "string",
       "enum": [
         "shading",
@@ -235,6 +235,14 @@
                 "text"
               ]
             },
+            "rotate": {
+              "description": "Degrees about `(x, y)`. Omit when upright.",
+              "type": [
+                "number",
+                "null"
+              ],
+              "format": "double"
+            },
             "text": {
               "type": "string"
             },
@@ -260,7 +268,7 @@
       ]
     },
     "Viewport": {
-      "description": "One molecule viewport in a diagram (after ELK/grid placement).",
+      "description": "One molecule viewport in a diagram (after ELK/grid placement).\n\n`x`/`y` are the mol group's placement in the parent. `ox`/`oy` are the leftover fit origin of local primitive coords. SVG is `translate(x,y) translate(ox,oy)` around nested layer groups — primitives stay in paint space; the group carries the transform.",
       "type": "object",
       "required": [
         "height",
@@ -283,6 +291,15 @@
           "items": {
             "$ref": "#/definitions/Layer"
           }
+        },
+        "ox": {
+          "description": "Local leftover origin (fit). Nested inside the mol group, not baked into path `d`.",
+          "type": "number",
+          "format": "double"
+        },
+        "oy": {
+          "type": "number",
+          "format": "double"
         },
         "width": {
           "type": "number",

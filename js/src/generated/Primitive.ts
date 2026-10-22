@@ -8,4 +8,8 @@ export type Primitive = { "kind": "path", d: string, stroke?: string, fill?: str
 /**
  * Plain label string for ``data-text`` (glyph paths only).
  */
-data_text?: string, } | { "kind": "circle", cx: number, cy: number, r: number, fill?: string, stroke?: string, stroke_width: number, opacity: number, cls?: string, } | { "kind": "text", x: number, y: number, text: string, fill: string, font_size: number, anchor: TextAnchor, cls?: string, };
+data_text?: string, } | { "kind": "circle", cx: number, cy: number, r: number, fill?: string, stroke?: string, stroke_width: number, opacity: number, cls?: string, } | { "kind": "text", x: number, y: number, text: string, fill: string, font_size: number, anchor: TextAnchor, cls?: string, 
+/**
+ * Degrees about `(x, y)`. Omit when upright.
+ */
+rotate?: number, };

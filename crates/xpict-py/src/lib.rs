@@ -271,6 +271,7 @@ fn edge_overlay_primitives(edge_json: &str) -> PyResult<String> {
                 font_size,
                 anchor,
                 class,
+                rotate,
             } => out.push(serde_json::json!({
                 "kind": "text",
                 "x": x,
@@ -280,6 +281,7 @@ fn edge_overlay_primitives(edge_json: &str) -> PyResult<String> {
                 "font_size": font_size,
                 "anchor": anchor,
                 "cls": class,
+                "rotate": rotate,
             })),
         }
     }

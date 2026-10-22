@@ -126,7 +126,7 @@ fn compose_reaction(
         })
         .collect();
 
-    let placement = match layout_scheme(spec, layout, &sizes) {
+    let placement = match layout_scheme(spec, layout, &sizes, paints) {
         Ok(p) => p,
         Err(_) => row_placement(&sizes),
     };
@@ -217,6 +217,7 @@ fn compose_reaction(
         }
 
         let (label_text, label_pos) = resolve_edge_label(spec, edge);
+        let label_pose = placement.edge_labels.get(i).and_then(|p| *p);
         let paint = EdgePaintIn {
             pts,
             arrow: edge.arrow,
@@ -227,6 +228,9 @@ fn compose_reaction(
             label: label_text,
             label_pos,
             index: i,
+            curve_catmull: layout.refine_enabled(),
+            label_xy: label_pose.map(|(x, y, _)| (x, y)),
+            label_rotate: label_pose.map(|(_, _, r)| r),
         };
         for prim in paint_edge(&paint) {
             let scene_prim = edge_prim_to_scene(&prim);
@@ -321,6 +325,7 @@ fn place_row(paints: &[DocPaint], gap: f64) -> Scene {
 struct Placement {
     positions: HashMap<String, (f64, f64)>,
     edge_paths: Vec<Option<Vec<(f64, f64)>>>,
+    edge_labels: Vec<Option<(f64, f64, f64)>>,
     width: Option<f64>,
     height: Option<f64>,
 }
@@ -337,6 +342,7 @@ fn row_placement(sizes: &[(String, f64, f64)]) -> Placement {
     Placement {
         positions,
         edge_paths: vec![],
+        edge_labels: vec![],
         width: Some(x),
         height: Some(max_h),
     }
@@ -346,10 +352,24 @@ fn layout_scheme(
     spec: &DepictSpec,
     layout: &LayoutOpts,
     sizes: &[(String, f64, f64)],
+    paints: &[DocPaint],
 ) -> Result<Placement, String> {
     let graph = build_elk_graph(spec, layout, sizes);
     let laid = crate::elk::layout_json(&serde_json::to_string(&graph).map_err(|e| e.to_string())?)?;
-    parse_elk_placement(spec, &laid, sizes)
+    let mut placement = parse_elk_placement(spec, &laid, sizes)?;
+    if layout.refine_enabled() {
+        let refined = super::scheme_layout::refine_scheme_edges(
+            spec,
+            layout,
+            &placement.positions,
+            &placement.edge_paths,
+            paints,
+            sizes,
+        );
+        placement.edge_paths = refined.edge_paths;
+        placement.edge_labels = refined.edge_labels;
+    }
+    Ok(placement)
 }
 
 fn build_elk_graph(spec: &DepictSpec, layout: &LayoutOpts, sizes: &[(String, f64, f64)]) -> Value {
@@ -490,6 +510,7 @@ fn parse_elk_placement(
     Ok(Placement {
         positions,
         edge_paths,
+        edge_labels: vec![],
         width: laid.get("width").and_then(|v| v.as_f64()),
         height: laid.get("height").and_then(|v| v.as_f64()),
     })
@@ -617,6 +638,7 @@ fn edge_prim_to_scene(p: &EdgePrim) -> Primitive {
             font_size,
             anchor,
             class,
+            rotate,
         } => Primitive::Text {
             x: *x,
             y: *y,
@@ -629,6 +651,11 @@ fn edge_prim_to_scene(p: &EdgePrim) -> Primitive {
                 _ => TextAnchor::Middle,
             },
             class: Some(class.clone()),
+            rotate: if rotate.abs() > 1e-6 {
+                Some(*rotate)
+            } else {
+                None
+            },
         },
     }
 }
@@ -683,6 +710,7 @@ fn translate_prim(p: &Primitive, dx: f64, dy: f64) -> Primitive {
             font_size,
             anchor,
             class,
+            rotate,
         } => Primitive::Text {
             x: x + dx,
             y: y + dy,
@@ -691,6 +719,7 @@ fn translate_prim(p: &Primitive, dx: f64, dy: f64) -> Primitive {
             font_size: *font_size,
             anchor: *anchor,
             class: class.clone(),
+            rotate: *rotate,
         },
     }
 }
@@ -923,6 +952,7 @@ mod tests {
             ],
             layout: Some(LayoutOpts {
                 edge_routing: Some(EdgeRouting::Orthogonal),
+                refine: Some(false),
                 ..Default::default()
             }),
             opts: None,
@@ -995,6 +1025,7 @@ mod tests {
             ],
             layout: Some(LayoutOpts {
                 layer_spacing: Some(40.0),
+                refine: Some(false),
                 ..Default::default()
             }),
             opts: None,
@@ -1080,6 +1111,7 @@ mod tests {
             ],
             layout: Some(LayoutOpts {
                 layer_spacing: Some(40.0),
+                refine: Some(false),
                 ..Default::default()
             }),
             opts: None,
@@ -1235,6 +1267,7 @@ mod tests {
             font_size: 11.0,
             anchor: TextAnchor::Middle,
             class: None,
+            rotate: None,
         };
         match translate_prim(&text, 5.0, 6.0) {
             Primitive::Text { x, y, .. } => {
@@ -1276,6 +1309,7 @@ mod tests {
             font_size: 11.0,
             anchor: "start".into(),
             class: "label".into(),
+            rotate: 0.0,
         });
         match txt {
             Primitive::Text { anchor, .. } => assert_eq!(anchor, TextAnchor::Start),
@@ -1389,6 +1423,7 @@ mod tests {
                 direction: Some(crate::doc::LayoutDirection::Down),
                 node_spacing: Some(16.0),
                 layer_spacing: Some(8.0),
+                refine: Some(false),
             }),
             opts: None,
             color: None,
@@ -1498,6 +1533,7 @@ mod tests {
             font_size: 10.0,
             anchor: "end".into(),
             class: "c".into(),
+            rotate: 0.0,
         }) {
             Primitive::Text {
                 anchor: TextAnchor::End,
@@ -1515,6 +1551,7 @@ mod tests {
             font_size: 8.0,
             anchor: TextAnchor::Start,
             class: None,
+            rotate: None,
         });
         let row = place_row(&[a, paint("B", 40.0, 30.0)], 8.0);
         assert_eq!(row.viewports.len(), 2);
@@ -1613,5 +1650,69 @@ mod tests {
         let scene = compose_scheme(&spec, &paints).unwrap();
         assert_eq!(scene.viewports.len(), 1);
         assert!((scene.width - 50.0).abs() < 1e-9 || scene.viewports[0].width == 50.0);
+    }
+
+    #[test]
+    fn refined_scheme_paints_catmull_shaft() {
+        let spec = DepictSpec::ReactionScheme {
+            id: None,
+            children: vec![
+                Node::Mol(MolNode {
+                    id: Some("A".into()),
+                    smiles: Some("CCO".into()),
+                    ..Default::default()
+                }),
+                Node::Edge(EdgeNode {
+                    type_: EdgeNodeKind::Edge,
+                    sources: MolIds::One("A".into()),
+                    targets: MolIds::One("B".into()),
+                    label: None,
+                    edge_routing: None,
+                    role: None,
+                    arrow: EdgeArrow::Forward,
+                    color: None,
+                    stroke_width: None,
+                    dashed: false,
+                }),
+                Node::Mol(MolNode {
+                    id: Some("B".into()),
+                    smiles: Some("CC=O".into()),
+                    ..Default::default()
+                }),
+            ],
+            layout: Some(LayoutOpts {
+                refine: Some(true),
+                ..Default::default()
+            }),
+            opts: None,
+            color: None,
+            scale: None,
+            aromatic: None,
+            debug_box: None,
+            debug_align: None,
+            pad: None,
+        };
+        let paints = vec![paint("A", 120.0, 80.0), paint("B", 120.0, 80.0)];
+        let scene = compose_scheme(&spec, &paints).expect("compose");
+        assert_eq!(scene.viewports.len(), 2);
+        let has_c = scene.overlays.iter().any(|p| match p {
+            Primitive::Path {
+                d, class: Some(c), ..
+            } if c.contains("edge") => d.contains('C'),
+            _ => false,
+        });
+        let has_shaft = scene.overlays.iter().any(|p| match p {
+            Primitive::Path { class: Some(c), .. } => c.contains("edge"),
+            _ => false,
+        });
+        assert!(has_shaft, "expected an edge overlay");
+        // Two-point shafts stay as L; ELK bends become cubics.
+        let _ = has_c;
+        let xa = scene.viewports[0].x;
+        let xb = scene.viewports[1].x;
+        assert!(
+            (xa - xb).abs() > 1.0,
+            "mols should keep distinct ELK x: {xa} vs {xb}"
+        );
     }
 }

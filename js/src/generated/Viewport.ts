@@ -3,5 +3,15 @@ import type { Layer } from "./Layer";
 
 /**
  * One molecule viewport in a diagram (after ELK/grid placement).
+ *
+ * `x`/`y` are the mol group's placement in the parent. `ox`/`oy` are the
+ * leftover fit origin of local primitive coords. SVG is
+ * `translate(x,y) translate(ox,oy)` around nested layer groups — primitives
+ * stay in paint space; the group carries the transform.
  */
-export type Viewport = { id?: string, x: number, y: number, width: number, height: number, layers: Array<Layer>, };
+export type Viewport = { id?: string, x: number, y: number, 
+/**
+ * Local leftover origin (fit). Nested inside the mol group, not baked
+ * into path `d`.
+ */
+ox: number, oy: number, width: number, height: number, layers: Array<Layer>, };

@@ -225,6 +225,7 @@ fn shift_prim(p: &Primitive, dx: f64, dy: f64) -> Primitive {
             font_size,
             anchor,
             class,
+            rotate,
         } => Primitive::Text {
             x: x + dx,
             y: y + dy,
@@ -233,6 +234,7 @@ fn shift_prim(p: &Primitive, dx: f64, dy: f64) -> Primitive {
             font_size: *font_size,
             anchor: *anchor,
             class: class.clone(),
+            rotate: *rotate,
         },
     }
 }

@@ -14,6 +14,7 @@ export type Scene = { width: number, height: number, viewports: Array<Viewport>,
  */
 overlays: Array<Primitive>, 
 /**
- * Single document-space unioned knockout under molecule ink.
+ * Document-space knockout (scheme compose). Per-mol halo lives in the
+ * viewport `Halo` layer so it nests inside `g.xpict-mol`.
  */
 halo: Array<Primitive>, };

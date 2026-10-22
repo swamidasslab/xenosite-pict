@@ -43,6 +43,7 @@ class TextPrimDict(TypedDict, total=False):
     cls: NotRequired[str]
     fill: NotRequired[str]
     font_size: NotRequired[float]
+    rotate: NotRequired[float]
 
 
 PrimitiveDict = PathPrimDict | CirclePrimDict | TextPrimDict
@@ -62,6 +63,8 @@ class ViewportDict(TypedDict, total=False):
     width: Required[float]
     id: NotRequired[str]
     layers: NotRequired[list[LayerDict]]
+    ox: NotRequired[float]
+    oy: NotRequired[float]
     x: NotRequired[float]
     y: NotRequired[float]
 

@@ -35,4 +35,9 @@ node_spacing?: number,
 /**
  * Between-layer gap along the flow axis (px). Smaller → tighter pack.
  */
-layer_spacing?: number, };
+layer_spacing?: number, 
+/**
+ * After ELK, refine edge routes and labels with the constraint solver.
+ * Omit or `true` → refine on; `false` → stock ELK placement.
+ */
+refine?: boolean, };

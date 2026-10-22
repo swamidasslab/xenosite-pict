@@ -131,21 +131,27 @@ fn render_primitive(p: &Primitive) -> String {
             font_size,
             anchor,
             class,
+            rotate,
         } => {
             let anchor_s = match anchor {
                 TextAnchor::Start => "start",
                 TextAnchor::Middle => "middle",
                 TextAnchor::End => "end",
             };
+            let rot = rotate
+                .filter(|r| r.abs() > 1e-6)
+                .map(|r| format!(" transform=\"rotate({} {} {})\"", fmt(r), fmt(*x), fmt(*y)))
+                .unwrap_or_default();
             format!(
                 "<text x=\"{}\" y=\"{}\" fill=\"{}\" font-size=\"{}\" \
                  font-family=\"Liberation Sans, Arial, sans-serif\" text-anchor=\"{anchor_s}\" \
-                 dominant-baseline=\"alphabetic\"{}>{}</text>",
+                 dominant-baseline=\"alphabetic\"{}{}>{}</text>",
                 fmt(*x),
                 fmt(*y),
                 esc(fill),
                 fmt(*font_size),
                 attr("class", class.as_deref()),
+                rot,
                 esc(text),
             )
         }
