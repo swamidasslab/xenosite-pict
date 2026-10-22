@@ -362,6 +362,10 @@ fn build_elk_graph(spec: &DepictSpec, layout: &LayoutOpts, sizes: &[(String, f64
                 "id": id,
                 "width": w,
                 "height": h,
+                "layoutOptions": {
+                    "elk.portConstraints": "FIXED_SIDE",
+                    "elk.layered.nodePlacement.networkSimplex.nodeFlexibility": "PORT_POSITION",
+                },
             })
         })
         .collect();

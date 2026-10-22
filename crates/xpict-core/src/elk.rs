@@ -69,6 +69,12 @@ pub fn scheme_layout_options(kind: DiagramKind, opts: &LayoutOpts) -> BTreeMap<S
             "elk.layered.nodePlacement.strategy".into(),
             "NETWORK_SIMPLEX".into(),
         ),
+        // Slide dummy ports along the flow side toward the other endpoint.
+        ("elk.portConstraints".into(), "FIXED_SIDE".into()),
+        (
+            "elk.layered.nodePlacement.networkSimplex.nodeFlexibility.default".into(),
+            "PORT_POSITION".into(),
+        ),
     ]);
 
     if kind == DiagramKind::Reaction {
@@ -143,6 +149,12 @@ mod tests {
         let m = scheme_layout_options(DiagramKind::Reaction, &opts);
         assert_eq!(m.get("elk.algorithm").unwrap(), "layered");
         assert_eq!(m.get("elk.layered.unnecessaryBendpoints").unwrap(), "false");
+        assert_eq!(m.get("elk.portConstraints").unwrap(), "FIXED_SIDE");
+        assert_eq!(
+            m.get("elk.layered.nodePlacement.networkSimplex.nodeFlexibility.default")
+                .unwrap(),
+            "PORT_POSITION"
+        );
         assert_eq!(
             m.get("elk.spacing.nodeNode").unwrap(),
             &LayoutOpts::DEFAULT_NODE_SPACING.to_string()
@@ -287,5 +299,53 @@ mod tests {
         let out = layout_json(input).expect("layout");
         let parsed: serde_json::Value = serde_json::from_str(&out).expect("json");
         assert!(parsed["children"].as_array().unwrap().len() >= 3);
+    }
+
+    #[test]
+    fn port_flexibility_slides_toward_shorter_neighbor() {
+        let input = r#"{
+          "id": "root",
+          "layoutOptions": {
+            "elk.algorithm": "layered",
+            "elk.direction": "RIGHT",
+            "elk.edgeRouting": "ORTHOGONAL",
+            "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
+            "elk.portConstraints": "FIXED_SIDE",
+            "elk.layered.nodePlacement.networkSimplex.nodeFlexibility.default": "PORT_POSITION"
+          },
+          "children": [
+            {
+              "id": "a",
+              "width": 40.0,
+              "height": 20.0,
+              "layoutOptions": {
+                "elk.portConstraints": "FIXED_SIDE",
+                "elk.layered.nodePlacement.networkSimplex.nodeFlexibility": "PORT_POSITION"
+              }
+            },
+            {
+              "id": "b",
+              "width": 40.0,
+              "height": 80.0,
+              "layoutOptions": {
+                "elk.portConstraints": "FIXED_SIDE",
+                "elk.layered.nodePlacement.networkSimplex.nodeFlexibility": "PORT_POSITION"
+              }
+            }
+          ],
+          "edges": [{"id": "e0", "sources": ["a"], "targets": ["b"]}]
+        }"#;
+        let parsed: serde_json::Value =
+            serde_json::from_str(&layout_json(input).expect("layout")).expect("json");
+        let start = &parsed["edges"][0]["sections"][0]["startPoint"];
+        let end = &parsed["edges"][0]["sections"][0]["endPoint"];
+        let sy = start["y"].as_f64().unwrap();
+        let ey = end["y"].as_f64().unwrap();
+        // Centers of 20 vs 80 boxes differ by 30px if tops align; sliding ports
+        // should keep the shaft closer than that.
+        assert!(
+            (sy - ey).abs() < 20.0,
+            "port Y should slide toward the source, start={sy} end={ey} json={parsed}"
+        );
     }
 }

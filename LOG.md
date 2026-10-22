@@ -2,6 +2,8 @@
 
 ## 2026-10-21
 
+- ELK scheme default: `portConstraints=FIXED_SIDE` and network-simplex `nodeFlexibility=PORT_POSITION` so dummy ports slide along the flow side toward the other mol (straighter arrows).
+
 - `circle.bonds` is a circle at the bond midpoint, same fill/stroke/scale and bond-clearance as `circle.atoms`. Capsule geometry is unused. Class `bond-circle`.
 
 - Product 0.6.0: one Rust scene_to_svg (`g.xpict-mol[data-id]`, no XML decl); scheme arrows follow the viewport group.
