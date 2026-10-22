@@ -2,6 +2,8 @@
 
 ## 2026-10-22
 
+- Clash grid is opt-in (`add_ink` / `ink_signed`). Outside energy stays geometric so captions/callouts still clear the chem AABB, not the raster. Stroke-only scene paths are not filled AABBs (bond Lines already cover them). Unused label-ink constant dropped.
+
 - Layout nodes own painted ink (`add_ink`) and expose an on-demand cached clash grid (chamfer SDF). Scheme arrows standoff from that grid — bonds, heteroatom glyphs, regions, annotations — not a kit-side leaf dump. Halo/debug paint is omitted.
 
 - Scheme arrow ink standoff is BOND_PX/3 (~10 px). One bond left heads sitting in the ELK gap instead of reaching the chem.

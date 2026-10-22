@@ -36,11 +36,11 @@ pub enum InkStamp {
 /// Cached occupancy + chamfer signed distance (positive = outside ink).
 #[derive(Debug, Clone)]
 pub struct ClashGrid {
-    pub x0: f64,
-    pub y0: f64,
-    pub cell: f64,
-    pub cols: usize,
-    pub rows: usize,
+    x0: f64,
+    y0: f64,
+    cell: f64,
+    cols: usize,
+    rows: usize,
     /// Signed distance in CSS-px, row-major.
     sdf: Vec<f32>,
 }
@@ -50,24 +50,15 @@ impl ClashGrid {
         if stamps.is_empty() {
             return None;
         }
-        let mut box_ = Aabb::new(0.0, 0.0, 0.0, 0.0);
-        let mut any = false;
-        for s in stamps {
+        let mut box_ = stamp_aabb(&stamps[0]);
+        for s in &stamps[1..] {
             let a = stamp_aabb(s);
-            if !any {
-                box_ = a;
-                any = true;
-            } else {
-                box_ = Aabb::new(
-                    box_.x0.min(a.x0),
-                    box_.y0.min(a.y0),
-                    box_.x1.max(a.x1),
-                    box_.y1.max(a.y1),
-                );
-            }
-        }
-        if !any {
-            return None;
+            box_ = Aabb::new(
+                box_.x0.min(a.x0),
+                box_.y0.min(a.y0),
+                box_.x1.max(a.x1),
+                box_.y1.max(a.y1),
+            );
         }
         let box_ = box_.inflate(CLASH_PAD);
         let mut cell = CLASH_CELL;
@@ -339,5 +330,23 @@ mod tests {
         let d = g.signed_at(40.0, 5.0);
         assert!(d > 15.0, "20px to the right of a 20-wide box: {d}");
         assert!(g.signed_at(10.0, 5.0) < 0.0);
+    }
+
+    #[test]
+    fn line_stamp_is_a_capsule_not_a_filled_aabb() {
+        let g = ClashGrid::from_stamps(&[InkStamp::Line {
+            x0: 0.0,
+            y0: 0.0,
+            x1: 80.0,
+            y1: 80.0,
+            r: 2.0,
+        }])
+        .unwrap();
+        let d = g.signed_at(80.0, 0.0);
+        assert!(
+            d > 20.0,
+            "corner of the diagonal's AABB must be air, not filled ink: {d}"
+        );
+        assert!(g.signed_at(40.0, 40.0) < 0.0);
     }
 }

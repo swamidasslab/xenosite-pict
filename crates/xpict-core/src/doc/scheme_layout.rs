@@ -17,8 +17,6 @@ use super::{DepictSpec, DocPaint, LayoutOpts};
 
 /// Gap from all painted mol ink (bonds, glyphs, regions, annotations) (~⅓ bond).
 pub const SCHEME_INK_STANDOFF: f64 = BOND_PX / 3.0;
-#[allow(dead_code)]
-const SCHEME_LABEL_INK_STANDOFF: f64 = 0.5 * BOND_PX;
 /// Minimum gap between nearly-parallel overlapping shafts.
 pub const SCHEME_EDGE_CLEARANCE: f64 = BOND_PX;
 const LABEL_TETHER_PX: f64 = 8.0;
@@ -487,6 +485,10 @@ fn skip_ink_class(class: Option<&str>) -> bool {
         .any(|t| t == "halo" || t.contains("debug-box") || t.contains("debug_box"))
 }
 
+fn path_is_filled(fill: Option<&str>) -> bool {
+    matches!(fill, Some(s) if !s.is_empty() && !s.eq_ignore_ascii_case("none"))
+}
+
 fn prim_ink_shapes(p: &Primitive, ox: f64, oy: f64) -> Vec<Shape> {
     match p {
         Primitive::Circle {
@@ -501,8 +503,13 @@ fn prim_ink_shapes(p: &Primitive, ox: f64, oy: f64) -> Vec<Shape> {
                 r: *r,
             }]
         }
-        Primitive::Path { d, class, .. } => {
+        Primitive::Path { d, fill, class, .. } => {
             if skip_ink_class(class.as_deref()) {
+                return Vec::new();
+            }
+            // Stroke-only paths (bonds) are already Line leaves under chem.
+            // Stamping them as a filled AABB bloated diagonal bonds into slabs.
+            if !path_is_filled(fill.as_deref()) {
                 return Vec::new();
             }
             super::chrome_paint::path_aabb(d)
@@ -896,6 +903,24 @@ mod tests {
         assert!(
             (c.0 - 30.0).abs() < 1e-9 && (c.1 - 35.0).abs() < 1e-9,
             "{c:?}"
+        );
+    }
+
+    #[test]
+    fn stroke_paths_are_not_filled_ink_stamps() {
+        let stroke: Primitive =
+            serde_json::from_str(r##"{"kind":"path","d":"M 0 0 L 100 80","stroke":"#000"}"##)
+                .unwrap();
+        assert!(
+            prim_ink_shapes(&stroke, 0.0, 0.0).is_empty(),
+            "bond strokes are Line leaves, not filled AABBs"
+        );
+        let filled: Primitive =
+            serde_json::from_str(r##"{"kind":"path","d":"M 0 0 L 10 0 L 10 12 Z","fill":"#000"}"##)
+                .unwrap();
+        assert!(
+            !prim_ink_shapes(&filled, 0.0, 0.0).is_empty(),
+            "filled glyphs/wedges stay as ink AABBs"
         );
     }
 

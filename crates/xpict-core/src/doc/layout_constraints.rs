@@ -745,37 +745,62 @@ pub fn push_clear_leaves(
     }
 }
 
-fn shape_to_stamp(s: &Shape) -> Option<InkStamp> {
+fn stamps_from_shape(s: &Shape) -> Vec<InkStamp> {
     match s {
-        Shape::Point { x, y } => Some(InkStamp::Point { x: *x, y: *y }),
-        Shape::Circle { cx, cy, r } => Some(InkStamp::Circle {
+        Shape::Point { x, y } => vec![InkStamp::Point { x: *x, y: *y }],
+        Shape::Circle { cx, cy, r } => vec![InkStamp::Circle {
             cx: *cx,
             cy: *cy,
             r: *r,
-        }),
+        }],
         Shape::Aabb(a) => {
             if a.width() <= 1e-9 && a.height() <= 1e-9 {
-                None
+                Vec::new()
             } else {
-                Some(InkStamp::Aabb(*a))
+                vec![InkStamp::Aabb(*a)]
             }
         }
-        Shape::Line { x0, y0, x1, y1 } => Some(InkStamp::Line {
+        Shape::Line { x0, y0, x1, y1 } => vec![InkStamp::Line {
             x0: *x0,
             y0: *y0,
             x1: *x1,
             y1: *y1,
-            r: (STROKE_PX * 0.5).max(1.0),
-        }),
-        Shape::Polyline(pts) | Shape::PointSet(pts) => {
-            if pts.len() < 2 {
-                return None;
-            }
-            // First segment is enough for Option; callers that need all edges
-            // go through stamp_poly below. Keep a covering AABB for the set.
-            Some(InkStamp::Aabb(s.aabb()))
+            r: bond_half_stroke().max(1.0),
+        }],
+        Shape::Polyline(pts) => polyline_stamps(pts, false),
+        Shape::PointSet(pts) => polyline_stamps(pts, true),
+    }
+}
+
+fn polyline_stamps(pts: &[(f64, f64)], closed: bool) -> Vec<InkStamp> {
+    if pts.len() < 2 {
+        return Vec::new();
+    }
+    let r = bond_half_stroke().max(1.0);
+    let mut out = Vec::with_capacity(pts.len());
+    for w in pts.windows(2) {
+        out.push(InkStamp::Line {
+            x0: w[0].0,
+            y0: w[0].1,
+            x1: w[1].0,
+            y1: w[1].1,
+            r,
+        });
+    }
+    if closed && pts.len() >= 3 {
+        let a = pts[pts.len() - 1];
+        let b = pts[0];
+        if (a.0 - b.0).hypot(a.1 - b.1) > 1e-9 {
+            out.push(InkStamp::Line {
+                x0: a.0,
+                y0: a.1,
+                x1: b.0,
+                y1: b.1,
+                r,
+            });
         }
     }
+    out
 }
 
 /// True for painted geometry. Empty container AABBs (`0×0` groups) are not
@@ -990,7 +1015,6 @@ impl LayoutWorld {
     pub fn add_ink(&mut self, id: &str, shapes: impl IntoIterator<Item = Shape>) {
         if let Some(n) = self.nodes.get_mut(id) {
             n.ink.extend(shapes);
-            n.clash_grid.borrow_mut().take();
         }
         self.invalidate_clash(id);
     }
@@ -1038,9 +1062,7 @@ impl LayoutWorld {
         };
         let mut stamps = Vec::new();
         for s in &n.ink {
-            if let Some(t) = shape_to_stamp(s) {
-                stamps.push(t);
-            }
+            stamps.extend(stamps_from_shape(s));
         }
         let mut stack = n.children.clone();
         while let Some(cid) = stack.pop() {
@@ -1049,46 +1071,16 @@ impl LayoutWorld {
             };
             stack.extend(c.children.iter().cloned());
             for s in &c.ink {
-                if let Some(t) = shape_to_stamp(s) {
-                    stamps.push(t);
-                }
+                stamps.extend(stamps_from_shape(s));
             }
             if c.children.is_empty() {
                 let s = c.world_shape();
                 if primitive_leaf(&s) {
-                    if let Some(t) = shape_to_stamp(&s) {
-                        stamps.push(t);
-                    }
+                    stamps.extend(stamps_from_shape(&s));
                 }
             }
         }
         stamps
-    }
-
-    fn ink_signed_shape(&self, id: &str, s: &Shape) -> Option<f64> {
-        match s {
-            Shape::Point { x, y } => self.ink_signed(id, *x, *y),
-            Shape::Circle { cx, cy, r, .. } => self.ink_signed(id, *cx, *cy).map(|d| d - r),
-            other => {
-                let a = other.aabb();
-                let samples = [
-                    (a.x0, a.y0),
-                    (a.x1, a.y0),
-                    (a.x0, a.y1),
-                    (a.x1, a.y1),
-                    a.center(),
-                ];
-                let mut best = f64::INFINITY;
-                let mut any = false;
-                for (x, y) in samples {
-                    if let Some(d) = self.ink_signed(id, x, y) {
-                        best = best.min(d);
-                        any = true;
-                    }
-                }
-                any.then_some(best)
-            }
-        }
     }
 
     pub fn movable_ids(&self) -> Vec<NodeId> {
@@ -1233,10 +1225,7 @@ fn constraint_energy(world: &LayoutWorld, c: &Constraint) -> f64 {
                 Some(p) => p,
                 None => return 0.0,
             };
-            let d = world
-                .ink_signed_shape(b, &sa)
-                .or_else(|| world.ink_signed_shape(a, &sb))
-                .unwrap_or_else(|| edge_signed_distance(&sa, &sb));
+            let d = edge_signed_distance(&sa, &sb);
             strength * hinge_below(d, *clash_dist)
         }
         Constraint::Inside {
@@ -1474,12 +1463,6 @@ pub fn hard_g(world: &LayoutWorld, h: &HardConstraint) -> f64 {
                 Some(p) => p,
                 None => return 0.0,
             };
-            if let Some(d) = world.ink_signed_shape(b, &sa) {
-                return clash_dist - d;
-            }
-            if let Some(d) = world.ink_signed_shape(a, &sb) {
-                return clash_dist - d;
-            }
             clash_dist - edge_signed_distance(&sa, &sb)
         }
         HardConstraint::Inside { a, b, pad, .. } => {
@@ -3927,6 +3910,37 @@ mod tests {
         assert!(hard
             .iter()
             .any(|h| matches!(h, HardConstraint::Outside { .. })));
+    }
+
+    #[test]
+    fn clash_grid_is_opt_in_not_outside() {
+        let mut w = LayoutWorld::new("mol");
+        install_chem(
+            &mut w,
+            &[(0.0, 0.0, 100.0, 0.0)],
+            &[(0, 0.0, 0.0), (1, 100.0, 0.0)],
+            &[],
+        );
+        w.recompute_group_aabbs();
+        let x = 50.0;
+        let y = ATOM_DISK_R_PX - 1.0;
+        w.insert("p", "mol", ObjectType::Group, Shape::Point { x, y }, true);
+        let h = HardConstraint::Outside {
+            a: "p".into(),
+            b: "mol/chem".into(),
+            clash_dist: 4.0,
+            lagrangian: LAGRANGIAN_CLEAR,
+        };
+        let g = hard_g(&w, &h);
+        let ink = w.ink_signed("mol/chem", x, y).expect("chem raster");
+        assert!(
+            g > 0.0,
+            "Outside vs chem stays the union AABB (point is inside the box): g={g}"
+        );
+        assert!(
+            ink > 2.0,
+            "ink_signed is the opt-in raster; air beside the bond: {ink}"
+        );
     }
 
     #[test]
