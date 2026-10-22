@@ -144,3 +144,17 @@ export function renderJson(specJson: string): string {
   requireReady();
   return wasmRender(specJson);
 }
+
+/** Scene JSON → SVG (Rust `scene_to_svg`; viewport ids become `data-id`). */
+export function sceneToSvgJson(sceneJson: string): string {
+  requireReady();
+  if (!module_) {
+    throw new Error("xpict wasm missing sceneToSvg(); rebuild with make build-wasm");
+  }
+  const out = wasmCall((p) => module_!._xpict_scene_to_svg(p), sceneJson);
+  const trimmed = out.trimStart();
+  if (!trimmed.startsWith("<svg")) {
+    throw new Error(out);
+  }
+  return out;
+}

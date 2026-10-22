@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from xpict import DepictSpec, Mol, MolRenderOptions, PictBase, mol, render, to_svg
+from xpict import DepictSpec, Mol, MolRenderOptions, PictBase, depict, mol, render, to_svg
 
 
 def test_mol_constructs():
@@ -16,10 +16,20 @@ def test_ethanol_svg():
     svg = rendered.to_svg()
     assert "<svg" in svg
     assert "viewBox=" in svg
+    assert 'class="xpict-mol"' in svg
+    assert "data-id=" in svg
+    assert "<?xml" not in svg
     assert rendered.width > 0 and rendered.height > 0
     assert len(rendered.molecule.atoms) == 3
     assert len(rendered.molecule.bonds) == 2
     assert rendered.frame_molblock
+
+
+def test_svg_passes_through_spec_id():
+    svg = depict({"type": "mol", "id": "m3", "smiles": "CCO"})[0].to_svg()
+    assert 'class="xpict-mol"' in svg
+    assert 'data-id="m3"' in svg
+    assert "<?xml" not in svg
 
 
 def test_benzene_aromatic_order_not_wiped_to_single():

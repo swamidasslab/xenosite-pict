@@ -1,4 +1,4 @@
-"""Packed paint row + thin Scene→SVG (Rust paints; host only serializes)."""
+"""Packed paint row + thin Scene→SVG (Rust `scene_to_svg`; host is IPython/HTML)."""
 
 from __future__ import annotations
 
@@ -7,121 +7,18 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from urllib.parse import quote
-from xml.etree.ElementTree import Element, SubElement, tostring
 
 from xpict.base import PictBase
 from xpict.contracts.edge import MoleculeIn
-from xpict.contracts.scene import (
-    CirclePrim,
-    PathPrim,
-    Primitive,
-    Scene,
-    TextPrim,
-    Viewport,
-)
+from xpict.contracts.scene import Scene
 from xpict.contracts.scene_dict import SceneDict
+from xpict.native_bridge import scene_to_svg as _native_scene_to_svg
 
 if TYPE_CHECKING:
     from xpict.spec import Mol
 
 _SVG_ROOT_ATTR = re.compile(r"<svg\b([^>]*)>", re.IGNORECASE | re.DOTALL)
 _SVG_ATTR = re.compile(r'([\w:-]+)="([^"]*)"')
-_SVG_NUM = re.compile(r"[-+]?(?:\d+\.\d*|\.\d+|\d+)(?:[eE][-+]?\d+)?")
-
-
-def _fmt_num(value: float) -> str:
-    if value != value:  # NaN
-        return "0"
-    s = f"{value:.2f}"
-    if "." in s:
-        s = s.rstrip("0").rstrip(".")
-    return s or "0"
-
-
-def _fmt_path_d(d: str) -> str:
-    return _SVG_NUM.sub(lambda m: _fmt_num(float(m.group(0))), d)
-
-
-def _render_primitive(parent: Element, prim: Primitive) -> None:
-    match prim:
-        case PathPrim():
-            attrs = {
-                "d": _fmt_path_d(prim.d),
-                "fill": prim.fill or "none",
-                "stroke-width": _fmt_num(prim.stroke_width),
-                "stroke-linecap": prim.stroke_linecap or "round",
-                "stroke-linejoin": "round",
-                "opacity": _fmt_num(prim.opacity),
-            }
-            if prim.stroke:
-                attrs["stroke"] = prim.stroke
-            if prim.stroke_dasharray:
-                attrs["stroke-dasharray"] = prim.stroke_dasharray
-            if prim.cls:
-                attrs["class"] = prim.cls
-            if prim.data_text:
-                attrs["data-text"] = prim.data_text
-            SubElement(parent, "path", attrs)
-        case CirclePrim():
-            attrs = {
-                "cx": _fmt_num(prim.cx),
-                "cy": _fmt_num(prim.cy),
-                "r": _fmt_num(prim.r),
-                "opacity": _fmt_num(prim.opacity),
-                "fill": prim.fill or "none",
-                "stroke-width": _fmt_num(prim.stroke_width),
-            }
-            if prim.stroke:
-                attrs["stroke"] = prim.stroke
-            if prim.cls:
-                attrs["class"] = prim.cls
-            SubElement(parent, "circle", attrs)
-        case TextPrim():
-            attrs = {
-                "x": _fmt_num(prim.x),
-                "y": _fmt_num(prim.y),
-                "fill": prim.fill or "#000",
-                "font-size": _fmt_num(prim.font_size),
-                "font-family": "Liberation Sans, Arial, sans-serif",
-                "text-anchor": prim.anchor,
-                "dominant-baseline": "alphabetic",
-            }
-            if prim.cls:
-                attrs["class"] = prim.cls
-            el = SubElement(parent, "text", attrs)
-            el.text = prim.text
-
-
-def _render_viewport(
-    parent: Element,
-    vp: Viewport,
-    *,
-    layers: tuple[str, ...] | None = None,
-) -> None:
-    want = set(layers) if layers is not None else None
-    prims: list[tuple[str, list[Primitive]]] = []
-    for layer in vp.layers:
-        if want is not None and layer.name not in want:
-            continue
-        if not layer.primitives:
-            continue
-        prims.append((layer.name, layer.primitives))
-    if not prims:
-        return
-    g = SubElement(
-        parent,
-        "g",
-        {
-            "class": "xpict-mol",
-            "transform": f"translate({_fmt_num(vp.x)},{_fmt_num(vp.y)})",
-        },
-    )
-    if vp.id:
-        g.set("data-id", vp.id)
-    for name, primitives in prims:
-        lg = SubElement(g, "g", {"class": f"layer-{name}", "id": name})
-        for prim in primitives:
-            _render_primitive(lg, prim)
 
 
 def _strip_xml_decl(svg: str) -> str:
@@ -162,34 +59,9 @@ def svg_to_img_tag(
     )
 
 
-def scene_to_svg(scene: Scene) -> str:
-    """Scene JSON → SVG (parity with JS ``sceneToSvg``)."""
-    w = _fmt_num(scene.width)
-    h = _fmt_num(scene.height)
-    root = Element(
-        "svg",
-        {
-            "xmlns": "http://www.w3.org/2000/svg",
-            "width": w,
-            "height": h,
-            "viewBox": f"0 0 {w} {h}",
-            "class": "xpict",
-            "style": "background:transparent;max-width:100%;max-height:100%",
-        },
-    )
-    for vp in scene.viewports:
-        _render_viewport(root, vp, layers=("shading",))
-    if scene.halo:
-        hg = SubElement(root, "g", {"class": "xpict-halo", "id": "halo"})
-        for prim in scene.halo:
-            _render_primitive(hg, prim)
-    for vp in scene.viewports:
-        _render_viewport(root, vp, layers=("bonds", "labels", "marks", "overlay"))
-    if scene.overlays:
-        og = SubElement(root, "g", {"class": "xpict-overlays", "id": "overlays"})
-        for prim in scene.overlays:
-            _render_primitive(og, prim)
-    return '<?xml version="1.0" encoding="UTF-8"?>\n' + tostring(root, encoding="unicode")
+def scene_to_svg(scene: Scene | SceneDict | str) -> str:
+    """Scene JSON → SVG (Rust ``scene_to_svg``; JS ``xpict.toSvg``)."""
+    return _native_scene_to_svg(scene)
 
 
 def scene_to_html(scene: Scene, *, title: str | None = None) -> str:

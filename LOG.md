@@ -2,6 +2,8 @@
 
 ## 2026-10-21
 
+- Scene→SVG lives in `xpict-core` only. Viewport spec ids become `g.xpict-mol[data-id]` (escaped). No `<?xml …?>` (inline HTML). Python/JS call `_native.scene_to_svg` / `xpict_scene_to_svg`.
+
 - Product 0.5.1: drop RDKit, Emscripten CoordGen wasm, reaction_scheme JS smoke.
 
 - JS wasm is `wasm32-unknown-emscripten` (`em++` compiles CoordGen and links libc++). `wasm32-unknown-unknown` has no `<map>`. `scripts/ensure_emsdk.sh` installs emsdk 6.0.13 under `~/.cache/emsdk`. C ABI `xpict_render` + MODULARIZE ES module; wasm-pack/wasm-bindgen dropped for this crate. Orthogonal scheme arrows: elkrs can emit a sub-4px shaft when layers pack flush; fall back to viewport anchors.

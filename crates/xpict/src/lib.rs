@@ -39,7 +39,6 @@
 
 mod depict_spec;
 mod edge_plan;
-mod svg;
 
 pub use depict_spec::{
     depict, AlignTo, AlignToSpec, DepictSpec, MolNode, MolSpec, Node, ShadeSpec,
@@ -47,12 +46,12 @@ pub use depict_spec::{
 pub use edge_plan::{build_align_plan, process_edge_plan, process_edge_plan_with_frames};
 pub use xpict_core::{cx_atom_labels, smiles_base};
 
-pub use svg::scene_to_svg;
 pub use xpict_core::edge::{
     AlignOpts as EdgeAlignOpts, CoordGenMoleculeResult, CoordMethod, EdgePlan, EdgeResult,
     EdgeTask, EdgeTaskResult, MolTemplate, MIN_MCS_ATOMS,
 };
 pub use xpict_core::scene::{AtomIn, BondIn, MoleculeIn, Scene};
+pub use xpict_core::scene_to_svg;
 pub use xpict_core::{
     apply_cx_by_index, apply_star_labels, depict_molecule, plan_edge, render_doc, SCALE,
 };

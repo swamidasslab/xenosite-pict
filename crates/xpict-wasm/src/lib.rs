@@ -1,4 +1,4 @@
-//! Emscripten C ABI for **xpict** — one [`xpict_render`] entry for every spec.
+//! Emscripten C ABI for **xpict** — [`xpict_render`] and [`xpict_scene_to_svg`].
 //!
 //! CoordGen layout, mol-spec paint (chem + annotations + caption), and
 //! scheme compose all live in core. Hosts pass DepictSpec JSON.
@@ -76,6 +76,19 @@ pub extern "C" fn xpict_render(spec_json: *const c_char) -> *mut c_char {
 #[no_mangle]
 pub extern "C" fn xpict_depict_molecule(mol_json: *const c_char) -> *mut c_char {
     xpict_render(mol_json)
+}
+
+/// Scene JSON → SVG. Caller frees with [`xpict_string_free`].
+#[no_mangle]
+pub extern "C" fn xpict_scene_to_svg(scene_json: *const c_char) -> *mut c_char {
+    let out = (|| {
+        let json = read_cstr(scene_json)?;
+        xpict_core::scene_to_svg_json(json)
+    })();
+    match out {
+        Ok(s) => cstring_ptr(s),
+        Err(e) => cstring_ptr(e),
+    }
 }
 
 /// Free a string returned by [`xpict_render`].

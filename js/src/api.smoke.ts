@@ -20,6 +20,12 @@ const svg = xpict.toSvg(rendered.scene);
 if (!svg.includes("<svg") || !svg.includes("viewBox")) {
   throw new Error("toSvg missing root");
 }
+if (!svg.includes('class="xpict-mol"') || !svg.includes("data-id=")) {
+  throw new Error("toSvg missing g.xpict-mol[data-id]");
+}
+if (svg.includes("<?xml")) {
+  throw new Error("toSvg should omit the XML declaration");
+}
 
 rendered.scene.width = Math.ceil(rendered.scene.width);
 const tweaked = xpict.toSvg(rendered.scene);

@@ -26,14 +26,19 @@ fn centered_displacements(order: f64, off: f64) -> Vec<f64> {
     bonds::centered_displacements(order, off)
 }
 
+/// Scene JSON → SVG (same markup as Rust / JS `toSvg`).
+#[pyfunction]
+fn scene_to_svg(scene_json: &str) -> PyResult<String> {
+    xpict_core::scene_to_svg_json(scene_json).map_err(PyRuntimeError::new_err)
+}
+
 /// Paint one molecule: `MoleculeIn` JSON → `Scene` JSON (MVP ABI).
 #[pyfunction]
 fn depict_molecule(molecule_json: &str) -> PyResult<String> {
     let mol: MoleculeIn = serde_json::from_str(molecule_json)
         .map_err(|e| PyRuntimeError::new_err(format!("MoleculeIn JSON: {e}")))?;
     let scene = depict::depict_molecule(&mol);
-    serde_json::to_string(&scene)
-        .map_err(|e| PyRuntimeError::new_err(format!("Scene JSON: {e}")))
+    serde_json::to_string(&scene).map_err(|e| PyRuntimeError::new_err(format!("Scene JSON: {e}")))
 }
 
 /// Validate `EdgePlan` JSON (unique ids, structure fields, root align=null).
@@ -42,8 +47,7 @@ fn validate_edge_plan(plan_json: &str) -> PyResult<String> {
     let plan: xpict_core::EdgePlan = serde_json::from_str(plan_json)
         .map_err(|e| PyRuntimeError::new_err(format!("EdgePlan JSON: {e}")))?;
     plan.validate().map_err(PyRuntimeError::new_err)?;
-    serde_json::to_string(&plan)
-        .map_err(|e| PyRuntimeError::new_err(format!("EdgePlan JSON: {e}")))
+    serde_json::to_string(&plan).map_err(|e| PyRuntimeError::new_err(format!("EdgePlan JSON: {e}")))
 }
 
 /// Pass 1: `DepictSpec` JSON → `EdgePlan` JSON (or ``null`` when empty).
@@ -52,8 +56,7 @@ fn plan_edge(spec_json: &str) -> PyResult<String> {
     let spec: xpict_core::DepictSpec = serde_json::from_str(spec_json)
         .map_err(|e| PyRuntimeError::new_err(format!("DepictSpec JSON: {e}")))?;
     let plan = xpict_core::plan_edge(&spec).map_err(PyRuntimeError::new_err)?;
-    serde_json::to_string(&plan)
-        .map_err(|e| PyRuntimeError::new_err(format!("EdgePlan JSON: {e}")))
+    serde_json::to_string(&plan).map_err(|e| PyRuntimeError::new_err(format!("EdgePlan JSON: {e}")))
 }
 
 /// Resolve cascading mol chrome for every mol in document order (spec semantics).
@@ -84,8 +87,7 @@ fn render_doc(spec_json: &str, edge_json: &str) -> PyResult<String> {
             })
         })
         .collect();
-    serde_json::to_string(&rows)
-        .map_err(|e| PyRuntimeError::new_err(format!("DocPaint JSON: {e}")))
+    serde_json::to_string(&rows).map_err(|e| PyRuntimeError::new_err(format!("DocPaint JSON: {e}")))
 }
 
 /// Compose a reaction scheme Scene from DepictSpec + DocPaint JSON rows.
@@ -111,8 +113,7 @@ fn compose_scheme(spec_json: &str, paints_json: &str) -> PyResult<String> {
         })
         .collect();
     let scene = xpict_core::compose_scheme(&spec, &paints).map_err(PyRuntimeError::new_err)?;
-    serde_json::to_string(&scene)
-        .map_err(|e| PyRuntimeError::new_err(format!("Scene JSON: {e}")))
+    serde_json::to_string(&scene).map_err(|e| PyRuntimeError::new_err(format!("Scene JSON: {e}")))
 }
 
 /// Spec → ``Rendered[]`` JSON (CoordGen layout + mol-spec paint + pack cells).
@@ -148,7 +149,11 @@ fn plotdot_rings(z: f64, levels: usize) -> Vec<(f64, f64)> {
 /// PlotDot disks: list of `(radius_frac, color_z, x, y)`.
 #[pyfunction]
 #[pyo3(signature = (zs, coords, levels=4))]
-fn plotdot_disks(zs: Vec<f64>, coords: Vec<(f64, f64)>, levels: usize) -> Vec<(f64, f64, f64, f64)> {
+fn plotdot_disks(
+    zs: Vec<f64>,
+    coords: Vec<(f64, f64)>,
+    levels: usize,
+) -> Vec<(f64, f64, f64, f64)> {
     PlotDot::new(levels)
         .disks(&zs, &coords)
         .into_iter()
@@ -197,8 +202,7 @@ fn scheme_elk_options(kind: &str, opts_json: &str) -> PyResult<String> {
         _ => xpict_core::ElkDiagramKind::Network,
     };
     let map = xpict_core::scheme_layout_options(dk, &opts);
-    serde_json::to_string(&map)
-        .map_err(|e| PyRuntimeError::new_err(format!("options JSON: {e}")))
+    serde_json::to_string(&map).map_err(|e| PyRuntimeError::new_err(format!("options JSON: {e}")))
 }
 
 /// Viewport-boundary anchors: ``src``/``tgt`` are ``[x,y,w,h]``.
@@ -397,15 +401,8 @@ fn compile_text_shapes(
     anchor: &str,
     style: &str,
 ) -> Option<PyShape> {
-    xpict_core::font::compile_text_shapes(
-        text,
-        x,
-        y,
-        font_size,
-        anchor,
-        parse_face_style(style),
-    )
-    .map(PyShape::wrap)
+    xpict_core::font::compile_text_shapes(text, x, y, font_size, anchor, parse_face_style(style))
+        .map(PyShape::wrap)
 }
 
 /// Returns `(bond_ends, labels)` where each bond end is `(x1,y1,x2,y2)` and
@@ -440,10 +437,7 @@ fn place_backbone(
         xpict_core::font::FaceStyle::Regular,
         weight,
     );
-    let bond_ends = outs
-        .into_iter()
-        .map(|b| (b.x1, b.y1, b.x2, b.y2))
-        .collect();
+    let bond_ends = outs.into_iter().map(|b| (b.x1, b.y1, b.x2, b.y2)).collect();
     let labels = labs
         .into_iter()
         .map(|opt| {
@@ -661,9 +655,7 @@ impl PyShape {
     }
 
     /// List of `(exterior, holes)` rings for introspection / annotate.
-    fn polygons(
-        &self,
-    ) -> Vec<(Vec<(f64, f64)>, Vec<Vec<(f64, f64)>>)> {
+    fn polygons(&self) -> Vec<(Vec<(f64, f64)>, Vec<Vec<(f64, f64)>>)> {
         self.inner.polygons_rings()
     }
 
@@ -746,10 +738,7 @@ fn generate_2d_coordinates(
         layout_flags: layout_flags.unwrap_or(0),
     };
     let res = layout(&mol).map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
-    Ok(PyLayout2DResult {
-        x: res.x,
-        y: res.y,
-    })
+    Ok(PyLayout2DResult { x: res.x, y: res.y })
 }
 
 fn layout_mol_from_parts(
@@ -845,8 +834,11 @@ fn cost_mapping(
         None,
         None,
     );
-    let res = map_fn(&mol_graph_from_layout(&reference), &mol_graph_from_layout(&query))
-        .ok_or_else(|| PyRuntimeError::new_err("cost_mapping: empty molecule"))?;
+    let res = map_fn(
+        &mol_graph_from_layout(&reference),
+        &mol_graph_from_layout(&query),
+    )
+    .ok_or_else(|| PyRuntimeError::new_err("cost_mapping: empty molecule"))?;
     let mut pairs: Vec<(u16, u16)> = res.map.into_iter().collect();
     pairs.sort_unstable();
     Ok((pairs, res.cost))
@@ -935,6 +927,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(multi_bond_offset, m)?)?;
     m.add_function(wrap_pyfunction!(centered_displacements, m)?)?;
     m.add_function(wrap_pyfunction!(depict_molecule, m)?)?;
+    m.add_function(wrap_pyfunction!(scene_to_svg, m)?)?;
     m.add_function(wrap_pyfunction!(validate_edge_plan, m)?)?;
     m.add_function(wrap_pyfunction!(plan_edge, m)?)?;
     m.add_function(wrap_pyfunction!(resolve_depict_chrome, m)?)?;
@@ -975,7 +968,10 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
             cg::FLAG_FORCE_OPEN_MACROCYCLES,
         )?;
         m.add("LAYOUT_FLAG_BEST_PRECISION", cg::FLAG_BEST_PRECISION)?;
-        m.add("LAYOUT_FLAG_METAL_BONDS_AS_ZOB", cg::FLAG_METAL_BONDS_AS_ZOB)?;
+        m.add(
+            "LAYOUT_FLAG_METAL_BONDS_AS_ZOB",
+            cg::FLAG_METAL_BONDS_AS_ZOB,
+        )?;
         m.add("LAYOUT_FLAG_SKIP_MINIMIZATION", cg::FLAG_SKIP_MINIMIZATION)?;
         // Draft aliases
         m.add("LAYOUT_FLAG_FORCE_PLANAR", cg::FLAG_FORCE_PLANAR)?;
@@ -994,8 +990,14 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("HAS_GEOM", true)?;
     m.add("KINK_PX", xpict_core::KINK_PX)?;
     m.add("TURN_RADIUS", xpict_core::TURN_RADIUS)?;
-    m.add("DEFAULT_NODE_SPACING", xpict_core::LayoutOpts::DEFAULT_NODE_SPACING)?;
-    m.add("DEFAULT_LAYER_SPACING", xpict_core::LayoutOpts::DEFAULT_LAYER_SPACING)?;
+    m.add(
+        "DEFAULT_NODE_SPACING",
+        xpict_core::LayoutOpts::DEFAULT_NODE_SPACING,
+    )?;
+    m.add(
+        "DEFAULT_LAYER_SPACING",
+        xpict_core::LayoutOpts::DEFAULT_LAYER_SPACING,
+    )?;
     m.add("HAS_FONT", true)?;
     m.add("HAS_COORDGEN", true)?;
     Ok(())

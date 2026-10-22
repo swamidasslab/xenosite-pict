@@ -7,6 +7,7 @@ export type InitInput = {
 export interface XpictWasm {
   _xpict_render(ptr: number): number;
   _xpict_depict_molecule(ptr: number): number;
+  _xpict_scene_to_svg(ptr: number): number;
   _xpict_string_free(ptr: number): void;
   UTF8ToString(ptr: number): string;
   stringToNewUTF8(s: string): number;

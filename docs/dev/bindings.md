@@ -33,6 +33,7 @@ workflows call the same recipes after installing toolchains.
 | Package | `xpict` | `@xenosite/xpict` | crates.io `xpict` |
 | Public API | `Mol` / `render` / `to_svg` (client) | `xpict.mol` / `render` / `toSvg` / `depict` | same + `depict` batch stub |
 | Paint ABI | `_native` render | wasm `xpict_render` (internal C ABI) | `xpict_core::doc::render` |
+| Scene → SVG | `_native.scene_to_svg` | wasm `xpict_scene_to_svg` | `xpict_core::scene_to_svg` |
 | Document | DepictSpec → `_native` / `depict` | wasm `render` / `xpict.depict` | `xpict::depict` / `doc::render` |
 | Init | (import extension) | auto on first `render` | link-time |
 
@@ -70,7 +71,7 @@ of fontTools/Shapely.
 | 1 | Capsule / disk halo SVG paths | Done (`geom` + bindings) |
 | 2 | Polygon buffer + difference (glyph counters) | `halo_from_shapes` / `O` hole tests via `_native` |
 | 3 | Liberation Sans outlines → path `d` + advances | **Done** (`ttf-parser` + `_native`) |
-| 4 | Python host is thin Scene→SVG only (`rendered.scene_to_svg`) | Paint/glyphs live in Rust `depict` |
+| 4 | Hosts call Rust `scene_to_svg` (viewport `data-id` on `g.xpict-mol`) | No per-language SVG markup |
 | 5 | JS paint uses Rust glyph/halo via wasm `render` | Browser labels match Python gallery |
 
 Crates to prefer when filling stubs: **`ttf-parser`/`skrifa`** (fonts),
@@ -103,22 +104,10 @@ Network / reaction viewport placement moves into Rust via **`elkrs`**
 Python synthesizes the ELK graph in `diagram/elk.py` and calls native only
 (jsrun removed).
 
-## Scene document (shared depict → thin serializers)
+## Scene document (shared depict → Rust SVG)
 
-**MVP:** single-molecule depiction with **marks** (circle atoms/bonds),
-**shading** (plot-dot disks), backbone/label **color**, and **alignment**
-(CoordGen / language-edge). Multi-mol / ELK via `compose_scheme`.
-
-```
-  CoordGen / native  (+ align)
-           │  atoms, bonds, SVG-space coords, shade/marks
-           ▼
-     xpict-core  (paint → Scene, one viewport)
-           ▼
-  Python svg.py  ·  JS svg.ts   (thin: Scene → SVG / data-URI <img>)
-```
-
-`MoleculeIn` → (future) `depict_molecule` → `Scene` JSON is the ABI.
-Port order: bond strokes/joins → marks → shade → full single-mol paint.
+Paint builds a `Scene`; **`xpict-core::scene_to_svg`** is the only markup
+path. Viewport spec ids become `g.xpict-mol[data-id]`. Hosts wrap that
+string (IPython, data-URI `<img>`).
 
 **ASAP track (xenosite.org client):** [`migration-xenosite.md`](migration-xenosite.md).

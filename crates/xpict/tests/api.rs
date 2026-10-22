@@ -7,6 +7,9 @@ fn ethanol_svg_has_root_and_paths() {
     let svg = rendered.to_svg();
     assert!(svg.contains("<svg"), "{svg}");
     assert!(svg.contains("viewBox="), "{svg}");
+    assert!(svg.contains(r#"class="xpict-mol""#), "{svg}");
+    assert!(svg.contains("data-id="), "{svg}");
+    assert!(!svg.contains("<?xml"), "{svg}");
     assert!(
         svg.contains("<path") || svg.contains("<circle"),
         "expected ink primitives: {svg}"
@@ -23,7 +26,9 @@ fn benzene_scene_roundtrip_svg() {
     let r = m.render(MolRenderOptions::default()).unwrap();
     assert_eq!(r.molecule.atoms.len(), 6);
     let svg = scene_to_svg(&r.scene);
-    assert!(svg.starts_with("<?xml") || svg.contains("<svg"));
+    assert!(svg.starts_with("<svg"), "{svg}");
+    assert!(!svg.contains("<?xml"), "{svg}");
+    assert!(svg.contains("xpict-mol"), "{svg}");
 }
 
 #[test]

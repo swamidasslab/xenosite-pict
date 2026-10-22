@@ -10,6 +10,7 @@ from xpict.contracts.depict_dict import DepictSpecDict, MolOptsPatchDict
 from xpict.contracts.edge import EdgePlan, EdgeResult
 from xpict.contracts.edge_dict import EdgePlanDict, EdgeResultDict
 from xpict.contracts.rendered_dict import DocPaintDict, RenderedDict
+from xpict.contracts.scene import Scene
 from xpict.contracts.scene_dict import SceneDict
 
 try:
@@ -67,6 +68,19 @@ def render_doc(spec: DepictSpecLike, edge: EdgeResultLike) -> list[RenderedDict]
 def depict(spec: DepictSpecLike) -> list[RenderedDict]:
     """DepictSpec → ``Rendered`` cells (CoordGen layout + mol-spec paint + pack)."""
     return cast(list[RenderedDict], json.loads(_rust.depict(_as_json(spec))))
+
+
+def scene_to_svg(scene: Scene | SceneDict | str) -> str:
+    """Scene JSON → SVG (Rust core; viewport ids become ``data-id``)."""
+    if isinstance(scene, str):
+        payload = scene
+    else:
+        dump = getattr(scene, "model_dump", None)
+        if callable(dump):
+            payload = json.dumps(dump(mode="json"))
+        else:
+            payload = json.dumps(scene)
+    return _rust.scene_to_svg(payload)
 
 
 def compose_scheme(

@@ -30,6 +30,7 @@ pub mod plotdot;
 pub mod rings;
 pub mod scene;
 pub mod spokes;
+pub mod svg;
 
 pub mod align_layout;
 pub mod layout_coordgen;
@@ -112,5 +113,6 @@ pub use scene::{
     AlignDebug, AlignDebugRole, AromaticStyle, Attach, Layer, LayerName, MoleculeIn, Primitive,
     Scene, SpokeIn, TextAnchor, Viewport,
 };
+pub use svg::{scene_to_svg, scene_to_svg_json};
 // MoleculeIn atoms/bonds are scene::AtomIn / scene::BondIn (JSON ABI).
 // labels::AtomIn / BondIn remain the place_backbone wire types.

@@ -7,7 +7,7 @@
 //! 1. Language edge supplies **coords + chem metadata** (CoordGen / native
 //!    layout + align stay outside this crate).
 //! 2. Rust builds a [`Scene`] of typed primitives (paths, circles, …).
-//! 3. Thin Python / JS serializers emit SVG / data-URI `<img>`.
+//! 3. [`crate::scene_to_svg`] emits SVG; hosts only wrap (IPython / `<img>`).
 //!
 //! Do not invent new depiction rules here — port proven Python behavior.
 

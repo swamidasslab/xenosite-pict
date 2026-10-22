@@ -93,6 +93,9 @@ function overlayClasses(scene: Scene): string[] {
   if (!svg.includes("<svg") || !(svg.includes("edge") || svg.includes("M "))) {
     throw new Error("scheme SVG missing arrow/edge");
   }
+  if (!svg.includes('data-id="A"') || !svg.includes('data-id="B"')) {
+    throw new Error(`scheme SVG missing mol data-id, got ${svg.slice(0, 400)}`);
+  }
 }
 
 {
