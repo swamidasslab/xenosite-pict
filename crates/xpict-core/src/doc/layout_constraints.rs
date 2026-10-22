@@ -609,6 +609,14 @@ pub enum Constraint {
         c: NodeId,
         strength: f64,
     },
+    /// Squared perpendicular distance from `p` to the infinite line `a → b`.
+    /// Unlike [`Constraint::Collinear`], does not hinge on the segment parameter.
+    RayThrough {
+        a: NodeId,
+        b: NodeId,
+        p: NodeId,
+        strength: f64,
+    },
 }
 
 /// No-overlap (Outside). Strongest hard group.
@@ -1028,6 +1036,18 @@ fn collinear_energy(a: (f64, f64), b: (f64, f64), c: (f64, f64), strength: f64) 
     strength * (perp * perp + back * back + past * past)
 }
 
+/// `strength * (signed distance from `p` to infinite line `a → b`)²`.
+fn ray_through_energy(a: (f64, f64), b: (f64, f64), p: (f64, f64), strength: f64) -> f64 {
+    let vx = b.0 - a.0;
+    let vy = b.1 - a.1;
+    let l = vx.hypot(vy);
+    if l < 1e-9 {
+        return 0.0;
+    }
+    let perp = ((p.0 - a.0) * vy - (p.1 - a.1) * vx) / l;
+    strength * perp * perp
+}
+
 /// Evaluate soft energy for the current world poses.
 pub fn energy(
     world: &LayoutWorld,
@@ -1181,6 +1201,26 @@ fn constraint_energy(world: &LayoutWorld, c: &Constraint) -> f64 {
                 shape_anchor(&sa),
                 shape_anchor(&sb),
                 shape_anchor(&sc),
+                *strength,
+            )
+        }
+        Constraint::RayThrough { a, b, p, strength } => {
+            let sa = match world.eval_shape(a) {
+                Some(s) => s,
+                None => return 0.0,
+            };
+            let sb = match world.eval_shape(b) {
+                Some(s) => s,
+                None => return 0.0,
+            };
+            let sp = match world.eval_shape(p) {
+                Some(s) => s,
+                None => return 0.0,
+            };
+            ray_through_energy(
+                shape_anchor(&sa),
+                shape_anchor(&sb),
+                shape_anchor(&sp),
                 *strength,
             )
         }
@@ -3921,6 +3961,49 @@ mod tests {
         assert!(
             energy(&w, &[row], &[], 0.0) > 0.0,
             "past the far end of the segment must cost"
+        );
+    }
+
+    #[test]
+    fn ray_through_ignores_segment_parameter() {
+        let mut w = LayoutWorld::rooted("scheme", ObjectType::Scheme);
+        w.insert(
+            "a",
+            "scheme",
+            ObjectType::EdgePoint,
+            Shape::Point { x: 0.0, y: 0.0 },
+            false,
+        );
+        w.insert(
+            "b",
+            "scheme",
+            ObjectType::EdgePoint,
+            Shape::Point { x: 10.0, y: 0.0 },
+            false,
+        );
+        w.insert(
+            "p",
+            "scheme",
+            ObjectType::Group,
+            Shape::Point { x: 40.0, y: 0.0 },
+            false,
+        );
+        let row = Constraint::RayThrough {
+            a: "a".into(),
+            b: "b".into(),
+            p: "p".into(),
+            strength: 1.0,
+        };
+        assert!(
+            energy(&w, &[row.clone()], &[], 0.0) < 1e-9,
+            "centroid past the painted segment still sits on the ray"
+        );
+        w.set_pose("p", 40.0, 6.0);
+        assert!(energy(&w, &[row.clone()], &[], 0.0) > 0.0);
+        w.set_pose("p", -20.0, 0.0);
+        assert!(
+            energy(&w, &[row], &[], 0.0) < 1e-9,
+            "behind a is still on the infinite ray"
         );
     }
 

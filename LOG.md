@@ -2,7 +2,9 @@
 
 ## 2026-10-22
 
-- Debug: scheme arrow ink standoff is off. Refine energy is MinimizeDist of each endpoint to its framed mol centroid.
+- Scheme arrow standoff is from chem ink (one bond), along a ray through the mol centroid. Energy is RayThrough (min |signed distance of the infinite shaft line to the centroid|²). The ray may cross ink; only the painted end stops. Not isotropic Outside vs chem — that shoved shafts off the aiming line.
+
+- Scheme arrow standoff is MinimizeDist at 1.5 bonds from the framed centroid, on the ELK-facing ray (capped at 40% of the centroid–centroid span). Not a hard ink wall: that shoved infeasible ELK ports off the ray and reversed shafts.
 
 - Scheme refine primary energy is MinimizeDist from each shaft endpoint to that mol’s framed centroid (`frame_offset` + scale, same space as painted ink). Hard ink standoff stops them short. Weak Collinear to the frozen ELK neighbor only breaks the standoff-circle tie so the shaft does not swap ends. Labels wrap to (−90, 90].
 

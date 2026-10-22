@@ -9,29 +9,26 @@ use crate::metrics::BOND_PX;
 use crate::scene::MoleculeIn;
 
 use super::layout_constraints::{
-    shapes_properly_cross, solve, Constraint, HardConstraint, LayoutWorld, ObjectType, Shape,
-    SolveOpts, LAGRANGIAN_CLEAR, LAGRANGIAN_TETHER,
+    edge_signed_distance, shapes_properly_cross, solve, Constraint, HardConstraint, LayoutWorld,
+    ObjectType, Shape, SolveOpts, LAGRANGIAN_CLEAR, LAGRANGIAN_TETHER,
 };
 use super::layout_items::Aabb;
 use super::{DepictSpec, DocPaint, LayoutOpts};
 
-/// Arrow standoff from painted chem (not the mol AABB).
-///
-/// Temporarily unused: endpoint ink clearance is off so we can debug
-/// centroid-seeking energy on its own.
-pub const SCHEME_INK_STANDOFF: f64 = 1.5 * BOND_PX;
-/// Edge labels sit closer than shafts; unused while endpoint standoff is off.
+/// Gap from chem ink (bonds / atom disks) to a shaft endpoint. One bond of air.
+pub const SCHEME_INK_STANDOFF: f64 = BOND_PX;
 #[allow(dead_code)]
 const SCHEME_LABEL_INK_STANDOFF: f64 = 0.5 * BOND_PX;
 /// Minimum gap between nearly-parallel overlapping shafts.
 pub const SCHEME_EDGE_CLEARANCE: f64 = BOND_PX;
 const LABEL_TETHER_PX: f64 = 8.0;
 const POSE_STRENGTH: f64 = 0.35;
-/// Primary soft term: each endpoint toward its mol centroid.
-const ENDPOINT_TO_CENTROID: f64 = 4.0;
-/// Weaker than min-dist. Picks the ELK-facing side of the standoff circle
-/// (min-dist alone is flat there) without swapping a 2-point shaft.
-const TANGENT_AIM: f64 = 0.4;
+/// Keep the painted shaft on a ray through the mol centroid (perp²).
+const RAY_TO_CENTROID: f64 = 4.0;
+/// Hold the endpoint at the ink-standoff pose on that ray.
+const ENDPOINT_POSE: f64 = 1.5;
+/// When two ink standoffs do not fit in the gap, keep a visible shaft.
+const MIN_SHAFT: f64 = 20.0;
 
 /// Refined shaft polylines and optional label poses `(x, y, rotate_deg)`.
 pub struct RefinedEdges {
@@ -166,32 +163,63 @@ pub fn refine_scheme_edges(
             .map(String::as_str)
             .unwrap_or("");
         let pts = &seed_pts[i];
-        // ELK polyline is the seed. Debug pass: no ink standoff. Energy is
-        // endpoint → corresponding mol centroid.
-        let guides = world.insert(
-            format!("{eid}/guides"),
-            &eid,
-            ObjectType::Group,
-            Shape::Aabb(Aabb::new(0.0, 0.0, 0.0, 0.0)),
-            true,
-        );
+        // Painted ends stop at ink+standoff along a ray through the centroid.
+        // The ray itself may cross chem — do not emit isotropic Outside vs ink.
         let last = pts.len().saturating_sub(1);
+        let src_c = mol_centroid(&paint_of, positions, &size_of, src);
+        let tgt_c = mol_centroid(&paint_of, positions, &size_of, tgt);
+        let span = (tgt_c.0 - src_c.0).hypot(tgt_c.1 - src_c.1);
+        let clash = SCHEME_INK_STANDOFF.min(span * 0.4);
+        let max_t = (span - clash).max(clash);
+        let src_chem = format!("scheme/mols/{src}/chem");
+        let tgt_chem = format!("scheme/mols/{tgt}/chem");
+        let mut pose0 = if pts.len() >= 2 {
+            ray_ink_pose(&world, &src_chem, src_c, tgt_c, clash, max_t)
+        } else {
+            src_c
+        };
+        let mut pose1 = if pts.len() >= 2 {
+            ray_ink_pose(&world, &tgt_chem, tgt_c, src_c, clash, max_t)
+        } else {
+            tgt_c
+        };
+        if pts.len() >= 2 {
+            let ux = (tgt_c.0 - src_c.0) / span.max(1e-9);
+            let uy = (tgt_c.1 - src_c.1) / span.max(1e-9);
+            if (pose1.0 - pose0.0) * ux + (pose1.1 - pose0.1) * uy < MIN_SHAFT {
+                let mx = (pose0.0 + pose1.0) * 0.5;
+                let my = (pose0.1 + pose1.1) * 0.5;
+                let half = MIN_SHAFT * 0.5;
+                pose0 = (mx - ux * half, my - uy * half);
+                pose1 = (mx + ux * half, my + uy * half);
+            }
+        }
         for (k, &(x, y)) in pts.iter().enumerate() {
+            let pose = if pts.len() >= 2 && k == 0 {
+                pose0
+            } else if pts.len() >= 2 && k == last {
+                pose1
+            } else {
+                (x, y)
+            };
             world.insert(
                 format!("{eid}/p{k}"),
                 &eid,
                 ObjectType::EdgePoint,
-                Shape::Point { x, y },
+                Shape::Point {
+                    x: pose.0,
+                    y: pose.1,
+                },
                 false,
             );
-            world.insert(
-                format!("{guides}/p{k}"),
-                &guides,
-                ObjectType::EdgePoint,
-                Shape::Point { x, y },
-                true,
-            );
-            if k > 0 && k < last {
+            if k == 0 || k == last {
+                cs.push(Constraint::PreferPose {
+                    a: format!("{eid}/p{k}"),
+                    x: pose.0,
+                    y: pose.1,
+                    strength: ENDPOINT_POSE,
+                });
+            } else {
                 cs.push(Constraint::PreferPose {
                     a: format!("{eid}/p{k}"),
                     x,
@@ -203,29 +231,19 @@ pub fn refine_scheme_edges(
         if pts.len() >= 2 {
             let src_centroid = format!("scheme/mols/{src}/centroid");
             let tgt_centroid = format!("scheme/mols/{tgt}/centroid");
-            cs.push(Constraint::MinimizeDist {
+            let neighbor0 = format!("{eid}/p1");
+            let neighbor1 = format!("{eid}/p{}", last.saturating_sub(1));
+            cs.push(Constraint::RayThrough {
                 a: format!("{eid}/p0"),
-                b: src_centroid.clone(),
-                opt_dist: 0.0,
-                strength: ENDPOINT_TO_CENTROID,
+                b: neighbor0,
+                p: src_centroid,
+                strength: RAY_TO_CENTROID,
             });
-            cs.push(Constraint::Collinear {
-                a: format!("{guides}/p1"),
-                b: format!("{eid}/p0"),
-                c: src_centroid,
-                strength: TANGENT_AIM,
-            });
-            cs.push(Constraint::MinimizeDist {
+            cs.push(Constraint::RayThrough {
                 a: format!("{eid}/p{last}"),
-                b: tgt_centroid.clone(),
-                opt_dist: 0.0,
-                strength: ENDPOINT_TO_CENTROID,
-            });
-            cs.push(Constraint::Collinear {
-                a: format!("{guides}/p{}", last.saturating_sub(1)),
-                b: format!("{eid}/p{last}"),
-                c: tgt_centroid,
-                strength: TANGENT_AIM,
+                b: neighbor1,
+                p: tgt_centroid,
+                strength: RAY_TO_CENTROID,
             });
         }
         if let Some(lab) = edge_label_seed(spec, edge, pts) {
@@ -353,12 +371,65 @@ fn mol_centroid(
     (x + w * 0.5, y + h * 0.5)
 }
 
-/// Point `dist` from `from` toward `toward` (centroid-aiming standoff).
-fn ray_at_dist(from: (f64, f64), toward: (f64, f64), dist: f64) -> (f64, f64) {
-    let dx = toward.0 - from.0;
-    let dy = toward.1 - from.1;
+fn min_ink_signed(world: &LayoutWorld, under: &str, p: (f64, f64)) -> f64 {
+    let pt = Shape::Point { x: p.0, y: p.1 };
+    let mut best = f64::INFINITY;
+    let mut stack = vec![under.to_string()];
+    while let Some(id) = stack.pop() {
+        let Some(n) = world.get(&id) else {
+            continue;
+        };
+        if !n.children.is_empty() {
+            stack.extend(n.children.iter().cloned());
+            continue;
+        }
+        let s = n.world_shape();
+        let skip = match &s {
+            Shape::Aabb(a) => a.width() <= 1e-9 && a.height() <= 1e-9,
+            Shape::Polyline(pts) | Shape::PointSet(pts) => pts.len() < 2,
+            _ => false,
+        };
+        if skip {
+            continue;
+        }
+        best = best.min(edge_signed_distance(&pt, &s));
+    }
+    best
+}
+
+/// Walk from `centroid` toward `toward` until chem signed distance ≥ `clash`.
+fn ray_ink_pose(
+    world: &LayoutWorld,
+    chem: &str,
+    centroid: (f64, f64),
+    toward: (f64, f64),
+    clash: f64,
+    max_t: f64,
+) -> (f64, f64) {
+    let dx = toward.0 - centroid.0;
+    let dy = toward.1 - centroid.1;
     let l = dx.hypot(dy).max(1e-9);
-    (from.0 + dx / l * dist, from.1 + dy / l * dist)
+    let ux = dx / l;
+    let uy = dy / l;
+    let cap = max_t.max(clash);
+    let at = |t: f64| (centroid.0 + ux * t, centroid.1 + uy * t);
+    if world.get(chem).is_none() || !min_ink_signed(world, chem, at(0.0)).is_finite() {
+        return at(clash.min(cap));
+    }
+    if min_ink_signed(world, chem, at(cap)) < clash {
+        return at(cap);
+    }
+    let mut lo = 0.0;
+    let mut hi = cap;
+    for _ in 0..24 {
+        let mid = 0.5 * (lo + hi);
+        if min_ink_signed(world, chem, at(mid)) >= clash {
+            hi = mid;
+        } else {
+            lo = mid;
+        }
+    }
+    at(hi)
 }
 
 /// Document-space origin of unframed atom coords: ELK + leftover + scaled
@@ -488,10 +559,11 @@ mod tests {
     use crate::doc::layout_constraints::{
         hard_g, HardConstraint, LAGRANGIAN_CLEAR, LAGRANGIAN_TETHER,
     };
+    use crate::doc::layout_items::ATOM_DISK_R_PX;
 
     #[test]
-    fn ink_standoff_constant_is_one_and_half_bonds() {
-        assert!((SCHEME_INK_STANDOFF - 1.5 * BOND_PX).abs() < 1e-12);
+    fn ink_standoff_constant_is_one_bond() {
+        assert!((SCHEME_INK_STANDOFF - BOND_PX).abs() < 1e-12);
     }
 
     #[test]
@@ -571,7 +643,7 @@ mod tests {
             .iter()
             .map(|p| (p.id.clone(), p.scene.width, p.scene.height))
             .collect();
-        let gap = 20.0;
+        let gap = 80.0;
         let positions = HashMap::from([
             ("A".into(), (0.0, 0.0)),
             ("B".into(), (sizes[0].1 + gap, 0.0)),
@@ -617,17 +689,21 @@ mod tests {
             "refined shaft reversed vs ELK: seed={seed:?} pts={pts:?} ca={ca:?} cb={cb:?} leftoverA=({},{}) oxA=({},{}) frameA={fa:?} leftoverB=({},{}) frameB={fb:?}",
             va.x, va.y, va.ox, va.oy, vb.x, vb.y
         );
-        let da0 = (x0 - ca.0).hypot(y0 - ca.1);
-        let da_seed = (seed[0].0 - ca.0).hypot(seed[0].1 - ca.1);
-        let db1 = (x1 - cb.0).hypot(y1 - cb.1);
-        let db_seed = (seed[1].0 - cb.0).hypot(seed[1].1 - cb.1);
+        let da0 = paint_ink_signed(&paints[0], positions["A"], (x0, y0));
+        let db1 = paint_ink_signed(&paints[1], positions["B"], (x1, y1));
         assert!(
-            da0 < da_seed - 1.0,
-            "src end must move closer to A's centroid: {da0} vs seed {da_seed} pts={pts:?} ca={ca:?}"
+            da0 + 4.0 >= SCHEME_INK_STANDOFF,
+            "src should sit ≥1 bond from A's ink: {da0} pts={pts:?} ca={ca:?}"
         );
         assert!(
-            db1 < db_seed - 1.0,
-            "tgt end must move closer to B's centroid: {db1} vs seed {db_seed} pts={pts:?} cb={cb:?}"
+            db1 + 4.0 >= SCHEME_INK_STANDOFF,
+            "tgt should sit ≥1 bond from B's ink: {db1} pts={pts:?} cb={cb:?}"
+        );
+        let line_a = point_to_line(x0, y0, x1, y1, ca.0, ca.1);
+        let line_b = point_to_line(x0, y0, x1, y1, cb.0, cb.1);
+        assert!(
+            line_a < 8.0 && line_b < 8.0,
+            "shaft ray should pass near both centroids: dA={line_a} dB={line_b} pts={pts:?} ca={ca:?} cb={cb:?}"
         );
         let (_, _, rot) = refined.edge_labels[0].expect("label");
         assert!(
@@ -636,12 +712,52 @@ mod tests {
         );
     }
 
+    fn paint_ink_signed(paint: &DocPaint, elk: (f64, f64), p: (f64, f64)) -> f64 {
+        let (bonds, atoms) = chem_in_document(paint, elk);
+        let pt = Shape::Point { x: p.0, y: p.1 };
+        let mut best = f64::INFINITY;
+        for &(x0, y0, x1, y1) in &bonds {
+            best = best.min(edge_signed_distance(&pt, &Shape::Line { x0, y0, x1, y1 }));
+        }
+        for &(_, x, y) in &atoms {
+            best = best.min(edge_signed_distance(
+                &pt,
+                &Shape::Circle {
+                    cx: x,
+                    cy: y,
+                    r: ATOM_DISK_R_PX,
+                },
+            ));
+        }
+        best
+    }
+
     #[test]
-    fn ray_standoff_aims_at_other_centroid() {
-        let from = (0.0, 0.0);
-        let toward = (100.0, 0.0);
-        let p = ray_at_dist(from, toward, 60.0);
-        assert!((p.0 - 60.0).abs() < 1e-9 && p.1.abs() < 1e-9, "{p:?}");
+    fn ray_ink_pose_stops_at_ink_not_centroid() {
+        let mut world = LayoutWorld::rooted("scheme", ObjectType::Scheme);
+        world.insert(
+            "mol",
+            "scheme",
+            ObjectType::Mol,
+            Shape::Aabb(Aabb::new(0.0, 0.0, 200.0, 80.0)),
+            true,
+        );
+        crate::doc::layout_constraints::install_chem_under(
+            &mut world,
+            "mol",
+            &[(0.0, 40.0, 120.0, 40.0)],
+            &[(0, 0.0, 40.0), (1, 120.0, 40.0)],
+            &[],
+            &[],
+        );
+        let centroid = (60.0, 40.0);
+        let p = ray_ink_pose(&world, "mol/chem", centroid, (200.0, 40.0), 30.0, 180.0);
+        let d = min_ink_signed(&world, "mol/chem", p);
+        assert!(
+            (d - 30.0).abs() < 1.0,
+            "pose should sit 30px from the chain ink, not from the centroid: p={p:?} d={d}"
+        );
+        assert!(p.0 > 120.0, "must walk past the protruding atom: {p:?}");
         let paints = HashMap::new();
         let positions = HashMap::from([("A".into(), (10.0, 20.0))]);
         let sizes = HashMap::from([("A", (40.0, 30.0))]);
@@ -865,39 +981,35 @@ mod tests {
         assert!(pts.len() >= 2);
         let (x0, y0) = pts[0];
         let (x1, y1) = pts[pts.len() - 1];
-        assert!(
-            (x1 - x0) * (seed[1].0 - seed[0].0) + (y1 - y0) * (seed[1].1 - seed[0].1) > 0.0,
-            "must keep ELK direction: {pts:?}"
-        );
-        assert!(
-            (0.0..=200.0).contains(&x0) && (0.0..=200.0).contains(&y0),
-            "src endpoint should enter A's AABB: ({x0},{y0})"
-        );
-        assert!(
-            (400.0..=600.0).contains(&x1) && (0.0..=200.0).contains(&y1),
-            "tgt endpoint should enter B's AABB: ({x1},{y1})"
-        );
         let paint_of: HashMap<&str, &DocPaint> =
             paints.iter().map(|p| (p.id.as_str(), p)).collect();
         let size_of: HashMap<&str, (f64, f64)> =
             HashMap::from([("A", (200.0, 200.0)), ("B", (200.0, 200.0))]);
         let ca = mol_centroid(&paint_of, &positions, &size_of, "A");
         let cb = mol_centroid(&paint_of, &positions, &size_of, "B");
-        let da = (x0 - ca.0).hypot(y0 - ca.1);
-        let db = (x1 - cb.0).hypot(y1 - cb.1);
         assert!(
-            da < 8.0,
-            "src should sit on A's centroid with standoff off: {da} pts={pts:?} ca={ca:?}"
+            (x1 - x0) * (seed[1].0 - seed[0].0) + (y1 - y0) * (seed[1].1 - seed[0].1) > 0.0,
+            "must keep ELK direction: {pts:?}"
         );
         assert!(
-            db < 8.0,
-            "tgt should sit on B's centroid with standoff off: {db} pts={pts:?} cb={cb:?}"
+            x0 > ca.0 && x1 < cb.0,
+            "ends should sit on the facing sides: ({x0},{y0})..({x1},{y1}) ca={ca:?} cb={cb:?}"
         );
-        let line_a = point_to_line(x0, y0, seed[1].0, seed[1].1, ca.0, ca.1);
-        let line_b = point_to_line(x1, y1, seed[0].0, seed[0].1, cb.0, cb.1);
+        let da = paint_ink_signed(&paints[0], positions["A"], (x0, y0));
+        let db = paint_ink_signed(&paints[1], positions["B"], (x1, y1));
+        assert!(
+            da + 4.0 >= SCHEME_INK_STANDOFF,
+            "src should sit ≥1 bond from A's ink: {da} pts={pts:?} ca={ca:?}"
+        );
+        assert!(
+            db + 4.0 >= SCHEME_INK_STANDOFF,
+            "tgt should sit ≥1 bond from B's ink: {db} pts={pts:?} cb={cb:?}"
+        );
+        let line_a = point_to_line(x0, y0, x1, y1, ca.0, ca.1);
+        let line_b = point_to_line(x0, y0, x1, y1, cb.0, cb.1);
         assert!(
             line_a < 8.0 && line_b < 8.0,
-            "each end should sit on its ELK→centroid ray: dA={line_a} dB={line_b} pts={pts:?} ca={ca:?} cb={cb:?}"
+            "shaft ray should pass near both centroids: dA={line_a} dB={line_b} pts={pts:?} ca={ca:?} cb={cb:?}"
         );
     }
 
