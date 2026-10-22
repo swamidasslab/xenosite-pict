@@ -4,23 +4,31 @@
 
 **Single molecule:** `mol` / `render` / `to_svg`.  
 **Declarative document:** nested [`DepictSpec`](https://docs.rs/xpict) (`mol` /
-`group`) — expanding toward full PictSpec.
+`group` / `reaction_scheme` / `grid`).
 
-**Layout:** crates.io [`rdkit`](https://crates.io/crates/rdkit) + Depictor FFI.  
-**Paint:** [`xpict-core`](https://crates.io/crates/xpict-core).  
+**Layout + paint:** [`xpict-core`](https://crates.io/crates/xpict-core)
+(Chematic + CoordGen). No system RDKit.  
 **Docs:** [GitHub Pages](https://swamidasslab.github.io/xenosite-pict/) ·
 [label markup](https://github.com/swamidasslab/xenosite-pict/blob/main/docs/label-markup.md)
 
 ```rust
-use xpict::{depict, mol, DepictSpec, MolNode, MolRenderOptions};
+use xpict::{depict, mol, DepictSpec, MolNode, MolRenderOptions, Node};
 
 fn main() -> Result<(), xpict::Error> {
     let batch = depict(&DepictSpec::Group {
         id: None,
-        children: vec![MolNode {
+        align: false,
+        children: vec![Node::Mol(MolNode {
             smiles: Some("CCO".into()),
             ..Default::default()
-        }],
+        })],
+        opts: None,
+        color: None,
+        scale: None,
+        aromatic: None,
+        debug_box: None,
+        debug_align: None,
+        pad: None,
     })?;
 
     let mut m = mol("CCO")?;

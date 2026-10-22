@@ -7,10 +7,10 @@ with **`@xenosite/xpict` in the browser** (npmjs.org), ASAP.
 **shading**, backbone/label **color**, **alignment**. Not multi-mol / ELK scenes.
 
 ```
-  @rdkit/rdkit (coords + template align)
+  xpict-core.wasm (CoordGen layout + paint)
            │
            ▼
-  xpict-core.wasm  →  Scene (JSON / typed)
+  Scene (JSON / typed)
            │
            ▼
   thin JS: Scene → SVG → data:image/svg+xml <img>

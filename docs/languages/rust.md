@@ -2,8 +2,8 @@
 
 | Crate | Role |
 | --- | --- |
-| [`xpict`](https://crates.io/crates/xpict) | Public API + RDKit layout (needs system RDKit + Boost) |
-| [`xpict-core`](https://crates.io/crates/xpict-core) | Shared paint only (no RDKit) — used by WASM / PyO3 |
+| [`xpict`](https://crates.io/crates/xpict) | Public API (`mol` / `render` / `depict`) |
+| [`xpict-core`](https://crates.io/crates/xpict-core) | Shared layout + paint (Chematic + CoordGen) — used by WASM / PyO3 |
 
 ```toml
 xpict = "0.1"
@@ -43,21 +43,29 @@ let svg = rendered.to_svg();
 ## Declarative document
 
 ```rust
-use xpict::{depict, DepictSpec, MolNode};
+use xpict::{depict, DepictSpec, MolNode, Node};
 
 let out = depict(&DepictSpec::Group {
     id: None,
+    align: false,
     children: vec![
-        MolNode {
+        Node::Mol(MolNode {
             smiles: Some("CCO".into()),
             color: Some("#0b6e4f".into()),
             ..Default::default()
-        },
-        MolNode {
+        }),
+        Node::Mol(MolNode {
             cxsmiles: Some("*c1ccccc1Cl |$R1;;;;;$|".into()),
             ..Default::default()
-        },
+        }),
     ],
+    opts: None,
+    color: None,
+    scale: None,
+    aromatic: None,
+    debug_box: None,
+    debug_align: None,
+    pad: None,
 })?;
 let svg = out[0].to_svg();
 ```

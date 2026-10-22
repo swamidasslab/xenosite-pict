@@ -23,13 +23,12 @@ test of quality — not benzene.
 **marks** (circles), atom/bond **shading**, backbone/label **color**, plus
 **alignment**. Multi-mol diagrams / ELK are post-MVP.
 
-**Focus (current):** **CoordGen** (via Rust `depict` / `_native`) for Python 2D coords and
-cost-based constrained align. JS may still use RDKit temporarily.
+**Focus (current):** **CoordGen** (via Rust `depict`) for 2D coords and
+cost-based constrained align on every host.
 
-**Do not** link RDKit into `xpict-core` (no Rust RDKit / no WASM chem wrapper).
+**Do not** link RDKit into `xpict-core` or the public `xpict` crate.
 
-Own the **drawing** path in Rust; leave 2D coords to CoordGen (Python) /
-language-edge layout (JS).
+Own the **drawing** path in Rust; leave 2D coords to CoordGen.
 
 Until drawing owns the hard-case gallery:
 

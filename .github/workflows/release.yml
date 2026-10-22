@@ -135,14 +135,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ". -> target"
-      - name: Install RDKit
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y librdkit-dev librdkit1 libboost-all-dev g++
       - name: Publish xpict
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-          CPLUS_INCLUDE_PATH: ${{ github.workspace }}/crates/xpict/compat/rdkit
           DRY: ${{ needs.meta.outputs.dry_run }}
         run: |
           if [[ "$DRY" == "true" ]]; then

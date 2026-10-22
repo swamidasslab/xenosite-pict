@@ -6,27 +6,23 @@ the same function set.
 ```
                     ┌─────────────────┐
                     │  xpict-core     │
-                    │  (pure Rust)    │
+                    │  (layout+paint) │
                     └────────┬────────┘
               ┌──────────────┼──────────────┬──────────────────┐
               ▼              ▼              ▼                  ▼
      crates/xpict-py  crates/xpict-wasm  crates/xpict    (JS npm package)
-     (PyO3 / maturin)  (wasm-bindgen)   (RDKit layout     (@xenosite/xpict)
-                                           + public API)     RDKit.js + wasm
+     (PyO3 / maturin)  (wasm-bindgen)   (public API)      (@xenosite/xpict)
 ```
 
 `crates/xpict` is the **native Rust** public package (mirrors JS/Python
-`mol` / `render` / `to_svg`). It depends on crates.io `rdkit` for parse + a
-local Depictor FFI for 2D/align. It is **not** linked into `xpict-py` or
-`xpict-wasm`, so RDKit stays out of those artifacts.
+`mol` / `render` / `to_svg` / `depict`). Layout is CoordGen in `xpict-core`.
+It is **not** linked into `xpict-py` or `xpict-wasm`.
 
 ## One-shot setup
 
 ```bash
-make agent-install     # uv sync --group dev --extra rdkit + maturin develop
+make agent-install     # uv sync --group dev + maturin develop
 make test              # or: make test-rust / test-python / test-js
-# optional native package (system RDKit):
-make test-rust-native
 ```
 
 `make help` lists build / check / pages / publish-dry targets. CI and Pages
@@ -38,23 +34,21 @@ workflows call the same recipes after installing toolchains.
 | Public API | `Mol` / `render` / `to_svg` (client) | `xpict.mol` / `render` / `toSvg` / `depict` | same + `depict` batch stub |
 | Paint ABI | `_native.depict_molecule` | wasm `depictMolecule` (internal) | `xpict_core::depict_molecule` |
 | Document | `_native.plan_edge` → `process_edge_plan` → `_native.render_doc` | wasm `planEdge` → `processEdgePlan` → `renderDoc` | `plan_edge` → `process_edge_plan` → `render_doc` |
-| Init | (import extension) | auto on first `render` | link-time RDKit |
+| Init | (import extension) | auto on first `render` | link-time |
 
 **Publish / registries:** [`.github/PUBLISH.md`](../../.github/PUBLISH.md).
 
 Python keeps the full `_native` surface (offsets, plotdots, halos, ELK, …).
-JS wasm binds paint + document two-pass (`depictMolecule`, `planEdge`,
-`renderDoc`, `validateEdgePlan`); RDKit layout/align stay in TS. Chrome
-(CX / star_labels / shade / color) and EdgePlan structural validation are
-applied in core — clients only process ``EdgePlan`` between passes.
-The native `crates/xpict` package is **not** linked into py/wasm.
+JS wasm calls the same `render(spec)` path. Chrome (CX / star_labels / shade /
+color) and EdgePlan validation are applied in core. The native `crates/xpict`
+package is **not** linked into py/wasm.
 
 ### Where to test
 
 | Logic | Test once in |
 | --- | --- |
 | CX parse / apply, `plan_edge`, `render_doc` chrome, EdgePlan validate | `xpict-core` |
-| RDKit / MinimalLib `process_edge_plan` (atom_map, MCS, fallback) | each host (Rust `xpict`, Python, JS) |
+| CoordGen `process_edge_plan` (atom_map, MCS, fallback) | `xpict-core` |
 | Public `depict` / `render` wiring | one smoke per language |
 
 Do **not** re-assert core behavior in Py + JS + Rust host suites.
@@ -83,16 +77,16 @@ Crates to prefer when filling stubs: **`ttf-parser`/`skrifa`** (fonts),
 **`geo` + `i_overlay`** (boolean + buffer). Liberation files live under
 `crates/xpict-core/fonts/` (packaged with crates.io).
 
-## Coords + alignment (CoordGen on Python; language edges elsewhere)
+## Coords + alignment (CoordGen)
 
-**Focus:** Python uses **CoordGen** for 2D layout and cost-based constrained
-align. **Never** put RDKit inside `xpict-core` (won't WASM cleanly).
+**Focus:** every host uses **CoordGen** in `xpict-core` for 2D layout and
+cost-based constrained align.
 
 | Runtime | 2D coords | Template align | Then |
 | --- | --- | --- | --- |
-| Python | Rust `depict` (in-core CoordGen) | cost MCS + soft-constrained CoordGen | `_native.depict_molecule` |
-| Browser | `xpict.mol` / `render` / `toSvg` | language-edge align | `scene` JSON → string |
-| Native Rust | crates.io `rdkit` + `crates/xpict` Depictor FFI | `generateDepictionMatching2DStructure` | `xpict-core` paint → SVG |
+| Python | Rust `depict` (in-core CoordGen) | cost MCS + soft-constrained CoordGen | `_native` paint |
+| Browser | wasm `renderJson` | same core align | `scene` JSON → string |
+| Native Rust | `xpict::render` → core `depict` | same core align | `xpict-core` paint → SVG |
 
 See [`layout-notes.md`](layout-notes.md).
 

@@ -1,10 +1,10 @@
 //! Public Rust molecule depiction API — mirrors JS ``xpict`` / Python.
 //!
-//! Layout uses the crates.io [`rdkit`] package (SMILES/molblock) plus a local
-//! Depictor FFI for 2D coords / template align. Paint is [`xpict_core`].
+//! Layout and paint both live in [`xpict_core`] (Chematic + CoordGen). This
+//! crate is the native `mol` / `render` / `depict` adapter.
 //!
-//! **Single molecule** — `mol` / `render` / `to_svg`; `align_to` is a pose
-//! molblock:
+//! **Single molecule** — `mol` / `render` / `to_svg`; `align_to` is a template
+//! source (SMILES or molfile). Rust computes coordinates:
 //!
 //! ```ignore
 //! use xpict::{mol, MolRenderOptions};
@@ -14,44 +14,43 @@
 //! let svg = rendered.to_svg();
 //! ```
 //!
-//! **Declarative document** — [`depict`] / [`DepictSpec`], a strict subset of
-//! future PictSpec (`type: "mol"` | `type: "group"` + `children`):
+//! **Declarative document** — [`depict`] / [`DepictSpec`]:
 //!
 //! ```ignore
-//! use xpict::{depict, DepictSpec, MolNode};
+//! use xpict::{depict, DepictSpec, MolNode, Node};
 //! let out = depict(&DepictSpec::Group {
 //!     id: None,
 //!     align: false,
 //!     children: vec![
-//!         MolNode { smiles: Some("CCO".into()), ..Default::default() },
-//!         MolNode { smiles: Some("CCCO".into()), ..Default::default() },
+//!         Node::Mol(MolNode { smiles: Some("CCO".into()), ..Default::default() }),
+//!         Node::Mol(MolNode { smiles: Some("CCCO".into()), ..Default::default() }),
 //!     ],
+//!     opts: None,
+//!     color: None,
+//!     scale: None,
+//!     aromatic: None,
+//!     debug_box: None,
+//!     debug_align: None,
+//!     pad: None,
 //! })?;
 //! ```
 
 #![allow(clippy::module_name_repetitions)]
 
-mod align_opts;
 mod depict_spec;
 mod edge_plan;
-mod ffi;
-mod layout;
 mod svg;
 
-pub use align_opts::{align_succeeded, minimallib_align_details, MCS_DETAILS_JSON, MIN_MCS_ATOMS};
 pub use depict_spec::{
     depict, AlignTo, AlignToSpec, DepictSpec, MolNode, MolSpec, Node, ShadeSpec,
 };
 pub use edge_plan::{build_align_plan, process_edge_plan, process_edge_plan_with_frames};
 pub use xpict_core::{cx_atom_labels, smiles_base};
 
-pub use layout::{
-    layout_with_rdkit, layout_with_rdkit_meta, sanitize_dummy_molblock, source_to_molblock,
-};
 pub use svg::scene_to_svg;
 pub use xpict_core::edge::{
     AlignOpts as EdgeAlignOpts, CoordGenMoleculeResult, CoordMethod, EdgePlan, EdgeResult,
-    EdgeTask, EdgeTaskResult, MolTemplate,
+    EdgeTask, EdgeTaskResult, MolTemplate, MIN_MCS_ATOMS,
 };
 pub use xpict_core::scene::{AtomIn, BondIn, MoleculeIn, Scene};
 pub use xpict_core::{
@@ -72,9 +71,9 @@ use xpict_core::scene::AtomIn as CoreAtom;
 pub enum Error {
     #[error("mol() requires a non-empty SMILES or molfile")]
     EmptySource,
-    #[error("RDKit parse failed: {0}")]
+    #[error("{0}")]
     Parse(String),
-    #[error("RDKit layout failed: {0}")]
+    #[error("{0}")]
     Layout(String),
     #[error("{0}")]
     Message(String),
@@ -107,8 +106,7 @@ impl Mol {
     /// Materialize (and cache) a coord-bearing frame molblock for ``align_to``.
     pub fn ensure_frame(&mut self) -> Result<&str, Error> {
         if self.frame_molblock.is_none() {
-            let (_, mb) = layout_with_rdkit(&self.source, None, None)?;
-            self.frame_molblock = Some(mb);
+            let _ = crate::render(self, MolRenderOptions::default())?;
         }
         Ok(self.frame_molblock.as_deref().unwrap_or(""))
     }
@@ -133,7 +131,7 @@ impl Rendered {
         scene_to_svg(&self.scene)
     }
 
-    /// Pose molblock for ``MolRenderOptions::align_to``.
+    /// Pose molblock (CoordGen) — usable as ``MolRenderOptions::align_to``.
     pub fn frame(&self) -> &str {
         &self.frame_molblock
     }
@@ -144,7 +142,7 @@ impl Rendered {
         other: &mut Mol,
         mut opts: MolRenderOptions,
     ) -> Result<Rendered, Error> {
-        opts.align_to = Some(self.frame_molblock.clone());
+        opts.align_to = Some(self.source.clone());
         render(other, opts)
     }
 }
@@ -173,9 +171,8 @@ pub struct SvgBond {
 
 /// Render options (parity with JS ``MolRenderOptions`` / Python client).
 ///
-/// ``align_to`` is a coord-bearing molblock (from [`Rendered::frame`] or
-/// [`Mol::ensure_frame`]). JS/Python accept a ``Mol`` / ``Rendered`` object;
-/// Rust takes the pose string to avoid awkward lifetimes.
+/// ``align_to`` is a template **source** (SMILES or molfile). Rust computes
+/// coordinates; hosts do not pass poses.
 #[derive(Debug, Clone, Default)]
 pub struct MolRenderOptions {
     pub id: Option<String>,
@@ -199,58 +196,111 @@ pub struct MolRenderOptions {
     pub debug_box: Option<bool>,
     /// Alignment correspondence overlays (default off).
     pub debug_align: Option<bool>,
-    /// Template molblock for RDKit depiction matching.
+    /// Template source (SMILES or molfile).
     pub align_to: Option<String>,
     /// Pairs ``(query_atom, template_atom)``. Requires ``align_to``; skips MCS.
     pub atom_map: Option<Vec<(u32, u32)>>,
 }
 
-fn apply_opts(mut molecule: MoleculeIn, opts: &MolRenderOptions, source: &str) -> MoleculeIn {
-    if let Some(ref id) = opts.id {
-        molecule.id = Some(id.clone());
+fn structure_fields(source: &str) -> (Option<String>, Option<String>, Option<String>) {
+    let text = source.trim();
+    if text.contains("V2000") || text.contains("V3000") || text.lines().count() >= 4 {
+        (None, None, Some(text.to_string()))
+    } else if text.contains('|') {
+        (None, Some(text.to_string()), None)
+    } else {
+        (Some(text.to_string()), None, None)
     }
-    if let Some(ref color) = opts.color {
-        molecule.color = Some(color.clone());
+}
+
+fn shade_from_opts(opts: &MolRenderOptions) -> Option<ShadeSpec> {
+    if opts.atom_shade.is_none() && opts.bond_shade.is_none() {
+        return None;
     }
-    if let Some(ref shade) = opts.atom_shade {
-        molecule.atom_shade = Some(shade.clone());
+    Some(ShadeSpec {
+        atoms: opts.atom_shade.clone(),
+        bonds: opts.bond_shade.clone(),
+        colormap: None,
+        vmin: opts.shade_vmin.unwrap_or(0.0),
+        vmax: opts.shade_vmax.unwrap_or(1.0),
+    })
+}
+
+fn mol_node_from(source: &str, opts: &MolRenderOptions, id: Option<String>) -> MolNode {
+    let (smiles, cxsmiles, molfile) = structure_fields(source);
+    MolNode {
+        smiles,
+        cxsmiles,
+        molfile,
+        id,
+        color: opts.color.clone(),
+        shade: shade_from_opts(opts),
+        star_labels: opts.star_labels.clone(),
+        scale: opts.scale,
+        weight: opts.weight,
+        aromatic: opts.aromatic,
+        debug_box: opts.debug_box,
+        debug_align: opts.debug_align,
+        ..Default::default()
     }
-    if let Some(ref shade) = opts.bond_shade {
-        molecule.bond_shade = Some(shade.clone());
+}
+
+fn spec_from_mol(source: &str, opts: &MolRenderOptions) -> Result<DepictSpec, Error> {
+    if opts.atom_map.is_some() && opts.align_to.as_deref().unwrap_or("").is_empty() {
+        return Err(Error::Parse("atom_map requires align_to".into()));
     }
-    if let Some(vmin) = opts.shade_vmin {
-        molecule.shade_vmin = Some(vmin);
+    let query_id = opts.id.clone().unwrap_or_else(|| "m_1".into());
+    if opts.align_to.as_deref().unwrap_or("").is_empty() {
+        return Ok(DepictSpec::Mol(mol_node_from(
+            source,
+            opts,
+            opts.id.clone(),
+        )));
     }
-    if let Some(vmax) = opts.shade_vmax {
-        molecule.shade_vmax = Some(vmax);
-    }
+    let template_src = opts.align_to.as_deref().unwrap_or("");
+    let ref_id = "m_0".to_string();
+    let qid = if query_id == ref_id {
+        "m_1".to_string()
+    } else {
+        query_id
+    };
+    let mut query = mol_node_from(source, opts, Some(qid));
+    query.align_to = Some(match &opts.atom_map {
+        Some(map) => AlignTo::Spec(AlignToSpec {
+            ref_id: ref_id.clone(),
+            atom_map: Some(map.clone()),
+            ..Default::default()
+        }),
+        None => AlignTo::Ref(ref_id.clone()),
+    });
+    Ok(DepictSpec::Group {
+        id: None,
+        align: false,
+        children: vec![
+            Node::Mol(mol_node_from(
+                template_src,
+                &MolRenderOptions::default(),
+                Some(ref_id),
+            )),
+            Node::Mol(query),
+        ],
+        opts: None,
+        color: None,
+        scale: None,
+        aromatic: None,
+        debug_box: None,
+        debug_align: None,
+        pad: None,
+    })
+}
+
+fn apply_marks(molecule: &mut MoleculeIn, opts: &MolRenderOptions) {
     if let Some(ref marks) = opts.mark_atoms {
         molecule.mark_atoms = marks.clone();
     }
     if let Some(ref marks) = opts.mark_bonds {
         molecule.mark_bonds = marks.clone();
     }
-    if let Some(scale) = opts.scale {
-        molecule.scale = scale;
-    }
-    if let Some(weight) = opts.weight {
-        molecule.weight = weight;
-    }
-    if let Some(aromatic) = opts.aromatic {
-        molecule.aromatic = aromatic;
-    }
-    if let Some(debug_box) = opts.debug_box {
-        molecule.debug_box = debug_box;
-    }
-    if let Some(debug_align) = opts.debug_align {
-        molecule.debug_align = debug_align;
-    }
-    if let Some(ref labels) = opts.star_labels {
-        apply_star_labels(&mut molecule, labels);
-    } else {
-        molecule = apply_cx_by_index(molecule, source);
-    }
-    molecule
 }
 
 fn to_coord_list(atoms: &[CoreAtom]) -> Vec<SvgAtom> {
@@ -273,49 +323,25 @@ pub fn mol(smiles_or_molfile: impl AsRef<str>) -> Result<Mol, Error> {
     Mol::from_source(smiles_or_molfile)
 }
 
-/// Layout → Rust ``depict_molecule`` → [`Rendered`] (JS ``xpict.render``).
+/// Layout → paint via core ``depict`` → [`Rendered`] (JS ``xpict.render``).
 pub fn render(input: &mut Mol, opts: MolRenderOptions) -> Result<Rendered, Error> {
-    let template = opts.align_to.as_deref().filter(|s| !s.is_empty());
-    if opts.atom_map.is_some() && template.is_none() {
-        return Err(Error::Parse("atom_map requires align_to".into()));
+    let spec = spec_from_mol(&input.source, &opts)?;
+    let mut rows = crate::depict(&spec)?;
+    let mut painted = rows
+        .pop()
+        .ok_or_else(|| Error::Message("render returned no molecules".into()))?;
+    apply_marks(&mut painted.molecule, &opts);
+    if input.frame_molblock.is_none() && opts.align_to.as_deref().unwrap_or("").is_empty() {
+        input.frame_molblock = Some(painted.frame_molblock.clone());
     }
-
-    let (laid, pose_mb, _) = layout_with_rdkit_meta(
-        &input.source,
-        template,
-        opts.atom_map.as_deref(),
-        opts.id.clone(),
-    )?;
-    if input.frame_molblock.is_none() {
-        input.frame_molblock = Some(pose_mb.clone());
+    let coords = to_coord_list(&painted.molecule.atoms);
+    if painted.coords.is_empty() {
+        painted.coords = coords.clone();
     }
-
-    let molecule = apply_opts(laid, &opts, &input.source);
-    let scene = depict_molecule(&molecule);
-    let coords = to_coord_list(&molecule.atoms);
-    let bonds: Vec<SvgBond> = molecule
-        .bonds
-        .iter()
-        .map(|b| SvgBond {
-            index: b.index,
-            begin: b.begin,
-            end: b.end,
-            order: b.order,
-            stereo: b.stereo.clone(),
-        })
-        .collect();
-
-    Ok(Rendered {
-        width: scene.width,
-        height: scene.height,
-        scene,
-        molecule,
-        source: input.source.clone(),
-        frame_molblock: pose_mb,
-        svg_coords: coords.clone(),
-        coords,
-        bonds,
-    })
+    if painted.svg_coords.is_empty() {
+        painted.svg_coords = coords;
+    }
+    Ok(painted)
 }
 
 /// Scene → SVG (JS ``xpict.toSvg``).

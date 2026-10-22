@@ -120,16 +120,8 @@ jobs:
           print(f"set {crate} version = {ver}")
           PY
 
-      - name: Install RDKit (native xpict only)
-        if: steps.meta.outputs.crate == 'xpict'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y librdkit-dev librdkit1 libboost-all-dev g++
-
       - name: Dry-run publish
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
-        env:
-          CPLUS_INCLUDE_PATH: ${{ github.workspace }}/crates/xpict/compat/rdkit
         run: |
           if [[ "${{ steps.meta.outputs.crate }}" == "xpict" ]]; then
             cargo publish -p xpict --dry-run --allow-dirty
@@ -141,7 +133,6 @@ jobs:
         if: ${{ github.event_name != 'workflow_dispatch' || !inputs.dry_run }}
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-          CPLUS_INCLUDE_PATH: ${{ github.workspace }}/crates/xpict/compat/rdkit
         run: |
           if [[ -z "${CARGO_REGISTRY_TOKEN:-}" ]]; then
             echo "CARGO_REGISTRY_TOKEN secret required (or configure Trusted Publishing later)" >&2

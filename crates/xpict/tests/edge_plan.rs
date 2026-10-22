@@ -1,4 +1,4 @@
-//! EdgePlan processor tests (native RDKit host).
+//! EdgePlan processor tests (Chematic + CoordGen via core).
 //!
 //! Plan validation / forest shape / CX chrome: ``xpict-core``.
 
@@ -33,7 +33,7 @@ fn edge_plan_mcs_align() {
 }
 
 #[test]
-fn edge_plan_align_failure_falls_back() {
+fn edge_plan_dissimilar_pair_still_coords() {
     let plan = build_align_plan("O=C1C=CC(=O)C=C1", "C1CCCCC1CCOCCCCCC", None);
     let result = process_edge_plan(&plan).expect("process");
     let EdgeTaskResult::CoordGen { ok, molecules } = &result.results[0];
@@ -41,11 +41,6 @@ fn edge_plan_align_failure_falls_back() {
     assert_eq!(molecules.len(), 2);
     assert!(molecules[0].ok);
     assert!(molecules[1].ok);
-    assert_eq!(molecules[1].method, CoordMethod::None);
     assert!(molecules[1].molecule.is_some());
-    assert!(molecules[1]
-        .error
-        .as_deref()
-        .unwrap_or("")
-        .contains("fell back"));
+    assert_eq!(molecules[1].molecule.as_ref().unwrap().atoms.len(), 15);
 }

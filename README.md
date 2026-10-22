@@ -2,7 +2,7 @@
 
 **Molecule depiction for publication-quality vector graphics** — **Rust**,
 **Python**, or the web with **JavaScript**. Shared paint in Rust
-(`xpict-core`); each language owns RDKit layout at its edge.
+(`xpict-core`); language wrappers call that core.
 
 | Language | Package |
 | --- | --- |
@@ -62,7 +62,7 @@ let svg = rendered.to_svg();
 | `star_labels` | Labels for `*` atoms (encounter order); chem markup supported |
 | `weight` | Ink weight relative to house (`1`); min `2/3` |
 | `scale` | Uniform diagram scale (`1` = house size) |
-| `align_to` | Template pose (`Mol` / `Rendered` in JS; molblock string in Rust) |
+| `align_to` | Template (`Mol` / `Rendered` in JS; SMILES or molfile string in Rust) |
 | `id` | Optional molecule id on the paint ABI |
 
 When `star_labels` is omitted, CXSMILES `|$…$|` aliases apply by atom index.
@@ -98,16 +98,24 @@ svg = render({
 ```
 
 ```rust
-use xpict::{depict, DepictSpec, MolNode};
+use xpict::{depict, DepictSpec, MolNode, Node};
 
 let results = depict(&DepictSpec::Group {
     id: None,
+    align: false,
     children: vec![
-        MolNode {
+        Node::Mol(MolNode {
             smiles: Some("CCO".into()),
             ..Default::default()
-        },
+        }),
     ],
+    opts: None,
+    color: None,
+    scale: None,
+    aromatic: None,
+    debug_box: None,
+    debug_align: None,
+    pad: None,
 })?;
 ```
 
@@ -124,12 +132,11 @@ JS align demo: https://swamidasslab.github.io/xenosite-pict/js/demo/
 
 ```
                     ┌─────────────────┐
-                    │   xpict-core    │  paint (no RDKit)
+                    │   xpict-core    │  layout + paint (CoordGen)
                     └────────┬────────┘
          ┌───────────────────┼───────────────────┐
          ▼                   ▼                   ▼
    xpict-py / WASM      @xenosite/xpict       xpict (native)
-   (Python / JS)         (RDKit.js)         (RDKit + FFI)
 ```
 
 ## Develop

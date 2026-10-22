@@ -11,20 +11,19 @@ Interactive align demo: [js/demo/](../js/demo/).
 ## Python
 
 ```bash
-pip install 'xpict[rdkit]'
+pip install xpict
 ```
 
-RDKit is the optional layout backend. Without it, a native toy layout is used
-for smoke / non-chem runs.
+Layout is native (Chematic + CoordGen in `xpict-core`). No RDKit extra.
 
 ## Rust
 
 ```toml
 # Cargo.toml
-xpict = "0.1"           # public API (needs system RDKit + Boost)
-# or paint-only (no RDKit):
+xpict = "0.1"           # public API (CoordGen; no system RDKit)
+# or paint-only:
 xpict-core = "0.1"
 ```
 
-System deps for the native `xpict` crate:
+Native crate notes:
 [`crates/xpict/README.md`](https://github.com/swamidasslab/xenosite-pict/blob/main/crates/xpict/README.md).

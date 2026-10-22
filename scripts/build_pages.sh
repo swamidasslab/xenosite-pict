@@ -16,8 +16,7 @@ cd "$ROOT"
 
 echo "==> gallery SVGs"
 if command -v uv >/dev/null 2>&1; then
-  uv run --group docs --extra rdkit python scripts/generate_doc_examples.py \
-    || uv run --group docs python scripts/generate_doc_examples.py
+  uv run --group docs python scripts/generate_doc_examples.py
 else
   python3 scripts/generate_doc_examples.py
 fi

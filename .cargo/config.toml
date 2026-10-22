@@ -1,7 +1,5 @@
-# Prefer the Ubuntu 202309 FileWriters.h shim when building rdkit-sys,
-# and help rust-lld find libstdc++.
+# Help rust-lld find libstdc++ (coordgen-sys / C++).
 [env]
-CPLUS_INCLUDE_PATH = { value = "crates/xpict/compat/rdkit", relative = true, force = false }
 CXX = { value = "g++", force = false }
 
 [target.x86_64-unknown-linux-gnu]

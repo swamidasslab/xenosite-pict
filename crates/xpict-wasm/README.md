@@ -2,9 +2,9 @@
 
 Browser / Node bindings for [`xpict-core`](../xpict-core) via **wasm-bindgen**.
 
-**MVP surface:** `depictMolecule` only (`MoleculeIn` JSON → `Scene` JSON).
-The public npm package wraps that as `xpict.mol` / `render` / `toSvg`.
-Broader helpers stay in `xpict-core` / PyO3.
+**Surface:** `render(spec)` (DepictSpec JSON → `Rendered[]`). `depictMolecule`
+is a thin helper: wrap a lone mol as a mol spec and call `render`. The public
+npm package is `xpict.mol` / `render` / `depict` / `toSvg`.
 
 Depends on `xpict-core` with **`font`** (Liberation Sans) so heteroatom
 labels (`OH`, `NH2`, …) place and paint. ELK stays off here (use npm `elkjs`).

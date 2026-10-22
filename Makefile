@@ -83,12 +83,11 @@ pages: ## MkDocs + autodoc + demo → OUT (default _site)
 test: test-rust test-python test-js ## Core + Python + JS (local full pass)
 
 .PHONY: test-rust
-test-rust: ## cargo test -p xpict-core
-	cd "$(ROOT)" && cargo test -p xpict-core
+test-rust: ## cargo test -p xpict-core -p xpict
+	cd "$(ROOT)" && cargo test -p xpict-core -p xpict
 
 .PHONY: test-rust-native
-test-rust-native: ## cargo test -p xpict (needs system RDKit)
-	cd "$(ROOT)" && cargo test -p xpict
+test-rust-native: test-rust ## alias (native xpict uses CoordGen; no system RDKit)
 
 .PHONY: test-python
 test-python: ## uv run pytest -q
@@ -201,9 +200,8 @@ publish-dry-core: ## cargo publish -p xpict-core --dry-run
 	cd "$(ROOT)" && cargo publish -p xpict-core --dry-run
 
 .PHONY: publish-dry-rust
-publish-dry-rust: ## cargo publish -p xpict --dry-run (needs RDKit headers)
-	cd "$(ROOT)" && CPLUS_INCLUDE_PATH="$(ROOT)/crates/xpict/compat/rdkit" \
-		cargo publish -p xpict --dry-run
+publish-dry-rust: ## cargo publish -p xpict --dry-run
+	cd "$(ROOT)" && cargo publish -p xpict --dry-run
 
 .PHONY: publish-dry-js
 publish-dry-js: ## npm pack in js/ (no registry upload)

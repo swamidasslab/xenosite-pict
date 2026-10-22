@@ -1,7 +1,5 @@
 [workspace]
 resolver = "2"
-# xpict (RDKit-backed public API) is a member but not a default-member so
-# `cargo test` / CI coverage on xpict-core does not require system RDKit.
 members = [
     "crates/coordgen-sys",
     "crates/xpict-core",
@@ -9,7 +7,8 @@ members = [
     "crates/xpict-wasm",
     "crates/xpict",
 ]
-default-members = ["crates/xpict-core"]
+# Coverage stays on xpict-core; `cargo test` covers the public crate too.
+default-members = ["crates/xpict-core", "crates/xpict"]
 
 [workspace.package]
 edition = "2021"

@@ -2,9 +2,8 @@
 #
 # Rust:   cargo test + llvm-cov on xpict-core (≥93% lines; raise toward 97%)
 # JS:     tsc --strict
-# Python: pytest + RDKit on 3.11–3.13 (Linux) and native-smoke (macOS/Windows);
+# Python: pytest on 3.11–3.13 (Linux) and native-smoke (macOS/Windows);
 #         pyright on every Linux Python job
-# RDKit:  required for layout (experimental native layout removed)
 # PyPI wheels (all arches): see build-python-wheels.yml / pypi.yml / release.yml
 
 name: CI
@@ -40,7 +39,7 @@ jobs:
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
 
-      - name: cargo test -p xpict-core
+      - name: cargo test -p xpict-core -p xpict
         run: make test-rust
 
       - name: Version policy (major.minor lockstep)
@@ -100,7 +99,7 @@ jobs:
         run: make js-ci
 
   python-test:
-    name: Python pytest ${{ matrix.python-version }} + rdkit + pyright
+    name: Python pytest ${{ matrix.python-version }} + pyright
     needs: [rust]
     runs-on: ubuntu-latest
     strategy:
@@ -117,7 +116,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: ". -> target"
-          shared-key: py-${{ matrix.python-version }}-rdkit
+          shared-key: py-${{ matrix.python-version }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
@@ -125,11 +124,8 @@ jobs:
           python-version: ${{ matrix.python-version }}
           enable-cache: true
 
-      - name: Sync Python deps (dev + rdkit)
+      - name: Sync Python deps
         run: make sync
-
-      - name: Confirm RDKit import
-        run: uv run python -c "import rdkit; print('rdkit', rdkit.__version__)"
 
       - name: Strict pyright
         run: make check-pyright
@@ -137,7 +133,7 @@ jobs:
       - name: Pytest
         run: make test-python
 
-  # abi3 extension + full pytest (incl. RDKit layout) on Apple Silicon + Windows.
+  # abi3 extension + full pytest on Apple Silicon + Windows.
   # Windows runners often lack GNU make — keep direct commands there.
   python-native-smoke:
     name: Python native smoke (${{ matrix.os }})
@@ -165,12 +161,9 @@ jobs:
           python-version: "3.12"
           enable-cache: true
 
-      - name: Sync Python deps (dev + rdkit)
+      - name: Sync Python deps
         # Direct uv (this matrix includes windows-latest; pwsh ≠ bash `make`).
-        run: uv sync --group dev --extra rdkit
-
-      - name: Confirm RDKit import
-        run: uv run python -c "import rdkit; print('rdkit', rdkit.__version__)"
+        run: uv sync --group dev
 
       - name: Pytest
         run: uv run pytest -q
