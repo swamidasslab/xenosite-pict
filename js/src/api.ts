@@ -9,12 +9,13 @@
  * const aligned = await xpict.render(xpict.mol("CCCO"), { align_to: mol });
  * ```
  *
- * Declarative document:
+ * Declarative document (or a single mol — wrapped as a mol spec):
  * ```ts
  * const [r] = await xpict.depict({
  *   type: "mol",
  *   cxsmiles: "*c1ccccc1Cl |$R1;;;;;$|",
  * });
+ * const [ethanol] = await xpict.depict("CCO");
  * const svg = xpict.toSvg(r.scene);
  * ```
  */
@@ -338,14 +339,23 @@ function asRendered(row: NativeRendered, m?: Mol): Rendered {
   return out;
 }
 
+function isDepictSpec(value: unknown): value is DepictSpec {
+  if (!value || typeof value !== "object") return false;
+  const t = (value as { type?: unknown }).type;
+  return t === "mol" || t === "group" || t === "reaction_scheme" || t === "grid";
+}
+
+async function runSpec(spec: DepictSpec): Promise<NativeRendered[]> {
+  await ensureReady();
+  return JSON.parse(renderJson(JSON.stringify(spec))) as NativeRendered[];
+}
+
 async function render(
   input: Mol | string,
   opts: MolRenderOptions = {}
 ): Promise<Rendered> {
-  await ensureReady();
   const m: Mol = typeof input === "string" ? mol(input) : input;
-  const spec = specFromMol(m, opts);
-  const rows = JSON.parse(renderJson(JSON.stringify(spec))) as NativeRendered[];
+  const rows = await runSpec(specFromMol(m, opts));
   if (!rows.length) throw new Error("render returned no molecules");
   const painted = asRendered(rows[rows.length - 1]!, m);
   if (!m.frame_molblock && !opts.align_to) {
@@ -355,13 +365,17 @@ async function render(
 }
 
 /**
- * Declarative document → ``Rendered[]``.
- * Rust layouts (CoordGen), paints each mol spec (annotations included),
- * and composes reaction-scheme cells.
+ * Single mol or declarative document → ``Rendered[]``.
+ *
+ * A ``Mol`` / SMILES / molfile is wrapped as ``{ type: "mol", … }`` and sent
+ * to the same Rust ``render(spec)`` as a full group / scheme.
  */
-async function depict(spec: DepictSpec): Promise<Rendered[]> {
-  await ensureReady();
-  const rows = JSON.parse(renderJson(JSON.stringify(spec))) as NativeRendered[];
+async function depict(
+  input: DepictSpec | Mol | string,
+  opts: MolRenderOptions = {}
+): Promise<Rendered[]> {
+  const spec = isDepictSpec(input) ? input : specFromMol(input, opts);
+  const rows = await runSpec(spec);
   return rows.map((row) => asRendered(row));
 }
 
@@ -371,6 +385,6 @@ export const xpict = {
   render,
   /** Scene JSON → SVG string (tweak ``rendered.scene`` first if needed). */
   toSvg: sceneToSvg,
-  /** Declarative document → ``Rendered[]``. */
+  /** Single mol or declarative document → ``Rendered[]``. */
   depict,
 } as const;

@@ -2,6 +2,14 @@
 
 ## 2026-10-21
 
+- JS scheme smoke: `xpict.depict({ type: "reaction_scheme" })` packs two (and three) mols, edge overlays, arrow styles, orthogonal routing, spacing knobs, and the same mol annotations as a lone mol.
+
+- Deleted the unused JS RDKit layout path (`rdkit-layout.ts`, `rdkit-loader.ts`) and the CX helper that only existed to feed it. Product JS sends specs to Rust `render`; `frame.ts` stays (types / SVG-frame math, no RDKit).
+
+- JS `depict` / `depictMolecule` stay as single-mol helpers: they wrap a mol as a DepictSpec and call the same Rust `render(spec)`. Not a parallel `MoleculeIn` paint path.
+
+- Dropped the RDKit stack from `crates/xpict` (crates.io `rdkit`, cxx Depictor FFI, GraphMol `compat/` includes, `CPLUS_INCLUDE_PATH`) and unused JS `@rdkit/rdkit`. Native `render` builds a `DepictSpec` and calls core `depict` (Chematic + CoordGen). `align_to` is a template source string; Rust computes coords. CI/docs no longer install `librdkit-dev`.
+
 - Root mol is `MolNode` (`DepictSpec::Mol(MolNode)`), the same type as scheme/group children — one annotation schema (`region`, `circle`, `callout`, `atom_label`, `atom_number`, `name`, `shade`). Scheme compose now keeps mol caption overlays so `name` paints in schemes too.
 
 - CoordGen and ELK are required (not features), including wasm. Product path is one Rust `render(spec) → Rendered[]`: CoordGen layout, mol-spec paint (chem + annotations + caption), then pack cells. Annotations on `MolNode` are that path, not a parallel API. `align_to` is an id/ref; Rust computes coords. JS EdgePlan host processor removed.

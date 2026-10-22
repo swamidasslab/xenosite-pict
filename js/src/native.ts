@@ -2,11 +2,17 @@
  * Internal wasm loader — one ``render(spec)`` entry for every document.
  */
 
-import init, {
-  depictMolecule as wasmDepictMolecule,
-  render as wasmRender,
-  type InitInput,
-} from "./wasm/xpict_core.js";
+import init, * as wasmBindings from "./wasm/xpict_core.js";
+import type { InitInput } from "./wasm/xpict_core.js";
+
+/** Product wasm entry (DepictSpec JSON → Rendered[] JSON). */
+function wasmRender(specJson: string): string {
+  const fn = (wasmBindings as { render?: (s: string) => string }).render;
+  if (typeof fn !== "function") {
+    throw new Error("xpict wasm missing render(); rebuild with make build-wasm");
+  }
+  return fn(specJson);
+}
 
 let ready = false;
 let initPromise: Promise<void> | null = null;
@@ -57,10 +63,49 @@ function requireReady(): void {
   }
 }
 
-/** Chem paint only: `MoleculeIn` JSON → `Scene` JSON. Prefer {@link renderJson}. */
-export function depictMolecule(moleculeJson: string): string {
+function structureFields(source: string): {
+  smiles?: string;
+  cxsmiles?: string;
+  molfile?: string;
+} {
+  const text = source.trim();
+  if (text.includes("V2000") || text.includes("V3000") || text.split("\n").length >= 4) {
+    return { molfile: text };
+  }
+  if (text.includes("|")) return { cxsmiles: text };
+  return { smiles: text };
+}
+
+/** Wrap a lone mol (source / `{smiles}` / MolNode) as a DepictSpec. */
+export function specFromSingleMol(raw: unknown): Record<string, unknown> {
+  if (typeof raw === "string") {
+    return { type: "mol", ...structureFields(raw) };
+  }
+  if (!raw || typeof raw !== "object") {
+    throw new Error("depictMolecule: expected mol source or DepictSpec");
+  }
+  const o = raw as Record<string, unknown>;
+  const t = o.type;
+  if (t === "mol" || t === "group" || t === "reaction_scheme" || t === "grid") {
+    return o;
+  }
+  if (typeof o.source === "string") {
+    return { type: "mol", ...structureFields(o.source) };
+  }
+  if (o.smiles || o.cxsmiles || o.molfile) {
+    return { type: "mol", ...o };
+  }
+  throw new Error("depictMolecule: expected mol source or DepictSpec");
+}
+
+/**
+ * Single mol → spec → {@link renderJson}.
+ * Accepts a source string, `{ source }`, `{ smiles|cxsmiles|molfile }`, or a DepictSpec.
+ */
+export function depictMolecule(molJson: string): string {
   requireReady();
-  return wasmDepictMolecule(moleculeJson);
+  const spec = specFromSingleMol(JSON.parse(molJson) as unknown);
+  return wasmRender(JSON.stringify(spec));
 }
 
 /** DepictSpec JSON → `Rendered[]` JSON (layout + mol-spec paint + pack). */

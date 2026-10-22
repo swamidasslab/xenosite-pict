@@ -2,7 +2,7 @@
  * `@xenosite/xpict` — molecule depiction for the web.
  *
  * Single molecule: ``xpict.mol`` / ``xpict.render`` / ``xpict.toSvg``.
- * Declarative document: ``xpict.depict`` (nested PictSpec subset).
+ * ``xpict.depict`` wraps a mol as a spec, or takes a document, and calls render.
  */
 
 export { xpict } from "./api.js";

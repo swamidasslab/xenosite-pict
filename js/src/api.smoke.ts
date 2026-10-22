@@ -155,6 +155,13 @@ const both = await xpict.render(xpict.mol("*C* |$R1;;R2;$|"));
   }
 }
 
+// Single-mol depict helper: wrap as a mol spec and send to render.
+const fromSource = await xpict.depict("CCO");
+if (fromSource.length !== 1) throw new Error(`depict(source) length ${fromSource.length}`);
+if (fromSource[0]!.molecule.atoms.length !== 3) throw new Error("depict(source) atoms");
+const fromMol = await xpict.depict(xpict.mol("CCCO"));
+if (fromMol[0]!.molecule.atoms.length !== 4) throw new Error("depict(mol) atoms");
+
 // Document batch (group of mols).
 const batch = await xpict.depict({
   type: "group",
