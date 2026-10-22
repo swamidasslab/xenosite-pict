@@ -12,7 +12,19 @@ pub const TURN_RADIUS: f64 = 36.0;
 
 const DEFAULT_COLOR: &str = "#222";
 const DEFAULT_WIDTH: f64 = 1.6;
+/// Head length at [`DEFAULT_WIDTH`] (px). Thicker strokes scale this.
 const HEAD: f64 = 9.0;
+
+/// Filled/open head length for this stroke. House 1.6 px → 9 px.
+pub fn head_px(stroke_width: Option<f64>) -> f64 {
+    let w = stroke_width.unwrap_or(DEFAULT_WIDTH).max(0.5);
+    HEAD * (w / DEFAULT_WIDTH)
+}
+
+/// Shortest painted shaft that still shows a head and a bit of stroke.
+pub fn min_shaft_px(stroke_width: Option<f64>) -> f64 {
+    head_px(stroke_width) * 2.5
+}
 const DASH: &str = "6 4";
 const EQ_SEP: f64 = 3.2;
 /// Gap from molecule viewport edge to shaft anchors (document px).
@@ -495,6 +507,7 @@ pub fn edge_primitives(edge: &EdgePaintIn) -> Vec<EdgePrim> {
     }
     let color = edge.color.as_deref().unwrap_or(DEFAULT_COLOR);
     let width = edge.stroke_width.unwrap_or(DEFAULT_WIDTH);
+    let head = head_px(edge.stroke_width).min((polyline_length(&pts) * 0.45).max(HEAD * 0.5));
     let dashed = edge.dashed;
     let routing = edge.routing;
     let cls = format!("edge edge-{}", edge.index);
@@ -510,7 +523,7 @@ pub fn edge_primitives(edge: &EdgePaintIn) -> Vec<EdgePrim> {
                 color,
                 width,
                 dashed,
-                HEAD * 0.85,
+                head * 0.85,
                 &format!("{cls} eq-fwd"),
                 routing,
                 edge.curve_catmull,
@@ -520,7 +533,7 @@ pub fn edge_primitives(edge: &EdgePaintIn) -> Vec<EdgePrim> {
                 color,
                 width,
                 dashed,
-                HEAD * 0.85,
+                head * 0.85,
                 &format!("{cls} eq-rev"),
                 routing,
                 edge.curve_catmull,
@@ -538,12 +551,12 @@ pub fn edge_primitives(edge: &EdgePaintIn) -> Vec<EdgePrim> {
         }
         EdgeArrow::Open => {
             let (shaft_d, tip, base, (ux, uy)) =
-                shaft_and_head(&pts, HEAD, routing, edge.curve_catmull);
+                shaft_and_head(&pts, head, routing, edge.curve_catmull);
             if !shaft_d.is_empty() {
                 out.push(path_prim(shaft_d, color, "none", width, dashed, &cls));
             }
             let (px, py) = perp(ux, uy);
-            let half = HEAD * 0.55;
+            let half = head * 0.55;
             out.push(path_prim(
                 format!(
                     "M {:.2} {:.2} L {:.2} {:.2} L {:.2} {:.2}",
@@ -562,12 +575,12 @@ pub fn edge_primitives(edge: &EdgePaintIn) -> Vec<EdgePrim> {
             ));
         }
         EdgeArrow::Forward => {
-            let (shaft_d, tip, base, _) = shaft_and_head(&pts, HEAD, routing, edge.curve_catmull);
+            let (shaft_d, tip, base, _) = shaft_and_head(&pts, head, routing, edge.curve_catmull);
             if !shaft_d.is_empty() {
                 out.push(path_prim(shaft_d, color, "none", width, dashed, &cls));
             }
             out.push(path_prim(
-                filled_arrow_head_d(tip, base, HEAD),
+                filled_arrow_head_d(tip, base, head),
                 "none",
                 color,
                 0.0,
@@ -625,6 +638,14 @@ mod tests {
             label_xy: None,
             label_rotate: None,
         }
+    }
+
+    #[test]
+    fn head_scales_with_stroke() {
+        assert!((head_px(None) - 9.0).abs() < 1e-9);
+        assert!((head_px(Some(1.6)) - 9.0).abs() < 1e-9);
+        assert!((head_px(Some(4.8)) - 27.0).abs() < 1e-9);
+        assert!(min_shaft_px(Some(4.8)) > head_px(Some(4.8)) * 2.0);
     }
 
     #[test]

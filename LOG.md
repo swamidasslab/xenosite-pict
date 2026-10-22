@@ -2,6 +2,8 @@
 
 ## 2026-10-22
 
+- Tight ELK gaps no longer collapse to a 20 px stub: standoff cannot walk past the ELK seed into the neighbor, and the head scales with stroke (4.8 px → 27 px). Lower-left PEITC isocyanate→GSH arrow was a dart on a fat stroke.
+
 - Arrow head is the last route point. The shaft is trimmed back along the same Catmull cubics; the head base *is* that trim, so the two cannot separate. Shaft control points freeze after the first solve; labels cannot shove the arrow.
 
 - Scheme shafts keep ELK endpoints and routing points as the only path DOF. Catmull–Rom is paint (and clash/tangent sampling) through those vertices, not a densified control polyline. Writing samples back as the path collapsed elbows (`simplify_route`) and looked like extra standoff.

@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 
-use crate::arrows::{edge_anchors, ANCHOR_GAP};
+use crate::arrows::{edge_anchors, min_shaft_px, ANCHOR_GAP};
 use crate::metrics::BOND_PX;
 use crate::scene::{LayerName, MoleculeIn, Primitive, TextAnchor};
 
@@ -47,8 +47,6 @@ const POSE_STRENGTH: f64 = 0.35;
 const RAY_TO_CENTROID: f64 = 4.0;
 /// Hold the endpoint at the ink-standoff pose on that ray.
 const ENDPOINT_POSE: f64 = 1.5;
-/// When two ink standoffs do not fit in the gap, keep a visible shaft.
-const MIN_SHAFT: f64 = 20.0;
 
 /// Refined shaft polylines and optional label poses `(x, y, rotate_deg)`.
 pub struct RefinedEdges {
@@ -216,12 +214,18 @@ pub fn refine_scheme_edges(
             tgt_c
         };
         if pts.len() >= 2 {
+            // Do not walk past the ELK seed into the neighbor's gap. Standoff
+            // may retract toward ink (longer shaft); it must not shorten below ELK.
+            pose0 = clamp_not_past_seed(pose0, pts[0], src_c);
+            pose1 = clamp_not_past_seed(pose1, pts[last], tgt_c);
             let ux = (tgt_c.0 - src_c.0) / span.max(1e-9);
             let uy = (tgt_c.1 - src_c.1) / span.max(1e-9);
-            if (pose1.0 - pose0.0) * ux + (pose1.1 - pose0.1) * uy < MIN_SHAFT {
+            let elk_len = (pts[last].0 - pts[0].0) * ux + (pts[last].1 - pts[0].1) * uy;
+            let min_shaft = min_shaft_px(edge.stroke_width).min(elk_len.max(20.0));
+            if (pose1.0 - pose0.0) * ux + (pose1.1 - pose0.1) * uy < min_shaft {
                 let mx = (pose0.0 + pose1.0) * 0.5;
                 let my = (pose0.1 + pose1.1) * 0.5;
-                let half = MIN_SHAFT * 0.5;
+                let half = min_shaft * 0.5;
                 pose0 = (mx - ux * half, my - uy * half);
                 pose1 = (mx + ux * half, my + uy * half);
             }
@@ -465,6 +469,22 @@ fn min_ink_signed(world: &LayoutWorld, under: &str, p: (f64, f64)) -> f64 {
         best = best.min(edge_signed_distance(&pt, &s));
     }
     best
+}
+
+/// If `pose` walked past the ELK seed (away from `centroid`), keep the seed.
+fn clamp_not_past_seed(pose: (f64, f64), seed: (f64, f64), centroid: (f64, f64)) -> (f64, f64) {
+    let vx = seed.0 - centroid.0;
+    let vy = seed.1 - centroid.1;
+    let ds = vx * vx + vy * vy;
+    if ds < 1e-12 {
+        return pose;
+    }
+    let t = ((pose.0 - centroid.0) * vx + (pose.1 - centroid.1) * vy) / ds;
+    if t > 1.0 {
+        seed
+    } else {
+        pose
+    }
 }
 
 /// `min(max_standoff, ELK seed’s clash-grid clearance)`. Never negative.
@@ -981,6 +1001,21 @@ mod tests {
             "pose should sit 30px from the chain ink, not from the centroid: p={p:?} d={d}"
         );
         assert!(p.0 > 120.0, "must walk past the protruding atom: {p:?}");
+    }
+
+    #[test]
+    fn clamp_not_past_seed_keeps_elk_gap() {
+        let c = (0.0, 0.0);
+        let seed = (40.0, 0.0);
+        let past = (80.0, 0.0);
+        let inside = (20.0, 0.0);
+        let p = clamp_not_past_seed(past, seed, c);
+        assert!((p.0 - 40.0).abs() < 1e-9, "must not walk past ELK: {p:?}");
+        let q = clamp_not_past_seed(inside, seed, c);
+        assert!(
+            (q.0 - 20.0).abs() < 1e-9,
+            "retract toward ink is fine: {q:?}"
+        );
     }
 
     #[test]
@@ -1514,6 +1549,46 @@ mod tests {
         assert!(
             (-90.0..=90.0).contains(&rot),
             "upside-down labels must flip 180° after the solve: {rot}"
+        );
+    }
+
+    #[test]
+    fn tight_pack_does_not_collapse_to_stub() {
+        let spec = scheme(vec![
+            mol_node("A"),
+            {
+                let mut e = match edge_node("A", "B", None) {
+                    crate::doc::Node::Edge(e) => e,
+                    other => panic!("{other:?}"),
+                };
+                e.stroke_width = Some(4.8);
+                crate::doc::Node::Edge(e)
+            },
+            mol_node("B"),
+        ]);
+        let layout = LayoutOpts::default();
+        let positions = HashMap::from([("A".into(), (0.0, 0.0)), ("B".into(), (0.0, 100.0))]);
+        let sizes = vec![("A".into(), 80.0, 80.0), ("B".into(), 80.0, 80.0)];
+        let paints = vec![
+            chem_paint("A", 80.0, 80.0, 40.0, 40.0),
+            chem_paint("B", 80.0, 80.0, 40.0, 40.0),
+        ];
+        let seed = vec![(40.0, 80.0), (40.0, 100.0)];
+        let refined = refine_scheme_edges(
+            &spec,
+            &layout,
+            &positions,
+            &[Some(seed.clone())],
+            &paints,
+            &sizes,
+        );
+        let pts = refined.edge_paths[0].clone().expect("path");
+        let (x0, y0) = pts[0];
+        let (x1, y1) = pts[pts.len() - 1];
+        let len = (x1 - x0).hypot(y1 - y0);
+        assert!(
+            len + 1.0 >= seed[1].1 - seed[0].1 - 4.0,
+            "tight ELK shaft should not shrink to a 20px stub: len={len} seed={seed:?} pts={pts:?}"
         );
     }
 

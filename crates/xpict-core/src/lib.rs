@@ -46,8 +46,8 @@ pub use align_layout::{
 };
 pub use arrows::{
     axis_aligned, clip_box_edge, edge_anchors, edge_primitives as arrow_edge_primitives,
-    filleted_path_d, shaft_path_d, should_fillet, simplify_route, EdgePaintIn, EdgePrim,
-    ANCHOR_GAP, KINK_PX, TURN_RADIUS,
+    filleted_path_d, head_px, min_shaft_px, shaft_path_d, should_fillet, simplify_route,
+    EdgePaintIn, EdgePrim, ANCHOR_GAP, KINK_PX, TURN_RADIUS,
 };
 pub use bonds::{
     bond_paths, bond_strokes, centered_displacements, depict_order, is_aromatic_order,
