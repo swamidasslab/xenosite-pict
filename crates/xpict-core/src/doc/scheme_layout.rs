@@ -9,23 +9,29 @@ use crate::metrics::BOND_PX;
 use crate::scene::MoleculeIn;
 
 use super::layout_constraints::{
-    push_clear_leaves, shapes_properly_cross, solve, Constraint, HardConstraint, LayoutWorld,
-    ObjectType, Shape, SolveOpts, LAGRANGIAN_CLEAR, LAGRANGIAN_TETHER,
+    shapes_properly_cross, solve, Constraint, HardConstraint, LayoutWorld, ObjectType, Shape,
+    SolveOpts, LAGRANGIAN_CLEAR, LAGRANGIAN_TETHER,
 };
 use super::layout_items::Aabb;
 use super::{DepictSpec, DocPaint, LayoutOpts};
 
 /// Arrow standoff from painted chem (not the mol AABB).
+///
+/// Temporarily unused: endpoint ink clearance is off so we can debug
+/// centroid-seeking energy on its own.
 pub const SCHEME_INK_STANDOFF: f64 = 1.5 * BOND_PX;
-/// Edge labels sit closer than shafts; shaft-scale chem clearance is infeasible
-/// in a tight ELK gap and would drag the tethered shaft away.
+/// Edge labels sit closer than shafts; unused while endpoint standoff is off.
+#[allow(dead_code)]
 const SCHEME_LABEL_INK_STANDOFF: f64 = 0.5 * BOND_PX;
 /// Minimum gap between nearly-parallel overlapping shafts.
 pub const SCHEME_EDGE_CLEARANCE: f64 = BOND_PX;
 const LABEL_TETHER_PX: f64 = 8.0;
 const POSE_STRENGTH: f64 = 0.35;
-/// Endpoint → centroid and shaft-tangent → centroid springs.
-const ENDPOINT_POSE_STRENGTH: f64 = 2.0;
+/// Primary soft term: each endpoint toward its mol centroid.
+const ENDPOINT_TO_CENTROID: f64 = 4.0;
+/// Weaker than min-dist. Picks the ELK-facing side of the standoff circle
+/// (min-dist alone is flat there) without swapping a 2-point shaft.
+const TANGENT_AIM: f64 = 0.4;
 
 /// Refined shaft polylines and optional label poses `(x, y, rotate_deg)`.
 pub struct RefinedEdges {
@@ -159,102 +165,68 @@ pub fn refine_scheme_edges(
             .first()
             .map(String::as_str)
             .unwrap_or("");
-        let src_c = mol_centroid(&paint_of, positions, &size_of, src);
-        let tgt_c = mol_centroid(&paint_of, positions, &size_of, tgt);
         let pts = &seed_pts[i];
-        let toward0 = if pts.len() >= 3 { pts[1] } else { tgt_c };
-        let toward1 = if pts.len() >= 3 {
-            pts[pts.len() - 2]
-        } else {
-            src_c
-        };
-        // ELK ports sit on the box. Seed on the ray toward the other end /
-        // next bend, at ink standoff — not on the centroid, and not past
-        // the midpoint (tight packing).
-        let sep0 = (toward0.0 - src_c.0).hypot(toward0.1 - src_c.1);
-        let sep1 = (toward1.0 - tgt_c.0).hypot(toward1.1 - tgt_c.1);
-        let stand0 = SCHEME_INK_STANDOFF.min(sep0 * 0.45);
-        let stand1 = SCHEME_INK_STANDOFF.min(sep1 * 0.45);
-        let aim0 = ray_at_dist(src_c, toward0, stand0);
-        let aim1 = ray_at_dist(tgt_c, toward1, stand1);
+        // ELK polyline is the seed. Debug pass: no ink standoff. Energy is
+        // endpoint → corresponding mol centroid.
+        let guides = world.insert(
+            format!("{eid}/guides"),
+            &eid,
+            ObjectType::Group,
+            Shape::Aabb(Aabb::new(0.0, 0.0, 0.0, 0.0)),
+            true,
+        );
+        let last = pts.len().saturating_sub(1);
         for (k, &(x, y)) in pts.iter().enumerate() {
-            let (px, py) = if k == 0 {
-                aim0
-            } else if k + 1 == pts.len() {
-                aim1
-            } else {
-                (x, y)
-            };
             world.insert(
                 format!("{eid}/p{k}"),
                 &eid,
                 ObjectType::EdgePoint,
-                Shape::Point { x: px, y: py },
+                Shape::Point { x, y },
                 false,
             );
+            world.insert(
+                format!("{guides}/p{k}"),
+                &guides,
+                ObjectType::EdgePoint,
+                Shape::Point { x, y },
+                true,
+            );
+            if k > 0 && k < last {
+                cs.push(Constraint::PreferPose {
+                    a: format!("{eid}/p{k}"),
+                    x,
+                    y,
+                    strength: POSE_STRENGTH,
+                });
+            }
         }
         if pts.len() >= 2 {
-            let last = pts.len() - 1;
             let src_centroid = format!("scheme/mols/{src}/centroid");
             let tgt_centroid = format!("scheme/mols/{tgt}/centroid");
-            // Pull the endpoint toward the centroid (ink standoff stops it).
             cs.push(Constraint::MinimizeDist {
                 a: format!("{eid}/p0"),
                 b: src_centroid.clone(),
                 opt_dist: 0.0,
-                strength: ENDPOINT_POSE_STRENGTH,
+                strength: ENDPOINT_TO_CENTROID,
             });
-            // Pull the shaft tangent onto the ray from the next point through
-            // the centroid, so the arrow points at the center.
             cs.push(Constraint::Collinear {
-                a: format!("{eid}/p1"),
+                a: format!("{guides}/p1"),
                 b: format!("{eid}/p0"),
                 c: src_centroid,
-                strength: ENDPOINT_POSE_STRENGTH,
+                strength: TANGENT_AIM,
             });
-            push_clear_leaves(
-                &world,
-                &mut hard,
-                &format!("{eid}/p0"),
-                &format!("scheme/mols/{src}/chem"),
-                SCHEME_INK_STANDOFF,
-            );
             cs.push(Constraint::MinimizeDist {
                 a: format!("{eid}/p{last}"),
                 b: tgt_centroid.clone(),
                 opt_dist: 0.0,
-                strength: ENDPOINT_POSE_STRENGTH,
+                strength: ENDPOINT_TO_CENTROID,
             });
             cs.push(Constraint::Collinear {
-                a: format!("{eid}/p{}", last.saturating_sub(1)),
+                a: format!("{guides}/p{}", last.saturating_sub(1)),
                 b: format!("{eid}/p{last}"),
                 c: tgt_centroid,
-                strength: ENDPOINT_POSE_STRENGTH,
+                strength: TANGENT_AIM,
             });
-            push_clear_leaves(
-                &world,
-                &mut hard,
-                &format!("{eid}/p{last}"),
-                &format!("scheme/mols/{tgt}/chem"),
-                SCHEME_INK_STANDOFF,
-            );
-        }
-        for k in 1..pts.len().saturating_sub(1) {
-            cs.push(Constraint::PreferPose {
-                a: format!("{eid}/p{k}"),
-                x: pts[k].0,
-                y: pts[k].1,
-                strength: POSE_STRENGTH,
-            });
-            for mid in &mol_ids {
-                push_clear_leaves(
-                    &world,
-                    &mut hard,
-                    &format!("{eid}/p{k}"),
-                    &format!("scheme/mols/{mid}/chem"),
-                    SCHEME_INK_STANDOFF,
-                );
-            }
         }
         if let Some(lab) = edge_label_seed(spec, edge, pts) {
             let (aabb, px, py) = lab;
@@ -277,15 +249,6 @@ pub fn refine_scheme_edges(
                 dist: LABEL_TETHER_PX,
                 lagrangian: LAGRANGIAN_TETHER,
             });
-            for mid in &mol_ids {
-                push_clear_leaves(
-                    &world,
-                    &mut hard,
-                    &format!("{eid}/label"),
-                    &format!("scheme/mols/{mid}/chem"),
-                    SCHEME_LABEL_INK_STANDOFF,
-                );
-            }
         }
     }
 
@@ -350,7 +313,7 @@ pub fn refine_scheme_edges(
         if let Some(n) = world.get(&lid) {
             let s = n.world_shape();
             let (x, y) = s.aabb().center();
-            let rot = tangent_deg(out_paths[i].as_deref().unwrap_or(&seed_pts[i]));
+            let rot = readable_deg(tangent_deg(out_paths[i].as_deref().unwrap_or(&seed_pts[i])));
             out_labels[i] = Some((x, y, rot));
         }
     }
@@ -380,11 +343,10 @@ fn mol_centroid(
     if let Some(paint) = paints.get(id) {
         if !paint.molecule.atoms.is_empty() {
             let (x, y) = positions.get(id).copied().unwrap_or((0.0, 0.0));
-            let origin = mol_origin(paint, (x, y));
             let n = paint.molecule.atoms.len() as f64;
             let sx: f64 = paint.molecule.atoms.iter().map(|a| a.x).sum();
             let sy: f64 = paint.molecule.atoms.iter().map(|a| a.y).sum();
-            return (origin.0 + sx / n, origin.1 + sy / n);
+            return chem_to_document(paint, (x, y), sx / n, sy / n);
         }
     }
     let (x, y, w, h) = mol_box(positions, sizes, id);
@@ -399,23 +361,33 @@ fn ray_at_dist(from: (f64, f64), toward: (f64, f64), dist: f64) -> (f64, f64) {
     (from.0 + dx / l * dist, from.1 + dy / l * dist)
 }
 
-fn mol_origin(paint: &DocPaint, elk: (f64, f64)) -> (f64, f64) {
-    match paint.scene.viewports.first() {
+/// Document-space origin of unframed atom coords: ELK + leftover + scaled
+/// [`crate::depict::frame_offset`] (the same shift chem paint uses).
+fn mol_frame_origin(paint: &DocPaint, elk: (f64, f64)) -> (f64, f64) {
+    let leftover = match paint.scene.viewports.first() {
         Some(vp) => (elk.0 + vp.x + vp.ox, elk.1 + vp.y + vp.oy),
         None => elk,
-    }
+    };
+    let (fx, fy) = crate::depict::frame_offset(&paint.molecule);
+    let s = paint.molecule.diagram_scale();
+    (leftover.0 + s * fx, leftover.1 + s * fy)
+}
+
+fn chem_to_document(paint: &DocPaint, elk: (f64, f64), ax: f64, ay: f64) -> (f64, f64) {
+    let (ox, oy) = mol_frame_origin(paint, elk);
+    let s = paint.molecule.diagram_scale();
+    (ox + s * ax, oy + s * ay)
 }
 
 fn chem_in_document(
     paint: &DocPaint,
     elk: (f64, f64),
 ) -> (Vec<(f64, f64, f64, f64)>, Vec<(usize, f64, f64)>) {
-    let origin = mol_origin(paint, elk);
     let mol: &MoleculeIn = &paint.molecule;
     let mut by_idx: HashMap<i32, (f64, f64)> = HashMap::new();
     let mut atoms = Vec::with_capacity(mol.atoms.len());
     for a in &mol.atoms {
-        let p = (a.x + origin.0, a.y + origin.1);
+        let p = chem_to_document(paint, elk, a.x, a.y);
         by_idx.insert(a.index, p);
         atoms.push((a.index.max(0) as usize, p.0, p.1));
     }
@@ -498,6 +470,17 @@ fn tangent_deg(pts: &[(f64, f64)]) -> f64 {
     (y1 - y0).atan2(x1 - x0).to_degrees()
 }
 
+/// Parallel to the edge, but never upside-down (`(-90, 90]` degrees).
+fn readable_deg(deg: f64) -> f64 {
+    let mut a = ((deg + 180.0) % 360.0 + 360.0) % 360.0 - 180.0;
+    if a > 90.0 {
+        a -= 180.0;
+    } else if a < -90.0 {
+        a += 180.0;
+    }
+    a
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -509,6 +492,148 @@ mod tests {
     #[test]
     fn ink_standoff_constant_is_one_and_half_bonds() {
         assert!((SCHEME_INK_STANDOFF - 1.5 * BOND_PX).abs() < 1e-12);
+    }
+
+    #[test]
+    fn framed_centroid_sits_inside_elk_box() {
+        let a_spec: crate::doc::DepictSpec =
+            serde_json::from_str(r#"{"type":"mol","id":"A","smiles":"CCO"}"#).unwrap();
+        let a = crate::doc::render(&a_spec).unwrap().remove(0);
+        let paint = crate::doc::DocPaint {
+            id: a.id.clone(),
+            molecule: a.molecule.clone(),
+            scene: a.scene.clone(),
+            frame_json: a.frame_molblock.clone(),
+        };
+        let w = a.scene.width;
+        let h = a.scene.height;
+        let paints = HashMap::from([("A", &paint)]);
+        let positions = HashMap::from([("A".into(), (0.0, 0.0))]);
+        let sizes = HashMap::from([("A", (w, h))]);
+        let c = mol_centroid(&paints, &positions, &sizes, "A");
+        assert!(
+            c.0 >= -1.0 && c.0 <= w + 1.0 && c.1 >= -1.0 && c.1 <= h + 1.0,
+            "framed centroid {c:?} must sit in the ELK box 0..{w} x 0..{h}"
+        );
+    }
+
+    #[test]
+    fn readable_deg_never_upside_down() {
+        assert!((readable_deg(0.0)).abs() < 1e-9);
+        assert!((readable_deg(180.0)).abs() < 1e-9);
+        assert!((readable_deg(-176.0) - 4.0).abs() < 1e-9);
+        assert!(readable_deg(135.0) < 0.0 && readable_deg(135.0) > -90.0);
+        for d in [-200.0, -90.0, 0.0, 45.0, 90.0, 91.0, 180.0, 270.0] {
+            let r = readable_deg(d);
+            assert!((-90.0..=90.0).contains(&r), "{d} -> {r}");
+        }
+    }
+
+    #[test]
+    fn real_scheme_keeps_elk_direction() {
+        let spec: crate::doc::DepictSpec = serde_json::from_str(
+            r#"{
+              "type": "reaction_scheme",
+              "children": [
+                {"type": "text", "id": "adh", "text": "ADH"},
+                {"type": "mol", "id": "A", "smiles": "CCO"},
+                {"type": "edge", "source": "A", "target": "B", "label": "adh", "arrow": "forward"},
+                {"type": "mol", "id": "B", "smiles": "CC=O"}
+              ]
+            }"#,
+        )
+        .unwrap();
+        let a = crate::doc::render(
+            &serde_json::from_str(r#"{"type":"mol","id":"A","smiles":"CCO"}"#).unwrap(),
+        )
+        .unwrap()
+        .remove(0);
+        let b = crate::doc::render(
+            &serde_json::from_str(r#"{"type":"mol","id":"B","smiles":"CC=O"}"#).unwrap(),
+        )
+        .unwrap()
+        .remove(0);
+        let paints = vec![
+            crate::doc::DocPaint {
+                id: a.id.clone(),
+                molecule: a.molecule.clone(),
+                scene: a.scene.clone(),
+                frame_json: a.frame_molblock.clone(),
+            },
+            crate::doc::DocPaint {
+                id: b.id.clone(),
+                molecule: b.molecule.clone(),
+                scene: b.scene.clone(),
+                frame_json: b.frame_molblock.clone(),
+            },
+        ];
+        let sizes: Vec<(String, f64, f64)> = paints
+            .iter()
+            .map(|p| (p.id.clone(), p.scene.width, p.scene.height))
+            .collect();
+        let gap = 20.0;
+        let positions = HashMap::from([
+            ("A".into(), (0.0, 0.0)),
+            ("B".into(), (sizes[0].1 + gap, 0.0)),
+        ]);
+        let seed = vec![
+            (sizes[0].1, sizes[0].2 * 0.5),
+            (positions["B"].0, sizes[1].2 * 0.5),
+        ];
+        let refined = refine_scheme_edges(
+            &spec,
+            &LayoutOpts {
+                refine: Some(true),
+                ..Default::default()
+            },
+            &positions,
+            &[Some(seed.clone())],
+            &paints,
+            &sizes,
+        );
+        let pts = refined.edge_paths[0].clone().expect("path");
+        let (x0, y0) = pts[0];
+        let (x1, y1) = pts[pts.len() - 1];
+        let sdx = seed[1].0 - seed[0].0;
+        let sdy = seed[1].1 - seed[0].1;
+        let dx = x1 - x0;
+        let dy = y1 - y0;
+        let paint_of: HashMap<&str, &DocPaint> =
+            paints.iter().map(|p| (p.id.as_str(), p)).collect();
+        let size_of: HashMap<&str, (f64, f64)> = sizes
+            .iter()
+            .map(|(id, w, h)| (id.as_str(), (*w, *h)))
+            .collect();
+        let ca = mol_centroid(&paint_of, &positions, &size_of, "A");
+        let cb = mol_centroid(&paint_of, &positions, &size_of, "B");
+        let va = &paints[0].scene.viewports[0];
+        let vb = &paints[1].scene.viewports[0];
+        let (fa, fb) = (
+            crate::depict::frame_offset(&paints[0].molecule),
+            crate::depict::frame_offset(&paints[1].molecule),
+        );
+        assert!(
+            dx * sdx + dy * sdy > 0.0,
+            "refined shaft reversed vs ELK: seed={seed:?} pts={pts:?} ca={ca:?} cb={cb:?} leftoverA=({},{}) oxA=({},{}) frameA={fa:?} leftoverB=({},{}) frameB={fb:?}",
+            va.x, va.y, va.ox, va.oy, vb.x, vb.y
+        );
+        let da0 = (x0 - ca.0).hypot(y0 - ca.1);
+        let da_seed = (seed[0].0 - ca.0).hypot(seed[0].1 - ca.1);
+        let db1 = (x1 - cb.0).hypot(y1 - cb.1);
+        let db_seed = (seed[1].0 - cb.0).hypot(seed[1].1 - cb.1);
+        assert!(
+            da0 < da_seed - 1.0,
+            "src end must move closer to A's centroid: {da0} vs seed {da_seed} pts={pts:?} ca={ca:?}"
+        );
+        assert!(
+            db1 < db_seed - 1.0,
+            "tgt end must move closer to B's centroid: {db1} vs seed {db_seed} pts={pts:?} cb={cb:?}"
+        );
+        let (_, _, rot) = refined.edge_labels[0].expect("label");
+        assert!(
+            (-90.0..=90.0).contains(&rot),
+            "label must not be upside down: {rot}"
+        );
     }
 
     #[test]
@@ -728,12 +853,22 @@ mod tests {
             chem_paint("B", 200.0, 200.0, 100.0, 100.0),
         ];
         let seed = vec![(200.0, 100.0), (400.0, 100.0)];
-        let refined =
-            refine_scheme_edges(&spec, &layout, &positions, &[Some(seed)], &paints, &sizes);
+        let refined = refine_scheme_edges(
+            &spec,
+            &layout,
+            &positions,
+            &[Some(seed.clone())],
+            &paints,
+            &sizes,
+        );
         let pts = refined.edge_paths[0].clone().expect("path");
         assert!(pts.len() >= 2);
         let (x0, y0) = pts[0];
         let (x1, y1) = pts[pts.len() - 1];
+        assert!(
+            (x1 - x0) * (seed[1].0 - seed[0].0) + (y1 - y0) * (seed[1].1 - seed[0].1) > 0.0,
+            "must keep ELK direction: {pts:?}"
+        );
         assert!(
             (0.0..=200.0).contains(&x0) && (0.0..=200.0).contains(&y0),
             "src endpoint should enter A's AABB: ({x0},{y0})"
@@ -742,23 +877,27 @@ mod tests {
             (400.0..=600.0).contains(&x1) && (0.0..=200.0).contains(&y1),
             "tgt endpoint should enter B's AABB: ({x1},{y1})"
         );
-        let ca = (100.0, 100.0);
-        let cb = (500.0, 100.0);
+        let paint_of: HashMap<&str, &DocPaint> =
+            paints.iter().map(|p| (p.id.as_str(), p)).collect();
+        let size_of: HashMap<&str, (f64, f64)> =
+            HashMap::from([("A", (200.0, 200.0)), ("B", (200.0, 200.0))]);
+        let ca = mol_centroid(&paint_of, &positions, &size_of, "A");
+        let cb = mol_centroid(&paint_of, &positions, &size_of, "B");
         let da = (x0 - ca.0).hypot(y0 - ca.1);
         let db = (x1 - cb.0).hypot(y1 - cb.1);
         assert!(
-            da >= SCHEME_INK_STANDOFF * 0.75,
-            "src must not reach centroid: {da}"
+            da < 8.0,
+            "src should sit on A's centroid with standoff off: {da} pts={pts:?} ca={ca:?}"
         );
         assert!(
-            db >= SCHEME_INK_STANDOFF * 0.75,
-            "tgt must not reach centroid: {db}"
+            db < 8.0,
+            "tgt should sit on B's centroid with standoff off: {db} pts={pts:?} cb={cb:?}"
         );
-        let line_a = point_to_line(ca.0, ca.1, x0, y0, x1, y1);
-        let line_b = point_to_line(cb.0, cb.1, x0, y0, x1, y1);
+        let line_a = point_to_line(x0, y0, seed[1].0, seed[1].1, ca.0, ca.1);
+        let line_b = point_to_line(x1, y1, seed[0].0, seed[0].1, cb.0, cb.1);
         assert!(
             line_a < 8.0 && line_b < 8.0,
-            "shaft should aim through centroids: dA={line_a} dB={line_b} pts={pts:?}"
+            "each end should sit on its ELK→centroid ray: dA={line_a} dB={line_b} pts={pts:?} ca={ca:?} cb={cb:?}"
         );
     }
 
@@ -819,11 +958,14 @@ mod tests {
             refine_scheme_edges(&spec, &layout, &positions, &[Some(seed)], &paints, &sizes);
         let pts = refined.edge_paths[0].clone().expect("path");
         let (lx, ly, rot) = refined.edge_labels[0].expect("label");
-        let expected = tangent_deg(&pts);
-        let diff = (rot - expected).abs();
+        let expected = readable_deg(tangent_deg(&pts));
         assert!(
-            diff.min((diff - 180.0).abs()) < 15.0,
+            (rot - expected).abs() < 15.0,
             "label rotate {rot} vs edge {expected}"
+        );
+        assert!(
+            (-90.0..=90.0).contains(&rot),
+            "label must not be upside down: {rot}"
         );
         let mut d_shaft = f64::INFINITY;
         for w in pts.windows(2) {

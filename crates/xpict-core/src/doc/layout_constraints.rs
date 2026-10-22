@@ -599,9 +599,10 @@ pub enum Constraint {
     /// intersection. Kits that should not uncross an existing X simply omit
     /// this row for that pair.
     PolyCross { a: NodeId, b: NodeId, strength: f64 },
-    /// `b` should sit on the ray `a → c` (squared perp distance, plus a hinge
-    /// if `b` is behind `a`). Scheme arrows use this so the shaft tangent
-    /// aims at a mol centroid without requiring `b` to reach `c`.
+    /// `b` should sit on the segment `a → c` (squared perp distance, plus
+    /// hinges if `b` is behind `a` or past `c`). Scheme arrows use this so
+    /// the shaft keeps its seed orientation while the endpoint extends
+    /// toward a mol centroid without crossing to the far side.
     Collinear {
         a: NodeId,
         b: NodeId,
@@ -1011,7 +1012,7 @@ fn spring(d: f64, d_star: f64) -> f64 {
     e * e
 }
 
-/// `b` on ray `a → c`: perp distance plus wrong-side hinge (px²).
+/// `b` on segment `a → c`: perp distance plus behind/`past c` hinges (px²).
 fn collinear_energy(a: (f64, f64), b: (f64, f64), c: (f64, f64), strength: f64) -> f64 {
     let vx = c.0 - a.0;
     let vy = c.1 - a.1;
@@ -1023,7 +1024,8 @@ fn collinear_energy(a: (f64, f64), b: (f64, f64), c: (f64, f64), strength: f64) 
     let perp = ((b.0 - a.0) * vy - (b.1 - a.1) * vx) / l;
     let t = ((b.0 - a.0) * vx + (b.1 - a.1) * vy) / l2;
     let back = if t < 0.0 { t * l } else { 0.0 };
-    strength * (perp * perp + back * back)
+    let past = if t > 1.0 { (t - 1.0) * l } else { 0.0 };
+    strength * (perp * perp + back * back + past * past)
 }
 
 /// Evaluate soft energy for the current world poses.
@@ -3878,7 +3880,7 @@ mod tests {
     }
 
     #[test]
-    fn collinear_energy_zero_on_ray_positive_off() {
+    fn collinear_energy_zero_on_segment_positive_off() {
         let mut w = LayoutWorld::rooted("scheme", ObjectType::Scheme);
         w.insert(
             "a",
@@ -3912,8 +3914,13 @@ mod tests {
         assert!(energy(&w, &[row.clone()], &[], 0.0) > 0.0);
         w.set_pose("b", -12.0, 0.0);
         assert!(
+            energy(&w, &[row.clone()], &[], 0.0) > 0.0,
+            "behind the origin of the segment must cost"
+        );
+        w.set_pose("b", 55.0, 0.0);
+        assert!(
             energy(&w, &[row], &[], 0.0) > 0.0,
-            "behind the origin of the ray must cost"
+            "past the far end of the segment must cost"
         );
     }
 

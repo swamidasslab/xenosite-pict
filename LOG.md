@@ -2,6 +2,10 @@
 
 ## 2026-10-22
 
+- Debug: scheme arrow ink standoff is off. Refine energy is MinimizeDist of each endpoint to its framed mol centroid.
+
+- Scheme refine primary energy is MinimizeDist from each shaft endpoint to that mol’s framed centroid (`frame_offset` + scale, same space as painted ink). Hard ink standoff stops them short. Weak Collinear to the frozen ELK neighbor only breaks the standoff-circle tie so the shaft does not swap ends. Labels wrap to (−90, 90].
+
 - Rotated edge labels use `dominant-baseline="central"` so SVG `rotate` is about the glyph center, not the alphabetic baseline (corner).
 
 - Scheme arrow ink standoff is 1.5 bonds. Endpoints initialize on the centroid-aiming ray (not ELK box ports). Energy is MinimizeDist to the centroid plus Collinear so the shaft tangent aims at the center; hard chem clearance keeps them from reaching it.
