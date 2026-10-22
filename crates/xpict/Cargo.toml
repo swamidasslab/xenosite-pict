@@ -17,11 +17,6 @@ categories = ["science", "visualization"]
 name = "xpict"
 path = "src/lib.rs"
 
-[features]
-default = ["coordgen"]
-# Static CoordGen linked into this crate (via xpict-core); Rust calls C++ directly.
-coordgen = ["xpict-core/coordgen"]
-
 [dependencies]
 cxx = "1"
 rdkit = "0.4.12"

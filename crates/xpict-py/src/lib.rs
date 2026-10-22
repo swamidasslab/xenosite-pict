@@ -115,14 +115,13 @@ fn compose_scheme(spec_json: &str, paints_json: &str) -> PyResult<String> {
         .map_err(|e| PyRuntimeError::new_err(format!("Scene JSON: {e}")))
 }
 
-/// Spec → ``Rendered[]`` JSON (`plan_edge` → CoordGen edge → `render_doc`).
+/// Spec → ``Rendered[]`` JSON (CoordGen layout + mol-spec paint + pack cells).
 #[pyfunction]
 #[pyo3(name = "depict")]
-#[cfg(feature = "coordgen")]
 fn depict_doc(spec_json: &str) -> PyResult<String> {
     let spec: xpict_core::DepictSpec = serde_json::from_str(spec_json)
         .map_err(|e| PyRuntimeError::new_err(format!("DepictSpec JSON: {e}")))?;
-    let painted = xpict_core::doc::depict(&spec).map_err(PyRuntimeError::new_err)?;
+    let painted = xpict_core::doc::render(&spec).map_err(PyRuntimeError::new_err)?;
     serde_json::to_string(&painted)
         .map_err(|e| PyRuntimeError::new_err(format!("Rendered JSON: {e}")))
 }
@@ -673,7 +672,6 @@ impl PyShape {
     }
 }
 
-#[cfg(feature = "coordgen")]
 #[pyclass(module = "xpict._native", name = "Layout2DResult")]
 #[derive(Clone)]
 struct PyLayout2DResult {
@@ -683,7 +681,6 @@ struct PyLayout2DResult {
     y: Vec<f32>,
 }
 
-#[cfg(feature = "coordgen")]
 #[pymethods]
 impl PyLayout2DResult {
     /// Packed ``[(x, y), ...]`` view of the layout.
@@ -696,7 +693,6 @@ impl PyLayout2DResult {
     }
 }
 
-#[cfg(feature = "coordgen")]
 #[pyfunction]
 #[pyo3(signature = (
     atomic_numbers,
@@ -756,7 +752,6 @@ fn generate_2d_coordinates(
     })
 }
 
-#[cfg(feature = "coordgen")]
 fn layout_mol_from_parts(
     atomic_numbers: Vec<i32>,
     bond_from: Vec<i32>,
@@ -792,7 +787,6 @@ fn layout_mol_from_parts(
 
 /// Minimum-cost atom map (query→ref). Returns ``(pairs, cost)`` with
 /// ``pairs`` as ``[(query_idx, ref_idx), ...]``.
-#[cfg(feature = "coordgen")]
 #[pyfunction]
 #[pyo3(signature = (
     ref_atomic_numbers, ref_bond_from, ref_bond_to, ref_bond_orders,
@@ -861,7 +855,6 @@ fn cost_mapping(
 /// Cost-map + soft-constrained CoordGen layout of query onto reference.
 ///
 /// Returns ``(pairs, cost, ref_x, ref_y, query_x, query_y)``.
-#[cfg(feature = "coordgen")]
 #[pyfunction]
 #[pyo3(signature = (
     ref_atomic_numbers, ref_bond_from, ref_bond_to, ref_bond_orders,
@@ -947,7 +940,6 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(resolve_depict_chrome, m)?)?;
     m.add_function(wrap_pyfunction!(render_doc, m)?)?;
     m.add_function(wrap_pyfunction!(compose_scheme, m)?)?;
-    #[cfg(feature = "coordgen")]
     m.add_function(wrap_pyfunction!(depict_doc, m)?)?;
     m.add_function(wrap_pyfunction!(element_symbol, m)?)?;
     m.add_function(wrap_pyfunction!(atomic_number, m)?)?;
@@ -970,7 +962,6 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(split_atom_label, m)?)?;
     m.add_function(wrap_pyfunction!(compose_atom_label, m)?)?;
     m.add_function(wrap_pyfunction!(label_ink_shape, m)?)?;
-    #[cfg(feature = "coordgen")]
     {
         use xpict_core::layout_coordgen as cg;
         m.add_function(wrap_pyfunction!(generate_2d_coordinates, m)?)?;
@@ -1006,6 +997,6 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("DEFAULT_NODE_SPACING", xpict_core::LayoutOpts::DEFAULT_NODE_SPACING)?;
     m.add("DEFAULT_LAYER_SPACING", xpict_core::LayoutOpts::DEFAULT_LAYER_SPACING)?;
     m.add("HAS_FONT", true)?;
-    m.add("HAS_COORDGEN", cfg!(feature = "coordgen"))?;
+    m.add("HAS_COORDGEN", true)?;
     Ok(())
 }

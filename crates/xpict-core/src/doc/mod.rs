@@ -1,17 +1,15 @@
-//! Declarative document — plan → edge resolve → paint (+ scheme compose).
+//! Declarative document — one [`render`] entry for every spec.
 //!
 //! Wire types live in [`spec`] (opts cascade + DepictSpec collocated).
-//! Preferred entry: [`depict`] (plan + in-core Chematic/CoordGen edge +
-//! [`render_doc`]). Hosts may still call [`plan_edge`] / [`render_doc`]
-//! separately. Reaction schemes use [`compose_scheme`].
+//! Product path: CoordGen layout, mol-spec paint (chem + annotations +
+//! caption), then pack cells (reaction schemes compose). Annotations are
+//! fields on [`MolNode`], not a parallel paint API.
 
 mod caption;
 mod chrome;
 mod chrome_paint;
 mod compose;
-#[cfg(feature = "coordgen")]
 mod depict_doc;
-#[cfg(feature = "coordgen")]
 mod edge_resolve;
 mod fit;
 mod layout_constraints;
@@ -28,9 +26,7 @@ pub use chrome::{
     Z_SHADE,
 };
 pub use compose::compose_scheme;
-#[cfg(feature = "coordgen")]
-pub use depict_doc::{depict, Rendered as DepictRendered, SvgAtom, SvgBond};
-#[cfg(feature = "coordgen")]
+pub use depict_doc::{depict, render, Rendered as DepictRendered, SvgAtom, SvgBond};
 pub use edge_resolve::{process_edge_plan, process_edge_plan_with_frames};
 pub use fit::{fit_scene, resolve_viewport_margin, VIEWPORT_MARGIN_DEFAULT};
 pub use layout_constraints::{
@@ -385,28 +381,28 @@ pub struct DocPaint {
     pub frame_json: String,
 }
 
-/// Pass 2: stitch host [`EdgeResult`] coords onto the document and paint.
-pub fn render_doc(spec: &DepictSpec, edge: &EdgeResult) -> Result<Vec<DocPaint>, String> {
+/// Paint each mol in a document from already-laid coords.
+///
+/// Same steps for every mol spec: chem paint, then annotations, then
+/// captions, then fit. Empty overlay fields are a no-op, not a second path.
+pub(crate) fn paint_laid_mols(
+    spec: &DepictSpec,
+    laid: &HashMap<String, MoleculeIn>,
+) -> Result<Vec<DocPaint>, String> {
+    validate_edges(spec)?;
     let mols = spec.mols();
+    if mols.is_empty() {
+        return Ok(vec![]);
+    }
     let ids = assign_mol_ids(&mols)?;
-    let by_id = edge_molecules(edge);
     let mut out = Vec::with_capacity(mols.len());
 
     for (i, node) in mols.iter().enumerate() {
         let id = &ids[i];
-        let row = by_id
-            .get(id.as_str())
-            .ok_or_else(|| format!("EdgeResult missing molecule id {id}"))?;
-        if !row.ok {
-            return Err(format!(
-                "EdgeResult {id} has ok=false: {}",
-                row.error.as_deref().unwrap_or("coord gen failed")
-            ));
-        }
-        let base = row
-            .molecule
-            .clone()
-            .ok_or_else(|| format!("EdgeResult {id} missing molecule"))?;
+        let base = laid
+            .get(id)
+            .cloned()
+            .ok_or_else(|| format!("missing laid molecule id {id}"))?;
         let chrome = spec.resolve_mol_chrome(i);
         validate_mol_shade_colormap(node, &chrome)?;
         let molecule = apply_doc_chrome(base, node, id, &chrome);
@@ -432,6 +428,31 @@ pub fn render_doc(spec: &DepictSpec, edge: &EdgeResult) -> Result<Vec<DocPaint>,
         });
     }
     Ok(out)
+}
+
+/// Pass 2: stitch host [`EdgeResult`] coords onto the document and paint.
+pub fn render_doc(spec: &DepictSpec, edge: &EdgeResult) -> Result<Vec<DocPaint>, String> {
+    let mols = spec.mols();
+    let ids = assign_mol_ids(&mols)?;
+    let by_id = edge_molecules(edge);
+    let mut laid = HashMap::new();
+    for id in &ids {
+        let row = by_id
+            .get(id.as_str())
+            .ok_or_else(|| format!("EdgeResult missing molecule id {id}"))?;
+        if !row.ok {
+            return Err(format!(
+                "EdgeResult {id} has ok=false: {}",
+                row.error.as_deref().unwrap_or("coord gen failed")
+            ));
+        }
+        let mol = row
+            .molecule
+            .clone()
+            .ok_or_else(|| format!("EdgeResult {id} missing molecule"))?;
+        laid.insert(id.clone(), mol);
+    }
+    paint_laid_mols(spec, &laid)
 }
 
 #[cfg(test)]

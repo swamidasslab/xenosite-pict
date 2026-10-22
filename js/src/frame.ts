@@ -3,8 +3,10 @@
  * so returned atom positions match SVG viewBox ink.
  */
 
-import type { MoleculeIn } from "./layout/rdkit-layout.js";
-import { SCALE } from "./layout/rdkit-layout.js";
+import type { MoleculeIn } from "./generated/edge.js";
+
+/** Bond length target in drawing units (matches Rust `SCALE`). */
+export const SCALE = 30;
 import { elementSymbol } from "./elements.js";
 
 /** Matches Rust ``PAD_PX`` / ``MARK_FRAC`` (SCALE-space). */

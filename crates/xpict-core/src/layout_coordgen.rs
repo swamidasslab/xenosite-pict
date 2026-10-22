@@ -1,6 +1,6 @@
 //! Chemistry-facing 2D layout via private CoordGen backend.
 //!
-//! Enabled with the `coordgen` feature. Python/JS should not see CoordGen types.
+//! Always linked. Python/JS should not see CoordGen types.
 
 pub use coordgen_sys::{
     generate_2d_coordinates, CoordGenError, LayoutMolecule, LayoutResult, BOND_STEREO_CIS,

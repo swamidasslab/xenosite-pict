@@ -13,11 +13,6 @@ description = "PyO3 bindings for xpict-core"
 name = "xpict_native"
 crate-type = ["cdylib"]
 
-[features]
-default = ["coordgen"]
-# Link static CoordGen into the Python extension (Rust calls C++; no Python shuttle).
-coordgen = ["xpict-core/coordgen"]
-
 [dependencies]
 # abi3-py311 → one wheel per OS/arch for all CPython ≥3.11 (matches requires-python).
 pyo3 = { version = "0.22", features = ["extension-module", "abi3-py311"] }

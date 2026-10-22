@@ -65,13 +65,8 @@ def render_doc(spec: DepictSpecLike, edge: EdgeResultLike) -> list[RenderedDict]
 
 
 def depict(spec: DepictSpecLike) -> list[RenderedDict]:
-    """DepictSpec → ``Rendered`` rows (plan + Chematic/CoordGen edge + paint in Rust)."""
-    fn = getattr(_rust, "depict", None)
-    if fn is None:
-        raise RuntimeError(
-            "xpict._native.depict requires CoordGen (rebuild with coordgen feature)"
-        )
-    return cast(list[RenderedDict], json.loads(fn(_as_json(spec))))
+    """DepictSpec → ``Rendered`` cells (CoordGen layout + mol-spec paint + pack)."""
+    return cast(list[RenderedDict], json.loads(_rust.depict(_as_json(spec))))
 
 
 def compose_scheme(

@@ -45,7 +45,9 @@ if [[ -d "$BINDINGS" ]]; then
     CommonOpts MolOpts NodeType ForTypesPatch TypedOptsPatch OptsPatch Opts \
     EdgeArrow EdgeNodeKind EdgeNode TextNodeKind TextNode \
     LabelPos LabelPlacement LabelItem LabelLanes Label \
-    MolIds LayoutDirection EdgeRouting LayoutAlgorithm LayoutOpts Node DepictSpec
+    MolIds LayoutDirection EdgeRouting LayoutAlgorithm LayoutOpts Node DepictSpec \
+    MolText MolTextSpec AtomLabelSpec AtomNumberSpec CalloutField CircleField \
+    RegionField FillSpec StrokeSpec
 
   echo "wrote $OUT_TS/*.ts"
 else

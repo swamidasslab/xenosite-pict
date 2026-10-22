@@ -27,10 +27,9 @@ if [[ -x "$LLVM_BIN/llvm-cov" && -x "$LLVM_BIN/llvm-profdata" ]]; then
   export PATH="$LLVM_BIN:$PATH"
 fi
 
-# Include CoordGen modules (off by default for wasm-friendly builds).
 if [[ -n "${LCOV_OUT:-}" ]]; then
-  "$CARGO" llvm-cov -p xpict-core --features coordgen --lcov --output-path "$LCOV_OUT" \
+  "$CARGO" llvm-cov -p xpict-core --lcov --output-path "$LCOV_OUT" \
     --fail-under-lines "$MIN"
 else
-  "$CARGO" llvm-cov -p xpict-core --features coordgen --summary-only --fail-under-lines "$MIN"
+  "$CARGO" llvm-cov -p xpict-core --summary-only --fail-under-lines "$MIN"
 fi

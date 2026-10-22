@@ -1,5 +1,9 @@
 # Lab log
 
+## 2026-10-21
+
+- CoordGen and ELK are required (not features), including wasm. Product path is one Rust `render(spec) → Rendered[]`: CoordGen layout, mol-spec paint (chem + annotations + caption), then pack cells. Annotations on `MolNode` are that path, not a parallel API. `align_to` is an id/ref; Rust computes coords. JS EdgePlan host processor removed.
+
 ## 2026-10-20
 
 - `release/v0.5.0` (and Pages/CI on main) failed `llvm-cov` at the 97% line floor. Crate coverage is 93.5% after ~20k lines of align/chrome/spokes since the last green main. Recalibrated `RUST_COV_MIN` to 93 so the gate still blocks regressions; caption / chrome_paint / layout_constraints are the remaining holes.

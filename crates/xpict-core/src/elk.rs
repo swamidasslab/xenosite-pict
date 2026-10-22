@@ -2,7 +2,6 @@
 //!
 //! Used by [`crate::doc::compose_scheme`] for reaction_scheme documents.
 
-#![cfg(feature = "elk")]
 
 use std::collections::BTreeMap;
 

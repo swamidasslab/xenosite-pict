@@ -1,6 +1,5 @@
 /**
  * Public surface: single-mol client + declarative document (same paint).
- * RDKit stays hidden (auto script in browser / npm on Node).
  *
  * Single molecule:
  * ```ts
@@ -10,7 +9,7 @@
  * const aligned = await xpict.render(xpict.mol("CCCO"), { align_to: mol });
  * ```
  *
- * Declarative document (expanding toward PictSpec):
+ * Declarative document:
  * ```ts
  * const [r] = await xpict.depict({
  *   type: "mol",
@@ -20,27 +19,17 @@
  * ```
  */
 
-import {
-  layoutWithRdkit,
-  materializeTemplateMolblock,
-  type MoleculeIn,
-} from "./layout/rdkit-layout.js";
-import { ensureRdkit, isRdkitReady } from "./rdkit-loader.js";
-import {
-  depictMolecule,
-  initNative,
-  isNativeReady,
-  planEdgeJson,
-  renderDocJson,
-} from "./native.js";
-import { atomsInSvgFrame, type SvgAtom, type SvgBond } from "./frame.js";
+import { initNative, isNativeReady, renderJson } from "./native.js";
+import type { SvgAtom, SvgBond } from "./frame.js";
 import { sceneToSvg, type Scene } from "./draw/scene-svg.js";
-import { elementSymbol } from "./elements.js";
-import { cxAtomLabels } from "./cxsmiles.js";
-import {
-  processEdgePlanWithFrames,
-  type EdgePlan,
-} from "./edge-plan.js";
+import type { MoleculeIn } from "./generated/edge.js";
+import type { AtomLabelSpec } from "./generated/AtomLabelSpec.js";
+import type { AtomNumberSpec } from "./generated/AtomNumberSpec.js";
+import type { CalloutField } from "./generated/CalloutField.js";
+import type { CircleField } from "./generated/CircleField.js";
+import type { MolText } from "./generated/MolText.js";
+import type { RegionField } from "./generated/RegionField.js";
+import type { ShadeSpec } from "./generated/ShadeSpec.js";
 
 export type { SvgAtom, SvgBond } from "./frame.js";
 export type {
@@ -59,16 +48,16 @@ export type {
 export type Mol = {
   source: string;
   /**
-   * Coord-bearing molblock for the alignment frame.
-   * Filled on first render; carried for ``align_to``.
+   * Pose molblock filled on first render (debug / hosts). Align does not
+   * require it — Rust layouts from the source.
    */
   frame_molblock?: string;
+  id?: string;
 };
 
 /**
  * Rendered depiction. ``scene`` is the editable JSON drawable; convert with
- * ``xpict.toSvg(scene)`` when you want a string. Also an ``align_to`` target
- * via ``frame_molblock``.
+ * ``xpict.toSvg(scene)`` when you want a string.
  */
 export type Rendered = {
   width: number;
@@ -82,7 +71,7 @@ export type Rendered = {
   scene: Scene;
   molecule: MoleculeIn;
   source: string;
-  /** Pose molblock — for ``align_to: rendered``. */
+  /** Pose molblock from CoordGen (debug / hosts). */
   frame_molblock: string;
   mol?: Mol;
 };
@@ -123,6 +112,13 @@ export type MolRenderOptions = {
   align_to?: AlignTarget;
   /** Pairs `[queryAtom, templateAtom]`. Requires `align_to`; skips MCS. */
   atom_map?: Array<[number, number]>;
+  name?: MolText;
+  atom_number?: AtomNumberSpec;
+  atom_label?: AtomLabelSpec;
+  region?: RegionField;
+  circle?: CircleField;
+  callout?: CalloutField;
+  shade?: ShadeSpec;
 };
 
 /**
@@ -158,6 +154,12 @@ export type {
   LayoutOpts,
   Node,
 } from "./generated/depict-abi.js";
+export type { AtomLabelSpec } from "./generated/AtomLabelSpec.js";
+export type { AtomNumberSpec } from "./generated/AtomNumberSpec.js";
+export type { CalloutField } from "./generated/CalloutField.js";
+export type { CircleField } from "./generated/CircleField.js";
+export type { RegionField } from "./generated/RegionField.js";
+export type { MolText } from "./generated/MolText.js";
 
 import type {
   DepictSpec as GeneratedDepictSpec,
@@ -182,24 +184,26 @@ export type ReactionSchemeNode = Extract<
   { type: "reaction_scheme" }
 >;
 
-/** Declarative document (nested subset of PictSpec; still expanding). */
+/** Grid of row roots. */
+export type GridNode = Extract<GeneratedDepictSpec, { type: "grid" }>;
+
+/** Declarative document (nested subset of PictSpec). */
 export type DepictSpec =
   | Extract<GeneratedDepictSpec, { type: "mol" }>
   | GroupNode
-  | ReactionSchemeNode;
+  | ReactionSchemeNode
+  | GridNode;
 
 /** Alias of {@link MolNode}. */
 export type MolSpec = MolNode;
 
 let readyPromise: Promise<void> | null = null;
 
-/** Internal: load RDKit + wasm once (from first render). */
+/** Internal: load wasm once (from first render). */
 async function ensureReady(): Promise<void> {
-  if (isNativeReady() && isRdkitReady()) return;
+  if (isNativeReady()) return;
   if (!readyPromise) {
-    readyPromise = (async () => {
-      await Promise.all([ensureRdkit(), initNative()]);
-    })().catch((err) => {
+    readyPromise = initNative().catch((err) => {
       readyPromise = null;
       throw err;
     });
@@ -218,135 +222,120 @@ function isRendered(value: AlignTarget): value is Rendered {
     typeof value === "object" &&
     value !== null &&
     "scene" in value &&
-    "frame_molblock" in value &&
-    typeof (value as Rendered).frame_molblock === "string"
+    "source" in value
   );
 }
 
-async function ensureFrame(target: AlignTarget): Promise<string> {
-  await ensureReady();
-  if (isRendered(target)) {
-    if (!target.frame_molblock) {
-      throw new Error("Rendered is missing frame_molblock");
-    }
-    return target.frame_molblock;
+function structureFields(source: string): Pick<MolNode, "smiles" | "cxsmiles" | "molfile"> {
+  const text = source.trim();
+  if (text.includes("V2000") || text.includes("V3000") || text.split("\n").length >= 4) {
+    return { molfile: text };
   }
-  if (!target.frame_molblock) {
-    target.frame_molblock = await materializeTemplateMolblock(target.source);
-  }
-  return target.frame_molblock;
+  if (text.includes("|")) return { cxsmiles: text };
+  return { smiles: text };
 }
 
-function isStarAtom(a: {
-  element?: string;
-  z?: number;
-}): boolean {
-  if (a.element === "*") return true;
-  if (a.z === 0) return true;
-  return false;
-}
-
-/** Apply ``star_labels`` onto ``*`` atoms in layout encounter order. */
-function applyStarLabels(
-  molecule: MoleculeIn,
-  labels: Array<string | null> | undefined
-): MoleculeIn {
-  if (!labels || labels.length === 0) return molecule;
-  const stars = molecule.atoms
-    .map((a, i) => ({ a, i }))
-    .filter(({ a }) => isStarAtom(a));
-  if (stars.length === 0) return molecule;
-  const atoms = molecule.atoms.map((a) => ({ ...a }));
-  for (let k = 0; k < labels.length && k < stars.length; k++) {
-    const raw = labels[k];
-    const label =
-      raw === null || raw === undefined || String(raw).trim() === ""
-        ? "*"
-        : String(raw).trim();
-    atoms[stars[k].i] = { ...atoms[stars[k].i], label };
-  }
-  return { ...molecule, atoms };
-}
-
-/**
- * Apply CXSMILES ``|$a;b;c;$|`` aliases by atom index (Python
- * ``cx_atom_labels`` / native backend parity). Only non-empty slots change
- * labels — so ``*C* |$;;R2;$|`` labels the second star, not the first.
- */
-function applyCxLabelsByIndex(
-  molecule: MoleculeIn,
-  aliases: Array<string | null>
-): MoleculeIn {
-  if (!aliases.length) return molecule;
-  const atoms = molecule.atoms.map((a) => {
-    const raw = a.index < aliases.length ? aliases[a.index] : null;
-    if (raw === null || raw === undefined) return a;
-    const label = String(raw).trim();
-    if (!label) return a;
-    return { ...a, label };
-  });
-  return { ...molecule, atoms };
-}
-
-function applyOpts(
-  molecule: MoleculeIn,
-  opts: MolRenderOptions,
-  source: string
-): MoleculeIn {
-  let out: MoleculeIn = {
-    ...molecule,
-    atoms: [...molecule.atoms],
-    bonds: [...molecule.bonds],
+function shadeFromOpts(opts: MolRenderOptions): ShadeSpec | undefined {
+  if (opts.shade) return opts.shade;
+  if (opts.atom_shade === undefined && opts.bond_shade === undefined) return undefined;
+  return {
+    atoms: opts.atom_shade,
+    bonds: opts.bond_shade,
+    vmin: opts.shade_vmin ?? 0,
+    vmax: opts.shade_vmax ?? 1,
   };
-  if (opts.id !== undefined) out.id = opts.id;
-  if (opts.color !== undefined) out.color = opts.color;
-  if (opts.atom_shade !== undefined) out.atom_shade = opts.atom_shade;
-  if (opts.bond_shade !== undefined) out.bond_shade = opts.bond_shade;
-  if (opts.shade_vmin !== undefined) out.shade_vmin = opts.shade_vmin;
-  if (opts.shade_vmax !== undefined) out.shade_vmax = opts.shade_vmax;
-  if (opts.mark_atoms !== undefined) out.mark_atoms = opts.mark_atoms;
-  if (opts.mark_bonds !== undefined) out.mark_bonds = opts.mark_bonds;
-  if (opts.weight !== undefined) out.weight = opts.weight;
-  if (opts.scale !== undefined) out.scale = opts.scale;
-  if (opts.aromatic !== undefined) out.aromatic = opts.aromatic;
-  if (opts.debug_box !== undefined) out.debug_box = opts.debug_box;
-  if (opts.debug_align !== undefined) out.debug_align = opts.debug_align;
-  // Explicit star_labels (encounter order) wins; otherwise CX by atom index.
-  if (opts.star_labels !== undefined) {
-    out = applyStarLabels(out, opts.star_labels);
-  } else {
-    out = applyCxLabelsByIndex(out, cxAtomLabels(source));
-  }
-  return out;
 }
 
-function toCoordList(
-  atoms: Array<{
-    index: number;
-    element?: string;
-    z?: number;
-    x: number;
-    y: number;
-    label?: string;
-    charge?: number;
-  }>
-): SvgAtom[] {
-  return atoms.map((a) => {
-    const element =
-      a.element && a.element.length > 0
-        ? a.element
-        : a.z !== undefined
-          ? elementSymbol(a.z)
-          : "C";
-    return {
-      index: a.index,
-      element,
-      x: a.x,
-      y: a.y,
-      ...(a.label ? { label: a.label } : {}),
-      ...(a.charge ? { charge: a.charge } : {}),
+function molNodeFrom(source: string, opts: MolRenderOptions, id?: string): MolNode {
+  const node: MolNode = {
+    type: "mol",
+    ...structureFields(source),
+  };
+  if (id) node.id = id;
+  else if (opts.id) node.id = opts.id;
+  if (opts.color !== undefined) node.color = opts.color;
+  if (opts.weight !== undefined) node.weight = opts.weight;
+  if (opts.scale !== undefined) node.scale = opts.scale;
+  if (opts.aromatic !== undefined) node.aromatic = opts.aromatic;
+  if (opts.debug_box !== undefined) node.debug_box = opts.debug_box;
+  if (opts.debug_align !== undefined) node.debug_align = opts.debug_align;
+  if (opts.star_labels !== undefined) node.star_labels = opts.star_labels;
+  if (opts.name !== undefined) node.name = opts.name;
+  if (opts.atom_number !== undefined) node.atom_number = opts.atom_number;
+  if (opts.atom_label !== undefined) node.atom_label = opts.atom_label;
+  if (opts.region !== undefined) node.region = opts.region;
+  if (opts.circle !== undefined) node.circle = opts.circle;
+  if (opts.callout !== undefined) node.callout = opts.callout;
+  const shade = shadeFromOpts(opts);
+  if (shade) node.shade = shade;
+  return node;
+}
+
+function alignRefId(target: AlignTarget): string {
+  if (isRendered(target)) {
+    return target.mol?.id || target.molecule.id || "m_0";
+  }
+  return target.id || "m_0";
+}
+
+function alignSource(target: AlignTarget): string {
+  return isRendered(target) ? target.source : target.source;
+}
+
+function specFromMol(input: Mol | string, opts: MolRenderOptions): DepictSpec {
+  const m: Mol = typeof input === "string" ? mol(input) : input;
+  if (opts.atom_map && !opts.align_to) {
+    throw new Error("atom_map requires align_to");
+  }
+  if (!opts.align_to) {
+    return molNodeFrom(m.source, opts, opts.id || m.id);
+  }
+  const refId = alignRefId(opts.align_to);
+  let qid = opts.id || m.id || "m_1";
+  if (qid === refId) qid = "m_1";
+  const query = molNodeFrom(m.source, opts, qid);
+  if (opts.atom_map) {
+    query.align_to = {
+      ref: refId,
+      atom_map: opts.atom_map.map(([q, r]) => [q, r] as [number, number]),
     };
-  });
+  } else {
+    query.align_to = refId;
+  }
+  return {
+    type: "group",
+    align: false,
+    children: [molNodeFrom(alignSource(opts.align_to), {}, refId), query],
+  };
+}
+
+type NativeRendered = {
+  id: string;
+  width: number;
+  height: number;
+  scene: Scene;
+  molecule: MoleculeIn;
+  source: string;
+  frame_molblock: string;
+  coords: SvgAtom[];
+  svg_coords: SvgAtom[];
+  bonds: SvgBond[];
+};
+
+function asRendered(row: NativeRendered, m?: Mol): Rendered {
+  const out: Rendered = {
+    width: row.width,
+    height: row.height,
+    scene: row.scene,
+    molecule: row.molecule,
+    source: row.source,
+    frame_molblock: row.frame_molblock ?? "",
+    coords: row.coords ?? [],
+    svg_coords: row.svg_coords ?? [],
+    bonds: row.bonds ?? [],
+  };
+  if (m) out.mol = m;
+  return out;
 }
 
 async function render(
@@ -355,117 +344,25 @@ async function render(
 ): Promise<Rendered> {
   await ensureReady();
   const m: Mol = typeof input === "string" ? mol(input) : input;
-
-  let laid: MoleculeIn;
-  let poseMolblock: string;
-  if (opts.atom_map && !opts.align_to) {
-    throw new Error("atom_map requires align_to");
+  const spec = specFromMol(m, opts);
+  const rows = JSON.parse(renderJson(JSON.stringify(spec))) as NativeRendered[];
+  if (!rows.length) throw new Error("render returned no molecules");
+  const painted = asRendered(rows[rows.length - 1]!, m);
+  if (!m.frame_molblock && !opts.align_to) {
+    m.frame_molblock = painted.frame_molblock;
   }
-  if (opts.align_to) {
-    const template = await ensureFrame(opts.align_to);
-    const result = await layoutWithRdkit(m.source, {
-      template,
-      id: opts.id,
-      atomMap: opts.atom_map ?? null,
-    });
-    laid = result.molecule;
-    poseMolblock = result.molblock;
-  } else {
-    // Layout from the SMILES/CX source (not a molblock round-trip) so dummy
-    // ``*`` atoms keep stable indices for CX alias slots.
-    const result = await layoutWithRdkit(m.source, {
-      id: opts.id,
-      template: null,
-    });
-    laid = result.molecule;
-    poseMolblock = result.molblock;
-    if (!m.frame_molblock) m.frame_molblock = poseMolblock;
-  }
-
-  const molecule = applyOpts(laid, opts, m.source);
-  const sceneJson = depictMolecule(JSON.stringify(molecule));
-  const scene = JSON.parse(sceneJson) as Scene;
-  const framed = atomsInSvgFrame(molecule);
-
-  return {
-    width: scene.width,
-    height: scene.height,
-    svg_coords: framed.atoms,
-    coords: toCoordList(molecule.atoms),
-    bonds: framed.bonds,
-    scene,
-    molecule,
-    source: m.source,
-    frame_molblock: poseMolblock,
-    mol: m,
-  };
+  return painted;
 }
-
-function structureFromMolNode(entry: MolNode): string {
-  const raw =
-    entry.molfile?.trim() ||
-    entry.cxsmiles?.trim() ||
-    entry.smiles?.trim() ||
-    "";
-  if (!raw) {
-    throw new Error('mol node needs smiles, cxsmiles, or molfile');
-  }
-  return raw;
-}
-
-type DocPaint = {
-  id: string;
-  molecule: MoleculeIn;
-  scene: Scene;
-};
 
 /**
  * Declarative document → ``Rendered[]``.
- * Core ``planEdge`` → host ``processEdgePlan`` → core ``renderDoc``
- * (CX / star / shade chrome applied in core).
+ * Rust layouts (CoordGen), paints each mol spec (annotations included),
+ * and composes reaction-scheme cells.
  */
 async function depict(spec: DepictSpec): Promise<Rendered[]> {
   await ensureReady();
-  const plan = JSON.parse(planEdgeJson(JSON.stringify(spec))) as EdgePlan | null;
-  if (plan == null) return [];
-  const { result: edge, frames } = await processEdgePlanWithFrames(plan);
-  const painted = JSON.parse(
-    renderDocJson(JSON.stringify(spec), JSON.stringify(edge))
-  ) as DocPaint[];
-
-  const byId = new Map<string, MolNode>();
-  const molNodes: MolNode[] =
-    spec.type === "mol"
-      ? [spec]
-      : (spec.children ?? []).filter(
-          (n): n is MolNode => n.type === "mol"
-        );
-  for (const [i, n] of molNodes.entries()) {
-    byId.set(n.id?.trim() || `m_${i}`, n);
-  }
-
-  return painted.map((row) => {
-    const node = byId.get(row.id);
-    const source = node ? structureFromMolNode(node) : row.id;
-    const framed = atomsInSvgFrame(row.molecule);
-    return {
-      width: row.scene.width,
-      height: row.scene.height,
-      scene: row.scene,
-      molecule: row.molecule,
-      source,
-      frame_molblock: frames.get(row.id) ?? "",
-      coords: toCoordList(row.molecule.atoms),
-      svg_coords: framed.atoms,
-      bonds: (row.molecule.bonds ?? []).map((b) => ({
-        index: b.index,
-        begin: b.begin,
-        end: b.end,
-        order: b.order,
-        ...(b.stereo ? { stereo: b.stereo } : {}),
-      })),
-    };
-  });
+  const rows = JSON.parse(renderJson(JSON.stringify(spec))) as NativeRendered[];
+  return rows.map((row) => asRendered(row));
 }
 
 /** Public lib namespace. */
@@ -474,6 +371,6 @@ export const xpict = {
   render,
   /** Scene JSON → SVG string (tweak ``rendered.scene`` first if needed). */
   toSvg: sceneToSvg,
-  /** Declarative document → ``Rendered[]`` (expanding toward PictSpec). */
+  /** Declarative document → ``Rendered[]``. */
   depict,
 } as const;

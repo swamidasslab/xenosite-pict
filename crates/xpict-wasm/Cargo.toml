@@ -13,18 +13,11 @@ description = "wasm-bindgen bindings for xpict-core (browser / Node)"
 name = "xpict_wasm"
 crate-type = ["cdylib", "rlib"]
 
-[features]
-default = []
-# Needs wasm32-unknown-emscripten (not wasm-bindgen’s default target). Off until JS CI is ready.
-coordgen = ["xpict-core/coordgen"]
-
 [dependencies]
 wasm-bindgen = "0.2"
 serde_json = "1"
-# Diagram ELK stays on npm elkjs for now — enabling core `elk` balloons the
-# wasm to ~2.8 MB. Python already uses elkrs via xpict-py.
-# `font` pulls Liberation Sans so atom labels (OH, NH2, …) place + paint.
-xpict-core = { path = "../xpict-core", default-features = false, features = ["font"] }
+# CoordGen, Chematic, ELK, and font are always linked (same engine as Python).
+xpict-core = { path = "../xpict-core", features = ["font"] }
 
 # canonaut → rand → getrandom: browsers need the JS (crypto) backend, plus the
 # `getrandom_backend` cfg in .cargo/config.toml.

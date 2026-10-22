@@ -25,11 +25,9 @@ from typing import overload
 from xpict.api import OutputFormat, Pict
 from xpict.base import PictBase
 from xpict.contracts import DepictSpecDict, MolSpec
-from xpict.contracts.edge import EdgePlan, EdgeResult, MolTemplate
 from xpict.contracts.scene import Scene
 from xpict.depict_spec import depict, depict_svg, is_live_depict_spec
 from xpict.future import PictSpec
-from xpict.native_bridge import plan_edge, render_doc, validate_edge_plan
 from xpict.rendered import Rendered, SvgAtom, SvgBond, to_svg
 from xpict.spec import DepictSpec, Mol, MolRenderOptions, mol, render_mol
 
@@ -38,12 +36,9 @@ __version__ = "0.5.0"
 __all__ = [
     "DepictSpec",
     "DepictSpecDict",
-    "EdgePlan",
-    "EdgeResult",
     "Mol",
     "MolRenderOptions",
     "MolSpec",
-    "MolTemplate",
     "Pict",
     "PictBase",
     "PictSpec",  # future nested document — use DepictSpec for the shipped subset
@@ -54,11 +49,8 @@ __all__ = [
     "depict",
     "depict_svg",
     "mol",
-    "plan_edge",
     "render",
-    "render_doc",
     "to_svg",
-    "validate_edge_plan",
     "__version__",
 ]
 

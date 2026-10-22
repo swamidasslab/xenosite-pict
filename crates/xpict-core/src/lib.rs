@@ -18,7 +18,6 @@ pub mod depict;
 pub mod doc;
 pub mod edge;
 pub mod elements;
-#[cfg(feature = "elk")]
 pub mod elk;
 pub mod font;
 pub mod geom;
@@ -32,11 +31,8 @@ pub mod rings;
 pub mod scene;
 pub mod spokes;
 
-#[cfg(feature = "coordgen")]
 pub mod align_layout;
-#[cfg(feature = "coordgen")]
 pub mod layout_coordgen;
-#[cfg(feature = "coordgen")]
 pub mod layout_spoke;
 
 pub use align_cost::{
@@ -45,7 +41,6 @@ pub use align_cost::{
     SearchLimits, SearchStats, ALIGN_HOUSE_MAX_STATES, ALIGN_HOUSE_TIMEOUT_MS, COST_BOND_ORDER,
     COST_CHARGE_RADICAL, COST_ELEMENT, COST_UNMATCHED,
 };
-#[cfg(feature = "coordgen")]
 pub use align_layout::{
     align_molecule_constrained, hexagon_fit_max_dev, mol_graph_from_layout, ConstrainedAlignResult,
 };
@@ -85,19 +80,16 @@ pub use doc::{
     TextNodeKind, TypedOptsPatch, Z_ATOMS, Z_ATOM_LABEL, Z_BACKGROUND, Z_BONDS, Z_CALLOUT,
     Z_CIRCLE, Z_HALO, Z_NAME, Z_REGION, Z_SHADE,
 };
-// Document ``depict`` lives at ``doc::depict`` (crate-root name would clash
-// with the ``depict`` paint module).
-#[cfg(feature = "coordgen")]
+// Document ``render`` / ``depict`` live at ``doc::`` (crate-root ``depict`` is paint).
 pub use doc::{
-    process_edge_plan, process_edge_plan_with_frames, DepictRendered, SvgAtom as DepictSvgAtom,
-    SvgBond as DepictSvgBond,
+    process_edge_plan, process_edge_plan_with_frames, render, DepictRendered,
+    SvgAtom as DepictSvgAtom, SvgBond as DepictSvgBond,
 };
 pub use edge::{
     AlignMode, AlignOpts, CoordGenMoleculeResult, CoordMethod, EdgePlan, EdgeResult, EdgeTask,
     EdgeTaskResult, MolTemplate, MIN_MCS_ATOMS as EDGE_MIN_MCS_ATOMS,
 };
 pub use elements::{atomic_number, element_symbol, SYMBOLS};
-#[cfg(feature = "elk")]
 pub use elk::{
     layout_json as elk_layout_json, scheme_layout_options, DiagramKind as ElkDiagramKind,
 };

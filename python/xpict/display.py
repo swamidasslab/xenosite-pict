@@ -6,10 +6,15 @@ cells/rows (flex). A future render option may move even this packing into Rust.
 
 from __future__ import annotations
 
-from xpict.contracts.depict import GridNode
+from xpict.contracts.depict import (
+    DepictSpecRoot,
+    GridNode,
+    GroupNode,
+    MolNode,
+    ReactionSchemeNode,
+)
 from xpict.contracts.depict import DepictSpec as WireDepictSpec
-from xpict.depict_spec import as_depict_spec, depict, iter_cells, pair_paints
-from xpict.native_bridge import depict as _native_depict
+from xpict.depict_spec import as_depict_spec, depict
 from xpict.rendered import Rendered
 
 
@@ -41,21 +46,36 @@ def _pack_cells(cells: list[Rendered]) -> str:
     return _html_row([c.to_svg() for c in cells])
 
 
+def _cell_count(row: DepictSpecRoot | WireDepictSpec) -> int:
+    """Cells Rust ``render`` emits for one grid row (schemes compose to one)."""
+    root: DepictSpecRoot = row.root if isinstance(row, WireDepictSpec) else row
+    if isinstance(root, ReactionSchemeNode):
+        return 1
+    if isinstance(root, MolNode):
+        return 1
+    if isinstance(root, GridNode):
+        return sum(_cell_count(child) for child in root.children)
+    if isinstance(root, GroupNode):
+        return sum(1 for child in root.children if isinstance(child, MolNode))
+    return 0
+
+
 def render_depict_mols(spec: WireDepictSpec) -> list[Rendered]:
     """Product paint path (nested schemes → composed cells)."""
     return depict(as_depict_spec(spec))
 
 
 def render_depict_html(spec: WireDepictSpec) -> str:
-    """Paint once in Rust; pack cells into a thin HTML row/grid overlay."""
+    """Paint the full spec once in Rust; pack cells into HTML rows."""
     doc = as_depict_spec(spec)
-    painted = _native_depict(doc)
-    if not painted:
-        return ""
-    pairs = pair_paints(doc, painted)
+    cells = depict(doc)
     root = doc.root
     if isinstance(root, GridNode):
-        return _html_grid(
-            [_pack_cells(list(iter_cells(row, pairs))) for row in root.children]
-        )
-    return _pack_cells(list(iter_cells(root, pairs)))
+        rows: list[str] = []
+        i = 0
+        for row in root.children:
+            n = _cell_count(row)
+            rows.append(_pack_cells(cells[i : i + n]))
+            i += n
+        return _html_grid(rows)
+    return _pack_cells(cells)

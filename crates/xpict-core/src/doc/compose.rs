@@ -315,7 +315,6 @@ fn row_placement(sizes: &[(String, f64, f64)]) -> Placement {
     }
 }
 
-#[cfg(feature = "elk")]
 fn layout_scheme(
     spec: &DepictSpec,
     layout: &LayoutOpts,
@@ -326,16 +325,6 @@ fn layout_scheme(
     parse_elk_placement(spec, &laid, sizes)
 }
 
-#[cfg(not(feature = "elk"))]
-fn layout_scheme(
-    _spec: &DepictSpec,
-    _layout: &LayoutOpts,
-    sizes: &[(String, f64, f64)],
-) -> Result<Placement, String> {
-    Ok(row_placement(sizes))
-}
-
-#[cfg(feature = "elk")]
 fn build_elk_graph(spec: &DepictSpec, layout: &LayoutOpts, sizes: &[(String, f64, f64)]) -> Value {
     let opts = crate::elk::scheme_layout_options(crate::elk::DiagramKind::Reaction, layout);
     let children: Vec<Value> = sizes
@@ -376,7 +365,6 @@ fn build_elk_graph(spec: &DepictSpec, layout: &LayoutOpts, sizes: &[(String, f64
     })
 }
 
-#[cfg(feature = "elk")]
 fn routing_name(r: EdgeRouting) -> &'static str {
     match r {
         EdgeRouting::Orthogonal => "ORTHOGONAL",
@@ -385,7 +373,6 @@ fn routing_name(r: EdgeRouting) -> &'static str {
     }
 }
 
-#[cfg(feature = "elk")]
 fn elk_edge_labels(spec: &DepictSpec, edge: &EdgeNode, edge_id: &str) -> Option<Value> {
     let (text, pos) = resolve_edge_label(spec, edge);
     let text = text?.trim().to_string();
@@ -438,7 +425,6 @@ fn measure_label(text: &str) -> (f64, f64) {
     }
 }
 
-#[cfg(feature = "elk")]
 fn parse_elk_placement(
     spec: &DepictSpec,
     laid_json: &str,
@@ -480,7 +466,6 @@ fn parse_elk_placement(
     })
 }
 
-#[cfg(feature = "elk")]
 fn edge_path_from_elk(edge: &Value) -> Option<Vec<(f64, f64)>> {
     let sections = edge.get("sections")?.as_array()?;
     if sections.is_empty() {
@@ -507,7 +492,6 @@ fn edge_path_from_elk(edge: &Value) -> Option<Vec<(f64, f64)>> {
     }
 }
 
-#[cfg(feature = "elk")]
 fn section_points(section: &Value) -> Vec<(f64, f64)> {
     let start = section.get("startPoint").unwrap_or(&Value::Null);
     let end = section.get("endPoint").unwrap_or(&Value::Null);
@@ -1080,7 +1064,6 @@ mod tests {
         assert_eq!(pts.len(), 2);
     }
 
-    #[cfg(feature = "elk")]
     #[test]
     fn section_and_edge_path_parse() {
         let sec = serde_json::json!({
