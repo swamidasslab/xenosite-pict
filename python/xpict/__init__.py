@@ -31,7 +31,7 @@ from xpict.future import PictSpec
 from xpict.rendered import Rendered, SvgAtom, SvgBond, to_svg
 from xpict.spec import DepictSpec, Mol, MolRenderOptions, mol, render_mol
 
-__version__ = "0.5.1"
+__version__ = "0.5.2"
 
 __all__ = [
     "DepictSpec",

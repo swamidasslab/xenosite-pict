@@ -2,6 +2,8 @@
 
 ## 2026-10-21
 
+- Product 0.5.2: one Rust `scene_to_svg` for all hosts; `g.xpict-mol[data-id]`; no XML declaration.
+
 - Scene→SVG lives in `xpict-core` only. Viewport spec ids become `g.xpict-mol[data-id]` (escaped). No `<?xml …?>` (inline HTML). Python/JS call `_native.scene_to_svg` / `xpict_scene_to_svg`.
 
 - Product 0.5.1: drop RDKit, Emscripten CoordGen wasm, reaction_scheme JS smoke.
