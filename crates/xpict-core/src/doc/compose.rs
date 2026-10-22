@@ -145,19 +145,7 @@ fn compose_reaction(
             .copied()
             .unwrap_or((0.0, 0.0));
         let (w, h) = scene_size(&p.scene);
-        let mut vp = p.scene.viewports.first().cloned().unwrap_or(Viewport {
-            id: Some(p.id.clone()),
-            x: 0.0,
-            y: 0.0,
-            width: w,
-            height: h,
-            layers: vec![],
-        });
-        vp.id = Some(p.id.clone());
-        vp.x = x;
-        vp.y = y;
-        vp.width = w;
-        vp.height = h;
+        let vp = placed_viewport(&p.scene, &p.id, x, y, w, h);
         max_r = max_r.max(x + w);
         max_b = max_b.max(y + h);
         for prim in &p.scene.halo {
@@ -256,6 +244,34 @@ fn compose_reaction(
     })
 }
 
+/// Viewport as an SVG group: `x`/`y` are the group translate (ELK / row
+/// placement). Leftover fit origin is baked into local primitives so they sit
+/// in the box — otherwise arrows (document space) miss the ink.
+fn placed_viewport(src: &Scene, id: &str, x: f64, y: f64, w: f64, h: f64) -> Viewport {
+    let mut vp = src.viewports.first().cloned().unwrap_or(Viewport {
+        id: Some(id.to_string()),
+        x: 0.0,
+        y: 0.0,
+        width: w,
+        height: h,
+        layers: vec![],
+    });
+    let (ox, oy) = (vp.x, vp.y);
+    if ox.abs() > 1e-12 || oy.abs() > 1e-12 {
+        for layer in &mut vp.layers {
+            for prim in &mut layer.primitives {
+                *prim = translate_prim(prim, ox, oy);
+            }
+        }
+    }
+    vp.id = Some(id.to_string());
+    vp.x = x;
+    vp.y = y;
+    vp.width = w;
+    vp.height = h;
+    vp
+}
+
 fn scene_size(scene: &Scene) -> (f64, f64) {
     if let Some(vp) = scene.viewports.first() {
         (vp.width.max(scene.width), vp.height.max(scene.height))
@@ -282,17 +298,7 @@ fn place_row(paints: &[DocPaint], gap: f64) -> Scene {
     for p in paints {
         let (w, h) = scene_size(&p.scene);
         let y = (max_h - h) * 0.5;
-        let mut vp = p.scene.viewports.first().cloned().unwrap_or(Viewport {
-            id: Some(p.id.clone()),
-            x: 0.0,
-            y: 0.0,
-            width: w,
-            height: h,
-            layers: vec![],
-        });
-        vp.id = Some(p.id.clone());
-        vp.x = x;
-        vp.y = y;
+        let vp = placed_viewport(&p.scene, &p.id, x, y, w, h);
         max_r = max_r.max(x + w);
         max_b = max_b.max(y + h);
         for prim in &p.scene.halo {
@@ -934,6 +940,194 @@ mod tests {
             "expected edge overlays, got none"
         );
         assert!(scene.width > 80.0);
+    }
+
+    fn paint_shifted(id: &str, w: f64, h: f64, ox: f64, oy: f64, cx: f64, cy: f64) -> DocPaint {
+        let mut p = paint(id, w, h);
+        let vp = p.scene.viewports.first_mut().unwrap();
+        vp.x = ox;
+        vp.y = oy;
+        vp.layers[0].primitives.push(Primitive::Circle {
+            cx,
+            cy,
+            r: 2.0,
+            fill: Some("#000".into()),
+            stroke: None,
+            stroke_width: 0.0,
+            opacity: 1.0,
+            class: None,
+        });
+        p
+    }
+
+    #[test]
+    fn scheme_group_transform_keeps_fit_origin_in_local_space() {
+        // Real fit_scene leaves vp at a negative origin while primitives stay
+        // in paint coords. Placement must bake that origin so SVG
+        // translate(elk) lines up with document-space arrows.
+        let a = paint_shifted("A", 80.0, 60.0, -20.0, -25.0, 50.0, 55.0);
+        let b = paint_shifted("B", 80.0, 60.0, -20.0, -25.0, 50.0, 55.0);
+        let spec = DepictSpec::ReactionScheme {
+            id: None,
+            children: vec![
+                Node::Mol(MolNode {
+                    id: Some("A".into()),
+                    smiles: Some("C".into()),
+                    ..Default::default()
+                }),
+                Node::Mol(MolNode {
+                    id: Some("B".into()),
+                    smiles: Some("O".into()),
+                    ..Default::default()
+                }),
+                Node::Edge(EdgeNode {
+                    type_: EdgeNodeKind::Edge,
+                    sources: MolIds::One("A".into()),
+                    targets: MolIds::One("B".into()),
+                    label: None,
+                    edge_routing: None,
+                    role: None,
+                    arrow: EdgeArrow::Forward,
+                    color: None,
+                    stroke_width: None,
+                    dashed: false,
+                }),
+            ],
+            layout: Some(LayoutOpts {
+                layer_spacing: Some(40.0),
+                ..Default::default()
+            }),
+            opts: None,
+            color: None,
+            scale: None,
+            aromatic: None,
+            debug_box: None,
+            debug_align: None,
+            pad: None,
+        };
+        let scene = compose_scheme(&spec, &[a, b]).expect("compose");
+        let vp = &scene.viewports[0];
+        let cy = vp.layers[0]
+            .primitives
+            .iter()
+            .find_map(|p| match p {
+                Primitive::Circle { cy, .. } => Some(*cy),
+                _ => None,
+            })
+            .expect("circle");
+        // Local after bake: 55 + (-25) = 30. Group translate is placement, not origin.
+        assert!(
+            (cy - 30.0).abs() < 1e-6,
+            "local cy {cy} should be canvas-space 30"
+        );
+        let ink_y = vp.y + cy;
+        let mut shaft_y = None;
+        for p in &scene.overlays {
+            if let Primitive::Path {
+                d, class: Some(c), ..
+            } = p
+            {
+                if c.contains("edge") && !c.contains("head") {
+                    let ys: Vec<f64> = super::path_coords(d).into_iter().map(|(_, y)| y).collect();
+                    if ys.len() >= 2 {
+                        shaft_y = Some((ys[0] + ys[1]) * 0.5);
+                        break;
+                    }
+                }
+            }
+        }
+        let shaft_y = shaft_y.expect("shaft");
+        assert!(
+            (shaft_y - (vp.y + vp.height * 0.5)).abs() < 8.0,
+            "shaft y {shaft_y} vs box mid {}",
+            vp.y + vp.height * 0.5
+        );
+        // Ink lives in the box, not a leftover-origin below the arrow.
+        assert!(
+            (ink_y - shaft_y).abs() < vp.height * 0.5,
+            "ink y {ink_y} far from shaft {shaft_y}"
+        );
+    }
+
+    #[test]
+    fn live_scheme_arrow_aligns_with_mol_ink() {
+        let spec = DepictSpec::ReactionScheme {
+            id: None,
+            children: vec![
+                Node::Mol(MolNode {
+                    id: Some("A".into()),
+                    smiles: Some("CCO".into()),
+                    ..Default::default()
+                }),
+                Node::Mol(MolNode {
+                    id: Some("B".into()),
+                    smiles: Some("CC=O".into()),
+                    ..Default::default()
+                }),
+                Node::Edge(EdgeNode {
+                    type_: EdgeNodeKind::Edge,
+                    sources: MolIds::One("A".into()),
+                    targets: MolIds::One("B".into()),
+                    label: None,
+                    edge_routing: None,
+                    role: None,
+                    arrow: EdgeArrow::Forward,
+                    color: None,
+                    stroke_width: None,
+                    dashed: false,
+                }),
+            ],
+            layout: Some(LayoutOpts {
+                layer_spacing: Some(40.0),
+                ..Default::default()
+            }),
+            opts: None,
+            color: None,
+            scale: None,
+            aromatic: None,
+            debug_box: None,
+            debug_align: None,
+            pad: None,
+        };
+        let out = crate::doc::render(&spec).expect("render");
+        assert_eq!(out.len(), 1);
+        let scene = &out[0].scene;
+        let mut ink_y = Vec::new();
+        for vp in &scene.viewports {
+            for layer in &vp.layers {
+                for p in &layer.primitives {
+                    match p {
+                        Primitive::Circle { cy, .. } => ink_y.push(vp.y + *cy),
+                        Primitive::Path { d, .. } => {
+                            ink_y.extend(super::path_coords(d).into_iter().map(|(_, y)| vp.y + y));
+                        }
+                        Primitive::Text { y, .. } => ink_y.push(vp.y + *y),
+                    }
+                }
+            }
+        }
+        let ink_min = ink_y.iter().copied().fold(f64::INFINITY, f64::min);
+        let ink_max = ink_y.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+        let mut shaft_y = None;
+        for p in &scene.overlays {
+            if let Primitive::Path {
+                d, class: Some(c), ..
+            } = p
+            {
+                if c.contains("edge") && !c.contains("head") {
+                    let ys: Vec<f64> = super::path_coords(d).into_iter().map(|(_, y)| y).collect();
+                    if ys.len() >= 2 {
+                        shaft_y = Some((ys[0] + ys[1]) * 0.5);
+                        break;
+                    }
+                }
+            }
+        }
+        let shaft_y = shaft_y.expect("shaft");
+        assert!(
+            shaft_y >= ink_min - 2.0 && shaft_y <= ink_max + 2.0,
+            "shaft y {shaft_y} outside mol ink {ink_min}..{ink_max}"
+        );
     }
 
     #[test]

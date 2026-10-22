@@ -2,6 +2,8 @@
 
 ## 2026-10-21
 
+- Scheme arrows were high vs mols: compose overwrote fit's leftover viewport origin. Placement `x`/`y` is the SVG group translate; bake origin into local primitives so ink sits in the box.
+
 - Product 0.5.2: one Rust `scene_to_svg` for all hosts; `g.xpict-mol[data-id]`; no XML declaration.
 
 - Scene→SVG lives in `xpict-core` only. Viewport spec ids become `g.xpict-mol[data-id]` (escaped). No `<?xml …?>` (inline HTML). Python/JS call `_native.scene_to_svg` / `xpict_scene_to_svg`.
