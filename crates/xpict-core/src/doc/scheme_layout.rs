@@ -510,17 +510,26 @@ fn min_ink_signed(world: &LayoutWorld, under: &str, p: (f64, f64)) -> f64 {
     best
 }
 
-/// If `pose` walked past the ELK seed (away from `centroid`), keep the seed.
+/// If `pose` walked past the ELK seed (away from `centroid`), retract along
+/// the centroid ray. A side port is not a snap target — that yanked the last
+/// chord off the mol.
 fn clamp_not_past_seed(pose: (f64, f64), seed: (f64, f64), centroid: (f64, f64)) -> (f64, f64) {
-    let vx = seed.0 - centroid.0;
-    let vy = seed.1 - centroid.1;
-    let ds = vx * vx + vy * vy;
-    if ds < 1e-12 {
+    let px = pose.0 - centroid.0;
+    let py = pose.1 - centroid.1;
+    let plen = px.hypot(py).max(1e-9);
+    let sx = seed.0 - centroid.0;
+    let sy = seed.1 - centroid.1;
+    let slen = sx.hypot(sy);
+    if slen < 1e-12 {
         return pose;
     }
-    let t = ((pose.0 - centroid.0) * vx + (pose.1 - centroid.1) * vy) / ds;
-    if t > 1.0 {
-        seed
+    let aligned = (px * sx + py * sy) / (plen * slen);
+    if aligned < 0.5 {
+        return pose;
+    }
+    if plen > slen {
+        let s = slen / plen;
+        (centroid.0 + px * s, centroid.1 + py * s)
     } else {
         pose
     }
@@ -1061,6 +1070,12 @@ mod tests {
             (q.0 - 20.0).abs() < 1e-9,
             "retract toward ink is fine: {q:?}"
         );
+        let side = (40.0, 40.0);
+        let r = clamp_not_past_seed(past, side, c);
+        assert!(
+            r.1.abs() < 1e-9,
+            "a side port must not yank the pose off the centroid ray: {r:?}"
+        );
     }
 
     #[test]
@@ -1476,6 +1491,47 @@ mod tests {
         assert!(
             perp < 0.2,
             "last chord must aim at the centroid: perp={perp} tip={tip:?} cb={cb:?} pts={pts:?}"
+        );
+    }
+
+    #[test]
+    fn two_point_head_aims_at_centroid_despite_side_port() {
+        let spec = scheme(vec![
+            mol_node("A"),
+            edge_node("A", "B", None),
+            mol_node("B"),
+        ]);
+        let layout = LayoutOpts::default();
+        let positions = HashMap::from([("A".into(), (0.0, 0.0)), ("B".into(), (240.0, 0.0))]);
+        let sizes = vec![("A".into(), 80.0, 80.0), ("B".into(), 80.0, 80.0)];
+        let paints = vec![
+            chem_paint("A", 80.0, 80.0, 40.0, 40.0),
+            chem_paint("B", 80.0, 80.0, 40.0, 40.0),
+        ];
+        // ELK put B's port on the south side of the box, not on the centroid line.
+        let seed = vec![(80.0, 40.0), (240.0, 80.0)];
+        let refined =
+            refine_scheme_edges(&spec, &layout, &positions, &[Some(seed)], &paints, &sizes);
+        let pts = refined.edge_paths[0].clone().expect("path");
+        let paint_of: HashMap<&str, &DocPaint> =
+            paints.iter().map(|p| (p.id.as_str(), p)).collect();
+        let size_of: HashMap<&str, (f64, f64)> = sizes
+            .iter()
+            .map(|(id, w, h)| (id.as_str(), (*w, *h)))
+            .collect();
+        let cb = mol_centroid(&paint_of, &positions, &size_of, "B");
+        let (tip, tan) = crate::catmull::open_catmull_end_frame(&pts);
+        let to_c = (cb.0 - tip.0, cb.1 - tip.1);
+        let clen = to_c.0.hypot(to_c.1).max(1e-9);
+        let aim = (tan.0 * to_c.0 + tan.1 * to_c.1) / clen;
+        let perp = (to_c.0 * tan.1 - to_c.1 * tan.0).abs() / clen;
+        assert!(
+            aim > 0.0,
+            "head must point toward the target centroid: tip={tip:?} tan={tan:?} cb={cb:?}"
+        );
+        assert!(
+            perp < 0.2,
+            "side ELK port must not aim the last chord off the centroid: perp={perp} tip={tip:?} cb={cb:?} pts={pts:?}"
         );
     }
 
