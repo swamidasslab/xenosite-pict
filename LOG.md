@@ -2,6 +2,8 @@
 
 ## 2026-10-22
 
+- Mycophenolate labels were only Outside vs shafts (tiny glyph disks), so they sat on chem. This kit emits `push_clear_leaves` vs painted scheme leaves (chem, other labels) — not a solver-wide all-pairs default. Last interior ELK point sits on the endpoint–centroid ray so the painted last chord (the arrow) aims at the mol.
+
 - Fit leftover (`shift_path_d`, origin-0 viewBox) was a workaround that broke cubics. Crop is now the SVG viewBox (`Scene.x`/`y` + size). Geometry and path `d` stay put; mol `ox`/`oy` still maps paint space onto the ELK box.
 
 - Fit was shifting only SVG `M`/`L` on overlays. Catmull shafts are `C` cubics, so the filled head (an `M L L Z`) moved and the Glutathionation curve did not. `shift_path_d` now translates cubic controls too. The JS loader cache-busts wasm by content hash so a rebuilt blob actually loads.

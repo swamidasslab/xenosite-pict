@@ -744,9 +744,8 @@ fn push_placement_pose(constraints: &mut Vec<Constraint>, id: &str, rest: &Shape
 
 /// Hard [`HardConstraint::Outside`] vs every primitive leaf under `under`.
 ///
-/// Baseline clearance for captions, region text, callouts, atom numbers, and
-/// scheme arrows — do not weaken this per kit. Half stroke width is already
-/// in edge distance.
+/// Kits emit these rows. The solver does not auto-clash all pairs.
+/// Half stroke width is already in edge distance. Never clears `a` vs itself.
 pub fn push_clear_leaves(
     world: &LayoutWorld,
     hard: &mut Vec<HardConstraint>,
@@ -754,13 +753,28 @@ pub fn push_clear_leaves(
     under: &str,
     clash_dist: f64,
 ) {
+    push_clear_leaves_where(world, hard, a, under, clash_dist, |_, _| true);
+}
+
+/// Like [`push_clear_leaves`], with a keep filter on each candidate leaf.
+pub fn push_clear_leaves_where(
+    world: &LayoutWorld,
+    hard: &mut Vec<HardConstraint>,
+    a: &str,
+    under: &str,
+    clash_dist: f64,
+    keep: impl Fn(&str, &LayoutNode) -> bool,
+) {
     let mut stack = vec![under.to_string()];
     while let Some(id) = stack.pop() {
         let Some(n) = world.get(&id) else {
             continue;
         };
         stack.extend(n.children.iter().cloned());
-        if n.children.is_empty() && primitive_leaf(&n.world_shape()) {
+        if id == a {
+            continue;
+        }
+        if n.children.is_empty() && primitive_leaf(&n.world_shape()) && keep(&id, n) {
             hard.push(HardConstraint::Outside {
                 a: a.to_string(),
                 b: id,

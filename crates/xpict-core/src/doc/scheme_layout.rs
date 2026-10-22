@@ -10,8 +10,9 @@ use crate::metrics::BOND_PX;
 use crate::scene::{LayerName, MoleculeIn, Primitive, TextAnchor};
 
 use super::layout_constraints::{
-    edge_signed_distance, shapes_properly_cross, solve, Constraint, HardConstraint, LayoutWorld,
-    ObjectType, Shape, SolveOpts, LAGRANGIAN_CLEAR, LAGRANGIAN_TETHER,
+    edge_signed_distance, push_clear_leaves_where, shapes_properly_cross, solve, Constraint,
+    HardConstraint, LayoutNode, LayoutWorld, ObjectType, Shape, SolveOpts, LAGRANGIAN_CLEAR,
+    LAGRANGIAN_TETHER,
 };
 use super::layout_items::Aabb;
 use super::{DepictSpec, DocPaint, LayoutOpts};
@@ -231,13 +232,24 @@ pub fn refine_scheme_edges(
             }
         }
         for (k, &(x, y)) in pts.iter().enumerate() {
-            let pose = if pts.len() >= 2 && k == 0 {
+            let mut pose = if pts.len() >= 2 && k == 0 {
                 pose0
             } else if pts.len() >= 2 && k == last {
                 pose1
             } else {
                 (x, y)
             };
+            let mut on_centroid_ray = k == 0 || k == last;
+            // Last painted chord is the arrow. Put the neighbor on the
+            // endpoint–centroid ray so the head points at the mol. Same at src.
+            if last >= 2 && k == 1 {
+                pose = behind_end_on_ray(src_c, pose0, (x, y));
+                on_centroid_ray = true;
+            }
+            if last >= 2 && k == last - 1 {
+                pose = behind_end_on_ray(tgt_c, pose1, (x, y));
+                on_centroid_ray = true;
+            }
             world.insert(
                 format!("{eid}/p{k}"),
                 &eid,
@@ -248,21 +260,16 @@ pub fn refine_scheme_edges(
                 },
                 false,
             );
-            if k == 0 || k == last {
-                cs.push(Constraint::PreferPose {
-                    a: format!("{eid}/p{k}"),
-                    x: pose.0,
-                    y: pose.1,
-                    strength: ENDPOINT_POSE,
-                });
-            } else {
-                cs.push(Constraint::PreferPose {
-                    a: format!("{eid}/p{k}"),
-                    x,
-                    y,
-                    strength: POSE_STRENGTH,
-                });
-            }
+            cs.push(Constraint::PreferPose {
+                a: format!("{eid}/p{k}"),
+                x: pose.0,
+                y: pose.1,
+                strength: if on_centroid_ray {
+                    ENDPOINT_POSE
+                } else {
+                    POSE_STRENGTH
+                },
+            });
         }
         if pts.len() >= 2 {
             let src_centroid = format!("scheme/mols/{src}/centroid");
@@ -325,6 +332,7 @@ pub fn refine_scheme_edges(
 
     let mut label_cs = Vec::new();
     let mut label_hard = Vec::new();
+    let mut label_ids = Vec::new();
     for (i, edge) in spec.edges().iter().enumerate() {
         let eid = format!("scheme/edges/e{i}");
         let live = match world.eval_shape(&eid) {
@@ -336,8 +344,9 @@ pub fn refine_scheme_edges(
         };
         // Circle at the glyph center, not the unrotated text AABB: a long
         // word's box swallows a Catmull bulge so Outside cannot push it off.
+        let lid = format!("{eid}/label");
         world.insert(
-            format!("{eid}/label"),
+            &lid,
             &eid,
             ObjectType::EdgeLabel,
             Shape::Circle {
@@ -347,45 +356,50 @@ pub fn refine_scheme_edges(
             },
             false,
         );
-        world.set_rot(
-            &format!("{eid}/label"),
-            readable_deg(tangent_at(&live, px, py)),
-        );
+        world.set_rot(&lid, readable_deg(tangent_at(&live, px, py)));
+        label_ids.push((i, lid, eid, edge.stroke_width));
+    }
+    for (i, lid, eid, self_stroke) in &label_ids {
         label_cs.push(Constraint::Midpoint {
-            a: format!("{eid}/label"),
+            a: lid.clone(),
             b: eid.clone(),
             strength: POSE_STRENGTH,
         });
         label_cs.push(Constraint::Parallel {
-            a: format!("{eid}/label"),
+            a: lid.clone(),
             b: eid.clone(),
             strength: 0.8,
         });
         label_hard.push(HardConstraint::MaxDist {
-            a: format!("{eid}/label"),
+            a: lid.clone(),
             b: eid.clone(),
-            dist: label_shaft_tether(edge.stroke_width),
+            dist: label_shaft_tether(*self_stroke),
             lagrangian: LAGRANGIAN_TETHER,
         });
-        let self_stroke = edge.stroke_width;
         for j in 0..n_edges {
-            if i == j {
-                continue;
-            }
-            let other_stroke = spec.edges().get(j).and_then(|e| e.stroke_width);
+            let clash = if j == *i {
+                shaft_air(*self_stroke)
+            } else {
+                shaft_air(spec.edges().get(j).and_then(|e| e.stroke_width))
+            };
             label_hard.push(HardConstraint::Outside {
-                a: format!("{eid}/label"),
+                a: lid.clone(),
                 b: format!("scheme/edges/e{j}"),
-                clash_dist: shaft_air(other_stroke),
+                clash_dist: clash,
                 lagrangian: LAGRANGIAN_CLEAR,
             });
         }
-        label_hard.push(HardConstraint::Outside {
-            a: format!("{eid}/label"),
-            b: eid,
-            clash_dist: shaft_air(self_stroke),
-            lagrangian: LAGRANGIAN_CLEAR,
-        });
+        // This scheme's kit: painted leaves are obstacles (chem, other labels).
+        // Not a solver default. Skip control points (the shaft polyline is the
+        // ink), centroids, and shade.
+        push_clear_leaves_where(
+            &world,
+            &mut label_hard,
+            lid,
+            "scheme",
+            LABEL_SHAFT_PAD_PX,
+            |id, n| scheme_label_clears_leaf(lid, id, n),
+        );
     }
     if !label_cs.is_empty() || !label_hard.is_empty() {
         let _ = solve(&mut world, &label_cs, &label_hard, &opts);
@@ -440,6 +454,31 @@ fn mol_centroid(
     }
     let (x, y, w, h) = mol_box(positions, sizes, id);
     (x + w * 0.5, y + h * 0.5)
+}
+
+/// Place `prev` on the ray from `centroid` through `end`, on the far side of
+/// `end`, so the chord `prev → end` points at the centroid.
+fn behind_end_on_ray(centroid: (f64, f64), end: (f64, f64), prev: (f64, f64)) -> (f64, f64) {
+    let vx = end.0 - centroid.0;
+    let vy = end.1 - centroid.1;
+    let len = vx.hypot(vy).max(1e-9);
+    let ux = vx / len;
+    let uy = vy / len;
+    let along = (prev.0 - end.0) * ux + (prev.1 - end.1) * uy;
+    let t = along.max(BOND_PX);
+    (end.0 + ux * t, end.1 + uy * t)
+}
+
+/// Scheme labels clear painted leaves. Control points are not ink (the edge
+/// polyline is). Centroids and shade are not obstacles.
+fn scheme_label_clears_leaf(label: &str, id: &str, n: &LayoutNode) -> bool {
+    if id == label {
+        return false;
+    }
+    !matches!(
+        n.object_type,
+        ObjectType::EdgePoint | ObjectType::Shade | ObjectType::Group
+    )
 }
 
 fn min_ink_signed(world: &LayoutWorld, under: &str, p: (f64, f64)) -> f64 {
@@ -536,13 +575,16 @@ fn ray_ink_pose(
     at(hi)
 }
 
-/// Document-space origin of unframed atom coords: ELK + leftover + scaled
-/// [`crate::depict::frame_offset`] (the same shift chem paint uses).
+/// Document-space origin of unframed atom coords: ELK + mol group + crop
+/// (viewBox origin) + scaled [`crate::depict::frame_offset`].
 fn mol_frame_origin(paint: &DocPaint, elk: (f64, f64)) -> (f64, f64) {
-    let leftover = match paint.scene.viewports.first() {
-        Some(vp) => (elk.0 + vp.x + vp.ox, elk.1 + vp.y + vp.oy),
-        None => elk,
-    };
+    let (lx, ly) = paint
+        .scene
+        .viewports
+        .first()
+        .map(|vp| vp.local_origin())
+        .unwrap_or((0.0, 0.0));
+    let leftover = (elk.0 + lx - paint.scene.x, elk.1 + ly - paint.scene.y);
     let (fx, fy) = crate::depict::frame_offset(&paint.molecule);
     let s = paint.molecule.diagram_scale();
     (leftover.0 + s * fx, leftover.1 + s * fy)
@@ -650,10 +692,13 @@ fn prim_ink_shapes(p: &Primitive, ox: f64, oy: f64) -> Vec<Shape> {
 
 /// Labels, regions, captions, circles — everything painted except white halo.
 fn scene_ink_shapes(paint: &DocPaint, elk: (f64, f64)) -> Vec<Shape> {
-    let (ox, oy) = match paint.scene.viewports.first() {
-        Some(vp) => (elk.0 + vp.x + vp.ox, elk.1 + vp.y + vp.oy),
-        None => elk,
-    };
+    let (lx, ly) = paint
+        .scene
+        .viewports
+        .first()
+        .map(|vp| vp.local_origin())
+        .unwrap_or((0.0, 0.0));
+    let (ox, oy) = (elk.0 + lx - paint.scene.x, elk.1 + ly - paint.scene.y);
     let mut out = Vec::new();
     for vp in &paint.scene.viewports {
         for layer in &vp.layers {
@@ -1220,6 +1265,8 @@ mod tests {
             scene: Scene {
                 width: w,
                 height: h,
+                x: 0.0,
+                y: 0.0,
                 viewports: vec![Viewport {
                     id: Some(id.into()),
                     x: 0.0,
@@ -1410,6 +1457,70 @@ mod tests {
         let d = crate::catmull::centripetal_catmull_rom_open_path(&pts);
         assert!(d.contains('C'), "open CR shaft should be cubics: {d}");
         assert!(!d.contains('Z'), "{d}");
+        let paint_of: HashMap<&str, &DocPaint> =
+            paints.iter().map(|p| (p.id.as_str(), p)).collect();
+        let size_of: HashMap<&str, (f64, f64)> = sizes
+            .iter()
+            .map(|(id, w, h)| (id.as_str(), (*w, *h)))
+            .collect();
+        let cb = mol_centroid(&paint_of, &positions, &size_of, "B");
+        let (tip, tan) = crate::catmull::open_catmull_end_frame(&pts);
+        let to_c = (cb.0 - tip.0, cb.1 - tip.1);
+        let clen = to_c.0.hypot(to_c.1).max(1e-9);
+        let aim = (tan.0 * to_c.0 + tan.1 * to_c.1) / clen;
+        let perp = (to_c.0 * tan.1 - to_c.1 * tan.0).abs() / clen;
+        assert!(
+            aim > 0.0,
+            "head must point toward the target centroid: tip={tip:?} tan={tan:?} cb={cb:?}"
+        );
+        assert!(
+            perp < 0.2,
+            "last chord must aim at the centroid: perp={perp} tip={tip:?} cb={cb:?} pts={pts:?}"
+        );
+    }
+
+    #[test]
+    fn edge_label_clears_chem_leaves() {
+        let spec = scheme(vec![
+            mol_node("A"),
+            mol_node("C"),
+            crate::doc::Node::Text(crate::doc::TextNode {
+                type_: crate::doc::TextNodeKind::Text,
+                id: Some("lab".into()),
+                text: "Glucuronidation".into(),
+                color: None,
+                scale: None,
+                opts: None,
+            }),
+            edge_node("A", "B", Some("lab")),
+            mol_node("B"),
+        ]);
+        let layout = LayoutOpts::default();
+        let positions = HashMap::from([
+            ("A".into(), (0.0, 0.0)),
+            ("C".into(), (150.0, 0.0)),
+            ("B".into(), (300.0, 0.0)),
+        ]);
+        let sizes = vec![
+            ("A".into(), 80.0, 80.0),
+            ("C".into(), 80.0, 80.0),
+            ("B".into(), 80.0, 80.0),
+        ];
+        let paints = vec![
+            chem_paint("A", 80.0, 80.0, 40.0, 40.0),
+            chem_paint("C", 80.0, 80.0, 40.0, 40.0),
+            chem_paint("B", 80.0, 80.0, 40.0, 40.0),
+        ];
+        let seed = vec![(80.0, 40.0), (300.0, 40.0)];
+        let refined =
+            refine_scheme_edges(&spec, &layout, &positions, &[Some(seed)], &paints, &sizes);
+        let (lx, ly, _) = refined.edge_labels[0].expect("label");
+        let d = paint_ink_signed(&paints[1], positions["C"], (lx, ly));
+        let need = LABEL_FONT_PX * 0.5 + LABEL_SHAFT_PAD_PX;
+        assert!(
+            d + 1.0 >= need,
+            "label must clear C's chem: d={d} need={need} at ({lx},{ly})"
+        );
     }
 
     #[test]
@@ -1542,8 +1653,13 @@ mod tests {
             "solver left the label in the stroke: d={d_shaft} need={need} at ({lx},{ly})"
         );
         let expected = flip_upside_down(tang);
+        // Parallel is mod 180: +84° and −90° are the same shaft.
+        let mut d = (rot - expected).abs() % 180.0;
+        if d > 90.0 {
+            d = 180.0 - d;
+        }
         assert!(
-            (rot - expected).abs() < 20.0,
+            d < 20.0,
             "label should follow the curve tangent: rot={rot} tangent={expected}"
         );
         assert!(
