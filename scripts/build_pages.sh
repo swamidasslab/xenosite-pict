@@ -29,10 +29,10 @@ else
   npm install
 fi
 export PATH="$HOME/.cargo/bin:$PATH"
-if command -v wasm-pack >/dev/null 2>&1; then
+if command -v em++ >/dev/null 2>&1 || [[ -x "${XDG_CACHE_HOME:-$HOME/.cache}/emsdk/upstream/emscripten/em++" ]]; then
   npm run build
 else
-  echo "wasm-pack missing; TypeScript-only build (demo wasm may be stale)"
+  echo "em++ missing; TypeScript-only build (demo wasm may be stale)"
   npm run build:ts
   npm run build:copy-wasm || true
 fi

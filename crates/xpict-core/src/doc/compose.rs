@@ -209,7 +209,20 @@ fn compose_reaction(
                 let (a, b) = edge_anchors(src_box, tgt_box, ANCHOR_GAP);
                 vec![a, b]
             });
-        let pts = simplify_route(&route, KINK_PX);
+        let mut pts = simplify_route(&route, KINK_PX);
+        let route_len: f64 = pts
+            .windows(2)
+            .map(|w| {
+                let (dx, dy) = (w[1].0 - w[0].0, w[1].1 - w[0].1);
+                (dx * dx + dy * dy).sqrt()
+            })
+            .sum();
+        // elkrs orthogonal can emit a degenerate shaft (boxes flush); paint
+        // drops routes shorter than 4px. Fall back to viewport anchors.
+        if pts.len() < 2 || route_len < 4.0 {
+            let (a, b) = edge_anchors(src_box, tgt_box, ANCHOR_GAP);
+            pts = vec![a, b];
+        }
         for &(x, y) in &pts {
             max_r = max_r.max(x + 8.0);
             max_b = max_b.max(y + 8.0);

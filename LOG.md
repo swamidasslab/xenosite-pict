@@ -2,6 +2,8 @@
 
 ## 2026-10-21
 
+- JS wasm is `wasm32-unknown-emscripten` (`em++` compiles CoordGen and links libc++). `wasm32-unknown-unknown` has no `<map>`. `scripts/ensure_emsdk.sh` installs emsdk 6.0.13 under `~/.cache/emsdk`. C ABI `xpict_render` + MODULARIZE ES module; wasm-pack/wasm-bindgen dropped for this crate. Orthogonal scheme arrows: elkrs can emit a sub-4px shaft when layers pack flush; fall back to viewport anchors.
+
 - JS scheme smoke: `xpict.depict({ type: "reaction_scheme" })` packs two (and three) mols, edge overlays, arrow styles, orthogonal routing, spacing knobs, and the same mol annotations as a lone mol.
 
 - Deleted the unused JS RDKit layout path (`rdkit-layout.ts`, `rdkit-loader.ts`) and the CX helper that only existed to feed it. Product JS sends specs to Rust `render`; `frame.ts` stays (types / SVG-frame math, no RDKit).

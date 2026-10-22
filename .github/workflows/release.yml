@@ -162,16 +162,15 @@ jobs:
           path: .
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: wasm32-unknown-unknown
+          targets: wasm32-unknown-emscripten
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ". -> target"
-      - name: Install wasm-pack
+      - name: Install emsdk (CoordGen C++)
         run: |
-          if ! command -v wasm-pack >/dev/null 2>&1; then
-            curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
-            echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-          fi
+          bash scripts/ensure_emsdk.sh
+          echo "${XDG_CACHE_HOME:-$HOME/.cache}/emsdk" >> "$GITHUB_PATH"
+          echo "${XDG_CACHE_HOME:-$HOME/.cache}/emsdk/upstream/emscripten" >> "$GITHUB_PATH"
       - uses: actions/setup-node@v4
         with:
           node-version: "22"

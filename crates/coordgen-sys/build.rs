@@ -1,5 +1,5 @@
 use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 fn main() {
     let manifest = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
@@ -16,6 +16,7 @@ fn main() {
     println!("cargo:rerun-if-changed=cxx/coordgen_interop.cpp");
     println!("cargo:rerun-if-changed=cxx/coordgen_interop.h");
     println!("cargo:rerun-if-changed={}", vendor.display());
+    println!("cargo:rerun-if-env-changed=EMSDK");
 
     let sources = [
         "CoordgenFragmentBuilder.cpp",
@@ -51,7 +52,32 @@ fn main() {
     }
 
     let target = env::var("TARGET").unwrap_or_default();
-    if target.contains("emscripten") {
+    let is_emscripten = target.contains("emscripten");
+    let is_wasm = target.starts_with("wasm32");
+
+    if is_wasm {
+        // em++ only supports wasm32-unknown-emscripten (not unknown-unknown).
+        // Drive C++ with em++ and skip cc-rs's --target=wasm32-unknown-unknown.
+        let emxx = find_emxx().unwrap_or_else(|| {
+            panic!(
+                "CoordGen wasm needs em++ (emscripten). Install emsdk and source emsdk_env.sh, \
+                 or set EMSDK. See scripts/ensure_emsdk.sh."
+            )
+        });
+        println!("cargo:warning=coordgen-sys wasm C++ via {}", emxx.display());
+        build.compiler(&emxx);
+        if !is_emscripten {
+            build.no_default_flags(true);
+            build.flag("-std=c++11");
+            build.flag("-w");
+            build.flag("-DSTATIC_COORDGEN");
+        }
+        // Match rustc's `-fwasm-exceptions` (not sjlj / `-fexceptions`).
+        build.flag("-fwasm-exceptions");
+        // rustc cdylib on emscripten is a SIDE_MODULE; objects need PIC.
+        build.flag("-fPIC");
+        build.cpp_link_stdlib(None);
+    } else if is_emscripten {
         build.flag("-fexceptions");
     }
 
@@ -64,13 +90,48 @@ fn main() {
     build.compile("coordgen_sys");
 
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
-    if target_os == "macos" || target_os == "ios" {
+    if is_wasm {
+        // em++ objects carry libc++; rustc/wasm-ld must not pull host libstdc++.
+    } else if target_os == "macos" || target_os == "ios" {
         println!("cargo:rustc-link-lib=c++");
         println!("cargo:rustc-link-arg=-Wl,-dead_strip");
-    } else if target.contains("emscripten") {
+    } else if is_emscripten {
         println!("cargo:rustc-link-arg=-Wl,--gc-sections");
     } else {
         println!("cargo:rustc-link-lib=stdc++");
         println!("cargo:rustc-link-arg=-Wl,--gc-sections");
     }
+}
+
+fn find_emxx() -> Option<PathBuf> {
+    if let Ok(explicit) = env::var("EMXX").or_else(|_| env::var("EMSCRIPTEN_CXX")) {
+        let p = PathBuf::from(explicit);
+        if p.is_file() {
+            return Some(p);
+        }
+    }
+    if let Ok(sdk) = env::var("EMSDK") {
+        let p = PathBuf::from(sdk).join("upstream/emscripten/em++");
+        if p.is_file() {
+            return Some(p);
+        }
+    }
+    let cache_root = env::var_os("XDG_CACHE_HOME")
+        .map(PathBuf::from)
+        .or_else(|| env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")));
+    if let Some(cache) = cache_root {
+        let p = cache.join("emsdk/upstream/emscripten/em++");
+        if p.is_file() {
+            return Some(p);
+        }
+    }
+    if let Ok(path) = env::var("PATH") {
+        for dir in path.split(':') {
+            let p = Path::new(dir).join("em++");
+            if p.is_file() {
+                return Some(p);
+            }
+        }
+    }
+    None
 }
