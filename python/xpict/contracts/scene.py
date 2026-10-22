@@ -57,7 +57,7 @@ class TextPrim(StrictModel):
     cls: str | None = None
     fill: str = '#000'
     font_size: float = 12.0
-    rotate: Annotated[float | None, Field(description='Degrees about `(x, y)`. Omit when upright.')] = None
+    rotate: Annotated[float | None, Field(description='Degrees about the glyph center `(x, y)`. Omit when upright.')] = None
 
 
 Primitive = Annotated[PathPrim | CirclePrim | TextPrim, Field(discriminator='kind')]

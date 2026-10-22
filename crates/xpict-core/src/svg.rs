@@ -138,14 +138,22 @@ fn render_primitive(p: &Primitive) -> String {
                 TextAnchor::Middle => "middle",
                 TextAnchor::End => "end",
             };
-            let rot = rotate
-                .filter(|r| r.abs() > 1e-6)
+            let rotated = rotate.filter(|r| r.abs() > 1e-6);
+            // Upright text keeps an alphabetic baseline at `(x, y)`. Rotated
+            // labels (edge chrome) use the glyph center so `rotate` does not
+            // swing the box around a corner.
+            let baseline = if rotated.is_some() {
+                "central"
+            } else {
+                "alphabetic"
+            };
+            let rot = rotated
                 .map(|r| format!(" transform=\"rotate({} {} {})\"", fmt(r), fmt(*x), fmt(*y)))
                 .unwrap_or_default();
             format!(
                 "<text x=\"{}\" y=\"{}\" fill=\"{}\" font-size=\"{}\" \
                  font-family=\"Liberation Sans, Arial, sans-serif\" text-anchor=\"{anchor_s}\" \
-                 dominant-baseline=\"alphabetic\"{}{}>{}</text>",
+                 dominant-baseline=\"{baseline}\"{}{}>{}</text>",
                 fmt(*x),
                 fmt(*y),
                 esc(fill),
@@ -348,5 +356,47 @@ mod tests {
             svg.contains(r#"transform="translate(10,20) translate(-6,-8)""#),
             "leftover origin is a nested translate, not baked coords: {svg}"
         );
+    }
+
+    #[test]
+    fn rotated_text_spins_about_glyph_center() {
+        let scene = Scene {
+            width: 40.0,
+            height: 20.0,
+            viewports: vec![],
+            overlays: vec![Primitive::Text {
+                x: 12.0,
+                y: 8.0,
+                text: "ADH".into(),
+                fill: "#222".into(),
+                font_size: 11.0,
+                anchor: TextAnchor::Middle,
+                class: Some("edge edge-0 label".into()),
+                rotate: Some(35.0),
+            }],
+            halo: vec![],
+        };
+        let svg = scene_to_svg(&scene);
+        assert!(svg.contains(r#"dominant-baseline="central""#), "{svg}");
+        assert!(
+            svg.contains(r#"transform="rotate(35 12 8)""#),
+            "rotate origin must be the text center: {svg}"
+        );
+        let upright = Scene {
+            overlays: vec![Primitive::Text {
+                x: 12.0,
+                y: 8.0,
+                text: "ADH".into(),
+                fill: "#222".into(),
+                font_size: 11.0,
+                anchor: TextAnchor::Middle,
+                class: None,
+                rotate: None,
+            }],
+            ..scene
+        };
+        let u = scene_to_svg(&upright);
+        assert!(u.contains(r#"dominant-baseline="alphabetic""#), "{u}");
+        assert!(!u.contains("rotate("), "{u}");
     }
 }

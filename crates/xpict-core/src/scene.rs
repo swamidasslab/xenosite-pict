@@ -136,7 +136,7 @@ pub enum Primitive {
         #[serde(default, skip_serializing_if = "Option::is_none", rename = "cls")]
         #[cfg_attr(feature = "codegen", ts(optional, rename = "cls"))]
         class: Option<String>,
-        /// Degrees about `(x, y)`. Omit when upright.
+        /// Degrees about the glyph center `(x, y)`. Omit when upright.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[cfg_attr(feature = "codegen", ts(optional))]
         rotate: Option<f64>,

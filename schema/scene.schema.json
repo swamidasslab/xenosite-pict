@@ -236,7 +236,7 @@
               ]
             },
             "rotate": {
-              "description": "Degrees about `(x, y)`. Omit when upright.",
+              "description": "Degrees about the glyph center `(x, y)`. Omit when upright.",
               "type": [
                 "number",
                 "null"

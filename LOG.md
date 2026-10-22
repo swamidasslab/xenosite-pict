@@ -2,6 +2,8 @@
 
 ## 2026-10-22
 
+- Rotated edge labels use `dominant-baseline="central"` so SVG `rotate` is about the glyph center, not the alphabetic baseline (corner).
+
 - Scheme arrow ink standoff is 1.5 bonds. Endpoints initialize on the centroid-aiming ray (not ELK box ports). Energy is MinimizeDist to the centroid plus Collinear so the shaft tangent aims at the center; hard chem clearance keeps them from reaching it.
 
 - Product 0.7.0: ELK-then-energy reaction-scheme refine (`LayoutOpts.refine`; `false` keeps stock ELK). Nested mol SVG groups; leftover fit on viewport `ox`/`oy`.
