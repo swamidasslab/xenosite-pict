@@ -129,10 +129,24 @@ def _unwrap(node: dict[str, Any]) -> tuple[dict[str, Any], bool]:
     return node, False
 
 
+def _disc_tag(prop: dict[str, Any] | None) -> str | None:
+    """Single-value ``type``/``kind`` tag, including ``allOf`` ``$ref`` + default."""
+    if not prop:
+        return None
+    inner, _ = _unwrap(prop)
+    val = _single_str_enum(inner)
+    if val is not None:
+        return val
+    for node in (prop, inner):
+        if isinstance(node.get("default"), str):
+            return str(node["default"])
+    return None
+
+
 def _disc(alt: dict[str, Any]) -> tuple[str, str] | None:
     props = alt.get("properties") or {}
     for key in ("kind", "type"):
-        val = _single_str_enum(props.get(key))
+        val = _disc_tag(props.get(key))
         if val is not None:
             return key, val
     return None
@@ -142,10 +156,7 @@ def _object_disc_value(node: dict[str, Any], key: str) -> str | None:
     props = node.get("properties") or {}
     if key not in props:
         return None
-    p = props[key]
-    return _single_str_enum(p) or (
-        str(p["default"]) if isinstance(p.get("default"), str) else None
-    )
+    return _disc_tag(props[key])
 
 
 def _root_body(schema: dict[str, Any]) -> dict[str, Any]:

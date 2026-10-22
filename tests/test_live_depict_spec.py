@@ -242,3 +242,52 @@ def test_live_edge_multi_reactants_products():
     e2 = next(c for c in one.root.children if isinstance(c, EdgeNode))
     assert e2.sources == "a"
     assert e2.targets == "b"
+
+
+_ANNOTATION_MOL = {
+    "type": "mol",
+    "id": "ph",
+    "smiles": "c1ccccc1O",
+    "name": "phenol",
+    "shade": {"atoms": [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0]},
+    "atom_number": "index",
+    "atom_label": {"6": "exo"},
+    "circle": {"atoms": [6]},
+    "region": {"style": "box", "atoms": [0, 1, 2, 3, 4, 5], "text": "ring"},
+    "callout": {"atoms": [6], "text": "OH", "arrow": True, "prefer": "above"},
+}
+
+
+def test_scheme_mol_uses_same_molnode_as_root():
+    """Root mol and reaction_scheme children share one MolNode annotation schema."""
+    from xpict.contracts.depict import MolNode, ReactionSchemeNode
+
+    root = DepictSpec.model_validate(_ANNOTATION_MOL)
+    assert isinstance(root.root, MolNode)
+    scheme = DepictSpec.model_validate(
+        {
+            "type": "reaction_scheme",
+            "children": [
+                _ANNOTATION_MOL,
+                {"type": "mol", "id": "et", "smiles": "CCO"},
+                {"type": "edge", "source": "ph", "target": "et"},
+            ],
+        }
+    )
+    assert isinstance(scheme.root, ReactionSchemeNode)
+    child = next(
+        c for c in scheme.root.children if isinstance(c, MolNode) and c.id == "ph"
+    )
+    assert type(child) is MolNode
+    dump_keys = {
+        "region",
+        "circle",
+        "callout",
+        "atom_label",
+        "atom_number",
+        "name",
+        "shade",
+    }
+    root_dump = root.root.model_dump(exclude_none=True)
+    assert dump_keys <= set(root_dump)
+    assert child.model_dump(exclude_none=True) == root_dump

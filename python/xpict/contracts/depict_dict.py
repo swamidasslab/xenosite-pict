@@ -259,7 +259,11 @@ class ShadeSpecDict(TypedDict, total=False):
     vmin: NotRequired[float]
 
 
+MolNodeKind = Literal['mol']
+
+
 class MolNodeDict(TypedDict, total=False):
+    """Mol node — [`MolOpts`] fields + non-cascading identity / scores / align."""
     type: Required[Literal['mol']]
     align_to: NotRequired[AlignToDict]
     aromatic: NotRequired[AromaticStyle]
@@ -387,6 +391,3 @@ class GridNodeDict(TypedDict, total=False):
 
 
 DepictSpecDict = MolNodeDict | GroupNodeDict | ReactionSchemeNodeDict | GridNodeDict
-
-
-MolNodeKind = Literal['mol']

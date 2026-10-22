@@ -29,7 +29,7 @@ def _overlaps(
     return a[0] < b[2] and a[2] > b[0] and a[1] < b[3] and a[3] > b[1]
 
 
-def _kitchen_sink_svg() -> str:
+def _kitchen_sink_node(**extra) -> MolNode:
     # Same chrome as notebooks/mol_chrome_progress.ipynb kitchen sink.
     base = mol("c1ccccc1O", name="phenol").to_node().model_dump(exclude_none=True)
     base.update(
@@ -53,7 +53,12 @@ def _kitchen_sink_svg() -> str:
             },
         }
     )
-    return DepictSpec(MolNode.model_validate(base))._repr_svg_()
+    base.update(extra)
+    return MolNode.model_validate(base)
+
+
+def _kitchen_sink_svg() -> str:
+    return DepictSpec(_kitchen_sink_node())._repr_svg_()
 
 
 def _label_boxes(svg: str) -> dict[tuple[str, str], tuple[float, float, float, float]]:
@@ -124,3 +129,30 @@ def test_kitchen_sink_region_contains_ring_atom_labels():
     assert _contains(box, two), f"index 2 {two} sits outside region box {box}"
     exo = labels[("label", "exo")]
     assert not _contains(box, exo, slack=0.0), f"exo {exo} belongs on OH, not inside ring {box}"
+
+
+def test_kitchen_sink_scheme_mol_paints_same_annotations():
+    """Reaction-scheme mols accept the same MolNode overlay fields as a lone mol."""
+    from xpict.contracts.depict import EdgeNode, ReactionSchemeNode
+
+    node = _kitchen_sink_node(id="ph")
+    scheme = DepictSpec(
+        ReactionSchemeNode(
+            children=[
+                node,
+                MolNode(id="et", smiles="CCO"),
+                EdgeNode(sources="ph", targets="et"),
+            ]
+        )
+    )
+    svg = scheme._repr_svg_()
+    for needle in (
+        "region",
+        "callout",
+        "atom-circle",
+        "atom-number",
+        "atom-label",
+        "mol-caption",
+        "shade",
+    ):
+        assert needle in svg, f"scheme mol missing {needle}"

@@ -31,7 +31,7 @@ pub fn compose_scheme(spec: &DepictSpec, paints: &[DocPaint]) -> Result<Scene, S
             paints,
             layout.as_ref().unwrap_or(&LayoutOpts::default()),
         )?,
-        DepictSpec::Mol { .. } | DepictSpec::Group { .. } | DepictSpec::Grid { .. } => {
+        DepictSpec::Mol(_) | DepictSpec::Group { .. } | DepictSpec::Grid { .. } => {
             if paints.len() == 1 {
                 paints[0].scene.clone()
             } else if paints.is_empty() {
@@ -49,7 +49,7 @@ pub fn compose_scheme(spec: &DepictSpec, paints: &[DocPaint]) -> Result<Scene, S
         }
     };
     // Lone mols are already fitted in render_doc; multi-mol / schemes fit once here.
-    let scene = if matches!(spec, DepictSpec::Mol { .. }) && paints.len() == 1 {
+    let scene = if matches!(spec, DepictSpec::Mol(_)) && paints.len() == 1 {
         scene
     } else if paints.is_empty() {
         scene
@@ -134,6 +134,7 @@ fn compose_reaction(
 
     let mut viewports = Vec::with_capacity(paints.len());
     let mut halo = Vec::new();
+    let mut overlays = Vec::new();
     let mut max_r = 0.0_f64;
     let mut max_b = 0.0_f64;
 
@@ -162,6 +163,11 @@ fn compose_reaction(
         for prim in &p.scene.halo {
             halo.push(translate_prim(prim, x, y));
         }
+        // Mol `name` / caption overlays live on the painted scene, not in the
+        // viewport layers — keep them when packing a scheme.
+        for prim in &p.scene.overlays {
+            overlays.push(translate_prim(prim, x, y));
+        }
         viewports.push(vp);
     }
 
@@ -173,7 +179,6 @@ fn compose_reaction(
         })
         .collect();
 
-    let mut overlays = Vec::new();
     for (i, edge) in spec.edges().iter().enumerate() {
         let src_id = edge
             .sources
@@ -257,6 +262,7 @@ fn place_row(paints: &[DocPaint], gap: f64) -> Scene {
     let max_h = sizes.iter().map(|(_, _, h)| *h).fold(0.0_f64, f64::max);
     let mut viewports = Vec::new();
     let mut halo = Vec::new();
+    let mut overlays = Vec::new();
     let mut max_r = 0.0_f64;
     let mut max_b = 0.0_f64;
     let mut x = 0.0_f64;
@@ -279,6 +285,9 @@ fn place_row(paints: &[DocPaint], gap: f64) -> Scene {
         for prim in &p.scene.halo {
             halo.push(translate_prim(prim, x, y));
         }
+        for prim in &p.scene.overlays {
+            overlays.push(translate_prim(prim, x, y));
+        }
         viewports.push(vp);
         x += w + gap;
     }
@@ -286,7 +295,7 @@ fn place_row(paints: &[DocPaint], gap: f64) -> Scene {
         width: max_r,
         height: max_b,
         viewports,
-        overlays: vec![],
+        overlays,
         halo,
     }
 }
@@ -1239,7 +1248,7 @@ mod tests {
 
     #[test]
     fn compose_empty_mol_and_anchors() {
-        let mol = DepictSpec::Mol {
+        let mol = DepictSpec::Mol(MolNode {
             smiles: Some("C".into()),
             cxsmiles: None,
             molfile: None,
@@ -1263,7 +1272,8 @@ mod tests {
             debug_align: None,
             pad: None,
             shade: None,
-        };
+            ..Default::default()
+        });
         let empty = compose_scheme(&mol, &[]).unwrap();
         assert!(empty.viewports.is_empty());
 
@@ -1362,7 +1372,7 @@ mod tests {
     #[test]
     fn compose_mol_root_passthrough() {
         let paints = vec![paint("m0", 50.0, 40.0)];
-        let spec = DepictSpec::Mol {
+        let spec = DepictSpec::Mol(MolNode {
             smiles: Some("C".into()),
             cxsmiles: None,
             molfile: None,
@@ -1386,7 +1396,8 @@ mod tests {
             debug_align: None,
             pad: None,
             shade: None,
-        };
+            ..Default::default()
+        });
         let scene = compose_scheme(&spec, &paints).unwrap();
         assert_eq!(scene.viewports.len(), 1);
         assert!((scene.width - 50.0).abs() < 1e-9 || scene.viewports[0].width == 50.0);

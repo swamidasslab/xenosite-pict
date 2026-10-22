@@ -2,6 +2,8 @@
 
 ## 2026-10-21
 
+- Root mol is `MolNode` (`DepictSpec::Mol(MolNode)`), the same type as scheme/group children — one annotation schema (`region`, `circle`, `callout`, `atom_label`, `atom_number`, `name`, `shade`). Scheme compose now keeps mol caption overlays so `name` paints in schemes too.
+
 - CoordGen and ELK are required (not features), including wasm. Product path is one Rust `render(spec) → Rendered[]`: CoordGen layout, mol-spec paint (chem + annotations + caption), then pack cells. Annotations on `MolNode` are that path, not a parallel API. `align_to` is an id/ref; Rust computes coords. JS EdgePlan host processor removed.
 
 ## 2026-10-20

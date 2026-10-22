@@ -1089,86 +1089,16 @@ struct CascadeLayer {
 }
 
 /// Declarative document (`mol`, `group`, `reaction_scheme`, or `grid` root).
+///
+/// A root mol **is** [`MolNode`] — the same type as scheme / group children, so
+/// annotations (`region`, `circle`, `callout`, `atom_label`, `atom_number`,
+/// `name`, `shade`, …) are one schema everywhere.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 #[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
 #[cfg_attr(feature = "codegen", ts(export))]
 pub enum DepictSpec {
-    Mol {
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(feature = "codegen", ts(optional))]
-        smiles: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(feature = "codegen", ts(optional))]
-        cxsmiles: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(feature = "codegen", ts(optional))]
-        molfile: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(feature = "codegen", ts(optional))]
-        id: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(feature = "codegen", ts(optional))]
-        shade: Option<ShadeSpec>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(feature = "codegen", ts(optional))]
-        star_labels: Option<Vec<Option<String>>>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(feature = "codegen", ts(optional))]
-        align_to: Option<AlignTo>,
-        /// Caption: [`Label`] (string id / list / `{id, pos?}` — text-node refs).
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(feature = "codegen", ts(optional))]
-        label: Option<Label>,
-        /// Privileged figure name / caption (inline mol SVG).
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(feature = "codegen", ts(optional))]
-        name: Option<MolText>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(feature = "codegen", ts(optional))]
-        atom_number: Option<AtomNumberSpec>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(feature = "codegen", ts(optional))]
-        atom_label: Option<AtomLabelSpec>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(feature = "codegen", ts(optional))]
-        region: Option<RegionField>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(feature = "codegen", ts(optional))]
-        circle: Option<CircleField>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(feature = "codegen", ts(optional))]
-        callout: Option<CalloutField>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(feature = "codegen", ts(optional))]
-        color: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(feature = "codegen", ts(optional))]
-        scale: Option<f64>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(feature = "codegen", ts(optional))]
-        weight: Option<f64>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(feature = "codegen", ts(optional))]
-        halo: Option<bool>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(feature = "codegen", ts(optional))]
-        aromatic: Option<AromaticStyle>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(feature = "codegen", ts(optional))]
-        debug_box: Option<bool>,
-        /// Paint alignment correspondence (matched atom tags + mol role badge).
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(feature = "codegen", ts(optional))]
-        debug_align: Option<bool>,
-        /// Post-layout SVG viewBox pad (px). Omit → small house default.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(feature = "codegen", ts(optional))]
-        pad: Option<f64>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(feature = "codegen", ts(optional))]
-        opts: Option<Opts>,
-    },
+    Mol(MolNode),
     Group {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[cfg_attr(feature = "codegen", ts(optional))]
@@ -1279,7 +1209,7 @@ pub enum DepictSpec {
 impl DepictSpec {
     fn cascade_layer(&self) -> Option<CascadeLayer> {
         match self {
-            DepictSpec::Mol { .. } => None,
+            DepictSpec::Mol(_) => None,
             DepictSpec::Group {
                 opts,
                 color,
@@ -1323,59 +1253,6 @@ impl DepictSpec {
         }
     }
 
-    fn mol_node_from_root_fields(
-        smiles: &Option<String>,
-        cxsmiles: &Option<String>,
-        molfile: &Option<String>,
-        id: &Option<String>,
-        shade: &Option<ShadeSpec>,
-        star_labels: &Option<Vec<Option<String>>>,
-        align_to: &Option<AlignTo>,
-        label: &Option<Label>,
-        name: &Option<MolText>,
-        atom_number: &Option<AtomNumberSpec>,
-        atom_label: &Option<AtomLabelSpec>,
-        region: &Option<RegionField>,
-        circle: &Option<CircleField>,
-        callout: &Option<CalloutField>,
-        color: &Option<String>,
-        scale: Option<f64>,
-        weight: Option<f64>,
-        halo: Option<bool>,
-        aromatic: Option<AromaticStyle>,
-        debug_box: Option<bool>,
-        debug_align: Option<bool>,
-        pad: Option<f64>,
-        opts: &Option<Opts>,
-    ) -> MolNode {
-        MolNode {
-            type_: MolNodeKind::Mol,
-            smiles: smiles.clone(),
-            cxsmiles: cxsmiles.clone(),
-            molfile: molfile.clone(),
-            id: id.clone(),
-            shade: shade.clone(),
-            star_labels: star_labels.clone(),
-            align_to: align_to.clone(),
-            label: label.clone(),
-            name: name.clone(),
-            atom_number: atom_number.clone(),
-            atom_label: atom_label.clone(),
-            region: region.clone(),
-            circle: circle.clone(),
-            callout: callout.clone(),
-            color: color.clone(),
-            scale,
-            weight,
-            halo,
-            aromatic,
-            debug_box,
-            debug_align,
-            pad,
-            opts: opts.clone(),
-        }
-    }
-
     /// Walk mols in document order with ancestor cascade layers (outer → inner).
     fn collect_mols_with_layers(
         &self,
@@ -1383,59 +1260,8 @@ impl DepictSpec {
         out: &mut Vec<(MolNode, Vec<CascadeLayer>)>,
     ) {
         match self {
-            DepictSpec::Mol {
-                smiles,
-                cxsmiles,
-                molfile,
-                id,
-                shade,
-                star_labels,
-                align_to,
-                label,
-                name,
-                atom_number,
-                atom_label,
-                region,
-                circle,
-                callout,
-                color,
-                scale,
-                weight,
-                halo,
-                aromatic,
-                debug_box,
-                debug_align,
-                pad,
-                opts,
-            } => {
-                out.push((
-                    Self::mol_node_from_root_fields(
-                        smiles,
-                        cxsmiles,
-                        molfile,
-                        id,
-                        shade,
-                        star_labels,
-                        align_to,
-                        label,
-                        name,
-                        atom_number,
-                        atom_label,
-                        region,
-                        circle,
-                        callout,
-                        color,
-                        *scale,
-                        *weight,
-                        *halo,
-                        *aromatic,
-                        *debug_box,
-                        *debug_align,
-                        *pad,
-                        opts,
-                    ),
-                    stack.clone(),
-                ));
+            DepictSpec::Mol(m) => {
+                out.push((m.clone(), stack.clone()));
             }
             DepictSpec::Group { children, .. } | DepictSpec::ReactionScheme { children, .. } => {
                 let layer = self.cascade_layer();
@@ -1495,7 +1321,7 @@ impl DepictSpec {
             DepictSpec::Group { children, .. } | DepictSpec::ReactionScheme { children, .. } => {
                 children.as_slice()
             }
-            DepictSpec::Mol { .. } | DepictSpec::Grid { .. } => &[],
+            DepictSpec::Mol(_) | DepictSpec::Grid { .. } => &[],
         }
     }
 
@@ -1537,7 +1363,7 @@ impl DepictSpec {
             DepictSpec::Group { opts, .. }
             | DepictSpec::ReactionScheme { opts, .. }
             | DepictSpec::Grid { opts, .. } => opts.as_ref(),
-            DepictSpec::Mol { .. } => None,
+            DepictSpec::Mol(_) => None,
         }
     }
 
@@ -1575,5 +1401,17 @@ impl DepictSpec {
     pub fn resolve_all_mol_chrome(&self) -> Vec<MolOpts> {
         let n = self.mols_with_layers().len();
         (0..n).map(|i| self.resolve_mol_chrome(i)).collect()
+    }
+}
+
+impl From<MolNode> for DepictSpec {
+    fn from(m: MolNode) -> Self {
+        DepictSpec::Mol(m)
+    }
+}
+
+impl From<MolNode> for Node {
+    fn from(m: MolNode) -> Self {
+        Node::Mol(m)
     }
 }

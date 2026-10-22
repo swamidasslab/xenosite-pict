@@ -187,9 +187,9 @@ export type ReactionSchemeNode = Extract<
 /** Grid of row roots. */
 export type GridNode = Extract<GeneratedDepictSpec, { type: "grid" }>;
 
-/** Declarative document (nested subset of PictSpec). */
+/** Declarative document (nested subset of PictSpec). Root mol is {@link MolNode}. */
 export type DepictSpec =
-  | Extract<GeneratedDepictSpec, { type: "mol" }>
+  | MolNode
   | GroupNode
   | ReactionSchemeNode
   | GridNode;

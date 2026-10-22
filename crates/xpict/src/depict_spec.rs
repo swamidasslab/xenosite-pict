@@ -2,7 +2,7 @@
 
 use crate::{Error, Rendered, SvgAtom, SvgBond};
 
-pub use xpict_core::{AlignTo, AlignToSpec, DepictSpec, MolNode, ShadeSpec};
+pub use xpict_core::{AlignTo, AlignToSpec, DepictSpec, MolNode, Node, ShadeSpec};
 
 /// Alias of [`MolNode`].
 pub type MolSpec = MolNode;

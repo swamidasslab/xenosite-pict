@@ -38,10 +38,10 @@ mod ffi;
 mod layout;
 mod svg;
 
-pub use align_opts::{
-    align_succeeded, minimallib_align_details, MCS_DETAILS_JSON, MIN_MCS_ATOMS,
+pub use align_opts::{align_succeeded, minimallib_align_details, MCS_DETAILS_JSON, MIN_MCS_ATOMS};
+pub use depict_spec::{
+    depict, AlignTo, AlignToSpec, DepictSpec, MolNode, MolSpec, Node, ShadeSpec,
 };
-pub use depict_spec::{depict, AlignTo, AlignToSpec, DepictSpec, MolNode, MolSpec, ShadeSpec};
 pub use edge_plan::{build_align_plan, process_edge_plan, process_edge_plan_with_frames};
 pub use xpict_core::{cx_atom_labels, smiles_base};
 
@@ -158,7 +158,7 @@ pub struct SvgAtom {
     pub y: f64,
     pub label: Option<String>,
     pub charge: i32,
-    mapno: None,
+    pub mapno: Option<i32>,
 }
 
 /// Bond endpoints in layout order.
@@ -272,7 +272,6 @@ fn to_coord_list(atoms: &[CoreAtom]) -> Vec<SvgAtom> {
 pub fn mol(smiles_or_molfile: impl AsRef<str>) -> Result<Mol, Error> {
     Mol::from_source(smiles_or_molfile)
 }
-
 
 /// Layout → Rust ``depict_molecule`` → [`Rendered`] (JS ``xpict.render``).
 pub fn render(input: &mut Mol, opts: MolRenderOptions) -> Result<Rendered, Error> {

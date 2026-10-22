@@ -620,7 +620,7 @@ mod tests {
 
     #[test]
     fn render_doc_stitches_edge_result() {
-        let spec = DepictSpec::Mol {
+        let spec = DepictSpec::Mol(MolNode {
             label: None,
             name: None,
             atom_number: None,
@@ -644,7 +644,8 @@ mod tests {
             debug_align: None,
             pad: None,
             opts: None,
-        };
+            ..Default::default()
+        });
         let plan = plan_edge(&spec).unwrap().unwrap();
         let id = match &plan.tasks[0] {
             EdgeTask::CoordGen { roots } => roots[0].id.clone(),
@@ -668,7 +669,7 @@ mod tests {
 
     #[test]
     fn render_doc_applies_cx_when_no_star_labels() {
-        let spec = DepictSpec::Mol {
+        let spec = DepictSpec::Mol(MolNode {
             label: None,
             name: None,
             atom_number: None,
@@ -692,7 +693,8 @@ mod tests {
             debug_align: None,
             pad: None,
             opts: None,
-        };
+            ..Default::default()
+        });
         let mol = MoleculeIn {
             id: Some("m".into()),
             atoms: vec![
@@ -1028,7 +1030,7 @@ mod tests {
 
     #[test]
     fn render_doc_star_labels_shade_scale_weight() {
-        let spec = DepictSpec::Mol {
+        let spec = DepictSpec::Mol(MolNode {
             label: None,
             name: None,
             atom_number: None,
@@ -1058,7 +1060,8 @@ mod tests {
             debug_align: None,
             pad: None,
             opts: None,
-        };
+            ..Default::default()
+        });
         let mut mol = ethanol_mol("s");
         mol.atoms[0].element = Some("*".into());
         mol.atoms[0].z = Some(0);
@@ -1084,7 +1087,7 @@ mod tests {
 
     #[test]
     fn render_doc_errors_on_missing_or_failed_edge_row() {
-        let spec = DepictSpec::Mol {
+        let spec = DepictSpec::Mol(MolNode {
             label: None,
             name: None,
             atom_number: None,
@@ -1108,7 +1111,8 @@ mod tests {
             debug_align: None,
             pad: None,
             opts: None,
-        };
+            ..Default::default()
+        });
         let missing = EdgeResult::new_v1(vec![EdgeTaskResult::CoordGen {
             ok: false,
             molecules: vec![],

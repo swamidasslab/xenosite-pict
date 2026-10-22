@@ -1,15 +1,17 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "DepictSpec",
-  "description": "Declarative document (`mol`, `group`, `reaction_scheme`, or `grid` root).",
+  "description": "Declarative document (`mol`, `group`, `reaction_scheme`, or `grid` root).\n\nA root mol **is** [`MolNode`] — the same type as scheme / group children, so annotations (`region`, `circle`, `callout`, `atom_label`, `atom_number`, `name`, `shade`, …) are one schema everywhere.",
   "oneOf": [
     {
+      "description": "Mol node — [`MolOpts`] fields + non-cascading identity / scores / align.",
       "type": "object",
       "required": [
         "type"
       ],
       "properties": {
         "align_to": {
+          "description": "Template id string, or `{ \"ref\", \"atom_map\"?, \"min_atoms\"?, \"mode\"?, \"timeout_ms\"? }`.",
           "anyOf": [
             {
               "$ref": "#/definitions/AlignTo"
@@ -20,6 +22,7 @@
           ]
         },
         "aromatic": {
+          "description": "Aromatic ring paint: ``circle`` (default) or ``kekule``.",
           "anyOf": [
             {
               "$ref": "#/definitions/AromaticStyle"
@@ -30,6 +33,7 @@
           ]
         },
         "atom_label": {
+          "description": "Per-atom arbitrary text map (`{ \"1\": \"α\" }` or `{ \"labels\": {…}, \"scale\"? }`).",
           "anyOf": [
             {
               "$ref": "#/definitions/AtomLabelSpec"
@@ -40,6 +44,7 @@
           ]
         },
         "atom_number": {
+          "description": "Atom index / map-number labels (`\"index\"` | `\"mapno\"` | policy object).",
           "anyOf": [
             {
               "$ref": "#/definitions/AtomNumberSpec"
@@ -50,6 +55,7 @@
           ]
         },
         "callout": {
+          "description": "Callout annotation(s).",
           "anyOf": [
             {
               "$ref": "#/definitions/CalloutField"
@@ -60,6 +66,7 @@
           ]
         },
         "circle": {
+          "description": "Atom / ring highlight circle(s).",
           "anyOf": [
             {
               "$ref": "#/definitions/CircleField"
@@ -89,6 +96,7 @@
           ]
         },
         "debug_box": {
+          "description": "Paint dashed debug rectangles for layout boxes (labels / mol / scene).",
           "type": [
             "boolean",
             "null"
@@ -107,7 +115,7 @@
           ]
         },
         "label": {
-          "description": "Caption: [`Label`] (string id / list / `{id, pos?}` — text-node refs).",
+          "description": "Caption: [`Label`] (string id, list, or `{id, pos?}` — text-node refs).\n\nPrefer privileged [`Self::name`] for inline mol captions. `label` id-refs remain for legacy / multi-caption layouts.\n\n`pos` on a placement chooses caption side (`above`/`below`/`left`/`right`); hosts measure the resolved text and fold that into node size for layout.",
           "anyOf": [
             {
               "$ref": "#/definitions/Label"
@@ -124,7 +132,7 @@
           ]
         },
         "name": {
-          "description": "Privileged figure name / caption (inline mol SVG).",
+          "description": "Privileged figure name / caption painted inside the mol SVG (default below).",
           "anyOf": [
             {
               "$ref": "#/definitions/MolText"
@@ -135,6 +143,7 @@
           ]
         },
         "opts": {
+          "description": "Cascade patches for this node (list or singleton).",
           "anyOf": [
             {
               "$ref": "#/definitions/Opts"
@@ -145,7 +154,7 @@
           ]
         },
         "pad": {
-          "description": "Post-layout SVG viewBox pad (px). Omit → small house default.",
+          "description": "Post-layout SVG viewBox pad (px). Omit → small house default (rarely override).",
           "type": [
             "number",
             "null"
@@ -153,6 +162,7 @@
           "format": "double"
         },
         "region": {
+          "description": "Region highlight(s) — one object or a list.",
           "anyOf": [
             {
               "$ref": "#/definitions/RegionField"
@@ -170,6 +180,7 @@
           "format": "double"
         },
         "shade": {
+          "description": "Shade **scores** (+ legacy window); window also cascades via [`Opts`].",
           "anyOf": [
             {
               "$ref": "#/definitions/ShadeSpec"
@@ -198,9 +209,11 @@
           }
         },
         "type": {
-          "type": "string",
-          "enum": [
-            "mol"
+          "default": "mol",
+          "allOf": [
+            {
+              "$ref": "#/definitions/MolNodeKind"
+            }
           ]
         },
         "weight": {
@@ -890,15 +903,17 @@
       }
     },
     "DepictSpec": {
-      "description": "Declarative document (`mol`, `group`, `reaction_scheme`, or `grid` root).",
+      "description": "Declarative document (`mol`, `group`, `reaction_scheme`, or `grid` root).\n\nA root mol **is** [`MolNode`] — the same type as scheme / group children, so annotations (`region`, `circle`, `callout`, `atom_label`, `atom_number`, `name`, `shade`, …) are one schema everywhere.",
       "oneOf": [
         {
+          "description": "Mol node — [`MolOpts`] fields + non-cascading identity / scores / align.",
           "type": "object",
           "required": [
             "type"
           ],
           "properties": {
             "align_to": {
+              "description": "Template id string, or `{ \"ref\", \"atom_map\"?, \"min_atoms\"?, \"mode\"?, \"timeout_ms\"? }`.",
               "anyOf": [
                 {
                   "$ref": "#/definitions/AlignTo"
@@ -909,6 +924,7 @@
               ]
             },
             "aromatic": {
+              "description": "Aromatic ring paint: ``circle`` (default) or ``kekule``.",
               "anyOf": [
                 {
                   "$ref": "#/definitions/AromaticStyle"
@@ -919,6 +935,7 @@
               ]
             },
             "atom_label": {
+              "description": "Per-atom arbitrary text map (`{ \"1\": \"α\" }` or `{ \"labels\": {…}, \"scale\"? }`).",
               "anyOf": [
                 {
                   "$ref": "#/definitions/AtomLabelSpec"
@@ -929,6 +946,7 @@
               ]
             },
             "atom_number": {
+              "description": "Atom index / map-number labels (`\"index\"` | `\"mapno\"` | policy object).",
               "anyOf": [
                 {
                   "$ref": "#/definitions/AtomNumberSpec"
@@ -939,6 +957,7 @@
               ]
             },
             "callout": {
+              "description": "Callout annotation(s).",
               "anyOf": [
                 {
                   "$ref": "#/definitions/CalloutField"
@@ -949,6 +968,7 @@
               ]
             },
             "circle": {
+              "description": "Atom / ring highlight circle(s).",
               "anyOf": [
                 {
                   "$ref": "#/definitions/CircleField"
@@ -978,6 +998,7 @@
               ]
             },
             "debug_box": {
+              "description": "Paint dashed debug rectangles for layout boxes (labels / mol / scene).",
               "type": [
                 "boolean",
                 "null"
@@ -996,7 +1017,7 @@
               ]
             },
             "label": {
-              "description": "Caption: [`Label`] (string id / list / `{id, pos?}` — text-node refs).",
+              "description": "Caption: [`Label`] (string id, list, or `{id, pos?}` — text-node refs).\n\nPrefer privileged [`Self::name`] for inline mol captions. `label` id-refs remain for legacy / multi-caption layouts.\n\n`pos` on a placement chooses caption side (`above`/`below`/`left`/`right`); hosts measure the resolved text and fold that into node size for layout.",
               "anyOf": [
                 {
                   "$ref": "#/definitions/Label"
@@ -1013,7 +1034,7 @@
               ]
             },
             "name": {
-              "description": "Privileged figure name / caption (inline mol SVG).",
+              "description": "Privileged figure name / caption painted inside the mol SVG (default below).",
               "anyOf": [
                 {
                   "$ref": "#/definitions/MolText"
@@ -1024,6 +1045,7 @@
               ]
             },
             "opts": {
+              "description": "Cascade patches for this node (list or singleton).",
               "anyOf": [
                 {
                   "$ref": "#/definitions/Opts"
@@ -1034,7 +1056,7 @@
               ]
             },
             "pad": {
-              "description": "Post-layout SVG viewBox pad (px). Omit → small house default.",
+              "description": "Post-layout SVG viewBox pad (px). Omit → small house default (rarely override).",
               "type": [
                 "number",
                 "null"
@@ -1042,6 +1064,7 @@
               "format": "double"
             },
             "region": {
+              "description": "Region highlight(s) — one object or a list.",
               "anyOf": [
                 {
                   "$ref": "#/definitions/RegionField"
@@ -1059,6 +1082,7 @@
               "format": "double"
             },
             "shade": {
+              "description": "Shade **scores** (+ legacy window); window also cascades via [`Opts`].",
               "anyOf": [
                 {
                   "$ref": "#/definitions/ShadeSpec"
@@ -1087,9 +1111,11 @@
               }
             },
             "type": {
-              "type": "string",
-              "enum": [
-                "mol"
+              "default": "mol",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/MolNodeKind"
+                }
               ]
             },
             "weight": {

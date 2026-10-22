@@ -148,7 +148,7 @@ fn take_cells(
     i: &mut usize,
 ) -> Result<Vec<Rendered>, String> {
     match spec {
-        DepictSpec::Mol { .. } => {
+        DepictSpec::Mol(_) => {
             let row = painted
                 .get(*i)
                 .ok_or_else(|| "render paint underflow".to_string())?
@@ -218,9 +218,13 @@ pub fn depict(spec: &DepictSpec) -> Result<Vec<Rendered>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::doc::chrome::{CalloutField, CalloutSpec, RegionField, RegionSpec, RegionStyle};
-    use crate::doc::{AlignTo, MolIds, MolNode, Node};
+    use crate::doc::chrome::{
+        AtomLabelSpec, AtomNumberBy, AtomNumberSpec, CalloutField, CalloutSpec, CircleField,
+        CircleSpec, MolText, RegionField, RegionSpec, RegionStyle,
+    };
+    use crate::doc::{AlignTo, MolIds, MolNode, Node, ShadeSpec};
     use crate::scene::Primitive;
+    use std::collections::BTreeMap;
 
     fn scene_classes(scene: &Scene) -> Vec<String> {
         let mut out = Vec::new();
@@ -251,7 +255,7 @@ mod tests {
 
     #[test]
     fn depict_ethanol() {
-        let spec = DepictSpec::Mol {
+        let spec = DepictSpec::Mol(MolNode {
             smiles: Some("CCO".into()),
             cxsmiles: None,
             molfile: None,
@@ -275,7 +279,8 @@ mod tests {
             debug_align: None,
             pad: None,
             opts: None,
-        };
+            ..Default::default()
+        });
         let painted = depict(&spec).unwrap();
         assert_eq!(painted.len(), 1);
         assert_eq!(painted[0].molecule.atoms.len(), 3);
@@ -287,7 +292,7 @@ mod tests {
     #[test]
     fn depict_ethanol_and_aniline_paint_implicit_h_labels() {
         for (smiles, needle) in [("CCO", "OH"), ("c1ccccc1N", "NH₂")] {
-            let spec = DepictSpec::Mol {
+            let spec = DepictSpec::Mol(MolNode {
                 smiles: Some(smiles.into()),
                 cxsmiles: None,
                 molfile: None,
@@ -311,7 +316,8 @@ mod tests {
                 debug_align: None,
                 pad: None,
                 opts: None,
-            };
+                ..Default::default()
+            });
             let painted = depict(&spec).unwrap();
             let scene = &painted[0].scene;
             let texts: Vec<&str> = scene
@@ -374,23 +380,42 @@ mod tests {
         assert_eq!(painted[0].source, "c1ccccc1");
     }
 
-    fn phenol_annotated() -> MolNode {
+    /// Same overlay bag a lone mol and a scheme child both accept (one MolNode).
+    fn kitchen_sink_mol() -> MolNode {
         MolNode {
             id: Some("ph".into()),
             smiles: Some("c1ccccc1O".into()),
+            name: Some(MolText::Plain("phenol".into())),
+            shade: Some(ShadeSpec {
+                atoms: Some(vec![0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.0]),
+                ..Default::default()
+            }),
+            atom_number: Some(AtomNumberSpec::ByName(AtomNumberBy::Index)),
+            atom_label: Some(AtomLabelSpec::Map(BTreeMap::from([(
+                "6".into(),
+                MolText::Plain("exo".into()),
+            )]))),
+            circle: Some(CircleField::One(CircleSpec {
+                atoms: vec![6],
+                ring: None,
+                fill: None,
+                stroke: None,
+                scale: None,
+                z: None,
+            })),
             region: Some(RegionField::One(RegionSpec {
                 style: RegionStyle::Box,
                 atoms: vec![0, 1, 2, 3, 4, 5],
                 exclude: vec![],
                 fill: None,
                 stroke: None,
-                text: None,
+                text: Some(MolText::Plain("ring".into())),
                 z: None,
             })),
             callout: Some(CalloutField::One(CalloutSpec {
                 atoms: Some(vec![6]),
                 bonds: None,
-                text: crate::doc::MolText::Plain("OH".into()),
+                text: MolText::Plain("OH".into()),
                 arrow: true,
                 prefer: Some(crate::doc::LabelPos::Above),
                 color: None,
@@ -401,12 +426,51 @@ mod tests {
         }
     }
 
+    fn assert_annotation_classes(classes: &str) {
+        for needle in [
+            "region",
+            "callout",
+            "atom-circle",
+            "atom-number",
+            "atom-label",
+            "mol-caption",
+            "shade",
+        ] {
+            assert!(
+                classes.contains(needle),
+                "missing {needle} in classes: {classes}"
+            );
+        }
+    }
+
+    #[test]
+    fn root_mol_and_scheme_child_share_molnode_json() {
+        let node = kitchen_sink_mol();
+        let root = serde_json::to_value(&DepictSpec::Mol(node.clone())).unwrap();
+        let child = serde_json::to_value(&Node::Mol(node)).unwrap();
+        assert_eq!(root, child);
+        for key in [
+            "region",
+            "circle",
+            "callout",
+            "atom_label",
+            "atom_number",
+            "name",
+            "shade",
+        ] {
+            assert!(
+                root.get(key).is_some(),
+                "missing {key} on shared MolNode JSON"
+            );
+        }
+    }
+
     #[test]
     fn render_annotates_mol_in_group() {
         let spec = DepictSpec::Group {
             id: None,
             align: false,
-            children: vec![Node::Mol(phenol_annotated())],
+            children: vec![Node::Mol(kitchen_sink_mol())],
             opts: None,
             color: None,
             scale: None,
@@ -417,9 +481,7 @@ mod tests {
         };
         let painted = render(&spec).unwrap();
         assert_eq!(painted.len(), 1);
-        let classes = scene_classes(&painted[0].scene).join(" ");
-        assert!(classes.contains("region"), "group mol missing region: {classes}");
-        assert!(classes.contains("callout"), "group mol missing callout: {classes}");
+        assert_annotation_classes(&scene_classes(&painted[0].scene).join(" "));
     }
 
     #[test]
@@ -427,7 +489,7 @@ mod tests {
         let spec = DepictSpec::ReactionScheme {
             id: None,
             children: vec![
-                Node::Mol(phenol_annotated()),
+                Node::Mol(kitchen_sink_mol()),
                 Node::Mol(MolNode {
                     id: Some("et".into()),
                     smiles: Some("CCO".into()),
@@ -458,14 +520,13 @@ mod tests {
         let painted = render(&spec).unwrap();
         assert_eq!(painted.len(), 1);
         assert_eq!(painted[0].source, "reaction_scheme");
-        let classes = scene_classes(&painted[0].scene).join(" ");
-        assert!(
-            classes.contains("region"),
-            "scheme mol missing region: {classes}"
-        );
-        assert!(
-            classes.contains("callout"),
-            "scheme mol missing callout: {classes}"
-        );
+        assert_annotation_classes(&scene_classes(&painted[0].scene).join(" "));
+    }
+
+    #[test]
+    fn render_annotates_lone_mol_same_as_scheme() {
+        let painted = render(&DepictSpec::Mol(kitchen_sink_mol())).unwrap();
+        assert_eq!(painted.len(), 1);
+        assert_annotation_classes(&scene_classes(&painted[0].scene).join(" "));
     }
 }

@@ -43,7 +43,11 @@ fn cx_star_labels_by_index() {
         .atoms
         .iter()
         .find(|a| a.label.as_deref() == Some("R2"));
-    assert!(labeled.is_some(), "CX R2 label missing: {:?}", r.molecule.atoms);
+    assert!(
+        labeled.is_some(),
+        "CX R2 label missing: {:?}",
+        r.molecule.atoms
+    );
 }
 
 #[test]
@@ -81,7 +85,12 @@ fn near(ax: f64, ay: f64, bx: f64, by: f64, tol: f64) -> bool {
 }
 
 /// MCS overlay: at least `min_hits` query atoms land on some template atom.
-fn assert_mcs_overlay(query: &xpict::Rendered, template: &xpict::Rendered, min_hits: usize, label: &str) {
+fn assert_mcs_overlay(
+    query: &xpict::Rendered,
+    template: &xpict::Rendered,
+    min_hits: usize,
+    label: &str,
+) {
     let mut hits = 0usize;
     for a in &query.molecule.atoms {
         if template
@@ -170,13 +179,25 @@ fn align_mcs_rejects_aliphatic_vs_quinone() {
         .molecule
         .atoms
         .iter()
-        .map(|a| (a.index, (a.x * 1e4).round() as i64, (a.y * 1e4).round() as i64))
+        .map(|a| {
+            (
+                a.index,
+                (a.x * 1e4).round() as i64,
+                (a.y * 1e4).round() as i64,
+            )
+        })
         .collect();
     let aligned_key: Vec<_> = aligned
         .molecule
         .atoms
         .iter()
-        .map(|a| (a.index, (a.x * 1e4).round() as i64, (a.y * 1e4).round() as i64))
+        .map(|a| {
+            (
+                a.index,
+                (a.x * 1e4).round() as i64,
+                (a.y * 1e4).round() as i64,
+            )
+        })
         .collect();
     assert_eq!(
         free_key, aligned_key,
@@ -281,9 +302,7 @@ fn align_multi_query_leaves_template_frame() {
         })
         .unwrap();
     for a in &on_frame.molecule.atoms {
-        let hit = before
-            .iter()
-            .any(|&(_, x, y)| near(a.x, a.y, x, y, 0.2));
+        let hit = before.iter().any(|&(_, x, y)| near(a.x, a.y, x, y, 0.2));
         assert!(hit, "atom {} not on original template pose", a.index);
     }
     let _ = before;
@@ -291,20 +310,20 @@ fn align_multi_query_leaves_template_frame() {
 
 #[test]
 fn depict_nested_group() {
-    use xpict::{depict, DepictSpec, MolNode};
+    use xpict::{depict, DepictSpec, MolNode, Node};
     let out = depict(&DepictSpec::Group {
         id: None,
         align: false,
         children: vec![
-            MolNode {
+            Node::Mol(MolNode {
                 smiles: Some("CCO".into()),
                 color: Some("#111".into()),
                 ..Default::default()
-            },
-            MolNode {
+            }),
+            Node::Mol(MolNode {
                 smiles: Some("CCCO".into()),
                 ..Default::default()
-            },
+            }),
         ],
     })
     .unwrap();
@@ -316,8 +335,8 @@ fn depict_nested_group() {
 
 #[test]
 fn depict_cx_markush_alias() {
-    use xpict::{depict, DepictSpec};
-    let out = depict(&DepictSpec::Mol {
+    use xpict::{depict, DepictSpec, MolNode};
+    let out = depict(&DepictSpec::Mol(MolNode {
         smiles: None,
         cxsmiles: Some("*C |$R1;$|".into()),
         molfile: None,
@@ -328,7 +347,8 @@ fn depict_cx_markush_alias() {
         scale: None,
         weight: None,
         align_to: None,
-    })
+        ..Default::default()
+    }))
     .unwrap();
     let svg = out[0].to_svg();
     assert!(
@@ -340,8 +360,8 @@ fn depict_cx_markush_alias() {
 
 #[test]
 fn depict_star_labels() {
-    use xpict::{depict, DepictSpec};
-    let out = depict(&DepictSpec::Mol {
+    use xpict::{depict, DepictSpec, MolNode};
+    let out = depict(&DepictSpec::Mol(MolNode {
         smiles: Some("*C".into()),
         cxsmiles: None,
         molfile: None,
@@ -352,7 +372,8 @@ fn depict_star_labels() {
         scale: None,
         weight: None,
         align_to: None,
-    })
+        ..Default::default()
+    }))
     .unwrap();
     let svg = out[0].to_svg();
     assert!(
