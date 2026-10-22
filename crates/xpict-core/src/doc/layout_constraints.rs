@@ -714,7 +714,7 @@ pub fn push_clear_leaves(
             continue;
         };
         stack.extend(n.children.iter().cloned());
-        if n.children.is_empty() {
+        if n.children.is_empty() && primitive_leaf(&n.world_shape()) {
             hard.push(HardConstraint::Outside {
                 a: a.to_string(),
                 b: id,
@@ -722,6 +722,16 @@ pub fn push_clear_leaves(
                 lagrangian: LAGRANGIAN_CLEAR,
             });
         }
+    }
+}
+
+/// True for painted geometry. Empty container AABBs (`0×0` groups) are not
+/// obstacles — `install_chem_under` always creates `bonds` / `atoms` folders.
+fn primitive_leaf(shape: &Shape) -> bool {
+    match shape {
+        Shape::Point { .. } | Shape::Circle { .. } | Shape::Line { .. } => true,
+        Shape::PointSet(pts) | Shape::Polyline(pts) => pts.len() >= 2,
+        Shape::Aabb(a) => a.width() > 1e-9 || a.height() > 1e-9,
     }
 }
 
@@ -3778,6 +3788,68 @@ mod tests {
             },
         );
         assert_eq!(miss, 0);
+    }
+
+    #[test]
+    fn poly_cross_energy_only_when_attached() {
+        let mut w = LayoutWorld::rooted("scheme", ObjectType::Scheme);
+        w.insert(
+            "e0",
+            "scheme",
+            ObjectType::Edge,
+            Shape::Line {
+                x0: 0.0,
+                y0: 0.0,
+                x1: 40.0,
+                y1: 40.0,
+            },
+            true,
+        );
+        w.insert(
+            "e1",
+            "scheme",
+            ObjectType::Edge,
+            Shape::Line {
+                x0: 0.0,
+                y0: 40.0,
+                x1: 40.0,
+                y1: 0.0,
+            },
+            true,
+        );
+        let attached = Constraint::PolyCross {
+            a: "e0".into(),
+            b: "e1".into(),
+            strength: 0.8,
+        };
+        assert!(
+            energy(&w, &[attached], &[], 0.0) > 0.0,
+            "kit-attached PolyCross must cost a proper X"
+        );
+        assert_eq!(
+            energy(&w, &[], &[], 0.0),
+            0.0,
+            "omitting PolyCross must cost nothing (ELK crossings stay)"
+        );
+    }
+
+    #[test]
+    fn push_clear_leaves_skips_empty_container() {
+        let mut w = LayoutWorld::rooted("scheme", ObjectType::Scheme);
+        install_chem_under(&mut w, "scheme", &[], &[(0, 10.0, 10.0)], &[], &[]);
+        let mut hard = Vec::new();
+        push_clear_leaves(&w, &mut hard, "probe", "scheme/chem", 4.0);
+        assert!(
+            hard.iter()
+                .any(|h| matches!(h, HardConstraint::Outside { b, .. } if b.contains("/coord"))),
+            "atom disk is a leaf: {hard:?}"
+        );
+        assert!(
+            !hard
+                .iter()
+                .any(|h| matches!(h, HardConstraint::Outside { b, .. } if b.ends_with("/bonds"))),
+            "empty bonds folder is not ink: {hard:?}"
+        );
     }
 
     /// Wall-clock + iteration stats for paint-style refine kits (noise=0).

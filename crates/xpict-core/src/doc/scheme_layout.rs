@@ -597,4 +597,258 @@ mod tests {
         );
         assert!(hard_g(&w, &h) > 0.0);
     }
+
+    fn mol_node(id: &str) -> crate::doc::Node {
+        crate::doc::Node::Mol(crate::doc::MolNode {
+            id: Some(id.into()),
+            smiles: Some("C".into()),
+            ..Default::default()
+        })
+    }
+
+    fn edge_node(src: &str, tgt: &str, label: Option<&str>) -> crate::doc::Node {
+        crate::doc::Node::Edge(crate::doc::EdgeNode {
+            type_: crate::doc::EdgeNodeKind::Edge,
+            sources: crate::doc::MolIds::One(src.into()),
+            targets: crate::doc::MolIds::One(tgt.into()),
+            label: label.map(|id| crate::doc::Label::Id(id.into())),
+            edge_routing: None,
+            role: None,
+            arrow: crate::doc::EdgeArrow::Forward,
+            color: None,
+            stroke_width: None,
+            dashed: false,
+        })
+    }
+
+    fn chem_paint(id: &str, w: f64, h: f64, ax: f64, ay: f64) -> DocPaint {
+        use crate::scene::{AtomIn, Layer, LayerName, Scene, Viewport};
+        DocPaint {
+            id: id.into(),
+            frame_json: String::new(),
+            molecule: MoleculeIn {
+                id: Some(id.into()),
+                atoms: vec![AtomIn {
+                    index: 0,
+                    element: Some("C".into()),
+                    z: Some(6),
+                    x: ax,
+                    y: ay,
+                    label: None,
+                    charge: 0,
+                    mapno: None,
+                }],
+                bonds: vec![],
+                ..Default::default()
+            },
+            scene: Scene {
+                width: w,
+                height: h,
+                viewports: vec![Viewport {
+                    id: Some(id.into()),
+                    x: 0.0,
+                    y: 0.0,
+                    ox: 0.0,
+                    oy: 0.0,
+                    width: w,
+                    height: h,
+                    layers: vec![Layer {
+                        name: LayerName::Bonds,
+                        primitives: vec![],
+                    }],
+                }],
+                overlays: vec![],
+                halo: vec![],
+            },
+        }
+    }
+
+    fn scheme(children: Vec<crate::doc::Node>) -> DepictSpec {
+        DepictSpec::ReactionScheme {
+            id: None,
+            children,
+            layout: Some(LayoutOpts {
+                refine: Some(true),
+                ..Default::default()
+            }),
+            opts: None,
+            color: None,
+            scale: None,
+            aromatic: None,
+            debug_box: None,
+            debug_align: None,
+            pad: None,
+        }
+    }
+
+    #[test]
+    fn refine_keeps_seed_crossing() {
+        let spec = scheme(vec![
+            mol_node("A"),
+            mol_node("B"),
+            mol_node("C"),
+            mol_node("D"),
+            edge_node("A", "B", None),
+            edge_node("C", "D", None),
+        ]);
+        let layout = LayoutOpts::default();
+        let positions = HashMap::from([
+            ("A".into(), (0.0, 0.0)),
+            ("B".into(), (200.0, 200.0)),
+            ("C".into(), (0.0, 200.0)),
+            ("D".into(), (200.0, 0.0)),
+        ]);
+        let sizes = vec![
+            ("A".into(), 80.0, 80.0),
+            ("B".into(), 80.0, 80.0),
+            ("C".into(), 80.0, 80.0),
+            ("D".into(), 80.0, 80.0),
+        ];
+        let paints = vec![
+            chem_paint("A", 80.0, 80.0, 40.0, 40.0),
+            chem_paint("B", 80.0, 80.0, 40.0, 40.0),
+            chem_paint("C", 80.0, 80.0, 40.0, 40.0),
+            chem_paint("D", 80.0, 80.0, 40.0, 40.0),
+        ];
+        let seed_a = vec![(40.0, 40.0), (240.0, 240.0)];
+        let seed_b = vec![(40.0, 240.0), (240.0, 40.0)];
+        assert!(shapes_properly_cross(
+            &Shape::Polyline(seed_a.clone()),
+            &Shape::Polyline(seed_b.clone())
+        ));
+        let refined = refine_scheme_edges(
+            &spec,
+            &layout,
+            &positions,
+            &[Some(seed_a), Some(seed_b)],
+            &paints,
+            &sizes,
+        );
+        let a = refined.edge_paths[0].clone().expect("e0");
+        let b = refined.edge_paths[1].clone().expect("e1");
+        assert!(
+            shapes_properly_cross(&Shape::Polyline(a.clone()), &Shape::Polyline(b.clone())),
+            "ELK X must remain after refine: {a:?} vs {b:?}"
+        );
+    }
+
+    #[test]
+    fn endpoint_inside_aabb_off_chem() {
+        let spec = scheme(vec![
+            mol_node("A"),
+            edge_node("A", "B", None),
+            mol_node("B"),
+        ]);
+        let layout = LayoutOpts::default();
+        let positions = HashMap::from([("A".into(), (0.0, 0.0)), ("B".into(), (400.0, 0.0))]);
+        let sizes = vec![("A".into(), 200.0, 200.0), ("B".into(), 200.0, 200.0)];
+        let paints = vec![
+            chem_paint("A", 200.0, 200.0, 100.0, 100.0),
+            chem_paint("B", 200.0, 200.0, 100.0, 100.0),
+        ];
+        let seed = vec![(200.0, 100.0), (400.0, 100.0)];
+        let refined =
+            refine_scheme_edges(&spec, &layout, &positions, &[Some(seed)], &paints, &sizes);
+        let pts = refined.edge_paths[0].clone().expect("path");
+        assert!(pts.len() >= 2);
+        let (x0, y0) = pts[0];
+        let (x1, y1) = pts[pts.len() - 1];
+        assert!(
+            (0.0..=200.0).contains(&x0) && (0.0..=200.0).contains(&y0),
+            "src endpoint should enter A's AABB: ({x0},{y0})"
+        );
+        assert!(
+            (400.0..=600.0).contains(&x1) && (0.0..=200.0).contains(&y1),
+            "tgt endpoint should enter B's AABB: ({x1},{y1})"
+        );
+        let da = (x0 - 100.0).hypot(y0 - 100.0);
+        let db = (x1 - 500.0).hypot(y1 - 100.0);
+        assert!(
+            da >= SCHEME_INK_STANDOFF * 0.75,
+            "src standoff from chem: {da}"
+        );
+        assert!(
+            db >= SCHEME_INK_STANDOFF * 0.75,
+            "tgt standoff from chem: {db}"
+        );
+    }
+
+    #[test]
+    fn refined_shaft_emits_catmull_cubics() {
+        let spec = scheme(vec![
+            mol_node("A"),
+            edge_node("A", "B", None),
+            mol_node("B"),
+        ]);
+        let layout = LayoutOpts::default();
+        let positions = HashMap::from([("A".into(), (0.0, 0.0)), ("B".into(), (240.0, 0.0))]);
+        let sizes = vec![("A".into(), 80.0, 80.0), ("B".into(), 80.0, 80.0)];
+        let paints = vec![
+            chem_paint("A", 80.0, 80.0, 40.0, 40.0),
+            chem_paint("B", 80.0, 80.0, 40.0, 40.0),
+        ];
+        let seed = vec![(80.0, 40.0), (160.0, 80.0), (240.0, 40.0)];
+        let refined =
+            refine_scheme_edges(&spec, &layout, &positions, &[Some(seed)], &paints, &sizes);
+        let pts = refined.edge_paths[0].clone().expect("path");
+        let d = crate::catmull::centripetal_catmull_rom_open_path(&pts);
+        assert!(d.contains('C'), "open CR shaft should be cubics: {d}");
+        assert!(!d.contains('Z'), "{d}");
+    }
+
+    #[test]
+    fn label_rotates_and_stays_off_shaft() {
+        let spec = scheme(vec![
+            mol_node("A"),
+            crate::doc::Node::Text(crate::doc::TextNode {
+                type_: crate::doc::TextNodeKind::Text,
+                id: Some("lab".into()),
+                text: "ox".into(),
+                color: None,
+                scale: None,
+                opts: None,
+            }),
+            edge_node("A", "B", Some("lab")),
+            mol_node("B"),
+        ]);
+        let layout = LayoutOpts::default();
+        let positions = HashMap::from([("A".into(), (0.0, 0.0)), ("B".into(), (240.0, 0.0))]);
+        let sizes = vec![("A".into(), 80.0, 80.0), ("B".into(), 80.0, 80.0)];
+        let paints = vec![
+            chem_paint("A", 80.0, 80.0, 40.0, 40.0),
+            chem_paint("B", 80.0, 80.0, 40.0, 40.0),
+        ];
+        let seed = vec![(80.0, 40.0), (240.0, 40.0)];
+        let refined =
+            refine_scheme_edges(&spec, &layout, &positions, &[Some(seed)], &paints, &sizes);
+        let pts = refined.edge_paths[0].clone().expect("path");
+        let (lx, ly, rot) = refined.edge_labels[0].expect("label");
+        let expected = tangent_deg(&pts);
+        let diff = (rot - expected).abs();
+        assert!(
+            diff.min((diff - 180.0).abs()) < 15.0,
+            "label rotate {rot} vs edge {expected}"
+        );
+        let mut d_shaft = f64::INFINITY;
+        for w in pts.windows(2) {
+            let (x0, y0) = w[0];
+            let (x1, y1) = w[1];
+            let vx = x1 - x0;
+            let vy = y1 - y0;
+            let l2 = vx * vx + vy * vy;
+            let t = if l2 < 1e-12 {
+                0.0
+            } else {
+                ((lx - x0) * vx + (ly - y0) * vy) / l2
+            }
+            .clamp(0.0, 1.0);
+            let px = x0 + t * vx;
+            let py = y0 + t * vy;
+            d_shaft = d_shaft.min((lx - px).hypot(ly - py));
+        }
+        assert!(
+            d_shaft > 1.0,
+            "label sits on shaft: d={d_shaft} at ({lx},{ly})"
+        );
+    }
 }

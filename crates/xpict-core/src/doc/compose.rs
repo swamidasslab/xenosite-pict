@@ -1715,4 +1715,77 @@ mod tests {
             "mols should keep distinct ELK x: {xa} vs {xb}"
         );
     }
+
+    #[test]
+    fn refine_keeps_elk_mol_positions() {
+        let children = vec![
+            Node::Mol(MolNode {
+                id: Some("A".into()),
+                smiles: Some("CCO".into()),
+                ..Default::default()
+            }),
+            Node::Edge(EdgeNode {
+                type_: EdgeNodeKind::Edge,
+                sources: MolIds::One("A".into()),
+                targets: MolIds::One("B".into()),
+                label: None,
+                edge_routing: None,
+                role: None,
+                arrow: EdgeArrow::Forward,
+                color: None,
+                stroke_width: None,
+                dashed: false,
+            }),
+            Node::Mol(MolNode {
+                id: Some("B".into()),
+                smiles: Some("CC=O".into()),
+                ..Default::default()
+            }),
+        ];
+        let paints = vec![paint("A", 120.0, 80.0), paint("B", 120.0, 80.0)];
+        let vanilla = DepictSpec::ReactionScheme {
+            id: None,
+            children: children.clone(),
+            layout: Some(LayoutOpts {
+                refine: Some(false),
+                ..Default::default()
+            }),
+            opts: None,
+            color: None,
+            scale: None,
+            aromatic: None,
+            debug_box: None,
+            debug_align: None,
+            pad: None,
+        };
+        let refined = DepictSpec::ReactionScheme {
+            id: None,
+            children: children.clone(),
+            layout: Some(LayoutOpts {
+                refine: Some(true),
+                ..Default::default()
+            }),
+            opts: None,
+            color: None,
+            scale: None,
+            aromatic: None,
+            debug_box: None,
+            debug_align: None,
+            pad: None,
+        };
+        let a = compose_scheme(&vanilla, &paints).expect("elk");
+        let b = compose_scheme(&refined, &paints).expect("refine");
+        assert_eq!(a.viewports.len(), b.viewports.len());
+        for (va, vb) in a.viewports.iter().zip(b.viewports.iter()) {
+            assert!(
+                (va.x - vb.x).abs() < 1e-9 && (va.y - vb.y).abs() < 1e-9,
+                "mol {} moved: elk ({},{}) refine ({},{})",
+                va.id.as_deref().unwrap_or("?"),
+                va.x,
+                va.y,
+                vb.x,
+                vb.y
+            );
+        }
+    }
 }
