@@ -46,8 +46,10 @@ jobs:
       - name: Install emsdk (CoordGen C++)
         run: |
           bash scripts/ensure_emsdk.sh
-          echo "${XDG_CACHE_HOME:-$HOME/.cache}/emsdk" >> "$GITHUB_PATH"
-          echo "${XDG_CACHE_HOME:-$HOME/.cache}/emsdk/upstream/emscripten" >> "$GITHUB_PATH"
+          EMSDK_ROOT="${XDG_CACHE_HOME:-$HOME/.cache}/emsdk"
+          echo "EMSDK=$EMSDK_ROOT" >> "$GITHUB_ENV"
+          echo "$EMSDK_ROOT" >> "$GITHUB_PATH"
+          echo "$EMSDK_ROOT/upstream/emscripten" >> "$GITHUB_PATH"
 
       - name: Setup Node
         uses: actions/setup-node@v4

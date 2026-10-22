@@ -11,7 +11,7 @@ the same function set.
               ┌──────────────┼──────────────┬──────────────────┐
               ▼              ▼              ▼                  ▼
      crates/xpict-py  crates/xpict-wasm  crates/xpict    (JS npm package)
-     (PyO3 / maturin)  (wasm-bindgen)   (public API)      (@xenosite/xpict)
+     (PyO3 / maturin)  (emscripten)    (public API)      (@xenosite/xpict)
 ```
 
 `crates/xpict` is the **native Rust** public package (mirrors JS/Python
@@ -32,8 +32,8 @@ workflows call the same recipes after installing toolchains.
 | --- | --- | --- | --- |
 | Package | `xpict` | `@xenosite/xpict` | crates.io `xpict` |
 | Public API | `Mol` / `render` / `to_svg` (client) | `xpict.mol` / `render` / `toSvg` / `depict` | same + `depict` batch stub |
-| Paint ABI | `_native.depict_molecule` | wasm `depictMolecule` (internal) | `xpict_core::depict_molecule` |
-| Document | `_native.plan_edge` → `process_edge_plan` → `_native.render_doc` | wasm `planEdge` → `processEdgePlan` → `renderDoc` | `plan_edge` → `process_edge_plan` → `render_doc` |
+| Paint ABI | `_native` render | wasm `xpict_render` (internal C ABI) | `xpict_core::doc::render` |
+| Document | DepictSpec → `_native` / `depict` | wasm `render` / `xpict.depict` | `xpict::depict` / `doc::render` |
 | Init | (import extension) | auto on first `render` | link-time |
 
 **Publish / registries:** [`.github/PUBLISH.md`](../../.github/PUBLISH.md).
@@ -71,7 +71,7 @@ of fontTools/Shapely.
 | 2 | Polygon buffer + difference (glyph counters) | `halo_from_shapes` / `O` hole tests via `_native` |
 | 3 | Liberation Sans outlines → path `d` + advances | **Done** (`ttf-parser` + `_native`) |
 | 4 | Python host is thin Scene→SVG only (`rendered.scene_to_svg`) | Paint/glyphs live in Rust `depict` |
-| 5 | JS paint uses Rust glyph/halo via `depictMolecule` | Browser labels match Python gallery |
+| 5 | JS paint uses Rust glyph/halo via wasm `render` | Browser labels match Python gallery |
 
 Crates to prefer when filling stubs: **`ttf-parser`/`skrifa`** (fonts),
 **`geo` + `i_overlay`** (boolean + buffer). Liberation files live under

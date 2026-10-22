@@ -66,11 +66,11 @@ build-python: ## maturin develop (xpict._native)
 	cd "$(ROOT)" && ./scripts/build_bindings.sh python
 
 .PHONY: build-wasm
-build-wasm: ## wasm-pack → js/src/wasm
+build-wasm: ## emsdk + cargo wasm32-unknown-emscripten → js/src/wasm
 	cd "$(ROOT)" && ./scripts/build_bindings.sh wasm
 
 .PHONY: build-js
-build-js: ## npm run build (wasm + tsc + copy); needs js-deps + wasm-pack
+build-js: ## npm run build (emscripten wasm + tsc + copy); needs js-deps + em++
 	cd "$(ROOT)/js" && npm run build
 
 .PHONY: pages
@@ -107,7 +107,7 @@ js-test-api: ## JS API smoke scripts; assumes build
 	cd "$(ROOT)/js" && npm run test:api
 
 .PHONY: js-ci
-js-ci: js-check build-js js-test-api ## CI JS job body (after js-deps + wasm-pack)
+js-ci: js-check build-js js-test-api ## CI JS job body (after js-deps + emsdk)
 
 .PHONY: host-py-loc
 host-py-loc: ## Line counts for hand-written python/xpict (largest first)
