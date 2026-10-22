@@ -703,6 +703,53 @@ mod tests {
         assert!(s.len() <= 2);
     }
 
+    fn path_end(d: &str) -> (f64, f64) {
+        let nums: Vec<f64> = d
+            .split(|c: char| !c.is_ascii_digit() && c != '.' && c != '-')
+            .filter_map(|s| s.parse().ok())
+            .collect();
+        assert!(nums.len() >= 2, "path {d}");
+        (nums[nums.len() - 2], nums[nums.len() - 1])
+    }
+
+    #[test]
+    fn catmull_forward_head_meets_shaft() {
+        let mut edge = paint(
+            vec![(0.0, 0.0), (80.0, 0.0), (80.0, 80.0)],
+            EdgeArrow::Forward,
+            None,
+        );
+        edge.curve_catmull = true;
+        edge.label = None;
+        let prims = edge_primitives(&edge);
+        let shaft = prims.iter().find_map(|p| match p {
+            EdgePrim::Path { d, class, .. }
+                if class.contains("edge") && !class.contains("head") =>
+            {
+                Some(d.as_str())
+            }
+            _ => None,
+        });
+        let head = prims.iter().find_map(|p| match p {
+            EdgePrim::Path { d, class, .. } if class.contains("head") => Some(d.as_str()),
+            _ => None,
+        });
+        let shaft = shaft.expect("shaft");
+        let head = head.expect("head");
+        let (sx, sy) = path_end(shaft);
+        let hnums: Vec<f64> = head
+            .split(|c: char| !c.is_ascii_digit() && c != '.' && c != '-')
+            .filter_map(|s| s.parse().ok())
+            .collect();
+        assert_eq!(hnums.len(), 6, "filled triangle: {head}");
+        let (bx, by) = ((hnums[0] + hnums[4]) * 0.5, (hnums[1] + hnums[5]) * 0.5);
+        let gap = (sx - bx).hypot(sy - by);
+        assert!(
+            gap < 1.5,
+            "Catmull shaft end ({sx},{sy}) should meet head base ({bx},{by}); gap={gap} shaft={shaft} head={head}"
+        );
+    }
+
     #[test]
     fn catmull_shaft_is_shared_open_path() {
         let pts = vec![(0.0, 0.0), (80.0, 0.0), (80.0, 80.0)];

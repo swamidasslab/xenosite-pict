@@ -1,6 +1,7 @@
 //! ELK seed + constraint refine for reaction-scheme edges and labels.
 //!
-//! Molecules stay fixed. Control points and edge labels are the DOF.
+//! Molecules stay fixed. ELK endpoints/routing points and edge labels (xy + rot)
+//! are the DOF. Catmull–Rom is how those points are stroked, not extra vertices.
 
 use std::collections::HashMap;
 
@@ -15,11 +16,32 @@ use super::layout_constraints::{
 use super::layout_items::Aabb;
 use super::{DepictSpec, DocPaint, LayoutOpts};
 
-/// Gap from all painted mol ink (bonds, glyphs, regions, annotations) (~⅓ bond).
-pub const SCHEME_INK_STANDOFF: f64 = BOND_PX / 3.0;
+/// Desired gap from painted mol ink to the shaft tip (two bonds).
+///
+/// Actual standoff is `min(this, ELK endpoint's distance to the clash grid)`
+/// so a tight pack cannot ask for air the seed did not leave.
+pub const SCHEME_INK_STANDOFF: f64 = 2.0 * BOND_PX;
 /// Minimum gap between nearly-parallel overlapping shafts.
 pub const SCHEME_EDGE_CLEARANCE: f64 = BOND_PX;
-const LABEL_TETHER_PX: f64 = 8.0;
+/// Default scheme-arrow stroke (matches [`crate::arrows`] house width).
+const SHAFT_STROKE_PX: f64 = 1.6;
+const LABEL_FONT_PX: f64 = 11.0;
+const LABEL_SHAFT_PAD_PX: f64 = 4.0;
+
+/// Air between the glyph disk and the painted shaft (half stroke + pad).
+fn shaft_air(stroke_width: Option<f64>) -> f64 {
+    stroke_width.unwrap_or(SHAFT_STROKE_PX) * 0.5 + LABEL_SHAFT_PAD_PX
+}
+
+/// Center-to-centerline gap the solver should leave (air + half glyph).
+fn label_shaft_clash(stroke_width: Option<f64>) -> f64 {
+    shaft_air(stroke_width) + LABEL_FONT_PX * 0.5
+}
+
+/// MaxDist ceiling: clash plus one bond so CLEAR can push off a fat shaft.
+fn label_shaft_tether(stroke_width: Option<f64>) -> f64 {
+    label_shaft_clash(stroke_width) + BOND_PX
+}
 const POSE_STRENGTH: f64 = 0.35;
 /// Keep the painted shaft on a ray through the mol centroid (perp²).
 const RAY_TO_CENTROID: f64 = 4.0;
@@ -164,21 +186,32 @@ pub fn refine_scheme_edges(
         let pts = &seed_pts[i];
         // Painted ends stop at ink+standoff along a ray through the centroid.
         // The ray itself may cross chem — do not emit isotropic Outside vs ink.
+        // Standoff is min(two bonds, how far the ELK seed already sits from ink)
+        // so a tight ELK pack cannot demand an infeasible gap.
         let last = pts.len().saturating_sub(1);
         let src_c = mol_centroid(&paint_of, positions, &size_of, src);
         let tgt_c = mol_centroid(&paint_of, positions, &size_of, tgt);
         let span = (tgt_c.0 - src_c.0).hypot(tgt_c.1 - src_c.1);
-        let clash = SCHEME_INK_STANDOFF.min(span * 0.4);
-        let max_t = (span - clash).max(clash);
         let src_chem = format!("scheme/mols/{src}/chem");
         let tgt_chem = format!("scheme/mols/{tgt}/chem");
+        let clash0 = if pts.len() >= 2 {
+            elk_capped_standoff(&world, &src_chem, pts[0], SCHEME_INK_STANDOFF)
+        } else {
+            SCHEME_INK_STANDOFF
+        };
+        let clash1 = if pts.len() >= 2 {
+            elk_capped_standoff(&world, &tgt_chem, pts[last], SCHEME_INK_STANDOFF)
+        } else {
+            SCHEME_INK_STANDOFF
+        };
+        let max_t = span.max(clash0).max(clash1);
         let mut pose0 = if pts.len() >= 2 {
-            ray_ink_pose(&world, &src_chem, src_c, tgt_c, clash, max_t)
+            ray_ink_pose(&world, &src_chem, src_c, tgt_c, clash0, max_t)
         } else {
             src_c
         };
         let mut pose1 = if pts.len() >= 2 {
-            ray_ink_pose(&world, &tgt_chem, tgt_c, src_c, clash, max_t)
+            ray_ink_pose(&world, &tgt_chem, tgt_c, src_c, clash1, max_t)
         } else {
             tgt_c
         };
@@ -245,25 +278,38 @@ pub fn refine_scheme_edges(
                 strength: RAY_TO_CENTROID,
             });
         }
-        if let Some(lab) = edge_label_seed(spec, edge, pts) {
-            let (aabb, px, py) = lab;
+        if let Some((px, py)) = edge_label_seed(spec, edge, pts) {
+            // Circle at the glyph center, not the unrotated text AABB: a long
+            // word's box swallows a Catmull bulge so Outside cannot push it off.
             world.insert(
                 format!("{eid}/label"),
                 &eid,
                 ObjectType::EdgeLabel,
-                Shape::Aabb(aabb),
+                Shape::Circle {
+                    cx: px,
+                    cy: py,
+                    r: LABEL_FONT_PX * 0.5,
+                },
                 false,
             );
-            cs.push(Constraint::PreferPose {
+            world.set_rot(
+                &format!("{eid}/label"),
+                readable_deg(tangent_at(pts, px, py)),
+            );
+            cs.push(Constraint::Midpoint {
                 a: format!("{eid}/label"),
-                x: px,
-                y: py,
+                b: eid.clone(),
                 strength: POSE_STRENGTH,
+            });
+            cs.push(Constraint::Parallel {
+                a: format!("{eid}/label"),
+                b: eid.clone(),
+                strength: 0.8,
             });
             hard.push(HardConstraint::MaxDist {
                 a: format!("{eid}/label"),
                 b: eid.clone(),
-                dist: LABEL_TETHER_PX,
+                dist: label_shaft_tether(edge.stroke_width),
                 lagrangian: LAGRANGIAN_TETHER,
             });
         }
@@ -291,21 +337,23 @@ pub fn refine_scheme_edges(
             }
         }
         if world.get(&format!("{a}/label")).is_some() {
+            let self_stroke = spec.edges().get(i).and_then(|e| e.stroke_width);
             for j in 0..n_edges {
                 if i == j {
                     continue;
                 }
+                let other_stroke = spec.edges().get(j).and_then(|e| e.stroke_width);
                 hard.push(HardConstraint::Outside {
                     a: format!("{a}/label"),
                     b: format!("scheme/edges/e{j}"),
-                    clash_dist: 4.0,
+                    clash_dist: shaft_air(other_stroke),
                     lagrangian: LAGRANGIAN_CLEAR,
                 });
             }
             hard.push(HardConstraint::Outside {
                 a: format!("{a}/label"),
                 b: a.clone(),
-                clash_dist: 2.0,
+                clash_dist: shaft_air(self_stroke),
                 lagrangian: LAGRANGIAN_CLEAR,
             });
         }
@@ -330,8 +378,8 @@ pub fn refine_scheme_edges(
         if let Some(n) = world.get(&lid) {
             let s = n.world_shape();
             let (x, y) = s.aabb().center();
-            let rot = readable_deg(tangent_deg(out_paths[i].as_deref().unwrap_or(&seed_pts[i])));
-            out_labels[i] = Some((x, y, rot));
+            // Parallel is mod 180°; pick the right-side-up glyph after the solve.
+            out_labels[i] = Some((x, y, flip_upside_down(n.rot)));
         }
     }
 
@@ -397,6 +445,20 @@ fn min_ink_signed(world: &LayoutWorld, under: &str, p: (f64, f64)) -> f64 {
         best = best.min(edge_signed_distance(&pt, &s));
     }
     best
+}
+
+/// `min(max_standoff, ELK seed’s clash-grid clearance)`. Never negative.
+fn elk_capped_standoff(
+    world: &LayoutWorld,
+    chem: &str,
+    elk_pt: (f64, f64),
+    max_standoff: f64,
+) -> f64 {
+    let d = min_ink_signed(world, chem, elk_pt);
+    if !d.is_finite() {
+        return max_standoff;
+    }
+    max_standoff.min(d.max(0.0))
 }
 
 /// Walk from `centroid` toward `toward` until chem signed distance ≥ `clash`.
@@ -573,7 +635,7 @@ fn edge_label_seed(
     spec: &DepictSpec,
     edge: &super::EdgeNode,
     pts: &[(f64, f64)],
-) -> Option<(Aabb, f64, f64)> {
+) -> Option<(f64, f64)> {
     let lab = edge.label.as_ref()?;
     let placements = lab.placements();
     let (id, pos) = placements.first()?;
@@ -584,7 +646,8 @@ fn edge_label_seed(
     if text.trim().is_empty() {
         return None;
     }
-    let (mx, my, mut px, mut py) = label_point(pts);
+    let painted = crate::catmull::sample_open_catmull(pts, 8);
+    let (mx, my, mut px, mut py) = label_point(&painted);
     match pos {
         super::LabelPos::Below | super::LabelPos::Right => {
             px = -px;
@@ -592,15 +655,8 @@ fn edge_label_seed(
         }
         _ => {}
     }
-    let cx = mx + px * 10.0;
-    let cy = my + py * 10.0;
-    let w = text.len() as f64 * 11.0 * 0.55 + 4.0;
-    let h = 15.0;
-    Some((
-        Aabb::new(cx - w * 0.5, cy - h * 0.5, cx + w * 0.5, cy + h * 0.5),
-        cx,
-        cy,
-    ))
+    let off = label_shaft_clash(edge.stroke_width);
+    Some((mx + px * off, my + py * off))
 }
 
 fn label_point(pts: &[(f64, f64)]) -> (f64, f64, f64, f64) {
@@ -635,8 +691,46 @@ fn tangent_deg(pts: &[(f64, f64)]) -> f64 {
     (y1 - y0).atan2(x1 - x0).to_degrees()
 }
 
+/// Tangent of the painted shaft (Catmull samples) at the closest point to `(x, y)`.
+fn tangent_at(pts: &[(f64, f64)], x: f64, y: f64) -> f64 {
+    let painted = crate::catmull::sample_open_catmull(pts, 8);
+    if painted.len() < 2 {
+        return tangent_deg(pts);
+    }
+    let mut best_i = 1;
+    let mut best_d = f64::INFINITY;
+    for i in 1..painted.len() {
+        let (x0, y0) = painted[i - 1];
+        let (x1, y1) = painted[i];
+        let vx = x1 - x0;
+        let vy = y1 - y0;
+        let l2 = vx * vx + vy * vy;
+        let t = if l2 < 1e-12 {
+            0.0
+        } else {
+            ((x - x0) * vx + (y - y0) * vy) / l2
+        }
+        .clamp(0.0, 1.0);
+        let px = x0 + t * vx;
+        let py = y0 + t * vy;
+        let d = (x - px).hypot(y - py);
+        if d < best_d {
+            best_d = d;
+            best_i = i;
+        }
+    }
+    let (x0, y0) = painted[best_i - 1];
+    let (x1, y1) = painted[best_i];
+    (y1 - y0).atan2(x1 - x0).to_degrees()
+}
+
 /// Parallel to the edge, but never upside-down (`(-90, 90]` degrees).
 fn readable_deg(deg: f64) -> f64 {
+    flip_upside_down(deg)
+}
+
+/// After the solve: if the glyph is upside-down, rotate 180°.
+fn flip_upside_down(deg: f64) -> f64 {
     let mut a = ((deg + 180.0) % 360.0 + 360.0) % 360.0 - 180.0;
     if a > 90.0 {
         a -= 180.0;
@@ -656,8 +750,8 @@ mod tests {
     use crate::doc::layout_items::ATOM_DISK_R_PX;
 
     #[test]
-    fn ink_standoff_constant_is_one_third_bond() {
-        assert!((SCHEME_INK_STANDOFF - BOND_PX / 3.0).abs() < 1e-12);
+    fn ink_standoff_constant_is_two_bonds() {
+        assert!((SCHEME_INK_STANDOFF - 2.0 * BOND_PX).abs() < 1e-12);
     }
 
     #[test]
@@ -693,6 +787,14 @@ mod tests {
             let r = readable_deg(d);
             assert!((-90.0..=90.0).contains(&r), "{d} -> {r}");
         }
+    }
+
+    #[test]
+    fn flip_upside_down_is_a_180_turn() {
+        assert!((flip_upside_down(135.0) - (135.0 - 180.0)).abs() < 1e-9);
+        assert!((flip_upside_down(-135.0) - (-135.0 + 180.0)).abs() < 1e-9);
+        assert!((flip_upside_down(45.0) - 45.0).abs() < 1e-9);
+        assert!((-90.0..=90.0).contains(&flip_upside_down(91.0)));
     }
 
     #[test]
@@ -785,13 +887,17 @@ mod tests {
         );
         let da0 = paint_ink_signed(&paints[0], positions["A"], (x0, y0));
         let db1 = paint_ink_signed(&paints[1], positions["B"], (x1, y1));
+        let want_a =
+            SCHEME_INK_STANDOFF.min(paint_ink_signed(&paints[0], positions["A"], seed[0]).max(0.0));
+        let want_b =
+            SCHEME_INK_STANDOFF.min(paint_ink_signed(&paints[1], positions["B"], seed[1]).max(0.0));
         assert!(
-            da0 + 4.0 >= SCHEME_INK_STANDOFF,
-            "src should sit ≥⅓ bond from A's ink: {da0} pts={pts:?} ca={ca:?}"
+            da0 + 4.0 >= want_a,
+            "src should sit ≥min(2bond, ELK clearance) from A's ink: {da0} want={want_a} pts={pts:?} ca={ca:?}"
         );
         assert!(
-            db1 + 4.0 >= SCHEME_INK_STANDOFF,
-            "tgt should sit ≥⅓ bond from B's ink: {db1} pts={pts:?} cb={cb:?}"
+            db1 + 4.0 >= want_b,
+            "tgt should sit ≥min(2bond, ELK clearance) from B's ink: {db1} want={want_b} pts={pts:?} cb={cb:?}"
         );
         let line_a = point_to_line(x0, y0, x1, y1, ca.0, ca.1);
         let line_b = point_to_line(x0, y0, x1, y1, cb.0, cb.1);
@@ -855,6 +961,43 @@ mod tests {
             "pose should sit 30px from the chain ink, not from the centroid: p={p:?} d={d}"
         );
         assert!(p.0 > 120.0, "must walk past the protruding atom: {p:?}");
+    }
+
+    #[test]
+    fn elk_standoff_is_min_of_two_bonds_and_seed_clearance() {
+        let mut world = LayoutWorld::rooted("scheme", ObjectType::Scheme);
+        world.insert(
+            "mol",
+            "scheme",
+            ObjectType::Mol,
+            Shape::Aabb(Aabb::new(0.0, 0.0, 200.0, 80.0)),
+            true,
+        );
+        crate::doc::layout_constraints::install_chem_under(
+            &mut world,
+            "mol",
+            &[(0.0, 40.0, 120.0, 40.0)],
+            &[(0, 0.0, 40.0), (1, 120.0, 40.0)],
+            &[],
+            &[],
+        );
+        let tight = (128.0, 40.0);
+        let roomy = (200.0, 40.0);
+        let cap_tight = elk_capped_standoff(&world, "mol/chem", tight, SCHEME_INK_STANDOFF);
+        let cap_roomy = elk_capped_standoff(&world, "mol/chem", roomy, SCHEME_INK_STANDOFF);
+        let d_tight = min_ink_signed(&world, "mol/chem", tight);
+        assert!(
+            (cap_tight - d_tight.max(0.0)).abs() < 1e-9,
+            "tight ELK seed must not demand two bonds: cap={cap_tight} d={d_tight}"
+        );
+        assert!(
+            cap_tight < SCHEME_INK_STANDOFF,
+            "tight clearance {cap_tight} should be below two bonds"
+        );
+        assert!(
+            (cap_roomy - SCHEME_INK_STANDOFF).abs() < 1e-9,
+            "roomy ELK seed should use the two-bond cap: {cap_roomy}"
+        );
     }
 
     #[test]
@@ -929,7 +1072,7 @@ mod tests {
         let h = HardConstraint::MaxDist {
             a: "e0/label".into(),
             b: "e0".into(),
-            dist: LABEL_TETHER_PX,
+            dist: label_shaft_tether(None),
             lagrangian: LAGRANGIAN_TETHER,
         };
         let mut w = LayoutWorld::rooted("scheme", ObjectType::Scheme);
@@ -1153,13 +1296,17 @@ mod tests {
         );
         let da = paint_ink_signed(&paints[0], positions["A"], (x0, y0));
         let db = paint_ink_signed(&paints[1], positions["B"], (x1, y1));
+        let want_a =
+            SCHEME_INK_STANDOFF.min(paint_ink_signed(&paints[0], positions["A"], seed[0]).max(0.0));
+        let want_b =
+            SCHEME_INK_STANDOFF.min(paint_ink_signed(&paints[1], positions["B"], seed[1]).max(0.0));
         assert!(
-            da + 4.0 >= SCHEME_INK_STANDOFF,
-            "src should sit ≥⅓ bond from A's ink: {da} pts={pts:?} ca={ca:?}"
+            da + 4.0 >= want_a,
+            "src should sit ≥min(2bond, ELK clearance) from A's ink: {da} want={want_a} pts={pts:?} ca={ca:?}"
         );
         assert!(
-            db + 4.0 >= SCHEME_INK_STANDOFF,
-            "tgt should sit ≥⅓ bond from B's ink: {db} pts={pts:?} cb={cb:?}"
+            db + 4.0 >= want_b,
+            "tgt should sit ≥min(2bond, ELK clearance) from B's ink: {db} want={want_b} pts={pts:?} cb={cb:?}"
         );
         let line_a = point_to_line(x0, y0, x1, y1, ca.0, ca.1);
         let line_b = point_to_line(x0, y0, x1, y1, cb.0, cb.1);
@@ -1191,9 +1338,20 @@ mod tests {
             chem_paint("B", 80.0, 80.0, 40.0, 40.0),
         ];
         let seed = vec![(80.0, 40.0), (160.0, 80.0), (240.0, 40.0)];
-        let refined =
-            refine_scheme_edges(&spec, &layout, &positions, &[Some(seed)], &paints, &sizes);
+        let refined = refine_scheme_edges(
+            &spec,
+            &layout,
+            &positions,
+            &[Some(seed.clone())],
+            &paints,
+            &sizes,
+        );
         let pts = refined.edge_paths[0].clone().expect("path");
+        assert_eq!(
+            pts.len(),
+            seed.len(),
+            "refine must keep ELK endpoints/elbows, not Catmull samples: {pts:?}"
+        );
         let d = crate::catmull::centripetal_catmull_rom_open_path(&pts);
         assert!(d.contains('C'), "open CR shaft should be cubics: {d}");
         assert!(!d.contains('Z'), "{d}");
@@ -1226,7 +1384,7 @@ mod tests {
             refine_scheme_edges(&spec, &layout, &positions, &[Some(seed)], &paints, &sizes);
         let pts = refined.edge_paths[0].clone().expect("path");
         let (lx, ly, rot) = refined.edge_labels[0].expect("label");
-        let expected = readable_deg(tangent_deg(&pts));
+        let expected = flip_upside_down(tangent_at(&pts, lx, ly));
         assert!(
             (rot - expected).abs() < 15.0,
             "label rotate {rot} vs edge {expected}"
@@ -1235,8 +1393,15 @@ mod tests {
             (-90.0..=90.0).contains(&rot),
             "label must not be upside down: {rot}"
         );
+        let painted = crate::catmull::sample_open_catmull(&pts, 8);
+        let (mx, my, _, _) = label_point(&painted);
+        let d_mid = (lx - mx).hypot(ly - my);
+        assert!(
+            d_mid < label_shaft_tether(None) + 8.0,
+            "label should stay near the shaft midpoint: d={d_mid} at ({lx},{ly}) mid=({mx},{my})"
+        );
         let mut d_shaft = f64::INFINITY;
-        for w in pts.windows(2) {
+        for w in painted.windows(2) {
             let (x0, y0) = w[0];
             let (x1, y1) = w[1];
             let vx = x1 - x0;
@@ -1252,9 +1417,83 @@ mod tests {
             let py = y0 + t * vy;
             d_shaft = d_shaft.min((lx - px).hypot(ly - py));
         }
+        let need = label_shaft_clash(None);
         assert!(
-            d_shaft > 1.0,
-            "label sits on shaft: d={d_shaft} at ({lx},{ly})"
+            d_shaft + 4.0 >= need,
+            "label sits on shaft: d={d_shaft} need={need} at ({lx},{ly})"
+        );
+    }
+
+    #[test]
+    fn thick_curve_label_clears_catmull_shaft() {
+        let spec = scheme(vec![
+            mol_node("A"),
+            crate::doc::Node::Text(crate::doc::TextNode {
+                type_: crate::doc::TextNodeKind::Text,
+                id: Some("lab".into()),
+                text: "Glutathionation".into(),
+                color: None,
+                scale: None,
+                opts: None,
+            }),
+            {
+                let mut e = match edge_node("A", "B", Some("lab")) {
+                    crate::doc::Node::Edge(e) => e,
+                    other => panic!("{other:?}"),
+                };
+                e.stroke_width = Some(4.8);
+                crate::doc::Node::Edge(e)
+            },
+            mol_node("B"),
+        ]);
+        let layout = LayoutOpts::default();
+        let positions = HashMap::from([("A".into(), (0.0, 0.0)), ("B".into(), (0.0, 280.0))]);
+        let sizes = vec![("A".into(), 80.0, 80.0), ("B".into(), 80.0, 80.0)];
+        let paints = vec![
+            chem_paint("A", 80.0, 80.0, 40.0, 40.0),
+            chem_paint("B", 80.0, 80.0, 40.0, 40.0),
+        ];
+        let seed = vec![(40.0, 80.0), (120.0, 180.0), (40.0, 280.0)];
+        let refined =
+            refine_scheme_edges(&spec, &layout, &positions, &[Some(seed)], &paints, &sizes);
+        let pts = refined.edge_paths[0].clone().expect("path");
+        let (lx, ly, rot) = refined.edge_labels[0].expect("label");
+        let painted = crate::catmull::sample_open_catmull(&pts, 8);
+        let mut d_shaft = f64::INFINITY;
+        let mut tang = 0.0;
+        for w in painted.windows(2) {
+            let (x0, y0) = w[0];
+            let (x1, y1) = w[1];
+            let vx = x1 - x0;
+            let vy = y1 - y0;
+            let l2 = vx * vx + vy * vy;
+            let t = if l2 < 1e-12 {
+                0.0
+            } else {
+                ((lx - x0) * vx + (ly - y0) * vy) / l2
+            }
+            .clamp(0.0, 1.0);
+            let px = x0 + t * vx;
+            let py = y0 + t * vy;
+            let d = (lx - px).hypot(ly - py);
+            if d < d_shaft {
+                d_shaft = d;
+                tang = (y1 - y0).atan2(x1 - x0).to_degrees();
+            }
+        }
+        let need = label_shaft_clash(Some(4.8));
+        assert!(
+            d_shaft + 4.0 >= need,
+            "solver left the label in the stroke: d={d_shaft} need={need} at ({lx},{ly})"
+        );
+        let expected = flip_upside_down(tang);
+        assert!(
+            (rot - expected).abs() < 20.0,
+            "label should follow the curve tangent: rot={rot} tangent={expected}"
+        );
+        assert!(
+            (-90.0..=90.0).contains(&rot),
+            "upside-down labels must flip 180° after the solve: {rot}"
         );
     }
 }

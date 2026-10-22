@@ -245,7 +245,23 @@ fn point_to_shape_signed(px: f64, py: f64, s: &Shape) -> f64 {
     }
 }
 
+fn painted_open_pts(pts: &[(f64, f64)]) -> Vec<(f64, f64)> {
+    if pts.len() >= 3 {
+        crate::catmull::sample_open_catmull(pts, 8)
+    } else {
+        pts.to_vec()
+    }
+}
+
+fn paint_open_polyline(s: &Shape) -> Shape {
+    match s {
+        Shape::Polyline(pts) if pts.len() >= 3 => Shape::Polyline(painted_open_pts(pts)),
+        other => other.clone(),
+    }
+}
+
 fn point_to_open_polyline(px: f64, py: f64, pts: &[(f64, f64)]) -> f64 {
+    let pts = painted_open_pts(pts);
     if pts.len() < 2 {
         return if let Some(&(x, y)) = pts.first() {
             (px - x).hypot(py - y)
@@ -272,8 +288,10 @@ fn shape_segments(s: &Shape) -> Vec<(f64, f64, f64, f64)> {
 }
 
 fn polyline_shape_signed(a: &Shape, b: &Shape) -> f64 {
-    let segs_a = shape_segments(a);
-    let segs_b = shape_segments(b);
+    let pa = paint_open_polyline(a);
+    let pb = paint_open_polyline(b);
+    let segs_a = shape_segments(&pa);
+    let segs_b = shape_segments(&pb);
     if !segs_a.is_empty() && !segs_b.is_empty() {
         let mut best = f64::INFINITY;
         for &(ax0, ay0, ax1, ay1) in &segs_a {
@@ -283,10 +301,10 @@ fn polyline_shape_signed(a: &Shape, b: &Shape) -> f64 {
         }
         return best;
     }
-    let (poly, other) = if matches!(a, Shape::Polyline(_)) {
-        (a, b)
+    let (poly, other) = if matches!(pa, Shape::Polyline(_)) {
+        (&pa, &pb)
     } else {
-        (b, a)
+        (&pb, &pa)
     };
     let mut best = f64::INFINITY;
     for &(x0, y0, x1, y1) in &shape_segments(poly) {
@@ -295,7 +313,7 @@ fn polyline_shape_signed(a: &Shape, b: &Shape) -> f64 {
     if best.is_finite() {
         best
     } else {
-        aabb_aabb_signed(a.aabb(), b.aabb())
+        aabb_aabb_signed(pa.aabb(), pb.aabb())
     }
 }
 
@@ -619,6 +637,14 @@ pub enum Constraint {
         p: NodeId,
         strength: f64,
     },
+    /// `a.rot` should match the local tangent of `b` (mod 180°: lines have no
+    /// direction). Extra DOF: [`LayoutNode::rot`] is packed after `(tx, ty)`
+    /// only for nodes that appear as `a` here. Kits flip upside-down text
+    /// 180° after the solve.
+    Parallel { a: NodeId, b: NodeId, strength: f64 },
+    /// Spring `a`'s anchor to the live midpoint of `b` (arc-length mid of a
+    /// painted open polyline; otherwise the shape center).
+    Midpoint { a: NodeId, b: NodeId, strength: f64 },
 }
 
 /// No-overlap (Outside). Strongest hard group.
@@ -863,6 +889,9 @@ pub struct LayoutNode {
     /// Translation DOF for movable leaves (origin offset applied to `rest`).
     pub tx: f64,
     pub ty: f64,
+    /// Rotation DOF in degrees (labels). Packed only when a [`Constraint::Parallel`]
+    /// targets this node; geometry stays unrotated (disks / points).
+    pub rot: f64,
     /// Rest pose (before tx/ty). For fixed nodes, this is the world pose.
     pub rest: Shape,
     /// Painted ink this object owns (glyphs, regions, annotations) in world space.
@@ -903,6 +932,7 @@ impl LayoutWorld {
                 fixed: true,
                 tx: 0.0,
                 ty: 0.0,
+                rot: 0.0,
                 rest: Shape::Aabb(Aabb::new(0.0, 0.0, 0.0, 0.0)),
                 ink: Vec::new(),
                 clash_grid: RefCell::new(None),
@@ -941,6 +971,7 @@ impl LayoutWorld {
                 fixed,
                 tx: 0.0,
                 ty: 0.0,
+                rot: 0.0,
                 rest: shape,
                 ink: Vec::new(),
                 clash_grid: RefCell::new(None),
@@ -1008,6 +1039,14 @@ impl LayoutWorld {
             }
         }
         self.invalidate_clash(id);
+    }
+
+    pub fn set_rot(&mut self, id: &str, rot: f64) {
+        if let Some(n) = self.nodes.get_mut(id) {
+            if !n.fixed {
+                n.rot = rot;
+            }
+        }
     }
 
     /// Extra painted ink on `id` (glyphs, regions, annotations). Invalidates
@@ -1113,6 +1152,9 @@ impl LayoutWorld {
     }
 
     /// Live geometry: polyline groups assemble child [`Shape::Point`]s in order.
+    ///
+    /// Those vertices are the ELK endpoints / routing points (the DOF). Paint
+    /// and clash sample a Catmull–Rom through them; they are not densified here.
     pub fn eval_shape(&self, id: &str) -> Option<Shape> {
         let n = self.nodes.get(id)?;
         if matches!(&n.rest, Shape::Polyline(_)) {
@@ -1366,6 +1408,169 @@ fn constraint_energy(world: &LayoutWorld, c: &Constraint) -> f64 {
                 *strength,
             )
         }
+        Constraint::Parallel { a, b, strength } => {
+            let Some(na) = world.get(a) else {
+                return 0.0;
+            };
+            let Some(sb) = world.eval_shape(b) else {
+                return 0.0;
+            };
+            let (x, y) = shape_anchor(&na.world_shape());
+            let tang = tangent_deg_at(&sb, x, y);
+            let err = parallel_angle_err(na.rot, tang);
+            strength * err * err
+        }
+        Constraint::Midpoint { a, b, strength } => {
+            let (sa, sb) = match pair_eval(world, a, b) {
+                Some(p) => p,
+                None => return 0.0,
+            };
+            let (ax, ay) = shape_anchor(&sa);
+            let (mx, my) = shape_midpoint(&sb);
+            let dx = ax - mx;
+            let dy = ay - my;
+            strength * (dx * dx + dy * dy)
+        }
+    }
+}
+
+/// Smallest angle between two undirected lines (degrees, (−90, 90]).
+fn parallel_angle_err(rot: f64, tangent: f64) -> f64 {
+    wrap_readable_deg(rot - tangent)
+}
+
+fn shape_midpoint(shape: &Shape) -> (f64, f64) {
+    match shape {
+        Shape::Point { x, y } => (*x, *y),
+        Shape::Circle { cx, cy, .. } => (*cx, *cy),
+        Shape::Line { x0, y0, x1, y1 } => ((*x0 + *x1) * 0.5, (*y0 + *y1) * 0.5),
+        Shape::Aabb(a) => a.center(),
+        Shape::Polyline(pts) => arc_length_midpoint(&painted_open_pts(pts)),
+        Shape::PointSet(pts) => {
+            if pts.is_empty() {
+                (0.0, 0.0)
+            } else {
+                let n = pts.len() as f64;
+                let sx: f64 = pts.iter().map(|p| p.0).sum();
+                let sy: f64 = pts.iter().map(|p| p.1).sum();
+                (sx / n, sy / n)
+            }
+        }
+    }
+}
+
+fn arc_length_midpoint(pts: &[(f64, f64)]) -> (f64, f64) {
+    if pts.is_empty() {
+        return (0.0, 0.0);
+    }
+    if pts.len() == 1 {
+        return pts[0];
+    }
+    let mut total = 0.0;
+    let mut lens = vec![0.0; pts.len()];
+    for i in 1..pts.len() {
+        total += (pts[i].0 - pts[i - 1].0).hypot(pts[i].1 - pts[i - 1].1);
+        lens[i] = total;
+    }
+    if total < 1e-12 {
+        return pts[0];
+    }
+    let half = total * 0.5;
+    for i in 1..pts.len() {
+        if lens[i] + 1e-15 < half {
+            continue;
+        }
+        let seg = lens[i] - lens[i - 1];
+        let t = if seg < 1e-12 {
+            0.0
+        } else {
+            (half - lens[i - 1]) / seg
+        };
+        return (
+            pts[i - 1].0 + t * (pts[i].0 - pts[i - 1].0),
+            pts[i - 1].1 + t * (pts[i].1 - pts[i - 1].1),
+        );
+    }
+    pts[pts.len() - 1]
+}
+
+fn wrap_readable_deg(deg: f64) -> f64 {
+    let mut a = ((deg + 180.0) % 360.0 + 360.0) % 360.0 - 180.0;
+    if a > 90.0 {
+        a -= 180.0;
+    } else if a < -90.0 {
+        a += 180.0;
+    }
+    a
+}
+
+fn tangent_deg_at(shape: &Shape, x: f64, y: f64) -> f64 {
+    let pts = match shape {
+        Shape::Polyline(pts) => painted_open_pts(pts),
+        Shape::Line { x0, y0, x1, y1 } => vec![(*x0, *y0), (*x1, *y1)],
+        _ => return 0.0,
+    };
+    if pts.len() < 2 {
+        return 0.0;
+    }
+    let mut best_i = 1;
+    let mut best_d = f64::INFINITY;
+    for i in 1..pts.len() {
+        let (x0, y0) = pts[i - 1];
+        let (x1, y1) = pts[i];
+        let vx = x1 - x0;
+        let vy = y1 - y0;
+        let l2 = vx * vx + vy * vy;
+        let t = if l2 < 1e-12 {
+            0.0
+        } else {
+            ((x - x0) * vx + (y - y0) * vy) / l2
+        }
+        .clamp(0.0, 1.0);
+        let px = x0 + t * vx;
+        let py = y0 + t * vy;
+        let d = (x - px).hypot(y - py);
+        if d < best_d {
+            best_d = d;
+            best_i = i;
+        }
+    }
+    let (x0, y0) = pts[best_i - 1];
+    let (x1, y1) = pts[best_i];
+    (y1 - y0).atan2(x1 - x0).to_degrees()
+}
+
+fn parallel_rot_ids(constraints: &[Constraint]) -> Vec<NodeId> {
+    let mut ids = Vec::new();
+    for c in constraints {
+        if let Constraint::Parallel { a, .. } = c {
+            if !ids.contains(a) {
+                ids.push(a.clone());
+            }
+        }
+    }
+    ids.sort();
+    ids
+}
+
+fn pack_solve_params(world: &LayoutWorld, xy_ids: &[NodeId], rot_ids: &[NodeId]) -> Vec<f64> {
+    let mut p = Vec::with_capacity(xy_ids.len() * 2 + rot_ids.len());
+    for id in xy_ids {
+        let n = &world.nodes[id];
+        p.push(n.tx);
+        p.push(n.ty);
+    }
+    for id in rot_ids {
+        p.push(world.get(id).map(|n| n.rot).unwrap_or(0.0));
+    }
+    p
+}
+
+fn apply_solve_params(world: &mut LayoutWorld, xy_ids: &[NodeId], rot_ids: &[NodeId], p: &[f64]) {
+    world.apply_params(xy_ids, p);
+    let base = xy_ids.len() * 2;
+    for (i, id) in rot_ids.iter().enumerate() {
+        world.set_rot(id, p.get(base + i).copied().unwrap_or(0.0));
     }
 }
 
@@ -1537,8 +1742,10 @@ pub fn solve(
     hard: &[HardConstraint],
     opts: &SolveOpts,
 ) -> SolveResult {
-    let (ids, mut params) = world.params();
-    if ids.is_empty() {
+    let (ids, _) = world.params();
+    let rot_ids = parallel_rot_ids(constraints);
+    let mut params = pack_solve_params(world, &ids, &rot_ids);
+    if ids.is_empty() && rot_ids.is_empty() {
         return SolveResult {
             iters: 0,
             energy: energy(world, constraints, &[], opts.w_travel),
@@ -1561,7 +1768,11 @@ pub fn solve(
             params[i * 2] += n;
             params[i * 2 + 1] += opts.noise * pseudo_noise(i as u64 + 17);
         }
-        world.apply_params(&ids, &params);
+        let xy = ids.len() * 2;
+        for (i, _) in rot_ids.iter().enumerate() {
+            params[xy + i] += opts.noise * pseudo_noise(i as u64 + 31);
+        }
+        apply_solve_params(world, &ids, &rot_ids, &params);
     }
 
     let mut groups: Vec<u8> = hard.iter().map(hard_lagrangian).collect();
@@ -1601,6 +1812,7 @@ pub fn solve(
             let nm = nelder_mead(
                 world,
                 &ids,
+                &rot_ids,
                 constraints,
                 hard,
                 &lambda,
@@ -1659,6 +1871,7 @@ pub fn solve(
 fn nelder_mead(
     world: &mut LayoutWorld,
     ids: &[NodeId],
+    rot_ids: &[NodeId],
     constraints: &[Constraint],
     hard: &[HardConstraint],
     lambda: &[f64],
@@ -1668,17 +1881,29 @@ fn nelder_mead(
     opts: &SolveOpts,
     rebuild_simplex: bool,
 ) -> SolveResult {
-    let mut params = Vec::with_capacity(ids.len() * 2);
-    for id in ids {
-        let n = world.get(id).unwrap();
-        params.push(n.tx);
-        params.push(n.ty);
-    }
+    let params = pack_solve_params(world, ids, rot_ids);
 
     let n = params.len();
+    if n == 0 {
+        return SolveResult {
+            iters: 0,
+            energy: al_energy(
+                world,
+                constraints,
+                hard,
+                lambda,
+                rho,
+                active,
+                seed,
+                opts.w_travel,
+            ),
+            stopped_on_drift: true,
+            max_hard_violation: 0.0,
+        };
+    }
     let scale = opts.initial_simplex_scale;
     let eval = |world: &mut LayoutWorld, v: &[f64]| -> f64 {
-        world.apply_params(ids, v);
+        apply_solve_params(world, ids, rot_ids, v);
         al_energy(
             world,
             constraints,
@@ -1710,7 +1935,7 @@ fn nelder_mead(
     }
 
     let mut history: Vec<Vec<(f64, f64)>> = Vec::new();
-    world.apply_params(ids, &simplex[0].0);
+    apply_solve_params(world, ids, rot_ids, &simplex[0].0);
     history.push(world.control_points_movable());
 
     let alpha = 1.0;
@@ -1780,7 +2005,7 @@ fn nelder_mead(
         }
 
         simplex.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
-        world.apply_params(ids, &simplex[0].0);
+        apply_solve_params(world, ids, rot_ids, &simplex[0].0);
         let pts = world.control_points_movable();
         history.push(pts.clone());
         if history.len() > opts.drift_window + 1 {
@@ -1798,7 +2023,7 @@ fn nelder_mead(
     }
 
     simplex.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
-    world.apply_params(ids, &simplex[0].0);
+    apply_solve_params(world, ids, rot_ids, &simplex[0].0);
     SolveResult {
         iters,
         energy: simplex[0].1,
@@ -3975,6 +4200,171 @@ mod tests {
             }
             other => panic!("{other:?}"),
         }
+    }
+
+    #[test]
+    fn eval_shape_keeps_elk_routing_vertices() {
+        let mut w = LayoutWorld::rooted("scheme", ObjectType::Scheme);
+        w.insert(
+            "e0",
+            "scheme",
+            ObjectType::Edge,
+            Shape::Polyline(vec![]),
+            true,
+        );
+        let controls = [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0)];
+        for (i, (x, y)) in controls.into_iter().enumerate() {
+            w.insert(
+                format!("e0/p{i}"),
+                "e0",
+                ObjectType::EdgePoint,
+                Shape::Point { x, y },
+                false,
+            );
+        }
+        match w.eval_shape("e0").unwrap() {
+            Shape::Polyline(pts) => {
+                assert_eq!(pts, controls, "control polyline, not Catmull samples")
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn polyline_signed_distance_follows_catmull_not_chords() {
+        let controls = vec![(0.0, 0.0), (80.0, 0.0), (80.0, 80.0)];
+        let painted = crate::catmull::sample_open_catmull(&controls, 8);
+        let on_curve = painted[painted.len() / 4];
+        let d = edge_signed_distance(
+            &Shape::Point {
+                x: on_curve.0,
+                y: on_curve.1,
+            },
+            &Shape::Polyline(controls),
+        );
+        assert!(
+            d < 1.0,
+            "clash should see the painted Catmull, not the L chords: d={d} pt={on_curve:?}"
+        );
+    }
+
+    #[test]
+    fn parallel_constraint_owns_rotation() {
+        let mut w = LayoutWorld::rooted("scheme", ObjectType::Scheme);
+        w.insert(
+            "e0",
+            "scheme",
+            ObjectType::Edge,
+            Shape::Polyline(vec![]),
+            true,
+        );
+        w.insert(
+            "e0/p0",
+            "e0",
+            ObjectType::EdgePoint,
+            Shape::Point { x: 0.0, y: 0.0 },
+            true,
+        );
+        w.insert(
+            "e0/p1",
+            "e0",
+            ObjectType::EdgePoint,
+            Shape::Point { x: 80.0, y: 40.0 },
+            true,
+        );
+        w.insert(
+            "lab",
+            "scheme",
+            ObjectType::EdgeLabel,
+            Shape::Circle {
+                cx: 40.0,
+                cy: 28.0,
+                r: 6.0,
+            },
+            false,
+        );
+        w.set_rot("lab", 0.0);
+        let cs = vec![Constraint::Parallel {
+            a: "lab".into(),
+            b: "e0".into(),
+            strength: 1.0,
+        }];
+        let _ = solve(
+            &mut w,
+            &cs,
+            &[],
+            &SolveOpts {
+                max_iters: 80,
+                noise: 0.0,
+                epsilon_px: 0.25,
+                ..SolveOpts::default()
+            },
+        );
+        let rot = w.get("lab").unwrap().rot;
+        let want = wrap_readable_deg((40.0f64).atan2(80.0).to_degrees());
+        assert!(
+            (wrap_readable_deg(rot) - want).abs() < 8.0,
+            "solver rot={rot} want={want}"
+        );
+    }
+
+    #[test]
+    fn midpoint_constraint_pulls_to_shaft_mid() {
+        let mut w = LayoutWorld::rooted("scheme", ObjectType::Scheme);
+        w.insert(
+            "e0",
+            "scheme",
+            ObjectType::Edge,
+            Shape::Polyline(vec![]),
+            true,
+        );
+        w.insert(
+            "e0/p0",
+            "e0",
+            ObjectType::EdgePoint,
+            Shape::Point { x: 0.0, y: 0.0 },
+            true,
+        );
+        w.insert(
+            "e0/p1",
+            "e0",
+            ObjectType::EdgePoint,
+            Shape::Point { x: 80.0, y: 0.0 },
+            true,
+        );
+        w.insert(
+            "lab",
+            "scheme",
+            ObjectType::EdgeLabel,
+            Shape::Circle {
+                cx: 10.0,
+                cy: 30.0,
+                r: 6.0,
+            },
+            false,
+        );
+        let cs = vec![Constraint::Midpoint {
+            a: "lab".into(),
+            b: "e0".into(),
+            strength: 1.0,
+        }];
+        let _ = solve(
+            &mut w,
+            &cs,
+            &[],
+            &SolveOpts {
+                max_iters: 80,
+                noise: 0.0,
+                epsilon_px: 0.25,
+                ..SolveOpts::default()
+            },
+        );
+        let s = w.get("lab").unwrap().world_shape();
+        let (x, y) = s.aabb().center();
+        assert!(
+            (x - 40.0).abs() < 4.0 && y.abs() < 4.0,
+            "label should sit at the shaft midpoint, got ({x}, {y})"
+        );
     }
 
     #[test]

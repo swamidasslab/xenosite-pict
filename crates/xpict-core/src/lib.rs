@@ -54,7 +54,9 @@ pub use bonds::{
     join_centered_multibonds, line_intersect, multi_bond_offset, BondStrokes, DrawnBond,
     StrokePath,
 };
-pub use catmull::{centripetal_catmull_rom_closed_path, centripetal_catmull_rom_open_path};
+pub use catmull::{
+    centripetal_catmull_rom_closed_path, centripetal_catmull_rom_open_path, sample_open_catmull,
+};
 pub use colormap::{colormap_rgb, sample_colormap, XENOSITE};
 pub use cxsmiles::{
     apply_cx_by_index, cx_atom_labels, cx_multicenters, cx_source, smiles_base, Multicenter,

@@ -2,6 +2,16 @@
 
 ## 2026-10-22
 
+- Scheme shafts keep ELK endpoints and routing points as the only path DOF. Catmull–Rom is paint (and clash/tangent sampling) through those vertices, not a densified control polyline. Writing samples back as the path collapsed elbows (`simplify_route`) and looked like extra standoff.
+
+- Edge-label rotation is a solver DOF (`Constraint::Parallel` vs the painted tangent, mod 180°). After minimization, upside-down glyphs flip 180° into (−90, 90]. Soft `Midpoint` springs the label to the live arc-length mid of the shaft; Outside still clears the stroke.
+
+- Scheme arrow standoff is `min(2 bonds, ELK seed distance to the clash grid)`. Two bonds when ELK left a wide box; shrinks to the seed clearance when packing is tight. Not a hard ink wall (that reversed shafts). The old ⅓-bond constant sat on large mols (PEITC GSH adduct).
+
+- Open Catmull–Rom uses phantom end neighbors so the last cubic follows the end chord. Duplicating the endpoint (`p3 = p2`) collapsed the last Bézier and left filled arrow heads off the Glutathionation curve.
+
+- Edge-label clash is the solver, not a paint snap. Outside vs the Catmull through ELK control points; clash is half the edge stroke + pad. The label is a glyph disk, not the unrotated text AABB (that box swallowed the bulge). MaxDist ceiling is clash + one bond so CLEAR can push.
+
 - Product 0.7.1: clash-grid cleanup (opt-in ink raster; Outside stays geometric).
 
 - Clash grid is opt-in (`add_ink` / `ink_signed`). Outside energy stays geometric so captions/callouts still clear the chem AABB, not the raster. Stroke-only scene paths are not filled AABBs (bond Lines already cover them). Unused label-ink constant dropped.
