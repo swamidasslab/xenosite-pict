@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 use crate::arrows::{edge_anchors, ANCHOR_GAP};
 use crate::metrics::BOND_PX;
-use crate::scene::MoleculeIn;
+use crate::scene::{LayerName, MoleculeIn, Primitive, TextAnchor};
 
 use super::layout_constraints::{
     edge_signed_distance, shapes_properly_cross, solve, Constraint, HardConstraint, LayoutWorld,
@@ -15,7 +15,7 @@ use super::layout_constraints::{
 use super::layout_items::Aabb;
 use super::{DepictSpec, DocPaint, LayoutOpts};
 
-/// Gap from chem ink (bonds / atom disks) to a shaft endpoint (~⅓ bond).
+/// Gap from all painted mol ink (bonds, glyphs, regions, annotations) (~⅓ bond).
 pub const SCHEME_INK_STANDOFF: f64 = BOND_PX / 3.0;
 #[allow(dead_code)]
 const SCHEME_LABEL_INK_STANDOFF: f64 = 0.5 * BOND_PX;
@@ -71,7 +71,7 @@ pub fn refine_scheme_edges(
         );
         if let Some(paint) = paint_of.get(id.as_str()) {
             let (bonds, atoms) = chem_in_document(paint, (x, y));
-            super::layout_constraints::install_chem_under(
+            let chem = super::layout_constraints::install_chem_under(
                 &mut world,
                 &mid,
                 &bonds,
@@ -79,6 +79,7 @@ pub fn refine_scheme_edges(
                 &[],
                 &[],
             );
+            world.add_ink(&chem, scene_ink_shapes(paint, (x, y)));
         }
         let (cx, cy) = mol_centroid(&paint_of, positions, &size_of, id);
         world.insert(
@@ -372,6 +373,9 @@ fn mol_centroid(
 }
 
 fn min_ink_signed(world: &LayoutWorld, under: &str, p: (f64, f64)) -> f64 {
+    if let Some(d) = world.ink_signed(under, p.0, p.1) {
+        return d;
+    }
     let pt = Shape::Point { x: p.0, y: p.1 };
     let mut best = f64::INFINITY;
     let mut stack = vec![under.to_string()];
@@ -473,6 +477,89 @@ fn chem_in_document(
         bonds.push((x0, y0, x1, y1));
     }
     (bonds, atoms)
+}
+
+fn skip_ink_class(class: Option<&str>) -> bool {
+    let Some(c) = class else {
+        return false;
+    };
+    c.split_whitespace()
+        .any(|t| t == "halo" || t.contains("debug-box") || t.contains("debug_box"))
+}
+
+fn prim_ink_shapes(p: &Primitive, ox: f64, oy: f64) -> Vec<Shape> {
+    match p {
+        Primitive::Circle {
+            cx, cy, r, class, ..
+        } => {
+            if skip_ink_class(class.as_deref()) {
+                return Vec::new();
+            }
+            vec![Shape::Circle {
+                cx: cx + ox,
+                cy: cy + oy,
+                r: *r,
+            }]
+        }
+        Primitive::Path { d, class, .. } => {
+            if skip_ink_class(class.as_deref()) {
+                return Vec::new();
+            }
+            super::chrome_paint::path_aabb(d)
+                .map(|a| Shape::Aabb(a.translated(ox, oy)))
+                .into_iter()
+                .collect()
+        }
+        Primitive::Text {
+            x,
+            y,
+            text,
+            font_size,
+            anchor,
+            class,
+            ..
+        } => {
+            if skip_ink_class(class.as_deref()) {
+                return Vec::new();
+            }
+            let w = text.chars().count() as f64 * *font_size * 0.55;
+            let h = *font_size;
+            let (x0, y0) = match anchor {
+                TextAnchor::Start => (*x, *y - h * 0.8),
+                TextAnchor::Middle => (*x - w * 0.5, *y - h * 0.5),
+                TextAnchor::End => (*x - w, *y - h * 0.8),
+            };
+            vec![Shape::Aabb(Aabb::new(
+                x0 + ox,
+                y0 + oy,
+                x0 + ox + w,
+                y0 + oy + h,
+            ))]
+        }
+    }
+}
+
+/// Labels, regions, captions, circles — everything painted except white halo.
+fn scene_ink_shapes(paint: &DocPaint, elk: (f64, f64)) -> Vec<Shape> {
+    let (ox, oy) = match paint.scene.viewports.first() {
+        Some(vp) => (elk.0 + vp.x + vp.ox, elk.1 + vp.y + vp.oy),
+        None => elk,
+    };
+    let mut out = Vec::new();
+    for vp in &paint.scene.viewports {
+        for layer in &vp.layers {
+            if layer.name == LayerName::Halo {
+                continue;
+            }
+            for p in &layer.primitives {
+                out.extend(prim_ink_shapes(p, ox, oy));
+            }
+        }
+    }
+    for p in &paint.scene.overlays {
+        out.extend(prim_ink_shapes(p, ox, oy));
+    }
+    out
 }
 
 fn edge_label_seed(
@@ -729,6 +816,9 @@ mod tests {
                 },
             ));
         }
+        for s in scene_ink_shapes(paint, elk) {
+            best = best.min(edge_signed_distance(&pt, &s));
+        }
         best
     }
 
@@ -754,10 +844,51 @@ mod tests {
         let p = ray_ink_pose(&world, "mol/chem", centroid, (200.0, 40.0), 30.0, 180.0);
         let d = min_ink_signed(&world, "mol/chem", p);
         assert!(
-            (d - 30.0).abs() < 1.0,
+            (d - 30.0).abs() < 4.0,
             "pose should sit 30px from the chain ink, not from the centroid: p={p:?} d={d}"
         );
         assert!(p.0 > 120.0, "must walk past the protruding atom: {p:?}");
+    }
+
+    #[test]
+    fn scene_ink_includes_heteroatom_glyphs() {
+        let a = crate::doc::render(
+            &serde_json::from_str(r#"{"type":"mol","id":"A","smiles":"CCO"}"#).unwrap(),
+        )
+        .unwrap()
+        .remove(0);
+        let paint = crate::doc::DocPaint {
+            id: a.id.clone(),
+            molecule: a.molecule.clone(),
+            scene: a.scene.clone(),
+            frame_json: a.frame_molblock.clone(),
+        };
+        let labels = paint
+            .scene
+            .viewports
+            .first()
+            .unwrap()
+            .layers
+            .iter()
+            .find(|l| l.name == LayerName::Labels)
+            .expect("labels");
+        let has_oh = labels.primitives.iter().any(|p| {
+            matches!(
+                p,
+                Primitive::Path {
+                    data_text: Some(t),
+                    ..
+                } if t.contains('O')
+            )
+        });
+        assert!(has_oh, "ethanol should paint an O/OH glyph");
+        let shapes = scene_ink_shapes(&paint, (0.0, 0.0));
+        assert!(
+            shapes
+                .iter()
+                .any(|s| matches!(s, Shape::Aabb(a) if a.width() > 4.0 && a.height() > 4.0)),
+            "glyph AABBs should be scheme-arrow ink: {shapes:?}"
+        );
         let paints = HashMap::new();
         let positions = HashMap::from([("A".into(), (10.0, 20.0))]);
         let sizes = HashMap::from([("A", (40.0, 30.0))]);

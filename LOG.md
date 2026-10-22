@@ -2,6 +2,8 @@
 
 ## 2026-10-22
 
+- Layout nodes own painted ink (`add_ink`) and expose an on-demand cached clash grid (chamfer SDF). Scheme arrows standoff from that grid — bonds, heteroatom glyphs, regions, annotations — not a kit-side leaf dump. Halo/debug paint is omitted.
+
 - Scheme arrow ink standoff is BOND_PX/3 (~10 px). One bond left heads sitting in the ELK gap instead of reaching the chem.
 
 - Scheme arrow standoff is from chem ink (one bond), along a ray through the mol centroid. Energy is RayThrough (min |signed distance of the infinite shaft line to the centroid|²). The ray may cross ink; only the painted end stops. Not isotropic Outside vs chem — that shoved shafts off the aiming line.

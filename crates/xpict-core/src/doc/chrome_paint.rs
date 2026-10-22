@@ -1998,7 +1998,7 @@ fn path_nums(d: &str) -> Vec<f64> {
     nums
 }
 
-fn path_aabb(d: &str) -> Option<Aabb> {
+pub(crate) fn path_aabb(d: &str) -> Option<Aabb> {
     let nums = path_nums(d);
     if nums.len() < 2 {
         return None;

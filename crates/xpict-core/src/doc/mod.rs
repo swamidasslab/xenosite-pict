@@ -8,6 +8,7 @@
 mod caption;
 mod chrome;
 mod chrome_paint;
+mod clash_grid;
 mod compose;
 mod depict_doc;
 mod edge_resolve;

@@ -15,8 +15,10 @@
 //! CSS-px** (not ΔE). `energy` / `hard_g` / `solve` / `apply_params` never
 //! branch on [`ObjectType`] or path prefixes.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 
+use crate::doc::clash_grid::{ClashGrid, InkStamp};
 use crate::doc::layout_items::{Aabb, Side, ATOM_DISK_R_PX, CONTAIN_MARGIN_PX};
 use crate::metrics::{BOND_PX, STROKE_PX};
 
@@ -743,6 +745,39 @@ pub fn push_clear_leaves(
     }
 }
 
+fn shape_to_stamp(s: &Shape) -> Option<InkStamp> {
+    match s {
+        Shape::Point { x, y } => Some(InkStamp::Point { x: *x, y: *y }),
+        Shape::Circle { cx, cy, r } => Some(InkStamp::Circle {
+            cx: *cx,
+            cy: *cy,
+            r: *r,
+        }),
+        Shape::Aabb(a) => {
+            if a.width() <= 1e-9 && a.height() <= 1e-9 {
+                None
+            } else {
+                Some(InkStamp::Aabb(*a))
+            }
+        }
+        Shape::Line { x0, y0, x1, y1 } => Some(InkStamp::Line {
+            x0: *x0,
+            y0: *y0,
+            x1: *x1,
+            y1: *y1,
+            r: (STROKE_PX * 0.5).max(1.0),
+        }),
+        Shape::Polyline(pts) | Shape::PointSet(pts) => {
+            if pts.len() < 2 {
+                return None;
+            }
+            // First segment is enough for Option; callers that need all edges
+            // go through stamp_poly below. Keep a covering AABB for the set.
+            Some(InkStamp::Aabb(s.aabb()))
+        }
+    }
+}
+
 /// True for painted geometry. Empty container AABBs (`0×0` groups) are not
 /// obstacles — `install_chem_under` always creates `bonds` / `atoms` folders.
 fn primitive_leaf(shape: &Shape) -> bool {
@@ -805,6 +840,10 @@ pub struct LayoutNode {
     pub ty: f64,
     /// Rest pose (before tx/ty). For fixed nodes, this is the world pose.
     pub rest: Shape,
+    /// Painted ink this object owns (glyphs, regions, annotations) in world space.
+    pub ink: Vec<Shape>,
+    /// Raster of [`Self::ink`] ∪ descendant primitive leaves. Built on demand.
+    clash_grid: RefCell<Option<ClashGrid>>,
 }
 
 impl LayoutNode {
@@ -840,6 +879,8 @@ impl LayoutWorld {
                 tx: 0.0,
                 ty: 0.0,
                 rest: Shape::Aabb(Aabb::new(0.0, 0.0, 0.0, 0.0)),
+                ink: Vec::new(),
+                clash_grid: RefCell::new(None),
             },
         );
         Self { nodes, root }
@@ -876,6 +917,8 @@ impl LayoutWorld {
                 tx: 0.0,
                 ty: 0.0,
                 rest: shape,
+                ink: Vec::new(),
+                clash_grid: RefCell::new(None),
             },
         );
         id
@@ -937,6 +980,113 @@ impl LayoutWorld {
             if !n.fixed {
                 n.tx = tx;
                 n.ty = ty;
+            }
+        }
+        self.invalidate_clash(id);
+    }
+
+    /// Extra painted ink on `id` (glyphs, regions, annotations). Invalidates
+    /// that node's cached clash grid.
+    pub fn add_ink(&mut self, id: &str, shapes: impl IntoIterator<Item = Shape>) {
+        if let Some(n) = self.nodes.get_mut(id) {
+            n.ink.extend(shapes);
+            n.clash_grid.borrow_mut().take();
+        }
+        self.invalidate_clash(id);
+    }
+
+    fn invalidate_clash(&self, id: &str) {
+        let mut cur = Some(id.to_string());
+        while let Some(cid) = cur {
+            let Some(n) = self.nodes.get(&cid) else {
+                break;
+            };
+            n.clash_grid.borrow_mut().take();
+            cur = n.parent.clone();
+        }
+    }
+
+    /// Signed distance to the object's ink grid (negative inside). Builds and
+    /// caches the raster on first call.
+    pub fn ink_signed(&self, id: &str, x: f64, y: f64) -> Option<f64> {
+        self.ensure_clash_grid(id)?;
+        let n = self.nodes.get(id)?;
+        n.clash_grid.borrow().as_ref().map(|g| g.signed_at(x, y))
+    }
+
+    fn ensure_clash_grid(&self, id: &str) -> Option<()> {
+        let n = self.nodes.get(id)?;
+        if n.clash_grid.borrow().is_some() {
+            return Some(());
+        }
+        // Groups without owned ink keep AABB/leaf clash; Chem (and any node
+        // that called add_ink) rasterizes descendant primitives + owned ink.
+        if n.ink.is_empty() && n.object_type != ObjectType::Chem {
+            return None;
+        }
+        let stamps = self.collect_ink_stamps(id);
+        if stamps.is_empty() {
+            return None;
+        }
+        *n.clash_grid.borrow_mut() = ClashGrid::from_stamps(&stamps);
+        n.clash_grid.borrow().as_ref().map(|_| ())
+    }
+
+    fn collect_ink_stamps(&self, id: &str) -> Vec<InkStamp> {
+        let Some(n) = self.nodes.get(id) else {
+            return Vec::new();
+        };
+        let mut stamps = Vec::new();
+        for s in &n.ink {
+            if let Some(t) = shape_to_stamp(s) {
+                stamps.push(t);
+            }
+        }
+        let mut stack = n.children.clone();
+        while let Some(cid) = stack.pop() {
+            let Some(c) = self.nodes.get(&cid) else {
+                continue;
+            };
+            stack.extend(c.children.iter().cloned());
+            for s in &c.ink {
+                if let Some(t) = shape_to_stamp(s) {
+                    stamps.push(t);
+                }
+            }
+            if c.children.is_empty() {
+                let s = c.world_shape();
+                if primitive_leaf(&s) {
+                    if let Some(t) = shape_to_stamp(&s) {
+                        stamps.push(t);
+                    }
+                }
+            }
+        }
+        stamps
+    }
+
+    fn ink_signed_shape(&self, id: &str, s: &Shape) -> Option<f64> {
+        match s {
+            Shape::Point { x, y } => self.ink_signed(id, *x, *y),
+            Shape::Circle { cx, cy, r, .. } => self.ink_signed(id, *cx, *cy).map(|d| d - r),
+            other => {
+                let a = other.aabb();
+                let samples = [
+                    (a.x0, a.y0),
+                    (a.x1, a.y0),
+                    (a.x0, a.y1),
+                    (a.x1, a.y1),
+                    a.center(),
+                ];
+                let mut best = f64::INFINITY;
+                let mut any = false;
+                for (x, y) in samples {
+                    if let Some(d) = self.ink_signed(id, x, y) {
+                        best = best.min(d);
+                        any = true;
+                    }
+                }
+                any.then_some(best)
             }
         }
     }
@@ -1083,7 +1233,10 @@ fn constraint_energy(world: &LayoutWorld, c: &Constraint) -> f64 {
                 Some(p) => p,
                 None => return 0.0,
             };
-            let d = edge_signed_distance(&sa, &sb);
+            let d = world
+                .ink_signed_shape(b, &sa)
+                .or_else(|| world.ink_signed_shape(a, &sb))
+                .unwrap_or_else(|| edge_signed_distance(&sa, &sb));
             strength * hinge_below(d, *clash_dist)
         }
         Constraint::Inside {
@@ -1321,6 +1474,12 @@ pub fn hard_g(world: &LayoutWorld, h: &HardConstraint) -> f64 {
                 Some(p) => p,
                 None => return 0.0,
             };
+            if let Some(d) = world.ink_signed_shape(b, &sa) {
+                return clash_dist - d;
+            }
+            if let Some(d) = world.ink_signed_shape(a, &sb) {
+                return clash_dist - d;
+            }
             clash_dist - edge_signed_distance(&sa, &sb)
         }
         HardConstraint::Inside { a, b, pad, .. } => {
