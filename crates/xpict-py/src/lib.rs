@@ -8,11 +8,9 @@ use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 use pyo3::types::PyModule;
 use xpict_core::bonds;
-use xpict_core::depict;
 use xpict_core::geom::{self, Shape as CoreShape};
 use xpict_core::metrics;
 use xpict_core::plotdot::PlotDot;
-use xpict_core::scene::MoleculeIn;
 
 /// Parallel spacing for double/triple strokes (RDKit `multipleBondOffset`).
 #[pyfunction]
@@ -32,33 +30,6 @@ fn scene_to_svg(scene_json: &str) -> PyResult<String> {
     xpict_core::scene_to_svg_json(scene_json).map_err(PyRuntimeError::new_err)
 }
 
-/// Paint one molecule: `MoleculeIn` JSON → `Scene` JSON (MVP ABI).
-#[pyfunction]
-fn depict_molecule(molecule_json: &str) -> PyResult<String> {
-    let mol: MoleculeIn = serde_json::from_str(molecule_json)
-        .map_err(|e| PyRuntimeError::new_err(format!("MoleculeIn JSON: {e}")))?;
-    let scene = depict::depict_molecule(&mol);
-    serde_json::to_string(&scene).map_err(|e| PyRuntimeError::new_err(format!("Scene JSON: {e}")))
-}
-
-/// Validate `EdgePlan` JSON (unique ids, structure fields, root align=null).
-#[pyfunction]
-fn validate_edge_plan(plan_json: &str) -> PyResult<String> {
-    let plan: xpict_core::EdgePlan = serde_json::from_str(plan_json)
-        .map_err(|e| PyRuntimeError::new_err(format!("EdgePlan JSON: {e}")))?;
-    plan.validate().map_err(PyRuntimeError::new_err)?;
-    serde_json::to_string(&plan).map_err(|e| PyRuntimeError::new_err(format!("EdgePlan JSON: {e}")))
-}
-
-/// Pass 1: `DepictSpec` JSON → `EdgePlan` JSON (or ``null`` when empty).
-#[pyfunction]
-fn plan_edge(spec_json: &str) -> PyResult<String> {
-    let spec: xpict_core::DepictSpec = serde_json::from_str(spec_json)
-        .map_err(|e| PyRuntimeError::new_err(format!("DepictSpec JSON: {e}")))?;
-    let plan = xpict_core::plan_edge(&spec).map_err(PyRuntimeError::new_err)?;
-    serde_json::to_string(&plan).map_err(|e| PyRuntimeError::new_err(format!("EdgePlan JSON: {e}")))
-}
-
 /// Resolve cascading mol chrome for every mol in document order (spec semantics).
 #[pyfunction]
 fn resolve_depict_chrome(spec_json: &str) -> PyResult<String> {
@@ -67,27 +38,6 @@ fn resolve_depict_chrome(spec_json: &str) -> PyResult<String> {
     let chromes = spec.resolve_all_mol_chrome();
     serde_json::to_string(&chromes)
         .map_err(|e| PyRuntimeError::new_err(format!("MolOpts JSON: {e}")))
-}
-
-/// Pass 2: `DepictSpec` + `EdgeResult` JSON → list of `{id, molecule, scene}`.
-#[pyfunction]
-fn render_doc(spec_json: &str, edge_json: &str) -> PyResult<String> {
-    let spec: xpict_core::DepictSpec = serde_json::from_str(spec_json)
-        .map_err(|e| PyRuntimeError::new_err(format!("DepictSpec JSON: {e}")))?;
-    let edge: xpict_core::EdgeResult = serde_json::from_str(edge_json)
-        .map_err(|e| PyRuntimeError::new_err(format!("EdgeResult JSON: {e}")))?;
-    let painted = xpict_core::render_doc(&spec, &edge).map_err(PyRuntimeError::new_err)?;
-    let rows: Vec<serde_json::Value> = painted
-        .into_iter()
-        .map(|p| {
-            serde_json::json!({
-                "id": p.id,
-                "molecule": p.molecule,
-                "scene": p.scene,
-            })
-        })
-        .collect();
-    serde_json::to_string(&rows).map_err(|e| PyRuntimeError::new_err(format!("DocPaint JSON: {e}")))
 }
 
 /// Compose a reaction scheme Scene from DepictSpec + DocPaint JSON rows.
@@ -926,12 +876,8 @@ fn align_molecule_constrained(
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(multi_bond_offset, m)?)?;
     m.add_function(wrap_pyfunction!(centered_displacements, m)?)?;
-    m.add_function(wrap_pyfunction!(depict_molecule, m)?)?;
     m.add_function(wrap_pyfunction!(scene_to_svg, m)?)?;
-    m.add_function(wrap_pyfunction!(validate_edge_plan, m)?)?;
-    m.add_function(wrap_pyfunction!(plan_edge, m)?)?;
     m.add_function(wrap_pyfunction!(resolve_depict_chrome, m)?)?;
-    m.add_function(wrap_pyfunction!(render_doc, m)?)?;
     m.add_function(wrap_pyfunction!(compose_scheme, m)?)?;
     m.add_function(wrap_pyfunction!(depict_doc, m)?)?;
     m.add_function(wrap_pyfunction!(element_symbol, m)?)?;
@@ -986,8 +932,6 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("OFFSET_PX", metrics::OFFSET_PX)?;
     m.add("STROKE_PX", metrics::STROKE_PX)?;
     m.add("SHADE_FRAC", metrics::SHADE_FRAC)?;
-    m.add("HAS_ELK", true)?;
-    m.add("HAS_GEOM", true)?;
     m.add("KINK_PX", xpict_core::KINK_PX)?;
     m.add("TURN_RADIUS", xpict_core::TURN_RADIUS)?;
     m.add(
@@ -998,7 +942,6 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
         "DEFAULT_LAYER_SPACING",
         xpict_core::LayoutOpts::DEFAULT_LAYER_SPACING,
     )?;
-    m.add("HAS_FONT", true)?;
     m.add("HAS_COORDGEN", true)?;
     Ok(())
 }

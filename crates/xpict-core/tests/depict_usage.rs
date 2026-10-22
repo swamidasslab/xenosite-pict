@@ -101,8 +101,6 @@ fn ethanol_oh_and_single_bonds() {
         bond_shade: None,
         shade_vmin: None,
         shade_vmax: None,
-        mark_atoms: vec![],
-        mark_bonds: vec![],
         weight: 1.0,
         scale: 1.0,
         aromatic: Default::default(),
@@ -136,8 +134,6 @@ fn braced_rgroup_markup_subscripts_on_star() {
         bond_shade: None,
         shade_vmin: None,
         shade_vmax: None,
-        mark_atoms: vec![],
-        mark_bonds: vec![],
         weight: 1.0,
         scale: 1.0,
         aromatic: Default::default(),
@@ -167,8 +163,6 @@ fn amine_nh2_subscript_in_scene() {
         bond_shade: None,
         shade_vmin: None,
         shade_vmax: None,
-        mark_atoms: vec![],
-        mark_bonds: vec![],
         weight: 1.0,
         scale: 1.0,
         aromatic: Default::default(),
@@ -198,8 +192,6 @@ fn ammonium_charge_superscript() {
         bond_shade: None,
         shade_vmin: None,
         shade_vmax: None,
-        mark_atoms: vec![],
-        mark_bonds: vec![],
         weight: 1.0,
         scale: 1.0,
         aromatic: Default::default(),
@@ -239,8 +231,6 @@ fn markush_and_star_markup_labels() {
         bond_shade: None,
         shade_vmin: None,
         shade_vmax: None,
-        mark_atoms: vec![],
-        mark_bonds: vec![],
         weight: 1.0,
         scale: 1.0,
         aromatic: Default::default(),
@@ -280,8 +270,6 @@ fn bare_underscore_alias_not_subscripted() {
         bond_shade: None,
         shade_vmin: None,
         shade_vmax: None,
-        mark_atoms: vec![],
-        mark_bonds: vec![],
         weight: 1.0,
         scale: 1.0,
         aromatic: Default::default(),
@@ -313,8 +301,6 @@ fn acetone_double_bond_and_carbonyl_label() {
         bond_shade: None,
         shade_vmin: None,
         shade_vmax: None,
-        mark_atoms: vec![],
-        mark_bonds: vec![],
         weight: 1.0,
         scale: 1.0,
         aromatic: Default::default(),
@@ -352,8 +338,6 @@ fn json_abi_roundtrip_then_depict() {
         bond_shade: None,
         shade_vmin: None,
         shade_vmax: None,
-        mark_atoms: vec![1],
-        mark_bonds: vec![],
         weight: 2.0,
         scale: 1.0,
         aromatic: Default::default(),
@@ -370,14 +354,6 @@ fn json_abi_roundtrip_then_depict() {
     let texts = label_texts(&scene);
     assert!(texts.iter().any(|t| t == "OH" || t == "HO"));
     assert!(texts.iter().any(|t| t == "R₁"));
-    // Marks layer present when mark_atoms set.
-    assert!(
-        scene.viewports[0]
-            .layers
-            .iter()
-            .any(|l| l.name == LayerName::Marks && !l.primitives.is_empty()),
-        "expected mark primitives"
-    );
 }
 
 #[test]
@@ -391,8 +367,6 @@ fn empty_molecule_does_not_panic() {
         bond_shade: None,
         shade_vmin: None,
         shade_vmax: None,
-        mark_atoms: vec![],
-        mark_bonds: vec![],
         weight: 1.0,
         scale: 1.0,
         aromatic: Default::default(),
@@ -430,8 +404,6 @@ fn west_oh_flips_to_ho_in_scene() {
         bond_shade: None,
         shade_vmin: None,
         shade_vmax: None,
-        mark_atoms: vec![],
-        mark_bonds: vec![],
         weight: 1.0,
         scale: 1.0,
         aromatic: Default::default(),
@@ -461,8 +433,6 @@ fn mol_weight_changes_oh_path_ink() {
         bond_shade: None,
         shade_vmin: None,
         shade_vmax: None,
-        mark_atoms: vec![],
-        mark_bonds: vec![],
         weight: 1.0,
         scale: 1.0,
         aromatic: Default::default(),
@@ -498,8 +468,6 @@ fn formal_charge_on_nh2_and_silent_carbon() {
         bond_shade: None,
         shade_vmin: None,
         shade_vmax: None,
-        mark_atoms: vec![],
-        mark_bonds: vec![],
         weight: 1.0,
         scale: 1.0,
         aromatic: Default::default(),

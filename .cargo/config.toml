@@ -1,13 +1,8 @@
 # Help rust-lld find libstdc++ (coordgen-sys / C++ on GNU/Linux).
-# Do not set a global CXX — `g++ --target=wasm32-unknown-unknown` has no <map>.
 # Wasm CoordGen is compiled with em++ (see crates/coordgen-sys/build.rs).
 
 [target.x86_64-unknown-linux-gnu]
 rustflags = ["-C", "link-arg=-L/usr/lib/gcc/x86_64-linux-gnu/13"]
-
-# canonaut → rand → getrandom on wasm: use the JS backend (see xpict-wasm).
-[target.wasm32-unknown-unknown]
-rustflags = ["--cfg", 'getrandom_backend="wasm_js"']
 
 # CoordGen is C++; rustc's default emcc linker misses libc++ (`-sDEFAULT_TO_CXX`).
 # MODULARIZE+EXPORT_ES6: JS factory used by js/src/native.ts.
@@ -19,6 +14,6 @@ rustflags = [
     "-C", "link-arg=-sEXPORT_ES6=1",
     "-C", "link-arg=-sENVIRONMENT=web,node",
     "-C", "link-arg=-sALLOW_MEMORY_GROWTH=1",
-    "-C", "link-arg=-sEXPORTED_FUNCTIONS=_xpict_render,_xpict_depict_molecule,_xpict_scene_to_svg,_xpict_string_free,_free",
+    "-C", "link-arg=-sEXPORTED_FUNCTIONS=_xpict_render,_xpict_scene_to_svg,_xpict_string_free,_free",
     "-C", "link-arg=-sEXPORTED_RUNTIME_METHODS=UTF8ToString,stringToNewUTF8",
 ]

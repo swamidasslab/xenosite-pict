@@ -49,9 +49,8 @@
     "build:copy-wasm": "bash scripts/copy-wasm.sh",
     "build": "npm run build:wasm && npm run build:ts && npm run build:copy-wasm",
     "check": "tsc -p tsconfig.json --noEmit --strict",
-    "check:pocs": "tsc --strict --module ES2022 --moduleResolution bundler --target ES2022 --esModuleInterop --skipLibCheck --types node --noEmit pocs/elk_layout.ts",
     "test:api": "tsx src/api.smoke.ts && tsx src/align.smoke.ts && tsx src/scheme.smoke.ts",
-    "test": "npm run check && npm run check:pocs && npm run test:api",
+    "test": "npm run check && npm run test:api",
     "build:pages": "bash ../scripts/build_pages.sh",
     "prepack": "npm run build:ts && npm run build:copy-wasm"
   },
@@ -60,8 +59,5 @@
     "tsx": "^4.23.15",
     "typedoc": "^0.28.20",
     "typescript": "^5.6.0"
-  },
-  "optionalDependencies": {
-    "elkjs": "^0.9.3"
   }
 }

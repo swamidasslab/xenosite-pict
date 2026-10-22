@@ -65,7 +65,7 @@ export type Rendered = {
   height: number;
   /** ViewBox / SCALE positions — match scene / SVG ink. */
   svg_coords: SvgAtom[];
-  /** SCALE layout (mean bond ≈ 20), before viewBox pad. */
+  /** SCALE layout (mean bond = 30), before viewBox pad. */
   coords: SvgAtom[];
   bonds: SvgBond[];
   /** Editable scene document (paths, circles, …). */
@@ -88,8 +88,6 @@ export type MolRenderOptions = {
   shade_vmin?: number;
   /** Shade window high (default 1). Not inferred from data. */
   shade_vmax?: number;
-  mark_atoms?: number[];
-  mark_bonds?: Array<[number, number]>;
   /**
    * Labels for ``*`` atoms in layout encounter order.
    * ``null`` / ``"*"`` → bare star glyph; other strings (e.g. ``R1``) replace it.

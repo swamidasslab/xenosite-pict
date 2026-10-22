@@ -56,21 +56,6 @@ fn cx_star_labels_by_index() {
 }
 
 #[test]
-fn mark_atoms_land_in_scene() {
-    let mut m = mol("CCO").unwrap();
-    let r = m
-        .render(MolRenderOptions {
-            mark_atoms: Some(vec![2]),
-            color: Some("#0b6e4f".into()),
-            ..Default::default()
-        })
-        .unwrap();
-    let svg = r.to_svg();
-    assert!(svg.contains("circle") || svg.contains("path"), "{svg}");
-    assert!(!r.molecule.mark_atoms.is_empty());
-}
-
-#[test]
 fn circle_bonds_land_in_svg() {
     use xpict::{CircleField, CircleSpec, StrokeSpec};
 

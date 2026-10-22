@@ -766,8 +766,6 @@ mod tests {
             bond_shade: None,
             shade_vmin: None,
             shade_vmax: None,
-            mark_atoms: vec![],
-            mark_bonds: vec![],
             scale: 1.0,
             weight: 1.0,
             aromatic: Default::default(),

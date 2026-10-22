@@ -4,7 +4,7 @@ Browser / Node bindings for [`xpict-core`](../xpict-core) via **Emscripten**
 (`wasm32-unknown-emscripten`). CoordGen is C++; `em++` is the C++ compiler and
 linker so Rust and CoordGen share one wasm linear memory.
 
-**Surface:** `xpict_render` / `xpict_depict_molecule` (C ABI; DepictSpec JSON →
+**Surface:** `xpict_render` / `xpict_scene_to_svg` (C ABI; DepictSpec JSON →
 `Rendered[]` JSON). JS `native.ts` wraps that as `renderJson`. The public npm
 package is `xpict.mol` / `render` / `depict` / `toSvg`.
 

@@ -56,8 +56,12 @@ fn main() {
     let is_wasm = target.starts_with("wasm32");
 
     if is_wasm {
-        // em++ only supports wasm32-unknown-emscripten (not unknown-unknown).
-        // Drive C++ with em++ and skip cc-rs's --target=wasm32-unknown-unknown.
+        if !is_emscripten {
+            panic!(
+                "CoordGen wasm is wasm32-unknown-emscripten only (em++). \
+                 Install emsdk and source emsdk_env.sh, or set EMSDK. See scripts/ensure_emsdk.sh."
+            );
+        }
         let emxx = find_emxx().unwrap_or_else(|| {
             panic!(
                 "CoordGen wasm needs em++ (emscripten). Install emsdk and source emsdk_env.sh, \
@@ -66,12 +70,6 @@ fn main() {
         });
         println!("cargo:warning=coordgen-sys wasm C++ via {}", emxx.display());
         build.compiler(&emxx);
-        if !is_emscripten {
-            build.no_default_flags(true);
-            build.flag("-std=c++11");
-            build.flag("-w");
-            build.flag("-DSTATIC_COORDGEN");
-        }
         // Match rustc's `-fwasm-exceptions` (not sjlj / `-fexceptions`).
         build.flag("-fwasm-exceptions");
         // rustc cdylib on emscripten is a SIDE_MODULE; objects need PIC.

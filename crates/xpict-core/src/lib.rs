@@ -1,9 +1,7 @@
 //! Shared depiction core for **xpict**.
 //!
-//! Python under `python/xpict/` is still the working engine. This crate holds
-//! algorithms we are ready to share with PyO3 and WASM — start small, move
-//! modules as they stabilize. See the crate `README.md` for the migration
-//! rule.
+//! Product path: [`doc::render`] (`DepictSpec` → `Rendered[]`). Language
+//! wrappers call this crate; they do not reimplement layout, paint, or SVG.
 
 #![forbid(unsafe_code)]
 

@@ -180,7 +180,7 @@ chemical MCS alignment).
 | Runtime | Path |
 | --- | --- |
 | Python | `_native.elk_layout_json` (elkrs) → row/grid fallback |
-| Browser | npm `elkjs` for now; WASM builds **without** `elk` (~60 KB depict blob) |
+| Browser | same `elkrs` in the emscripten wasm blob |
 
 Same ELK JSON + orthogonal edge `sections`. Coordinates follow Java ELK 0.11,
 not bit-identical to elkjs 0.9. Needs **Rust ≥ 1.85**.

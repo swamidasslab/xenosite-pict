@@ -50,8 +50,6 @@ build_wasm() {
   # emcc embeds the cargo binary name; rewrite so the checked-in blob matches.
   perl -i -pe 's/xpict_wasm\.wasm/xpict_core.wasm/g' "$ROOT/js/src/wasm/xpict_core.js"
   rm -f "$ROOT/js/src/wasm/xpict_wasm.wasm"
-  rm -f js/src/wasm/.gitignore js/src/wasm/package.json js/src/wasm/README.md \
-    js/src/wasm/xpict_core_bg.wasm js/src/wasm/xpict_core_bg.wasm.d.ts
 }
 
 case "$target" in

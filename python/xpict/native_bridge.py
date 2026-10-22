@@ -7,8 +7,6 @@ from typing import cast
 
 from xpict.contracts.depict import DepictSpec as WireDepictSpec
 from xpict.contracts.depict_dict import DepictSpecDict, MolOptsPatchDict
-from xpict.contracts.edge import EdgePlan, EdgeResult
-from xpict.contracts.edge_dict import EdgePlanDict, EdgeResultDict
 from xpict.contracts.rendered_dict import DocPaintDict, RenderedDict
 from xpict.contracts.scene import Scene
 from xpict.contracts.scene_dict import SceneDict
@@ -22,11 +20,9 @@ except ImportError as e:  # pragma: no cover
     ) from e
 
 DepictSpecLike = WireDepictSpec | DepictSpecDict | str
-EdgePlanLike = EdgePlan | EdgePlanDict | str
-EdgeResultLike = EdgeResult | EdgeResultDict | str
 
 
-def _as_json(obj: DepictSpecLike | EdgePlanLike | EdgeResultLike) -> str:
+def _as_json(obj: DepictSpecLike) -> str:
     if isinstance(obj, str):
         return obj
     dump = getattr(obj, "model_dump", None)
@@ -35,33 +31,11 @@ def _as_json(obj: DepictSpecLike | EdgePlanLike | EdgeResultLike) -> str:
     return json.dumps(obj)
 
 
-def validate_edge_plan(plan: EdgePlanLike) -> EdgePlanDict:
-    """Structural checks via Rust core."""
-    return cast(EdgePlanDict, json.loads(_rust.validate_edge_plan(_as_json(plan))))
-
-
-def plan_edge(spec: DepictSpecLike) -> EdgePlanDict | None:
-    """Pass 1: DepictSpec → EdgePlan (Rust core). ``None`` when empty."""
-    raw = _rust.plan_edge(_as_json(spec))
-    return cast(EdgePlanDict | None, json.loads(raw))
-
-
 def resolve_depict_chrome(spec: DepictSpecLike) -> list[MolOptsPatchDict]:
     """Resolve cascading mol opts in document order (Rust DepictSpec semantics)."""
     return cast(
         list[MolOptsPatchDict],
         json.loads(_rust.resolve_depict_chrome(_as_json(spec))),
-    )
-
-
-def render_doc(spec: DepictSpecLike, edge: EdgeResultLike) -> list[RenderedDict]:
-    """Pass 2: DepictSpec + EdgeResult → DocPaint rows (Rust core).
-
-    Prefer :func:`depict` for the product path (plan + edge + paint in one call).
-    """
-    return cast(
-        list[RenderedDict],
-        json.loads(_rust.render_doc(_as_json(spec), _as_json(edge))),
     )
 
 

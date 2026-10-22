@@ -159,8 +159,6 @@ class MolRenderOptions:
     color: str | None = None
     atom_shade: list[float] | None = None
     bond_shade: list[float] | None = None
-    mark_atoms: list[int] | None = None
-    mark_bonds: list[tuple[int, int]] | None = None
     circle: CircleField | None = None
     star_labels: list[str | None] | None = None
     weight: float | None = None

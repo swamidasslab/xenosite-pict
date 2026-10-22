@@ -93,16 +93,8 @@ See [`layout-notes.md`](layout-notes.md).
 
 ## Diagram layout (ELK → elkrs)
 
-Network / reaction viewport placement moves into Rust via **`elkrs`**
-(`xpict-core` feature `elk`, default on for the lib / PyO3):
-
-| Edge | API |
-| --- | --- |
-| Python | `_native.elk_layout_json(graph_json) -> str` |
-| JS / WASM | npm `elkjs`; `xpict-wasm` uses `default-features = false` (no ELK/geom in the depict blob) |
-
-Python synthesizes the ELK graph in `diagram/elk.py` and calls native only
-(jsrun removed).
+Network / reaction viewport placement lives in Rust via **`elkrs`**
+(always linked, including wasm). Hosts pass `DepictSpec`; they do not run ELK.
 
 ## Scene document (shared depict → Rust SVG)
 

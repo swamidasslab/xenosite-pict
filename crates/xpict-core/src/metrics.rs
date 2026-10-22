@@ -44,23 +44,6 @@ pub const LABEL_GAP_FRAC: f64 = 0.05;
 pub const SHADE_FRAC: f64 = 0.72;
 /// Shared PlotDot base when atom **and** bond scores paint (8/9 of [`SHADE_FRAC`]).
 pub const SHADE_BOTH_FRAC: f64 = SHADE_FRAC * 8.0 / 9.0;
-pub const MARK_FRAC: f64 = 1.0;
-/// xenopict mark layer: `stroke-width: scale * 0.1`, opacity 0.7.
-///
-/// Kept absolute (not stem-keyed): xenopict bonds and marks both used
-/// ``scale * 0.1``, but xpict bond ink is thinner (Liberation stem). Marks
-/// still match xenopict's publication ring weight.
-pub const MARK_STROKE_FRAC: f64 = 0.1;
-/// xenopict mark halo (`<use>`): `stroke-width: scale * 0.2`, opacity 0.45.
-pub const MARK_HALO_STROKE_FRAC: f64 = 0.2;
-pub const MARK_OPACITY: f64 = 0.7;
-pub const MARK_HALO_OPACITY: f64 = 0.45;
-/// xenopict mark halo `<use stroke="#555">`.
-///
-/// Mark ink has stroke-width/opacity but **no** stroke color (xenopict leaves
-/// that for host CSS on `.mark`). Xpict does not style by class: the visible
-/// ring is this baked halo attribute; ink stays uncolored.
-pub const MARK_HALO_COLOR: &str = "#555";
 /// Fake-subscript scale for H-counts (RDKit ``DrawText::SUBS_SCALE``).
 pub const SUBSCRIPT_SCALE: f64 = 0.66;
 
@@ -90,8 +73,6 @@ pub const LABEL_GAP_PX: f64 = LABEL_GAP_FRAC * BOND_PX;
 /// Halo outline grow (half the label-gap air) + soft white fill.
 pub const HALO_GAP_PX: f64 = 0.5 * LABEL_GAP_PX;
 pub const HALO_OPACITY: f64 = 0.5;
-pub const MARK_STROKE_PX: f64 = MARK_STROKE_FRAC * BOND_PX;
-pub const MARK_HALO_STROKE_PX: f64 = MARK_HALO_STROKE_FRAC * BOND_PX;
 
 /// Absolute ink multiplier at user-facing ``weight = 1`` (house look).
 ///

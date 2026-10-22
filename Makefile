@@ -99,8 +99,8 @@ test-js: ## JS check + build + API smoke (runs npm ci)
 	@$(MAKE) js-ci
 
 .PHONY: js-check
-js-check: ## tsc --strict (+ pocs); assumes js-deps already
-	cd "$(ROOT)/js" && npm run check && npm run check:pocs
+js-check: ## tsc --strict; assumes js-deps already
+	cd "$(ROOT)/js" && npm run check
 
 .PHONY: js-test-api
 js-test-api: ## JS API smoke scripts; assumes build

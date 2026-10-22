@@ -8,7 +8,7 @@ import type { SpokeIn } from "./SpokeIn";
 /**
  * One molecule ready to paint (coords already in SVG / ``SCALE`` space).
  *
- * MVP extras: optional per-atom / per-bond shade scores and mark indices.
+ * Publication circles live on the document ``MolNode.circle`` overlay, not here.
  */
 export type MoleculeIn = { id?: string, atoms: Array<AtomIn>, bonds: Array<BondIn>, 
 /**
@@ -31,14 +31,6 @@ shade_vmin?: number,
  * Shade colormap window high (default ``1``). Not inferred from data.
  */
 shade_vmax?: number, 
-/**
- * Atom indices to circle (publication marks).
- */
-mark_atoms: Array<number>, 
-/**
- * Bond endpoint index pairs to circle/stroke-mark.
- */
-mark_bonds: Array<[number, number]>, 
 /**
  * Uniform diagram scale (font, stroke, pad, geometry). ``1.0`` = house size.
  */

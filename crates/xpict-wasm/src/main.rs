@@ -4,7 +4,6 @@
 fn main() {
     let _keep = (
         xpict_wasm::xpict_render as *const (),
-        xpict_wasm::xpict_depict_molecule as *const (),
         xpict_wasm::xpict_scene_to_svg as *const (),
         xpict_wasm::xpict_string_free as *const (),
     );

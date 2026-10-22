@@ -72,12 +72,6 @@ pub extern "C" fn xpict_render(spec_json: *const c_char) -> *mut c_char {
     }
 }
 
-/// Single mol JSON → spec → [`xpict_render`]. Caller frees with [`xpict_string_free`].
-#[no_mangle]
-pub extern "C" fn xpict_depict_molecule(mol_json: *const c_char) -> *mut c_char {
-    xpict_render(mol_json)
-}
-
 /// Scene JSON → SVG. Caller frees with [`xpict_string_free`].
 #[no_mangle]
 pub extern "C" fn xpict_scene_to_svg(scene_json: *const c_char) -> *mut c_char {

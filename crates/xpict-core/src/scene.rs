@@ -1,15 +1,12 @@
 //! Drawable scene document — engine-neutral primitives shared by Python & JS.
 //!
-//! **MVP:** one molecule → one [`Viewport`] inside a [`Scene`]. Marks (atom/bond
-//! circles) and shade disks are layers on that viewport. Multi-mol diagrams /
-//! ELK are out of scope for the first shared paint path.
+//! One molecule → one [`Viewport`] inside a [`Scene`]. Circle overlays and shade
+//! disks are layers on that viewport. Multi-mol / ELK schemes compose several
+//! viewports into one scene.
 //!
-//! 1. Language edge supplies **coords + chem metadata** (CoordGen / native
-//!    layout + align stay outside this crate).
+//! 1. [`crate::doc::render`] supplies coords + chem metadata (CoordGen + align).
 //! 2. Rust builds a [`Scene`] of typed primitives (paths, circles, …).
 //! 3. [`crate::scene_to_svg`] emits SVG; hosts only wrap (IPython / `<img>`).
-//!
-//! Do not invent new depiction rules here — port proven Python behavior.
 
 use serde::{Deserialize, Serialize};
 
@@ -293,7 +290,7 @@ pub struct BondIn {
 
 /// One molecule ready to paint (coords already in SVG / ``SCALE`` space).
 ///
-/// MVP extras: optional per-atom / per-bond shade scores and mark indices.
+/// Publication circles live on the document ``MolNode.circle`` overlay, not here.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
 #[cfg_attr(feature = "codegen", ts(export))]
@@ -323,12 +320,6 @@ pub struct MoleculeIn {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub shade_vmax: Option<f64>,
-    /// Atom indices to circle (publication marks).
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub mark_atoms: Vec<i32>,
-    /// Bond endpoint index pairs to circle/stroke-mark.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub mark_bonds: Vec<(i32, i32)>,
     /// Uniform diagram scale (font, stroke, pad, geometry). ``1.0`` = house size.
     #[serde(
         default = "default_mol_scale",
@@ -416,8 +407,6 @@ impl Default for MoleculeIn {
             bond_shade: None,
             shade_vmin: None,
             shade_vmax: None,
-            mark_atoms: Vec::new(),
-            mark_bonds: Vec::new(),
             scale: 1.0,
             weight: 1.0,
             aromatic: AromaticStyle::default(),

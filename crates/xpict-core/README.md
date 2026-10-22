@@ -4,15 +4,16 @@ Shared **paint core** for [xpict](https://github.com/swamidasslab/xenosite-pict)
 **declarative molecule depiction** rendered as **publication-quality vector
 graphics** (SVG paths). Used from Rust, Python, and JS/WASM.
 
-**No RDKit** in this crate — layout stays at language edges.
+Layout (CoordGen) and scheme packing (ELK) live in this crate. Hosts are
+bindings + language display only.
 
 | Capability | Status |
 | --- | --- |
-| Kekulé bonds, wedges, marks, shade, color | Shipped |
+| Kekulé bonds, wedges, circle overlays, shade, color | Shipped |
 | Atom labels + chem markup (`$R_1$`, `R^2`, `\alpha`, bold/italic) | Shipped |
 | Halo / glyph outlines (Liberation Sans) | Shipped |
-| Document two-pass (`plan_edge` / `render_doc`) + CX chrome | Shipped |
-| Multi-mol / ELK / reactions | Design only (`xpict.future`) |
+| `render(DepictSpec)` (layout + mol-spec paint + pack) | Shipped |
+| Multi-mol / ELK / `reaction_scheme` | Shipped |
 
 ```bash
 cargo test -p xpict-core

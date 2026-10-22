@@ -12,7 +12,7 @@ def test_mol_constructs():
     assert m.source == "CCO"
 
 
-def test_circle_bonds_paint_capsule():
+def test_circle_bonds_paint_midpoint_circle():
     svg = render(
         mol("CCO"),
         MolRenderOptions(

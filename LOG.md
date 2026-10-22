@@ -2,6 +2,8 @@
 
 ## 2026-10-21
 
+- Dropped leftover xenopict `MoleculeIn.mark_*` / host `MolRenderOptions.mark_*` (never reached CircleSpec). Publication marks are `circle` overlays only. Removed JS SVG stub, unused frame math, elkjs POC, and the `xpict_depict_molecule` C alias.
+
 - Product 0.6.1: `circle.bonds` midpoint circles; ELK scheme ports slide toward the other mol (`PORT_POSITION`).
 
 - ELK scheme default: `portConstraints=FIXED_SIDE` and network-simplex `nodeFlexibility=PORT_POSITION` so dummy ports slide along the flow side toward the other mol (straighter arrows).

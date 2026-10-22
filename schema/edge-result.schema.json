@@ -330,7 +330,7 @@
       ]
     },
     "MoleculeIn": {
-      "description": "One molecule ready to paint (coords already in SVG / ``SCALE`` space).\n\nMVP extras: optional per-atom / per-bond shade scores and mark indices.",
+      "description": "One molecule ready to paint (coords already in SVG / ``SCALE`` space).\n\nPublication circles live on the document ``MolNode.circle`` overlay, not here.",
       "type": "object",
       "required": [
         "atoms",
@@ -410,33 +410,6 @@
             "string",
             "null"
           ]
-        },
-        "mark_atoms": {
-          "description": "Atom indices to circle (publication marks).",
-          "type": "array",
-          "items": {
-            "type": "integer",
-            "format": "int32"
-          }
-        },
-        "mark_bonds": {
-          "description": "Bond endpoint index pairs to circle/stroke-mark.",
-          "type": "array",
-          "items": {
-            "type": "array",
-            "items": [
-              {
-                "type": "integer",
-                "format": "int32"
-              },
-              {
-                "type": "integer",
-                "format": "int32"
-              }
-            ],
-            "maxItems": 2,
-            "minItems": 2
-          }
         },
         "scale": {
           "description": "Uniform diagram scale (font, stroke, pad, geometry). ``1.0`` = house size.",

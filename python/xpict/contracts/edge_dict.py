@@ -101,8 +101,6 @@ class MoleculeInDict(TypedDict, total=False):
     debug_align: NotRequired[bool]
     debug_box: NotRequired[bool]
     id: NotRequired[str]
-    mark_atoms: NotRequired[list[int]]
-    mark_bonds: NotRequired[list[tuple[int, int]]]
     scale: NotRequired[float]
     shade_vmax: NotRequired[float]
     shade_vmin: NotRequired[float]

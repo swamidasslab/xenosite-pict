@@ -1,8 +1,7 @@
 //! Compose a reaction scheme into one [`Scene`]: place painted mols + edge overlays.
 //!
-//! Pass 2 ([`super::render_doc`]) paints each molecule independently. This module
-//! lays them out (ELK when available, else a tight row) and strokes edges via
-//! [`crate::arrows`].
+//! [`super::render_doc`] paints each molecule independently. This module lays
+//! them out with ELK (tight row fallback) and strokes edges via [`crate::arrows`].
 
 use std::collections::HashMap;
 
@@ -355,6 +354,7 @@ fn layout_scheme(
 
 fn build_elk_graph(spec: &DepictSpec, layout: &LayoutOpts, sizes: &[(String, f64, f64)]) -> Value {
     let opts = crate::elk::scheme_layout_options(crate::elk::DiagramKind::Reaction, layout);
+    let node_opts = crate::elk::scheme_node_layout_options();
     let children: Vec<Value> = sizes
         .iter()
         .map(|(id, w, h)| {
@@ -362,10 +362,7 @@ fn build_elk_graph(spec: &DepictSpec, layout: &LayoutOpts, sizes: &[(String, f64
                 "id": id,
                 "width": w,
                 "height": h,
-                "layoutOptions": {
-                    "elk.portConstraints": "FIXED_SIDE",
-                    "elk.layered.nodePlacement.networkSimplex.nodeFlexibility": "PORT_POSITION",
-                },
+                "layoutOptions": node_opts.clone(),
             })
         })
         .collect();
@@ -858,8 +855,6 @@ mod tests {
                 bond_shade: None,
                 shade_vmin: None,
                 shade_vmax: None,
-                mark_atoms: vec![],
-                mark_bonds: vec![],
                 scale: 1.0,
                 weight: 1.0,
                 aromatic: Default::default(),

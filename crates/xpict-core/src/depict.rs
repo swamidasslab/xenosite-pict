@@ -1,8 +1,8 @@
 //! Single-molecule depiction: [`MoleculeIn`] → [`Scene`].
 //!
-//! MVP paint path for WASM/Python thin serializers. Caller supplies SVG-space
-//! coords (+ optional shade / marks / atom labels). Shade uses the xenosite
-//! rainbow LUT; halo knocks out white channels through shade for bond/label ink.
+//! Caller supplies SVG-space coords (+ optional shade / atom labels). Shade uses
+//! the xenosite rainbow LUT; halo knocks out white channels through shade for
+//! bond/label ink. Publication circles are [`crate::doc`] chrome on `MolNode`.
 
 use std::collections::HashMap;
 
@@ -14,7 +14,7 @@ use crate::font::FaceStyle;
 use crate::labels::{self, place_backbone};
 use crate::metrics::{
     halo_gap_for_weight, halo_stroke_for_weight, label_weight_grow_px, stroke_px_for_weight,
-    BOND_PX, FONT_PX, HALO_OPACITY, MARK_FRAC, PAD_PX, SHADE_BOTH_FRAC, SHADE_FRAC,
+    BOND_PX, FONT_PX, HALO_OPACITY, PAD_PX, SHADE_BOTH_FRAC, SHADE_FRAC,
 };
 use crate::plotdot::PlotDot;
 use crate::rings::{aromatic_ring_circles, bond_interior_normals, find_sssr, kekule_paint_orders};
@@ -24,7 +24,8 @@ use crate::scene::{
 
 /// Paint one molecule into a single-viewport [`Scene`].
 ///
-/// Layers (bottom → top): shading → bonds → labels → marks.
+/// Layers (bottom → top): shading → bonds → labels. Circle overlays land on
+/// the marks layer from document chrome after this paint.
 /// SVG-frame shift applied by [`depict_molecule`] (chem coords → viewBox ink).
 ///
 /// Chrome paint must use the same `(dx, dy)` so annotations land on atoms.
@@ -44,12 +45,6 @@ pub fn frame_offset(mol: &MoleculeIn) -> (f64, f64) {
         min_y = 0.0;
         max_x = 0.0;
         max_y = 0.0;
-    } else if !mol.mark_atoms.is_empty() {
-        let mark_r = BOND_PX * MARK_FRAC;
-        min_x -= mark_r;
-        min_y -= mark_r;
-        max_x += mark_r;
-        max_y += mark_r;
     }
     let label_pad = FONT_PX * 0.85;
     for a in &mol.atoms {
@@ -95,12 +90,6 @@ pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
         min_y = 0.0;
         max_x = 0.0;
         max_y = 0.0;
-    } else if !mol.mark_atoms.is_empty() {
-        let mark_r = BOND_PX * MARK_FRAC;
-        min_x -= mark_r;
-        min_y -= mark_r;
-        max_x += mark_r;
-        max_y += mark_r;
     }
     let label_pad = FONT_PX * 0.85;
     for a in &mol.atoms {
@@ -256,7 +245,6 @@ pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
     }
 
     let shade_prims = paint_shade(mol, &by_index, dx, dy);
-    let mark_prims = paint_marks(mol, &by_index, dx, dy);
     let halo_prims = paint_halo(
         &bond_strokes_for_halo,
         &label_ink_for_halo,
@@ -307,12 +295,6 @@ pub fn depict_molecule(mol: &MoleculeIn) -> Scene {
         layers.push(Layer {
             name: LayerName::Labels,
             primitives: label_prims,
-        });
-    }
-    if !mark_prims.is_empty() {
-        layers.push(Layer {
-            name: LayerName::Marks,
-            primitives: mark_prims,
         });
     }
     if !debug_prims.is_empty() {
@@ -617,116 +599,6 @@ fn path_points(d: &str) -> Vec<(f64, f64)> {
     out
 }
 
-fn paint_marks(
-    mol: &MoleculeIn,
-    by_index: &HashMap<i32, usize>,
-    dx: f64,
-    dy: f64,
-) -> Vec<Primitive> {
-    use crate::geom::{capsule_polygon, polygon_to_svg_d};
-    use crate::metrics::{
-        MARK_HALO_COLOR, MARK_HALO_OPACITY, MARK_HALO_STROKE_PX, MARK_OPACITY, MARK_STROKE_PX,
-    };
-
-    let mut out = Vec::new();
-    let r = BOND_PX * MARK_FRAC;
-    // xenopict: mark halo via `<use href="#mark" stroke="#555" …>`; mark ink
-    // sits in a separate group with stroke-width scale×0.1 / opacity 0.7 but
-    // **no stroke color** (host CSS on `.mark` may add one). Xpict does not
-    // style by class: bake the visible ring on the halo attrs only. Backbone
-    // color never recolors marks.
-    // shapely `resolution=6` → 24 verts/circle; keep capsules smooth.
-    const CAPSULE_QUAD_SEGS: u32 = 16;
-
-    // Bond capsules (outline path `d`) — xenopict buffers the bond at mark radius.
-    let mut bond_capsules: Vec<(i32, i32, String)> = Vec::new();
-    for &(a, b) in &mol.mark_bonds {
-        let Some(&ia) = by_index.get(&a) else {
-            continue;
-        };
-        let Some(&ib) = by_index.get(&b) else {
-            continue;
-        };
-        let a0 = &mol.atoms[ia];
-        let a1 = &mol.atoms[ib];
-        let d = polygon_to_svg_d(&capsule_polygon(
-            a0.x + dx,
-            a0.y + dy,
-            a1.x + dx,
-            a1.y + dy,
-            r,
-            CAPSULE_QUAD_SEGS,
-        ));
-        if !d.is_empty() {
-            bond_capsules.push((a, b, d));
-        }
-    }
-
-    // Halo underlay first (xenopict `<use href="#mark">`: #555, scale*0.2, 0.45).
-    for &ai in &mol.mark_atoms {
-        let Some(&i) = by_index.get(&ai) else {
-            continue;
-        };
-        let a = &mol.atoms[i];
-        out.push(Primitive::Circle {
-            cx: a.x + dx,
-            cy: a.y + dy,
-            r,
-            fill: Some("none".into()),
-            stroke: Some(MARK_HALO_COLOR.into()),
-            stroke_width: MARK_HALO_STROKE_PX,
-            opacity: MARK_HALO_OPACITY,
-            class: Some(format!("atom-{ai} mark-halo")),
-        });
-    }
-    for (a, b, d) in &bond_capsules {
-        out.push(Primitive::Path {
-            d: d.clone(),
-            stroke: Some(MARK_HALO_COLOR.into()),
-            fill: Some("none".into()),
-            stroke_width: MARK_HALO_STROKE_PX,
-            opacity: MARK_HALO_OPACITY,
-            stroke_dasharray: None,
-            stroke_linecap: Some("round".into()),
-            class: Some(format!("bond-mark-halo atom-{a} atom-{b}")),
-            data_text: None,
-        });
-    }
-
-    // Mark ink (xenopict mark group: fill none, stroke-width scale×0.1,
-    // opacity 0.7, **no stroke color**). Visible color is the halo above.
-    for &ai in &mol.mark_atoms {
-        let Some(&i) = by_index.get(&ai) else {
-            continue;
-        };
-        let a = &mol.atoms[i];
-        out.push(Primitive::Circle {
-            cx: a.x + dx,
-            cy: a.y + dy,
-            r,
-            fill: Some("none".into()),
-            stroke: None,
-            stroke_width: MARK_STROKE_PX,
-            opacity: MARK_OPACITY,
-            class: Some(format!("atom-{ai} mark")),
-        });
-    }
-    for (a, b, d) in bond_capsules {
-        out.push(Primitive::Path {
-            d,
-            stroke: None,
-            fill: Some("none".into()),
-            stroke_width: MARK_STROKE_PX,
-            opacity: MARK_OPACITY,
-            stroke_dasharray: None,
-            stroke_linecap: Some("round".into()),
-            class: Some(format!("bond-mark atom-{a} atom-{b}")),
-            data_text: None,
-        });
-    }
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -776,8 +648,6 @@ mod tests {
             bond_shade: None,
             shade_vmin: None,
             shade_vmax: None,
-            mark_atoms: vec![],
-            mark_bonds: vec![],
             weight: 1.0,
             scale: 1.0,
             aromatic: Default::default(),
@@ -828,8 +698,6 @@ mod tests {
             bond_shade: None,
             shade_vmin: None,
             shade_vmax: None,
-            mark_atoms: vec![],
-            mark_bonds: vec![],
             weight: 1.0,
             scale: 1.0,
             aromatic: Default::default(),
@@ -879,8 +747,6 @@ mod tests {
             bond_shade: None,
             shade_vmin: None,
             shade_vmax: None,
-            mark_atoms: vec![],
-            mark_bonds: vec![],
             weight: 1.0,
             scale: 1.0,
             aromatic: Default::default(),
@@ -1098,8 +964,6 @@ mod tests {
             bond_shade: None,
             shade_vmin: None,
             shade_vmax: None,
-            mark_atoms: vec![],
-            mark_bonds: vec![],
             weight: 1.0,
             scale: 1.0,
             aromatic: Default::default(),
@@ -1161,8 +1025,6 @@ mod tests {
             bond_shade: None,
             shade_vmin: None,
             shade_vmax: None,
-            mark_atoms: vec![],
-            mark_bonds: vec![],
             weight: 1.0,
             scale: 1.0,
             aromatic: AromaticStyle::Circle,
@@ -1359,15 +1221,13 @@ mod tests {
     }
 
     #[test]
-    fn marks_and_shade_layers() {
+    fn shade_layers() {
         let mut mol = ethanol();
-        mol.mark_atoms = vec![2];
         mol.atom_shade = Some(vec![0.0, 0.0, 0.9]);
         let scene = depict_molecule(&mol);
         let names: Vec<_> = scene.viewports[0].layers.iter().map(|l| l.name).collect();
         assert!(names.contains(&LayerName::Shading));
         assert!(names.contains(&LayerName::Bonds));
-        assert!(names.contains(&LayerName::Marks));
         // Rainbow LUT (not the old coral stub): high score → hot orange-red.
         let shade = scene.viewports[0]
             .layers
@@ -1442,95 +1302,6 @@ mod tests {
             "full-score outer r={max_r}, expected {}×bond",
             SHADE_FRAC
         );
-    }
-
-    #[test]
-    fn mark_circles_match_xenopict_style() {
-        let mut mol = ethanol();
-        mol.mark_atoms = vec![1];
-        mol.mark_bonds = vec![(0, 1)];
-        let scene = depict_molecule(&mol);
-        let marks = scene.viewports[0]
-            .layers
-            .iter()
-            .find(|l| l.name == LayerName::Marks)
-            .expect("marks");
-        let atom = marks.primitives.iter().find_map(|p| match p {
-            Primitive::Circle {
-                r,
-                stroke_width,
-                opacity,
-                class: Some(c),
-                stroke,
-                ..
-            } if c.contains(" mark") && !c.contains("halo") => {
-                Some((*r, *stroke_width, *opacity, stroke.clone()))
-            }
-            _ => None,
-        });
-        let (r, sw, op, stroke) = atom.expect("atom mark");
-        assert!((r - BOND_PX).abs() < 1e-9, "mark radius = scale");
-        assert!(
-            (sw - BOND_PX * 0.1).abs() < 1e-9,
-            "mark stroke = scale*0.1 (xenopict), got {sw}"
-        );
-        assert!((op - 0.7).abs() < 1e-9);
-        assert!(
-            stroke.is_none(),
-            "mark ink has no baked stroke (xenopict); visible color is halo #555"
-        );
-        // Colored backbone must not recolor marks.
-        mol.color = Some("#0b6e4f".into());
-        let scene2 = depict_molecule(&mol);
-        let marks2 = scene2.viewports[0]
-            .layers
-            .iter()
-            .find(|l| l.name == LayerName::Marks)
-            .expect("marks");
-        let ink = marks2.primitives.iter().find_map(|p| match p {
-            Primitive::Circle {
-                stroke,
-                class: Some(c),
-                ..
-            } if c.contains(" mark") && !c.contains("halo") => Some(stroke.clone()),
-            _ => None,
-        });
-        assert_eq!(ink, Some(None), "backbone color must not paint mark ink");
-        let halo = marks.primitives.iter().any(|p| match p {
-            Primitive::Circle {
-                stroke: Some(s),
-                stroke_width,
-                opacity,
-                class: Some(c),
-                ..
-            } => {
-                c.contains("mark-halo")
-                    && s == "#555"
-                    && (*stroke_width - BOND_PX * 0.2).abs() < 1e-9
-                    && (*opacity - 0.45).abs() < 1e-9
-            }
-            _ => false,
-        });
-        assert!(halo, "expected #555 mark halo underlay");
-        let bond = marks.primitives.iter().any(|p| match p {
-            Primitive::Path {
-                d,
-                stroke,
-                stroke_width,
-                opacity,
-                class: Some(c),
-                ..
-            } => {
-                c.contains("bond-mark")
-                    && !c.contains("halo")
-                    && d.contains('Z')
-                    && stroke.is_none()
-                    && (*stroke_width - BOND_PX * 0.1).abs() < 1e-9
-                    && (*opacity - 0.7).abs() < 1e-9
-            }
-            _ => false,
-        });
-        assert!(bond, "bond mark should be a closed capsule outline");
     }
 
     #[test]
@@ -1662,8 +1433,6 @@ mod tests {
             bond_shade: None,
             shade_vmin: None,
             shade_vmax: None,
-            mark_atoms: vec![1],
-            mark_bonds: vec![],
             weight: 1.0,
             scale: 1.0,
             aromatic: Default::default(),
@@ -1677,7 +1446,6 @@ mod tests {
             scene.viewports[0].layers.iter().map(|l| l.name).collect();
         assert!(names.contains(&LayerName::Shading));
         assert!(names.contains(&LayerName::Bonds));
-        assert!(names.contains(&LayerName::Marks));
 
         let shade = scene.viewports[0]
             .layers
@@ -1716,27 +1484,6 @@ mod tests {
         assert!(disks
             .iter()
             .all(|(x, y, _)| (*x - sx).abs() < 1e-9 && (*y - sy).abs() < 1e-9));
-
-        let marks = scene.viewports[0]
-            .layers
-            .iter()
-            .find(|l| l.name == LayerName::Marks)
-            .expect("marks");
-        let mark = marks.primitives.iter().find_map(|p| match p {
-            Primitive::Circle {
-                cx,
-                cy,
-                r,
-                class: Some(c),
-                ..
-            } if c.contains("atom-1") && c.contains(" mark") && !c.contains("halo") => {
-                Some((*cx, *cy, *r))
-            }
-            _ => None,
-        });
-        let (mx, my, mr) = mark.expect("atom-1 mark circle");
-        assert!((mr - BOND_PX).abs() < 1e-9);
-        assert!((mx - sx).abs() < 1e-9 && (my - sy).abs() < 1e-9);
     }
 
     #[test]
@@ -1750,8 +1497,6 @@ mod tests {
             bond_shade: None,
             shade_vmin: None,
             shade_vmax: None,
-            mark_atoms: vec![],
-            mark_bonds: vec![],
             weight: 1.0,
             scale: 1.0,
             aromatic: Default::default(),
@@ -1781,8 +1526,6 @@ mod tests {
             bond_shade: None,
             shade_vmin: None,
             shade_vmax: None,
-            mark_atoms: vec![],
-            mark_bonds: vec![],
             weight: 1.0,
             scale: 1.0,
             aromatic: Default::default(),
@@ -1847,8 +1590,6 @@ mod tests {
             bond_shade: None,
             shade_vmin: None,
             shade_vmax: None,
-            mark_atoms: vec![],
-            mark_bonds: vec![],
             weight: 1.0,
             scale: 1.0,
             aromatic: Default::default(),
@@ -1912,8 +1653,6 @@ mod tests {
             bond_shade: None,
             shade_vmin: None,
             shade_vmax: None,
-            mark_atoms: vec![],
-            mark_bonds: vec![],
             weight: 1.0,
             scale: 1.0,
             aromatic: Default::default(),
@@ -2029,7 +1768,7 @@ mod tests {
     }
 
     #[test]
-    fn skips_bonds_and_marks_with_missing_indices() {
+    fn skips_bonds_with_missing_indices() {
         let mut mol = ethanol();
         mol.bonds.push(BondIn {
             index: 99,
@@ -2039,37 +1778,11 @@ mod tests {
             stereo: None,
             interior: None,
         });
-        mol.mark_atoms = vec![2, 999];
-        mol.mark_bonds = vec![(0, 1), (0, 999)];
         let scene = depict_molecule(&mol);
-        let marks = scene.viewports[0]
+        assert!(scene.viewports[0]
             .layers
             .iter()
-            .find(|l| l.name == LayerName::Marks)
-            .expect("marks");
-        // Valid atom mark (+halo) + bond mark (+halo); missing indices skipped.
-        let atom_marks = marks
-            .primitives
-            .iter()
-            .filter(|p| match p {
-                Primitive::Circle { class: Some(c), .. } => {
-                    c.contains("atom-2") && c.contains(" mark") && !c.contains("halo")
-                }
-                _ => false,
-            })
-            .count();
-        let bond_marks = marks
-            .primitives
-            .iter()
-            .filter(|p| match p {
-                Primitive::Path { class: Some(c), .. } => {
-                    c.contains("bond-mark") && !c.contains("halo")
-                }
-                _ => false,
-            })
-            .count();
-        assert_eq!(atom_marks, 1);
-        assert_eq!(bond_marks, 1);
+            .any(|l| l.name == LayerName::Bonds && !l.primitives.is_empty()));
     }
 
     #[test]
@@ -2090,8 +1803,6 @@ mod tests {
             bond_shade: None,
             shade_vmin: None,
             shade_vmax: None,
-            mark_atoms: vec![],
-            mark_bonds: vec![],
             weight: 1.0,
             scale: 1.0,
             aromatic: Default::default(),

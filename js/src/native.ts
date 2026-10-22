@@ -39,14 +39,12 @@ function wasmRender(specJson: string): string {
 }
 
 /** Load the wasm module (idempotent). Works in browser and Node. */
-export async function initNative(
-  moduleOrPath?: InitInput | { module_or_path: InitInput | Promise<InitInput> } | BufferSource
-): Promise<void> {
+export async function initNative(optsIn?: InitInput | BufferSource): Promise<void> {
   if (ready) return;
   if (!initPromise) {
     initPromise = (async () => {
       const opts: InitInput = {};
-      let arg: unknown = moduleOrPath;
+      const arg: unknown = optsIn;
       if (
         arg === undefined &&
         typeof process !== "undefined" &&
@@ -60,16 +58,6 @@ export async function initNative(
         opts.wasmBinary = new Uint8Array(bytes);
         opts.locateFile = (p) =>
           p.endsWith(".wasm") ? join(here, "wasm", "xpict_core.wasm") : p;
-      } else if (arg && typeof arg === "object" && "module_or_path" in (arg as object)) {
-        const inner = await (arg as { module_or_path: InitInput | Promise<InitInput> })
-          .module_or_path;
-        if (inner && typeof inner === "object" && "wasmBinary" in inner) {
-          Object.assign(opts, inner);
-        } else if (inner instanceof Uint8Array) {
-          opts.wasmBinary = inner;
-        } else if (typeof Buffer !== "undefined" && Buffer.isBuffer(inner)) {
-          opts.wasmBinary = new Uint8Array(inner);
-        }
       } else if (typeof Buffer !== "undefined" && Buffer.isBuffer(arg)) {
         opts.wasmBinary = new Uint8Array(arg);
       } else if (arg instanceof Uint8Array) {
@@ -92,51 +80,6 @@ function requireReady(): void {
   if (!ready) {
     throw new Error("xpict wasm not initialized");
   }
-}
-
-function structureFields(source: string): {
-  smiles?: string;
-  cxsmiles?: string;
-  molfile?: string;
-} {
-  const text = source.trim();
-  if (text.includes("V2000") || text.includes("V3000") || text.split("\n").length >= 4) {
-    return { molfile: text };
-  }
-  if (text.includes("|")) return { cxsmiles: text };
-  return { smiles: text };
-}
-
-/** Wrap a lone mol (source / `{smiles}` / MolNode) as a DepictSpec. */
-export function specFromSingleMol(raw: unknown): Record<string, unknown> {
-  if (typeof raw === "string") {
-    return { type: "mol", ...structureFields(raw) };
-  }
-  if (!raw || typeof raw !== "object") {
-    throw new Error("depictMolecule: expected mol source or DepictSpec");
-  }
-  const o = raw as Record<string, unknown>;
-  const t = o.type;
-  if (t === "mol" || t === "group" || t === "reaction_scheme" || t === "grid") {
-    return o;
-  }
-  if (typeof o.source === "string") {
-    return { type: "mol", ...structureFields(o.source) };
-  }
-  if (o.smiles || o.cxsmiles || o.molfile) {
-    return { type: "mol", ...o };
-  }
-  throw new Error("depictMolecule: expected mol source or DepictSpec");
-}
-
-/**
- * Single mol → spec → {@link renderJson}.
- * Accepts a source string, `{ source }`, `{ smiles|cxsmiles|molfile }`, or a DepictSpec.
- */
-export function depictMolecule(molJson: string): string {
-  requireReady();
-  const spec = specFromSingleMol(JSON.parse(molJson) as unknown);
-  return wasmRender(JSON.stringify(spec));
 }
 
 /** DepictSpec JSON → `Rendered[]` JSON (layout + mol-spec paint + pack). */

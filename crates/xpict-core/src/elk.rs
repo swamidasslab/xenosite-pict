@@ -131,6 +131,17 @@ pub fn scheme_layout_options(kind: DiagramKind, opts: &LayoutOpts) -> BTreeMap<S
     base
 }
 
+/// Per-child options so dummy ports slide along the flow side toward the other mol.
+pub fn scheme_node_layout_options() -> BTreeMap<String, String> {
+    BTreeMap::from([
+        ("elk.portConstraints".into(), "FIXED_SIDE".into()),
+        (
+            "elk.layered.nodePlacement.networkSimplex.nodeFlexibility".into(),
+            "PORT_POSITION".into(),
+        ),
+    ])
+}
+
 /// Lay out an ELK JSON graph string; returns laid-out JSON.
 ///
 /// Errors are returned as strings (invalid JSON, unknown algorithm, …).
@@ -303,40 +314,30 @@ mod tests {
 
     #[test]
     fn port_flexibility_slides_toward_shorter_neighbor() {
-        let input = r#"{
-          "id": "root",
-          "layoutOptions": {
-            "elk.algorithm": "layered",
-            "elk.direction": "RIGHT",
-            "elk.edgeRouting": "ORTHOGONAL",
-            "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
-            "elk.portConstraints": "FIXED_SIDE",
-            "elk.layered.nodePlacement.networkSimplex.nodeFlexibility.default": "PORT_POSITION"
-          },
-          "children": [
-            {
-              "id": "a",
-              "width": 40.0,
-              "height": 20.0,
-              "layoutOptions": {
-                "elk.portConstraints": "FIXED_SIDE",
-                "elk.layered.nodePlacement.networkSimplex.nodeFlexibility": "PORT_POSITION"
-              }
-            },
-            {
-              "id": "b",
-              "width": 40.0,
-              "height": 80.0,
-              "layoutOptions": {
-                "elk.portConstraints": "FIXED_SIDE",
-                "elk.layered.nodePlacement.networkSimplex.nodeFlexibility": "PORT_POSITION"
-              }
-            }
-          ],
-          "edges": [{"id": "e0", "sources": ["a"], "targets": ["b"]}]
-        }"#;
+        let graph_opts = {
+            let mut m = scheme_layout_options(
+                DiagramKind::Network,
+                &LayoutOpts {
+                    edge_routing: Some(crate::doc::EdgeRouting::Orthogonal),
+                    ..Default::default()
+                },
+            );
+            m.insert("elk.algorithm".into(), "layered".into());
+            m
+        };
+        let node_opts = scheme_node_layout_options();
+        let input = serde_json::json!({
+            "id": "root",
+            "layoutOptions": graph_opts,
+            "children": [
+                {"id": "a", "width": 40.0, "height": 20.0, "layoutOptions": node_opts.clone()},
+                {"id": "b", "width": 40.0, "height": 80.0, "layoutOptions": node_opts},
+            ],
+            "edges": [{"id": "e0", "sources": ["a"], "targets": ["b"]}],
+        })
+        .to_string();
         let parsed: serde_json::Value =
-            serde_json::from_str(&layout_json(input).expect("layout")).expect("json");
+            serde_json::from_str(&layout_json(&input).expect("layout")).expect("json");
         let start = &parsed["edges"][0]["sections"][0]["startPoint"];
         let end = &parsed["edges"][0]["sections"][0]["endPoint"];
         let sy = start["y"].as_f64().unwrap();

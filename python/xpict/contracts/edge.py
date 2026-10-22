@@ -115,8 +115,6 @@ class MoleculeIn(StrictModel):
     debug_align: Annotated[bool | None, Field(description='When true, paint alignment correspondence overlays (needs [`Self::align_debug`]).')] = None
     debug_box: Annotated[bool | None, Field(description='When true, paint dashed debug rectangles for label / mol / scene boxes.')] = None
     id: str | None = None
-    mark_atoms: list[int] = Field(default_factory=list, description='Atom indices to circle (publication marks).')
-    mark_bonds: list[tuple[int, int]] = Field(default_factory=list, description='Bond endpoint index pairs to circle/stroke-mark.')
     scale: Annotated[float | None, Field(description='Uniform diagram scale (font, stroke, pad, geometry). ``1.0`` = house size.')] = None
     shade_vmax: Annotated[float | None, Field(description='Shade colormap window high (default ``1``). Not inferred from data.')] = None
     shade_vmin: Annotated[float | None, Field(description='Shade colormap window low (default ``0``). Not inferred from data.')] = None

@@ -183,8 +183,6 @@ pub struct MolRenderOptions {
     pub shade_vmin: Option<f64>,
     /// Shade window high (default ``1`` in paint). Not inferred from data.
     pub shade_vmax: Option<f64>,
-    pub mark_atoms: Option<Vec<i32>>,
-    pub mark_bonds: Option<Vec<(i32, i32)>>,
     /// Atom / bond / ring highlight overlay (same as document ``MolNode.circle``).
     pub circle: Option<xpict_core::CircleField>,
     pub star_labels: Option<Vec<Option<String>>>,
@@ -297,15 +295,6 @@ fn spec_from_mol(source: &str, opts: &MolRenderOptions) -> Result<DepictSpec, Er
     })
 }
 
-fn apply_marks(molecule: &mut MoleculeIn, opts: &MolRenderOptions) {
-    if let Some(ref marks) = opts.mark_atoms {
-        molecule.mark_atoms = marks.clone();
-    }
-    if let Some(ref marks) = opts.mark_bonds {
-        molecule.mark_bonds = marks.clone();
-    }
-}
-
 fn to_coord_list(atoms: &[CoreAtom]) -> Vec<SvgAtom> {
     atoms
         .iter()
@@ -333,7 +322,6 @@ pub fn render(input: &mut Mol, opts: MolRenderOptions) -> Result<Rendered, Error
     let mut painted = rows
         .pop()
         .ok_or_else(|| Error::Message("render returned no molecules".into()))?;
-    apply_marks(&mut painted.molecule, &opts);
     if input.frame_molblock.is_none() && opts.align_to.as_deref().unwrap_or("").is_empty() {
         input.frame_molblock = Some(painted.frame_molblock.clone());
     }
