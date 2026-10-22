@@ -293,19 +293,50 @@ fn shorten_polyline_end(pts: &[Pt], amount: f64) -> (Vec<Pt>, Pt, (f64, f64)) {
     (pts, tip, (ux, uy))
 }
 
-fn filled_arrow_head_d(tip_x: f64, tip_y: f64, ux: f64, uy: f64, size: f64) -> String {
+fn last_path_point(d: &str) -> Option<Pt> {
+    let nums: Vec<f64> = d
+        .split(|c: char| !c.is_ascii_digit() && c != '.' && c != '-')
+        .filter_map(|s| s.parse().ok())
+        .collect();
+    if nums.len() >= 2 {
+        Some((nums[nums.len() - 2], nums[nums.len() - 1]))
+    } else {
+        None
+    }
+}
+
+/// Shaft stroke and arrow head from the same ending: tip is the last route
+/// point; the shaft is trimmed back; the head base *is* that trimmed end.
+fn shaft_and_head(
+    pts: &[Pt],
+    head_size: f64,
+    routing: Option<EdgeRouting>,
+    curve_catmull: bool,
+) -> (String, Pt, Pt, (f64, f64)) {
+    if curve_catmull {
+        let (tip, (ux, uy)) = crate::catmull::open_catmull_end_frame(pts);
+        let d = crate::catmull::centripetal_catmull_rom_open_path_trim_end(pts, head_size);
+        let base = last_path_point(&d).unwrap_or((tip.0 - ux * head_size, tip.1 - uy * head_size));
+        (d, tip, base, (ux, uy))
+    } else {
+        let (shaft, tip, (ux, uy)) = shorten_polyline_end(pts, head_size);
+        let base = *shaft.last().unwrap_or(&tip);
+        (shaft_path_d(&shaft, routing), tip, base, (ux, uy))
+    }
+}
+
+fn filled_arrow_head_d(tip: Pt, base: Pt, size: f64) -> String {
+    let (ux, uy) = unit(tip.0 - base.0, tip.1 - base.1);
     let (px, py) = perp(ux, uy);
-    let bx = tip_x - ux * size;
-    let by = tip_y - uy * size;
     let half = size * 0.55;
     format!(
         "M {:.2} {:.2} L {:.2} {:.2} L {:.2} {:.2} Z",
-        bx + px * half,
-        by + py * half,
-        tip_x,
-        tip_y,
-        bx - px * half,
-        by - py * half
+        base.0 + px * half,
+        base.1 + py * half,
+        tip.0,
+        tip.1,
+        base.0 - px * half,
+        base.1 - py * half
     )
 }
 
@@ -432,29 +463,20 @@ fn harpoon_poly(
     routing: Option<EdgeRouting>,
     curve_catmull: bool,
 ) -> Vec<EdgePrim> {
-    let (shaft, tip, (ux, uy)) = shorten_polyline_end(pts, head_size);
+    let (shaft_d, tip, base, (ux, uy)) = shaft_and_head(pts, head_size, routing, curve_catmull);
     let (px, py) = perp(ux, uy);
     let barb = head_size * 0.55;
-    let bx = tip.0 - ux * head_size;
-    let by = tip.1 - uy * head_size;
     let mut out = Vec::new();
-    if shaft.len() >= 2 {
-        out.push(path_prim(
-            painted_shaft_d(&shaft, routing, curve_catmull),
-            color,
-            "none",
-            width,
-            dashed,
-            class,
-        ));
+    if !shaft_d.is_empty() {
+        out.push(path_prim(shaft_d, color, "none", width, dashed, class));
     }
     out.push(path_prim(
         format!(
             "M {:.2} {:.2} L {:.2} {:.2}",
             tip.0,
             tip.1,
-            bx + px * barb,
-            by + py * barb
+            base.0 + px * barb,
+            base.1 + py * barb
         ),
         color,
         "none",
@@ -515,30 +537,22 @@ pub fn edge_primitives(edge: &EdgePaintIn) -> Vec<EdgePrim> {
             ));
         }
         EdgeArrow::Open => {
-            let (shaft, tip, (ux, uy)) = shorten_polyline_end(&pts, HEAD);
-            if shaft.len() >= 2 {
-                out.push(path_prim(
-                    painted_shaft_d(&shaft, routing, edge.curve_catmull),
-                    color,
-                    "none",
-                    width,
-                    dashed,
-                    &cls,
-                ));
+            let (shaft_d, tip, base, (ux, uy)) =
+                shaft_and_head(&pts, HEAD, routing, edge.curve_catmull);
+            if !shaft_d.is_empty() {
+                out.push(path_prim(shaft_d, color, "none", width, dashed, &cls));
             }
             let (px, py) = perp(ux, uy);
-            let bx = tip.0 - ux * HEAD;
-            let by = tip.1 - uy * HEAD;
             let half = HEAD * 0.55;
             out.push(path_prim(
                 format!(
                     "M {:.2} {:.2} L {:.2} {:.2} L {:.2} {:.2}",
-                    bx + px * half,
-                    by + py * half,
+                    base.0 + px * half,
+                    base.1 + py * half,
                     tip.0,
                     tip.1,
-                    bx - px * half,
-                    by - py * half
+                    base.0 - px * half,
+                    base.1 - py * half
                 ),
                 color,
                 "none",
@@ -548,19 +562,12 @@ pub fn edge_primitives(edge: &EdgePaintIn) -> Vec<EdgePrim> {
             ));
         }
         EdgeArrow::Forward => {
-            let (shaft, tip, (ux, uy)) = shorten_polyline_end(&pts, HEAD);
-            if shaft.len() >= 2 {
-                out.push(path_prim(
-                    painted_shaft_d(&shaft, routing, edge.curve_catmull),
-                    color,
-                    "none",
-                    width,
-                    dashed,
-                    &cls,
-                ));
+            let (shaft_d, tip, base, _) = shaft_and_head(&pts, HEAD, routing, edge.curve_catmull);
+            if !shaft_d.is_empty() {
+                out.push(path_prim(shaft_d, color, "none", width, dashed, &cls));
             }
             out.push(path_prim(
-                filled_arrow_head_d(tip.0, tip.1, ux, uy, HEAD),
+                filled_arrow_head_d(tip, base, HEAD),
                 "none",
                 color,
                 0.0,
@@ -747,6 +754,12 @@ mod tests {
         assert!(
             gap < 1.5,
             "Catmull shaft end ({sx},{sy}) should meet head base ({bx},{by}); gap={gap} shaft={shaft} head={head}"
+        );
+        assert!(
+            (hnums[2] - 80.0).abs() < 0.6 && (hnums[3] - 80.0).abs() < 0.6,
+            "head tip must be the route endpoint, got ({}, {})",
+            hnums[2],
+            hnums[3]
         );
     }
 

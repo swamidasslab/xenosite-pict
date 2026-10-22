@@ -278,41 +278,6 @@ pub fn refine_scheme_edges(
                 strength: RAY_TO_CENTROID,
             });
         }
-        if let Some((px, py)) = edge_label_seed(spec, edge, pts) {
-            // Circle at the glyph center, not the unrotated text AABB: a long
-            // word's box swallows a Catmull bulge so Outside cannot push it off.
-            world.insert(
-                format!("{eid}/label"),
-                &eid,
-                ObjectType::EdgeLabel,
-                Shape::Circle {
-                    cx: px,
-                    cy: py,
-                    r: LABEL_FONT_PX * 0.5,
-                },
-                false,
-            );
-            world.set_rot(
-                &format!("{eid}/label"),
-                readable_deg(tangent_at(pts, px, py)),
-            );
-            cs.push(Constraint::Midpoint {
-                a: format!("{eid}/label"),
-                b: eid.clone(),
-                strength: POSE_STRENGTH,
-            });
-            cs.push(Constraint::Parallel {
-                a: format!("{eid}/label"),
-                b: eid.clone(),
-                strength: 0.8,
-            });
-            hard.push(HardConstraint::MaxDist {
-                a: format!("{eid}/label"),
-                b: eid.clone(),
-                dist: label_shaft_tether(edge.stroke_width),
-                lagrangian: LAGRANGIAN_TETHER,
-            });
-        }
     }
 
     let n_edges = spec.edges().len();
@@ -336,27 +301,6 @@ pub fn refine_scheme_edges(
                 });
             }
         }
-        if world.get(&format!("{a}/label")).is_some() {
-            let self_stroke = spec.edges().get(i).and_then(|e| e.stroke_width);
-            for j in 0..n_edges {
-                if i == j {
-                    continue;
-                }
-                let other_stroke = spec.edges().get(j).and_then(|e| e.stroke_width);
-                hard.push(HardConstraint::Outside {
-                    a: format!("{a}/label"),
-                    b: format!("scheme/edges/e{j}"),
-                    clash_dist: shaft_air(other_stroke),
-                    lagrangian: LAGRANGIAN_CLEAR,
-                });
-            }
-            hard.push(HardConstraint::Outside {
-                a: format!("{a}/label"),
-                b: a.clone(),
-                clash_dist: shaft_air(self_stroke),
-                lagrangian: LAGRANGIAN_CLEAR,
-            });
-        }
     }
 
     let opts = SolveOpts {
@@ -366,6 +310,82 @@ pub fn refine_scheme_edges(
         ..SolveOpts::default()
     };
     let _ = solve(&mut world, &cs, &hard, &opts);
+
+    // Shafts stay put: the arrow is the frozen endpoints. Labels cannot shove them.
+    for (i, pts) in seed_pts.iter().enumerate() {
+        let eid = format!("scheme/edges/e{i}");
+        for k in 0..pts.len() {
+            world.freeze(&format!("{eid}/p{k}"));
+        }
+    }
+
+    let mut label_cs = Vec::new();
+    let mut label_hard = Vec::new();
+    for (i, edge) in spec.edges().iter().enumerate() {
+        let eid = format!("scheme/edges/e{i}");
+        let live = match world.eval_shape(&eid) {
+            Some(Shape::Polyline(p)) if p.len() >= 2 => p,
+            _ => seed_pts[i].clone(),
+        };
+        let Some((px, py)) = edge_label_seed(spec, edge, &live) else {
+            continue;
+        };
+        // Circle at the glyph center, not the unrotated text AABB: a long
+        // word's box swallows a Catmull bulge so Outside cannot push it off.
+        world.insert(
+            format!("{eid}/label"),
+            &eid,
+            ObjectType::EdgeLabel,
+            Shape::Circle {
+                cx: px,
+                cy: py,
+                r: LABEL_FONT_PX * 0.5,
+            },
+            false,
+        );
+        world.set_rot(
+            &format!("{eid}/label"),
+            readable_deg(tangent_at(&live, px, py)),
+        );
+        label_cs.push(Constraint::Midpoint {
+            a: format!("{eid}/label"),
+            b: eid.clone(),
+            strength: POSE_STRENGTH,
+        });
+        label_cs.push(Constraint::Parallel {
+            a: format!("{eid}/label"),
+            b: eid.clone(),
+            strength: 0.8,
+        });
+        label_hard.push(HardConstraint::MaxDist {
+            a: format!("{eid}/label"),
+            b: eid.clone(),
+            dist: label_shaft_tether(edge.stroke_width),
+            lagrangian: LAGRANGIAN_TETHER,
+        });
+        let self_stroke = edge.stroke_width;
+        for j in 0..n_edges {
+            if i == j {
+                continue;
+            }
+            let other_stroke = spec.edges().get(j).and_then(|e| e.stroke_width);
+            label_hard.push(HardConstraint::Outside {
+                a: format!("{eid}/label"),
+                b: format!("scheme/edges/e{j}"),
+                clash_dist: shaft_air(other_stroke),
+                lagrangian: LAGRANGIAN_CLEAR,
+            });
+        }
+        label_hard.push(HardConstraint::Outside {
+            a: format!("{eid}/label"),
+            b: eid,
+            clash_dist: shaft_air(self_stroke),
+            lagrangian: LAGRANGIAN_CLEAR,
+        });
+    }
+    if !label_cs.is_empty() || !label_hard.is_empty() {
+        let _ = solve(&mut world, &label_cs, &label_hard, &opts);
+    }
 
     for i in 0..n_edges {
         let eid = format!("scheme/edges/e{i}");
@@ -1495,5 +1515,72 @@ mod tests {
             (-90.0..=90.0).contains(&rot),
             "upside-down labels must flip 180° after the solve: {rot}"
         );
+    }
+
+    #[test]
+    fn label_solve_cannot_move_shaft_endpoints() {
+        let layout = LayoutOpts::default();
+        let positions = HashMap::from([("A".into(), (0.0, 0.0)), ("B".into(), (0.0, 280.0))]);
+        let sizes = vec![("A".into(), 80.0, 80.0), ("B".into(), 80.0, 80.0)];
+        let paints = vec![
+            chem_paint("A", 80.0, 80.0, 40.0, 40.0),
+            chem_paint("B", 80.0, 80.0, 40.0, 40.0),
+        ];
+        let seed = vec![(40.0, 80.0), (120.0, 180.0), (40.0, 280.0)];
+        let unlabeled = scheme(vec![
+            mol_node("A"),
+            edge_node("A", "B", None),
+            mol_node("B"),
+        ]);
+        let labeled = scheme(vec![
+            mol_node("A"),
+            crate::doc::Node::Text(crate::doc::TextNode {
+                type_: crate::doc::TextNodeKind::Text,
+                id: Some("lab".into()),
+                text: "Glutathionation".into(),
+                color: None,
+                scale: None,
+                opts: None,
+            }),
+            {
+                let mut e = match edge_node("A", "B", Some("lab")) {
+                    crate::doc::Node::Edge(e) => e,
+                    other => panic!("{other:?}"),
+                };
+                e.stroke_width = Some(4.8);
+                crate::doc::Node::Edge(e)
+            },
+            mol_node("B"),
+        ]);
+        let a = refine_scheme_edges(
+            &unlabeled,
+            &layout,
+            &positions,
+            &[Some(seed.clone())],
+            &paints,
+            &sizes,
+        )
+        .edge_paths[0]
+            .clone()
+            .expect("unlabeled");
+        let b = refine_scheme_edges(
+            &labeled,
+            &layout,
+            &positions,
+            &[Some(seed)],
+            &paints,
+            &sizes,
+        )
+        .edge_paths[0]
+            .clone()
+            .expect("labeled");
+        assert_eq!(a.len(), b.len(), "control count {a:?} vs {b:?}");
+        for (p, q) in a.iter().zip(&b) {
+            let d = (p.0 - q.0).hypot(p.1 - q.1);
+            assert!(
+                d < 0.5,
+                "label pass moved a shaft vertex by {d}: {a:?} vs {b:?}"
+            );
+        }
     }
 }

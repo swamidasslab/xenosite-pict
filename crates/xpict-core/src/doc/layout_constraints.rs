@@ -1041,6 +1041,22 @@ impl LayoutWorld {
         self.invalidate_clash(id);
     }
 
+    /// Bake the live pose into `rest` and mark the node immovable.
+    pub fn freeze(&mut self, id: &str) {
+        let pose = match self.get(id) {
+            Some(n) if !n.fixed => n.world_shape(),
+            _ => return,
+        };
+        if let Some(n) = self.nodes.get_mut(id) {
+            n.rest = pose.clone();
+            n.shape = pose;
+            n.tx = 0.0;
+            n.ty = 0.0;
+            n.fixed = true;
+        }
+        self.invalidate_clash(id);
+    }
+
     pub fn set_rot(&mut self, id: &str, rot: f64) {
         if let Some(n) = self.nodes.get_mut(id) {
             if !n.fixed {

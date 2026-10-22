@@ -2,6 +2,8 @@
 
 ## 2026-10-22
 
+- Arrow head is the last route point. The shaft is trimmed back along the same Catmull cubics; the head base *is* that trim, so the two cannot separate. Shaft control points freeze after the first solve; labels cannot shove the arrow.
+
 - Scheme shafts keep ELK endpoints and routing points as the only path DOF. Catmull–Rom is paint (and clash/tangent sampling) through those vertices, not a densified control polyline. Writing samples back as the path collapsed elbows (`simplify_route`) and looked like extra standoff.
 
 - Edge-label rotation is a solver DOF (`Constraint::Parallel` vs the painted tangent, mod 180°). After minimization, upside-down glyphs flip 180° into (−90, 90]. Soft `Midpoint` springs the label to the live arc-length mid of the shaft; Outside still clears the stroke.
