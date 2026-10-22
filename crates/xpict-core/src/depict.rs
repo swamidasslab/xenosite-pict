@@ -514,7 +514,7 @@ fn paint_halo(
     };
 
     for sp in bond_strokes {
-        let pts = path_points(&sp.d);
+        let pts = &sp.pts;
         if pts.len() < 2 {
             continue;
         }
@@ -582,35 +582,6 @@ fn paint_halo(
     _weight: f64,
 ) -> Vec<Primitive> {
     Vec::new()
-}
-
-/// Extract absolute M/L coordinates from a simple path `d` (bond strokes).
-fn path_points(d: &str) -> Vec<(f64, f64)> {
-    let mut out = Vec::new();
-    let mut nums = Vec::new();
-    let mut cur = String::new();
-    let flush_num = |cur: &mut String, nums: &mut Vec<f64>| {
-        if !cur.is_empty() {
-            if let Ok(v) = cur.parse::<f64>() {
-                nums.push(v);
-            }
-            cur.clear();
-        }
-    };
-    for ch in d.chars() {
-        if ch.is_ascii_digit() || ch == '.' || ch == '-' || ch == '+' || ch == 'e' || ch == 'E' {
-            cur.push(ch);
-        } else {
-            flush_num(&mut cur, &mut nums);
-        }
-    }
-    flush_num(&mut cur, &mut nums);
-    for pair in nums.chunks(2) {
-        if pair.len() == 2 {
-            out.push((pair[0], pair[1]));
-        }
-    }
-    out
 }
 
 #[cfg(test)]

@@ -83,6 +83,7 @@ fn fmt2(v: f64) -> String {
 
 fn line_path(x1: f64, y1: f64, x2: f64, y2: f64, class: &str, width: f64) -> StrokePath {
     StrokePath {
+        pts: vec![(x1, y1), (x2, y2)],
         d: format!("M {} {} L {} {}", fmt2(x1), fmt2(y1), fmt2(x2), fmt2(y2)),
         stroke: "#111".into(),
         fill: None,
@@ -95,6 +96,9 @@ fn line_path(x1: f64, y1: f64, x2: f64, y2: f64, class: &str, width: f64) -> Str
 /// One SVG stroke before it becomes a [`Primitive`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct StrokePath {
+    /// Interpolating vertices used to build [`Self::d`]. Halo/clash read these,
+    /// not a scrape of the serialized path.
+    pub pts: Vec<(f64, f64)>,
     pub d: String,
     pub stroke: String,
     pub fill: Option<String>,
@@ -170,6 +174,7 @@ pub fn solid_wedge(x1: f64, y1: f64, x2: f64, y2: f64, half: Option<f64>) -> Str
     let bx = x2 - nx * half;
     let by = y2 - ny * half;
     StrokePath {
+        pts: vec![(x1, y1), (ax, ay), (bx, by)],
         d: format!(
             "M {} {} L {} {} L {} {} Z",
             fmt2(x1),
@@ -248,6 +253,7 @@ fn wavy_bond_sw(
 ) -> StrokePath {
     let (ux, uy, nx, ny, length) = unit(x1, y1, x2, y2);
     let amp = amp.unwrap_or(0.055 * BOND_PX);
+    let mut pts = vec![(x1, y1)];
     let mut parts = vec![format!("M {} {}", fmt2(x1), fmt2(y1))];
     let steps = waves * 2;
     for i in 1..=steps {
@@ -255,9 +261,11 @@ fn wavy_bond_sw(
         let side = if i % 2 == 1 { 1.0 } else { -1.0 };
         let px = x1 + ux * length * t + nx * amp * side;
         let py = y1 + uy * length * t + ny * amp * side;
+        pts.push((px, py));
         parts.push(format!("L {} {}", fmt2(px), fmt2(py)));
     }
     StrokePath {
+        pts,
         d: parts.join(" "),
         stroke: "#111".into(),
         fill: Some("none".into()),

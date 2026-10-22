@@ -49,156 +49,47 @@ pub fn centripetal_catmull_rom_open_path(pts: &[(f64, f64)]) -> String {
     d
 }
 
-/// Last interpolating vertex and unit end-tangent of the open Catmull–Rom.
-///
-/// The filled arrow tip is this point; the shaft is trimmed back along the
-/// same cubics so the head cannot sit off the curve.
+/// Last interpolating vertex and unit last-chord of the open controls.
 pub fn open_catmull_end_frame(pts: &[(f64, f64)]) -> ((f64, f64), (f64, f64)) {
     let pts = dedupe_poly_pts_open(pts);
     match pts.as_slice() {
         [] => ((0.0, 0.0), (1.0, 0.0)),
         [p] => (*p, (1.0, 0.0)),
-        [a, b] => {
-            let l = (b.0 - a.0).hypot(b.1 - a.1).max(1e-9);
-            (*b, ((b.0 - a.0) / l, (b.1 - a.1) / l))
-        }
-        _ => {
-            let tip = *pts.last().unwrap();
-            let mut tan = (1.0, 0.0);
-            for_open_cubics(&pts, |_p1, _c1, c2, p2| {
-                let dx = p2.0 - c2.0;
-                let dy = p2.1 - c2.1;
-                let l = dx.hypot(dy).max(1e-9);
-                tan = (dx / l, dy / l);
-            });
-            (tip, tan)
+        rest => {
+            let tip = *rest.last().unwrap();
+            let prev = rest[rest.len() - 2];
+            let l = (tip.0 - prev.0).hypot(tip.1 - prev.1).max(1e-9);
+            (tip, ((tip.0 - prev.0) / l, (tip.1 - prev.1) / l))
         }
     }
 }
 
-/// Open Catmull–Rom cubics stopped `trim` px short of the last vertex.
-pub fn centripetal_catmull_rom_open_path_trim_end(pts: &[(f64, f64)], trim: f64) -> String {
-    let pts = dedupe_poly_pts_open(pts);
-    if pts.len() < 2 {
-        return String::new();
+/// Shaft + arrow from the same controls: tip is the last vertex, base is that
+/// point pulled back along the last chord. The shaft interpolates `base`.
+///
+/// Head and shaft share those two points. No SVG `d` is consulted.
+pub fn open_catmull_with_arrow(
+    pts: &[(f64, f64)],
+    head: f64,
+) -> (String, (f64, f64), (f64, f64), (f64, f64)) {
+    let mut shaft = dedupe_poly_pts_open(pts);
+    if shaft.len() < 2 {
+        let tip = shaft.first().copied().unwrap_or((0.0, 0.0));
+        return (String::new(), tip, tip, (1.0, 0.0));
     }
-    if pts.len() == 2 {
-        let (x0, y0) = pts[0];
-        let (x1, y1) = pts[1];
-        let l = (x1 - x0).hypot(y1 - y0).max(1e-9);
-        let keep = (l - trim.max(0.0)).max(0.0);
-        let t = keep / l;
-        return format!(
-            "M {:.2} {:.2} L {:.2} {:.2}",
-            x0,
-            y0,
-            x0 + t * (x1 - x0),
-            y0 + t * (y1 - y0)
-        );
-    }
-    let mut cubics = Vec::new();
-    for_open_cubics(&pts, |p1, c1, c2, p2| cubics.push((p1, c1, c2, p2)));
-    let lens: Vec<f64> = cubics
-        .iter()
-        .map(|&(a, b, c, d)| cubic_len(a, b, c, d))
-        .collect();
-    let total: f64 = lens.iter().sum();
-    let keep = (total - trim.max(0.0)).max(0.0);
-    if keep < 1e-6 {
-        return String::new();
-    }
-    let mut d = format!("M {:.2} {:.2}", cubics[0].0 .0, cubics[0].0 .1);
-    let mut acc = 0.0;
-    for (i, &(p1, c1, c2, p2)) in cubics.iter().enumerate() {
-        let len = lens[i];
-        if acc + len <= keep + 1e-9 {
-            d.push_str(&format!(
-                " C {:.2} {:.2} {:.2} {:.2} {:.2} {:.2}",
-                c1.0, c1.1, c2.0, c2.1, p2.0, p2.1
-            ));
-            acc += len;
-            continue;
-        }
-        let t = cubic_t_for_length(p1, c1, c2, p2, (keep - acc).max(0.0));
-        let (lc1, lc2, end) = split_cubic_left(p1, c1, c2, p2, t);
-        d.push_str(&format!(
-            " C {:.2} {:.2} {:.2} {:.2} {:.2} {:.2}",
-            lc1.0, lc1.1, lc2.0, lc2.1, end.0, end.1
-        ));
-        break;
-    }
-    d
-}
-
-fn lerp_pt(a: (f64, f64), b: (f64, f64), t: f64) -> (f64, f64) {
-    (a.0 + t * (b.0 - a.0), a.1 + t * (b.1 - a.1))
-}
-
-fn split_cubic_left(
-    p0: (f64, f64),
-    c1: (f64, f64),
-    c2: (f64, f64),
-    p3: (f64, f64),
-    t: f64,
-) -> ((f64, f64), (f64, f64), (f64, f64)) {
-    let p01 = lerp_pt(p0, c1, t);
-    let p12 = lerp_pt(c1, c2, t);
-    let p23 = lerp_pt(c2, p3, t);
-    let p012 = lerp_pt(p01, p12, t);
-    let p123 = lerp_pt(p12, p23, t);
-    (p01, p012, lerp_pt(p012, p123, t))
-}
-
-fn cubic_len(p0: (f64, f64), c1: (f64, f64), c2: (f64, f64), p3: (f64, f64)) -> f64 {
-    const N: usize = 8;
-    let mut prev = p0;
-    let mut len = 0.0;
-    for k in 1..=N {
-        let q = bezier_cubic(p0, c1, c2, p3, k as f64 / N as f64);
-        len += (q.0 - prev.0).hypot(q.1 - prev.1);
-        prev = q;
-    }
-    len
-}
-
-fn cubic_prefix_len(p0: (f64, f64), c1: (f64, f64), c2: (f64, f64), p3: (f64, f64), t: f64) -> f64 {
-    const N: usize = 8;
-    let t = t.clamp(0.0, 1.0);
-    let mut prev = p0;
-    let mut len = 0.0;
-    for k in 1..=N {
-        let q = bezier_cubic(p0, c1, c2, p3, t * k as f64 / N as f64);
-        len += (q.0 - prev.0).hypot(q.1 - prev.1);
-        prev = q;
-    }
-    len
-}
-
-fn cubic_t_for_length(
-    p0: (f64, f64),
-    c1: (f64, f64),
-    c2: (f64, f64),
-    p3: (f64, f64),
-    need: f64,
-) -> f64 {
-    let len = cubic_len(p0, c1, c2, p3);
-    if need <= 0.0 {
-        return 0.0;
-    }
-    if need >= len {
-        return 1.0;
-    }
-    let mut lo = 0.0;
-    let mut hi = 1.0;
-    for _ in 0..24 {
-        let mid = 0.5 * (lo + hi);
-        if cubic_prefix_len(p0, c1, c2, p3, mid) < need {
-            lo = mid;
-        } else {
-            hi = mid;
-        }
-    }
-    hi
+    let (tip, (ux, uy)) = open_catmull_end_frame(&shaft);
+    let prev = shaft[shaft.len() - 2];
+    let chord = (tip.0 - prev.0).hypot(tip.1 - prev.1).max(1e-9);
+    let h = head.max(0.0).min(chord * 0.9);
+    let base = (tip.0 - ux * h, tip.1 - uy * h);
+    let last = shaft.len() - 1;
+    shaft[last] = base;
+    (
+        centripetal_catmull_rom_open_path(&shaft),
+        tip,
+        base,
+        (ux, uy),
+    )
 }
 
 /// Dense polyline along the open Catmull–Rom (same cubics as the SVG shaft).
@@ -385,15 +276,21 @@ mod tests {
     }
 
     #[test]
-    fn trim_end_stops_short_of_the_tip() {
-        let pts = [(0.0, 0.0), (80.0, 0.0), (80.0, 80.0)];
-        let full = centripetal_catmull_rom_open_path(&pts);
-        assert!(full.trim_end().ends_with("80.00 80.00"), "{full}");
-        let trim = centripetal_catmull_rom_open_path_trim_end(&pts, 9.0);
+    fn arrow_base_is_last_chord_not_a_path_parse() {
+        let pts = [(0.0, 0.0), (40.0, 50.0), (90.0, 10.0), (160.0, 80.0)];
+        let head = 18.0;
+        let (d, tip, base, (ux, uy)) = open_catmull_with_arrow(&pts, head);
+        assert!((tip.0 - 160.0).abs() < 1e-9 && (tip.1 - 80.0).abs() < 1e-9);
+        let chord = 70.0_f64.hypot(70.0);
+        assert!((ux - (160.0 - 90.0) / chord).abs() < 1e-9);
+        assert!((uy - (80.0 - 10.0) / chord).abs() < 1e-9);
+        assert!(((tip.0 - base.0).hypot(tip.1 - base.1) - head).abs() < 1e-9);
+        let mut shaft = pts.to_vec();
+        *shaft.last_mut().unwrap() = base;
+        assert_eq!(d, centripetal_catmull_rom_open_path(&shaft));
         assert!(
-            !trim.trim_end().ends_with("80.00 80.00"),
-            "trimmed shaft still reaches the tip: {trim}"
+            (base.0 - tip.0 + ux * head).abs() < 1e-9 && (base.1 - tip.1 + uy * head).abs() < 1e-9,
+            "base must sit on the last chord"
         );
-        assert!(trim.contains('C'), "{trim}");
     }
 }

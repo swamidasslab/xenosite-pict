@@ -305,20 +305,9 @@ fn shorten_polyline_end(pts: &[Pt], amount: f64) -> (Vec<Pt>, Pt, (f64, f64)) {
     (pts, tip, (ux, uy))
 }
 
-fn last_path_point(d: &str) -> Option<Pt> {
-    let nums: Vec<f64> = d
-        .split(|c: char| !c.is_ascii_digit() && c != '.' && c != '-')
-        .filter_map(|s| s.parse().ok())
-        .collect();
-    if nums.len() >= 2 {
-        Some((nums[nums.len() - 2], nums[nums.len() - 1]))
-    } else {
-        None
-    }
-}
-
-/// Shaft stroke and arrow head from the same ending: tip is the last route
-/// point; the shaft is trimmed back; the head base *is* that trimmed end.
+/// Shaft stroke and arrow head from the route controls: tip is the last
+/// vertex, base is that point pulled back along the last chord. Both pieces
+/// are those two points — never a second read of a painted `d`.
 fn shaft_and_head(
     pts: &[Pt],
     head_size: f64,
@@ -326,10 +315,7 @@ fn shaft_and_head(
     curve_catmull: bool,
 ) -> (String, Pt, Pt, (f64, f64)) {
     if curve_catmull {
-        let (tip, (ux, uy)) = crate::catmull::open_catmull_end_frame(pts);
-        let d = crate::catmull::centripetal_catmull_rom_open_path_trim_end(pts, head_size);
-        let base = last_path_point(&d).unwrap_or((tip.0 - ux * head_size, tip.1 - uy * head_size));
-        (d, tip, base, (ux, uy))
+        crate::catmull::open_catmull_with_arrow(pts, head_size)
     } else {
         let (shaft, tip, (ux, uy)) = shorten_polyline_end(pts, head_size);
         let base = *shaft.last().unwrap_or(&tip);
@@ -731,28 +717,12 @@ mod tests {
         assert!(s.len() <= 2);
     }
 
-    fn path_end(d: &str) -> (f64, f64) {
-        let nums: Vec<f64> = d
-            .split(|c: char| !c.is_ascii_digit() && c != '.' && c != '-')
-            .filter_map(|s| s.parse().ok())
-            .collect();
-        assert!(nums.len() >= 2, "path {d}");
-        (nums[nums.len() - 2], nums[nums.len() - 1])
-    }
-
-    #[test]
-    fn catmull_forward_head_meets_shaft() {
-        let mut edge = paint(
-            vec![(0.0, 0.0), (80.0, 0.0), (80.0, 80.0)],
-            EdgeArrow::Forward,
-            None,
-        );
-        edge.curve_catmull = true;
-        edge.label = None;
-        let prims = edge_primitives(&edge);
+    fn painted_shaft_and_head(prims: &[EdgePrim]) -> (&str, &str) {
         let shaft = prims.iter().find_map(|p| match p {
             EdgePrim::Path { d, class, .. }
-                if class.contains("edge") && !class.contains("head") =>
+                if class.contains("edge")
+                    && !class.contains("head")
+                    && !class.contains("harpoon") =>
             {
                 Some(d.as_str())
             }
@@ -762,26 +732,99 @@ mod tests {
             EdgePrim::Path { d, class, .. } if class.contains("head") => Some(d.as_str()),
             _ => None,
         });
-        let shaft = shaft.expect("shaft");
-        let head = head.expect("head");
-        let (sx, sy) = path_end(shaft);
-        let hnums: Vec<f64> = head
-            .split(|c: char| !c.is_ascii_digit() && c != '.' && c != '-')
-            .filter_map(|s| s.parse().ok())
-            .collect();
-        assert_eq!(hnums.len(), 6, "filled triangle: {head}");
-        let (bx, by) = ((hnums[0] + hnums[4]) * 0.5, (hnums[1] + hnums[5]) * 0.5);
-        let gap = (sx - bx).hypot(sy - by);
-        assert!(
-            gap < 1.5,
-            "Catmull shaft end ({sx},{sy}) should meet head base ({bx},{by}); gap={gap} shaft={shaft} head={head}"
+        (shaft.expect("shaft"), head.expect("head"))
+    }
+
+    fn assert_forward_head_locked_to_route(pts: Vec<Pt>, curve_catmull: bool) {
+        let mut edge = paint(pts.clone(), EdgeArrow::Forward, None);
+        edge.curve_catmull = curve_catmull;
+        edge.label = None;
+        edge.stroke_width = Some(4.8);
+        let simplified = simplify_route(&pts, KINK_PX);
+        let tip = *simplified.last().expect("route");
+        let prev = simplified[simplified.len() - 2];
+        let head_size =
+            head_px(edge.stroke_width).min((polyline_length(&simplified) * 0.45).max(HEAD * 0.5));
+        let (expected_shaft, base) = if curve_catmull {
+            let chord = (tip.0 - prev.0).hypot(tip.1 - prev.1).max(1e-9);
+            let h = head_size.min(chord * 0.9);
+            let (ux, uy) = ((tip.0 - prev.0) / chord, (tip.1 - prev.1) / chord);
+            let base = (tip.0 - ux * h, tip.1 - uy * h);
+            let mut shaft_pts = simplified.clone();
+            let last = shaft_pts.len() - 1;
+            shaft_pts[last] = base;
+            (
+                crate::catmull::centripetal_catmull_rom_open_path(&shaft_pts),
+                base,
+            )
+        } else {
+            let (shaft, _, _) = shorten_polyline_end(&simplified, head_size);
+            let base = *shaft.last().unwrap_or(&tip);
+            (shaft_path_d(&shaft, None), base)
+        };
+        let prims = edge_primitives(&edge);
+        let (shaft, head) = painted_shaft_and_head(&prims);
+        assert_eq!(
+            shaft, expected_shaft,
+            "shaft must interpolate the last routing points and end at the head base"
         );
-        assert!(
-            (hnums[2] - 80.0).abs() < 0.6 && (hnums[3] - 80.0).abs() < 0.6,
-            "head tip must be the route endpoint, got ({}, {})",
-            hnums[2],
-            hnums[3]
+        assert_eq!(
+            head,
+            filled_arrow_head_d(tip, base, head_size),
+            "head must be the triangle of the last control and that base"
         );
+    }
+
+    #[test]
+    fn catmull_forward_head_meets_shaft() {
+        assert_forward_head_locked_to_route(vec![(0.0, 0.0), (80.0, 0.0), (80.0, 80.0)], true);
+        assert_forward_head_locked_to_route(
+            vec![(0.0, 0.0), (40.0, 50.0), (90.0, 10.0), (160.0, 80.0)],
+            true,
+        );
+        assert_forward_head_locked_to_route(vec![(0.0, 0.0), (140.0, 20.0)], true);
+        assert_forward_head_locked_to_route(vec![(0.0, 0.0), (80.0, 0.0), (80.0, 80.0)], false);
+        assert_forward_head_locked_to_route(
+            vec![(0.0, 0.0), (40.0, 50.0), (90.0, 10.0), (160.0, 80.0)],
+            false,
+        );
+    }
+
+    #[test]
+    fn open_head_uses_the_same_base_as_the_shaft() {
+        let pts = vec![(0.0, 0.0), (50.0, 40.0), (120.0, 15.0), (180.0, 90.0)];
+        let mut edge = paint(pts.clone(), EdgeArrow::Open, None);
+        edge.curve_catmull = true;
+        edge.label = None;
+        edge.stroke_width = Some(4.8);
+        let simplified = simplify_route(&pts, KINK_PX);
+        let tip = *simplified.last().unwrap();
+        let prev = simplified[simplified.len() - 2];
+        let head_size =
+            head_px(edge.stroke_width).min((polyline_length(&simplified) * 0.45).max(HEAD * 0.5));
+        let chord = (tip.0 - prev.0).hypot(tip.1 - prev.1).max(1e-9);
+        let h = head_size.min(chord * 0.9);
+        let (ux, uy) = ((tip.0 - prev.0) / chord, (tip.1 - prev.1) / chord);
+        let base = (tip.0 - ux * h, tip.1 - uy * h);
+        let mut shaft_pts = simplified.clone();
+        let last = shaft_pts.len() - 1;
+        shaft_pts[last] = base;
+        let expected_shaft = crate::catmull::centripetal_catmull_rom_open_path(&shaft_pts);
+        let (px, py) = perp(ux, uy);
+        let half = head_size * 0.55;
+        let expected_head = format!(
+            "M {:.2} {:.2} L {:.2} {:.2} L {:.2} {:.2}",
+            base.0 + px * half,
+            base.1 + py * half,
+            tip.0,
+            tip.1,
+            base.0 - px * half,
+            base.1 - py * half
+        );
+        let prims = edge_primitives(&edge);
+        let (shaft, head) = painted_shaft_and_head(&prims);
+        assert_eq!(shaft, expected_shaft);
+        assert_eq!(head, expected_head);
     }
 
     #[test]

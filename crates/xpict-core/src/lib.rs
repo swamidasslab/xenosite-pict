@@ -55,8 +55,8 @@ pub use bonds::{
     StrokePath,
 };
 pub use catmull::{
-    centripetal_catmull_rom_closed_path, centripetal_catmull_rom_open_path,
-    centripetal_catmull_rom_open_path_trim_end, open_catmull_end_frame, sample_open_catmull,
+    centripetal_catmull_rom_closed_path, centripetal_catmull_rom_open_path, open_catmull_end_frame,
+    open_catmull_with_arrow, sample_open_catmull,
 };
 pub use colormap::{colormap_rgb, sample_colormap, XENOSITE};
 pub use cxsmiles::{

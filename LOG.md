@@ -2,6 +2,8 @@
 
 ## 2026-10-22
 
+- Arrow head is the last route control, pulled back along that last chord. Shaft interpolates the same `base`. No SVG `d` scrape for the join (that rounded a cubic trim and left the triangle off the Glutathionation shaft). Bond halo uses `StrokePath.pts` the same way. Tests rebuild the expected triangle from the controls; a 1.5 px path-parse gap no longer hides a miss.
+
 - Tight ELK gaps no longer collapse to a 20 px stub: standoff cannot walk past the ELK seed into the neighbor, and the head scales with stroke (4.8 px → 27 px). Lower-left PEITC isocyanate→GSH arrow was a dart on a fat stroke.
 
 - Arrow head is the last route point. The shaft is trimmed back along the same Catmull cubics; the head base *is* that trim, so the two cannot separate. Shaft control points freeze after the first solve; labels cannot shove the arrow.
