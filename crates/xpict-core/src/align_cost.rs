@@ -1201,6 +1201,12 @@ fn collect_generator(_n: u32, perm: &mut [u32], _: &mut [u32], _: u32, _: u32, _
 /// generator preserves exactly the features [`cost_mapping_with_generators`]
 /// checks. Generators are projected onto atom vertices.
 pub fn reference_generators(mol: &MolGraph) -> Vec<Vec<u16>> {
+    // Canonaut 1.0 assumes 64-bit words (it mixes `usize::BITS` with hardcoded 64), so on wasm32 it
+    // indexes past its bitsets once a graph has more than 32 vertices; the panic aborts the wasm
+    // module. No generators (the trivial group) is a valid subgroup: only the search is slower.
+    if usize::BITS < 64 {
+        return Vec::new();
+    }
     use canonaut::structs::{CanonautManager, DenseGraph};
     let (n, m) = (mol.n_atoms(), mol.n_bonds());
     if n < 2 {

@@ -78,6 +78,11 @@ pub fn scheme_layout_options(kind: DiagramKind, opts: &LayoutOpts) -> BTreeMap<S
     ]);
 
     if kind == DiagramKind::Reaction {
+        // Depth-first cycle breaking keeps the real sources on top; greedy can lift a cycle member there.
+        base.insert(
+            "elk.layered.cycleBreaking.strategy".into(),
+            "DEPTH_FIRST".into(),
+        );
         base.insert(
             "elk.spacing.nodeNode".into(),
             LayoutOpts::DEFAULT_NODE_SPACING.to_string(),

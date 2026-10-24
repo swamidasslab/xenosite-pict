@@ -145,6 +145,10 @@ pub fn validate_edges(spec: &DepictSpec) -> Result<(), String> {
                 return Err(format!("edge target unknown id {id}"));
             }
         }
+        // The layered layout (elkrs 0.1) panics on a self-loop: say so instead of aborting.
+        if let Some(id) = e.sources.iter().find(|s| e.targets.iter().any(|t| t.trim() == s.trim())) {
+            return Err(format!("edge from {} to itself", id.trim()));
+        }
         if let Some(ref lab) = e.label {
             for (id, pos) in lab.placements() {
                 let id = id.trim();
