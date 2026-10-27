@@ -2,6 +2,9 @@
 
 ## 2026-10-27
 
+- Dropped `grant-package-actions.yml`. `@swamidasslab/xpict` inherits from this
+  repo, so `packages/.../actions/permissions` 404s and there is no Manage
+  Actions access UI. Other repos install with a user `read:packages` token.
 - Vendored canonaut 1.0.0 under vendor/canonaut with word size from usize::BITS (same copy as xenobase wasm). crates.io 1.0.0 panics on wasm32 past 32 vertices. Dropped the 32-bit skip in reference_generators; rebuilt js/src/wasm.
 - `js/v0.7.1` publish was blocked by Windows native smoke (`stdc++.lib` / coordgen). That matrix cell is `continue-on-error` so JS GitHub Packages can ship.
 

@@ -86,12 +86,11 @@ Consumers (private package — need `read:packages`):
 npm install @swamidasslab/xpict
 ```
 
-A workflow `GITHUB_TOKEN` can install only if its repository is listed under
-the package's **Manage Actions access** (read). Grant that from this repo:
-
-```bash
-gh workflow run grant-package-actions.yml -f repository=swamidasslab/xenobase
-```
+Install with a **user** token (`gh auth token` / PAT `read:packages`). A
+workflow `GITHUB_TOKEN` from another repo cannot: this package inherits
+access from xenosite-pict, so there is no Manage Actions access list and
+the grant API 404s. Pict CI publishes and tests JS here; xenobase CI does
+not `npm ci`.
 
 XenoBase (`swamidasslab/xenobase`) aliases `@xenosite/xpict` to this package.
 
