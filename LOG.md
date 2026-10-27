@@ -2,9 +2,14 @@
 
 ## 2026-10-27
 
+- `@swamidasslab/xpict` is public, but `npm.pkg.github.com` still 401s
+  without a token. `js/v0.7.1` GitHub Release now has
+  `xenosite-xpict-0.7.1.tgz` (`npm pack` of `@xenosite/xpict`). Publish
+  workflows attach that tarball on `js/v*` / `release/v*` so consumers
+  (xenobase) do not need `GITHUB_TOKEN`.
 - Dropped `grant-package-actions.yml`. `@swamidasslab/xpict` inherits from this
   repo, so `packages/.../actions/permissions` 404s and there is no Manage
-  Actions access UI. Other repos install with a user `read:packages` token.
+  Actions access UI.
 - Vendored canonaut 1.0.0 under vendor/canonaut with word size from usize::BITS (same copy as xenobase wasm). crates.io 1.0.0 panics on wasm32 past 32 vertices. Dropped the 32-bit skip in reference_generators; rebuilt js/src/wasm.
 - `js/v0.7.1` publish was blocked by Windows native smoke (`stdc++.lib` / coordgen). That matrix cell is `continue-on-error` so JS GitHub Packages can ship.
 

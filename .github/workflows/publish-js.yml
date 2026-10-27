@@ -9,9 +9,9 @@
 #   - workflow_dispatch → package.json version; optional dry_run (pack only)
 #
 # Auth: GITHUB_TOKEN (packages: write). No NPM_TOKEN.
-# Consumers:
-#   npm install @swamidasslab/xpict --registry=https://npm.pkg.github.com
-#   (needs a PAT / GITHUB_TOKEN with read:packages; see .github/PUBLISH.md)
+# Consumers should install the GitHub Release tarball (no Packages token):
+#   npm install https://github.com/swamidasslab/xenosite-pict/releases/download/js/v0.7.1/xenosite-xpict-0.7.1.tgz
+# GitHub's npm registry returns 401 without a token even when the package is public.
 #
 # Gated on CI (Rust test+coverage, strict tsc, pyright, pytest).
 
@@ -29,7 +29,7 @@ on:
         default: false
 
 permissions:
-  contents: read
+  contents: write
   packages: write
 
 concurrency:
@@ -92,6 +92,20 @@ jobs:
       - name: Version policy (workflow_dispatch)
         if: github.event_name == 'workflow_dispatch'
         run: make check-versions
+
+      - name: Pack @xenosite/xpict tarball
+        working-directory: js
+        run: npm pack
+
+      - name: Attach tarball to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/js/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          TGZ=$(ls js/*.tgz)
+          gh release create "$TAG" "$TGZ" --title "$TAG" --notes "npm pack of @xenosite/xpict (install without a GitHub Packages token)." \
+            || gh release upload "$TAG" "$TGZ" --clobber
 
       - name: Retarget package name for GitHub Packages
         working-directory: js

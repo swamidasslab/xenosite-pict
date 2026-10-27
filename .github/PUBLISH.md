@@ -76,26 +76,18 @@ git push origin js/v0.3.1
 
 Auth is `GITHUB_TOKEN` (`packages: write`). No `NPM_TOKEN`.
 
-Consumers (private package — need `read:packages`):
+Consumers should **not** install from `npm.pkg.github.com`. That registry
+returns 401 without a token even when the package is public. Each `js/v*`
+tag also gets an `npm pack` tarball on the GitHub Release:
 
 ```bash
-# .npmrc
-@swamidasslab:registry=https://npm.pkg.github.com
-//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}
-
-npm install @swamidasslab/xpict
+npm install https://github.com/swamidasslab/xenosite-pict/releases/download/js/v0.7.1/xenosite-xpict-0.7.1.tgz
 ```
 
-Install with a **user** token (`gh auth token` / PAT `read:packages`). A
-workflow `GITHUB_TOKEN` from another repo cannot: this package inherits
-access from xenosite-pict, so there is no Manage Actions access list and
-the grant API 404s. Pict CI publishes and tests JS here; xenobase CI uses
-repo secret `GH_PACKAGES_TOKEN` (classic PAT, `read:packages`) for `npm ci`.
-
-XenoBase (`swamidasslab/xenobase`) aliases `@xenosite/xpict` to this package.
+XenoBase (`swamidasslab/xenobase`) pins that tarball as `@xenosite/xpict`.
 
 Package URL:
-https://github.com/swamidasslab/xenosite-pict/pkgs/npm/xpict
+https://github.com/orgs/swamidasslab/packages/npm/package/xpict
 
 ### Later: npmjs.org + OIDC
 
