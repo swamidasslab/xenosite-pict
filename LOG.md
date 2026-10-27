@@ -1,5 +1,10 @@
 # Lab log
 
+## 2026-10-27
+
+- Vendored canonaut 1.0.0 under vendor/canonaut with word size from usize::BITS (same copy as xenobase wasm). crates.io 1.0.0 panics on wasm32 past 32 vertices. Dropped the 32-bit skip in reference_generators; rebuilt js/src/wasm.
+
+
 ## 2026-10-22
 
 - Mycophenolate labels were only Outside vs shafts (tiny glyph disks), so they sat on chem. This kit emits `push_clear_leaves` vs painted scheme leaves (chem, other labels) — not a solver-wide all-pairs default. Last interior ELK point sits on the endpoint–centroid ray so the painted last chord (the arrow) aims at the mol. Clamp-to-seed stays on that ray: a south/east port is not a snap, or two-point shafts point at the box corner instead of the centroid.

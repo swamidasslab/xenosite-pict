@@ -33,3 +33,9 @@ lto = true
 codegen-units = 1
 strip = true
 panic = "abort"
+
+# canonaut 1.0.0 assumes 64-bit words (hardcoded 64/63/>>6), so graphs over 32 vertices panic on
+# wasm32. vendor/canonaut is 1.0.0 with those derived from usize::BITS (same copy as xenobase's
+# wasm/vendor); drop it once upstream (github.com/um-univie/canonaut) is fixed.
+[patch.crates-io]
+canonaut = { path = "vendor/canonaut" }
