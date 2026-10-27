@@ -86,6 +86,15 @@ Consumers (private package — need `read:packages`):
 npm install @swamidasslab/xpict
 ```
 
+A workflow `GITHUB_TOKEN` can install only if its repository is listed under
+the package's **Manage Actions access** (read). Grant that from this repo:
+
+```bash
+gh workflow run grant-package-actions.yml -f repository=swamidasslab/xenobase
+```
+
+XenoBase (`swamidasslab/xenobase`) aliases `@xenosite/xpict` to this package.
+
 Package URL:
 https://github.com/swamidasslab/xenosite-pict/pkgs/npm/xpict
 

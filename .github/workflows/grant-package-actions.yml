@@ -1,0 +1,34 @@
+# GITHUB_TOKEN of a consuming repo cannot read this private package until the
+# repo is listed under Package settings → Manage Actions access. The publishing
+# repo's token has admin on the package; this job grants read to xenobase (and
+# any other repo passed in).
+name: Grant package Actions access
+
+on:
+  workflow_dispatch:
+    inputs:
+      repository:
+        description: "owner/name of a repo whose GITHUB_TOKEN should npm install @swamidasslab/xpict"
+        default: swamidasslab/xenobase
+        type: string
+
+permissions:
+  packages: write
+  contents: read
+
+jobs:
+  grant:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Grant Actions read on @swamidasslab/xpict
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ inputs.repository }}
+        run: |
+          set -euo pipefail
+          RID=$(gh api "repos/${REPO}" --jq .id)
+          echo "Granting ${REPO} (id ${RID}) read on npm/xpict"
+          gh api --method PUT \
+            "orgs/swamidasslab/packages/npm/xpict/actions/permissions/repositories/${RID}" \
+            -f permission=read
+          gh api "orgs/swamidasslab/packages/npm/xpict/actions/permissions/repositories" --jq '.repositories[].full_name'
