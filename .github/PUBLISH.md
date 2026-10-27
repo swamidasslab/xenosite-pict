@@ -89,8 +89,8 @@ npm install @swamidasslab/xpict
 Install with a **user** token (`gh auth token` / PAT `read:packages`). A
 workflow `GITHUB_TOKEN` from another repo cannot: this package inherits
 access from xenosite-pict, so there is no Manage Actions access list and
-the grant API 404s. Pict CI publishes and tests JS here; xenobase CI does
-not `npm ci`.
+the grant API 404s. Pict CI publishes and tests JS here; xenobase CI uses
+repo secret `GH_PACKAGES_TOKEN` (classic PAT, `read:packages`) for `npm ci`.
 
 XenoBase (`swamidasslab/xenobase`) aliases `@xenosite/xpict` to this package.
 
