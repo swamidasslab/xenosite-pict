@@ -368,6 +368,7 @@ pub struct CalloutSpec {
     pub text: MolText,
     #[serde(default = "default_true")]
     pub arrow: bool,
+    /// Side bias. Omit or `"auto"` → seed by clash/air, solve with no PreferSide.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub prefer: Option<LabelPos>,
@@ -915,6 +916,17 @@ mod tests {
         };
         assert_eq!(circ.bonds, vec![(0, 1)]);
         assert!(back.callout.is_some());
+    }
+
+    #[test]
+    fn omitted_callout_prefer_is_auto() {
+        let c: CalloutSpec =
+            serde_json::from_str(r#"{"atoms":[6],"text":"OH","arrow":true}"#).unwrap();
+        assert_eq!(c.prefer, None);
+        let explicit: CalloutSpec =
+            serde_json::from_str(r#"{"atoms":[6],"text":"OH","arrow":true,"prefer":"auto"}"#)
+                .unwrap();
+        assert_eq!(explicit.prefer, Some(crate::doc::LabelPos::Auto));
     }
 
     #[test]

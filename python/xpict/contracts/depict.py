@@ -40,7 +40,7 @@ AromaticStyle = Literal['circle', 'kekule']
 RegionTextPlace = Literal['outside', 'inside']
 
 
-LabelPos = Literal['above', 'below', 'left', 'right']
+LabelPos = Literal['above', 'below', 'left', 'right', 'auto']
 
 
 class MolTextSpec(StrictModel):
@@ -89,7 +89,7 @@ class CalloutSpec(StrictModel):
     atoms: list[int] | None = None
     bonds: list[tuple[int, int]] | None = None
     color: str | None = None
-    prefer: LabelPos | None = None
+    prefer: Annotated[LabelPos | None, Field(description='Side bias. Omit or `"auto"` → seed by clash/air, solve with no PreferSide.')] = None
     scale: float | None = None
     z: int | None = None
 

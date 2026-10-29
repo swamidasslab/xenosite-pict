@@ -648,7 +648,7 @@ fn resolve_edge_label(spec: &DepictSpec, edge: &EdgeNode) -> (Option<String>, Op
         _ => None,
     };
     let pos = Some(match pos {
-        LabelPos::Above => "above".into(),
+        LabelPos::Above | LabelPos::Auto => "above".into(),
         LabelPos::Below => "below".into(),
         LabelPos::Left => "left".into(),
         LabelPos::Right => "right".into(),

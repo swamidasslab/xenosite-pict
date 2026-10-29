@@ -799,6 +799,7 @@
           ]
         },
         "prefer": {
+          "description": "Side bias. Omit or `\"auto\"` → seed by clash/air, solve with no PreferSide.",
           "anyOf": [
             {
               "$ref": "#/definitions/LabelPos"
@@ -1757,13 +1758,14 @@
       "additionalProperties": false
     },
     "LabelPos": {
-      "description": "Side of an edge shaft (or mol caption) for a label placement.",
+      "description": "Side of an edge shaft, mol caption, or callout for a label placement.\n\n[`Self::Auto`] (callout `prefer` omitted) seeds by clash/air with no directional push in the solver. Edge `pos` omitted still means [`Self::Above`].",
       "type": "string",
       "enum": [
         "above",
         "below",
         "left",
-        "right"
+        "right",
+        "auto"
       ]
     },
     "LayoutAlgorithm": {

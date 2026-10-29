@@ -49,7 +49,6 @@ def _kitchen_sink_node(**extra) -> MolNode:
                 "atoms": [6],
                 "text": "phenol OH",
                 "arrow": True,
-                "prefer": "above",
             },
         }
     )

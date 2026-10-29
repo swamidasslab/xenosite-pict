@@ -351,7 +351,7 @@ pub fn apply_mol_captions(spec: &DepictSpec, node: &MolNode, mut scene: Scene) -
     let mut right: Vec<&CaptionInk> = Vec::new();
     for ink in &resolved {
         match ink.pos {
-            LabelPos::Above => above.push(ink),
+            LabelPos::Above | LabelPos::Auto => above.push(ink),
             LabelPos::Below => below.push(ink),
             LabelPos::Left => left.push(ink),
             LabelPos::Right => right.push(ink),
@@ -485,7 +485,7 @@ pub fn apply_mol_captions(spec: &DepictSpec, node: &MolNode, mut scene: Scene) -
         // Nudge along preferred axis away from the mol / annotations.
         let (dx, dy) = match p.ink.pos {
             LabelPos::Below => (0.0, 2.0),
-            LabelPos::Above => (0.0, -2.0),
+            LabelPos::Above | LabelPos::Auto => (0.0, -2.0),
             LabelPos::Left => (-2.0, 0.0),
             LabelPos::Right => (2.0, 0.0),
         };

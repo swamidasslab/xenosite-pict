@@ -20,9 +20,9 @@ use crate::doc::layout_constraints::{
     Shape, ATOM_NUMBER_TETHER_PX, ATOM_TEXT_TETHER_PX,
 };
 use crate::doc::layout_items::{
-    callout_arrow, least_clash_side, place_greedy, place_region_edge, tip_standoff_clearing, Aabb,
-    InkAtOrigin, Occupancy, PlaceRequest, Seg, Side, ATOM_DISK_R_PX, CLASH_MARGIN_PX,
-    CONTAIN_MARGIN_PX, HALF_BOND_PX,
+    callout_arrow, least_clash_side, place_auto, place_greedy, place_region_edge,
+    tip_standoff_clearing, Aabb, InkAtOrigin, Occupancy, PlaceRequest, Seg, Side, ATOM_DISK_R_PX,
+    CLASH_MARGIN_PX, CONTAIN_MARGIN_PX, HALF_BOND_PX,
 };
 use crate::doc::spec::{LabelPos, MolNode};
 use crate::doc::text_paint::{markup_bounds_at_origin, outline_markup};
@@ -1092,7 +1092,7 @@ fn label_pos_side(pos: LabelPos) -> Side {
     match pos {
         LabelPos::Left => Side::Left,
         LabelPos::Right => Side::Right,
-        LabelPos::Above => Side::Above,
+        LabelPos::Above | LabelPos::Auto => Side::Above,
         LabelPos::Below => Side::Below,
     }
 }
@@ -1246,7 +1246,11 @@ fn callout_primitives(
         .filter(|s| !s.is_empty())
         .unwrap_or("#333")
         .to_string();
-    let prefer = spec.prefer.unwrap_or(LabelPos::Right);
+    let prefer = spec.prefer.unwrap_or(LabelPos::Auto);
+    let lock_side = match prefer {
+        LabelPos::Auto => None,
+        side => Some(label_pos_side(side)),
+    };
     let anchor = "middle";
     let Some((bx0, by0, bx1, by1)) = markup_bounds_at_origin(content, font_px, anchor) else {
         return Vec::new();
@@ -1265,22 +1269,7 @@ fn callout_primitives(
     for &(x0, y0, x1, y1) in &bonds {
         tip_obstacles.push(Seg::new(x0, y0, x1, y1).thick_aabb(bond_half));
     }
-    let side = label_pos_side(prefer);
     let base_tip = (FONT_PX * 0.55).max(4.0);
-    let tip_standoff = if spec.arrow {
-        tip_standoff_clearing(
-            (ax, ay),
-            side,
-            base_tip,
-            &tip_obstacles,
-            CLASH_MARGIN_PX,
-            CALLOUT_TEXT_GAP_PX + BOND_PX,
-        )
-    } else {
-        base_tip
-    };
-    // Label edge: past the tip by ≥ half a bond, and ≥ one bond from the atom.
-    let min_gap = CALLOUT_TEXT_GAP_PX.max(tip_standoff + HALF_BOND_PX);
     let mut occ = Occupancy::from_molecule(mol, dx, dy, Some(ATOM_DISK_R_PX.max(FONT_PX * 0.45)));
     for &(_, cx, cy, r) in shades {
         occ.add_aabb(Aabb::new(cx - r, cy - r, cx + r, cy + r));
@@ -1291,32 +1280,67 @@ fn callout_primitives(
     for &box_ in caption_boxes {
         occ.add_aabb(box_);
     }
-    let seed = place_greedy(
-        &occ,
-        &PlaceRequest {
-            anchor: (ax, ay),
-            ink,
-            preferred: side,
-            min_gap,
-            max_gap: min_gap + BOND_PX * 1.5,
-            gap_step: 4.0,
-            margin: CLASH_MARGIN_PX,
-            tip_standoff: if spec.arrow { Some(tip_standoff) } else { None },
-            label_pullback: CALLOUT_LABEL_PULLBACK_PX,
+    let seed_standoff = |side: Side| {
+        if spec.arrow {
+            tip_standoff_clearing(
+                (ax, ay),
+                side,
+                base_tip,
+                &tip_obstacles,
+                CLASH_MARGIN_PX,
+                CALLOUT_TEXT_GAP_PX + BOND_PX,
+            )
+        } else {
+            base_tip
+        }
+    };
+    let hint_side = lock_side.unwrap_or(Side::Above);
+    let hint_standoff = seed_standoff(hint_side);
+    // Label edge: past the tip by ≥ half a bond, and ≥ one bond from the atom.
+    let min_gap = CALLOUT_TEXT_GAP_PX.max(hint_standoff + HALF_BOND_PX);
+    let req = PlaceRequest {
+        anchor: (ax, ay),
+        ink,
+        preferred: hint_side,
+        min_gap,
+        max_gap: min_gap + BOND_PX * 1.5,
+        gap_step: 4.0,
+        margin: CLASH_MARGIN_PX,
+        tip_standoff: if spec.arrow {
+            Some(hint_standoff)
+        } else {
+            None
         },
-    );
-    let tip0 = seed
-        .arrow_to
-        .unwrap_or_else(|| tip_point_fallback((ax, ay), side, tip_standoff));
+        label_pullback: CALLOUT_LABEL_PULLBACK_PX,
+    };
+    let seed = if lock_side.is_some() {
+        place_greedy(&occ, &req)
+    } else {
+        place_auto(&occ, &req)
+    };
+    let side = seed.side;
+    let tip_standoff = seed_standoff(side);
+    let tip0 = callout_arrow(
+        seed.bounds,
+        (ax, ay),
+        side,
+        tip_standoff,
+        CALLOUT_LABEL_PULLBACK_PX,
+    )
+    .1
+    .unwrap_or_else(|| tip_point_fallback((ax, ay), side, tip_standoff));
+    let mut other = chem_boxes.clone();
+    other.extend_from_slice(caption_boxes);
     let (label_dxy, tip_dxy, _) = refine_callout(
         &bonds,
         seed.bounds,
         tip0,
         (ax, ay),
         tip_standoff,
-        side,
+        lock_side,
         CLASH_MARGIN_PX,
         &[],
+        &other,
     );
     let mut clear_segs = bonds.clone();
     clear_segs.extend(aromatic_circle_segs(mol, dx, dy));
@@ -3599,7 +3623,7 @@ mod tests {
                 bonds: None,
                 text: MolText::Plain("phenol OH".into()),
                 arrow: true,
-                prefer: Some(LabelPos::Above),
+                prefer: None,
                 color: None,
                 scale: None,
                 z: None,
@@ -3685,6 +3709,108 @@ mod tests {
         assert!(
             !region_box.contains(exo),
             "exo {exo:?} is on OH, not a ring atom: box {region_box:?}"
+        );
+    }
+
+    fn callout_label_box(scene: &Scene) -> Aabb {
+        layer_prims(scene)
+            .into_iter()
+            .find_map(|p| match p {
+                Primitive::Path {
+                    d, class: Some(c), ..
+                } if c.contains("callout-label") => path_aabb(d),
+                _ => None,
+            })
+            .expect("callout-label")
+    }
+
+    fn kitchen_sink_phenol(prefer: Option<LabelPos>) -> crate::doc::DepictRendered {
+        let node = MolNode {
+            smiles: Some("c1ccccc1O".into()),
+            name: Some(MolText::Plain("phenol".into())),
+            shade: Some(crate::doc::ShadeSpec {
+                atoms: Some(vec![0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.0]),
+                ..Default::default()
+            }),
+            atom_number: Some(AtomNumberSpec::ByName(AtomNumberBy::Index)),
+            atom_label: Some(crate::doc::chrome::AtomLabelSpec::Map(
+                [
+                    ("2".into(), MolText::Plain("ortho".into())),
+                    ("6".into(), MolText::Plain("exo".into())),
+                ]
+                .into_iter()
+                .collect(),
+            )),
+            circle: Some(crate::doc::chrome::CircleField::One(CircleSpec {
+                atoms: vec![6],
+                bonds: vec![],
+                ring: None,
+                fill: None,
+                stroke: Some(StrokeSpec {
+                    color: Some("#06c".into()),
+                    width: Some(1.4),
+                    dash: None,
+                }),
+                scale: None,
+                z: None,
+            })),
+            region: Some(crate::doc::chrome::RegionField::One(RegionSpec {
+                style: RegionStyle::Box,
+                atoms: vec![0, 1, 2, 3, 4, 5],
+                exclude: vec![],
+                fill: Some(FillSpec {
+                    color: Some("#48a".into()),
+                    opacity: Some(0.12),
+                }),
+                stroke: Some(StrokeSpec {
+                    color: Some("#48a".into()),
+                    width: Some(1.0),
+                    dash: None,
+                }),
+                text: Some(MolText::Plain("ring".into())),
+                z: None,
+            })),
+            callout: Some(crate::doc::chrome::CalloutField::One(CalloutSpec {
+                atoms: Some(vec![6]),
+                bonds: None,
+                text: MolText::Plain("phenol OH".into()),
+                arrow: true,
+                prefer,
+                color: None,
+                scale: None,
+                z: None,
+            })),
+            ..Default::default()
+        };
+        crate::doc::render(&crate::doc::DepictSpec::Mol(node))
+            .expect("render")
+            .remove(0)
+    }
+
+    /// Omitted `prefer` is auto: clash/air seed, no PreferSide. On this kitchen
+    /// sink that lands like `above` (OH glyph and exo occupy the right).
+    #[test]
+    fn kitchen_sink_callout_auto_matches_above() {
+        let auto = kitchen_sink_phenol(None);
+        let above = kitchen_sink_phenol(Some(LabelPos::Above));
+        let a = callout_label_box(&auto.scene);
+        let b = callout_label_box(&above.scene);
+        let (acx, acy) = a.center();
+        let (bcx, bcy) = b.center();
+        let d = (acx - bcx).hypot(acy - bcy);
+        assert!(
+            d < 18.0,
+            "auto should match above from clash/air alone: d={d:.1} auto={a:?} above={b:?}"
+        );
+        let o = auto
+            .svg_coords
+            .iter()
+            .find(|a| a.element == "O")
+            .expect("oxygen");
+        assert!(
+            acy < o.y,
+            "auto callout should sit above the OH: cy={acy:.1} oxygen_y={:.1} box={a:?}",
+            o.y
         );
     }
 

@@ -254,7 +254,7 @@ _ANNOTATION_MOL = {
     "atom_label": {"6": "exo"},
     "circle": {"atoms": [6]},
     "region": {"style": "box", "atoms": [0, 1, 2, 3, 4, 5], "text": "ring"},
-    "callout": {"atoms": [6], "text": "OH", "arrow": True, "prefer": "above"},
+    "callout": {"atoms": [6], "text": "OH", "arrow": True},
 }
 
 

@@ -167,6 +167,26 @@ impl Occupancy {
 
     /// How badly `cand` overlaps obstacles (0 = clear). Bond crossings weigh
     /// more than soft AABB overlaps so greedy fallbacks avoid straddling ink.
+    /// Min air from `cand` to any obstacle (negative if overlapping), minus `margin`.
+    pub fn clearance(&self, cand: Aabb, margin: f64) -> f64 {
+        let mut best = f64::INFINITY;
+        for &a in &self.aabbs {
+            best = best.min(aabb_gap(cand, a));
+        }
+        for &s in &self.segs {
+            best = best.min(seg_aabb_min_dist(s.x0, s.y0, s.x1, s.y1, cand) - self.seg_half);
+        }
+        if !best.is_finite() {
+            return 1.0e6;
+        }
+        best - margin
+    }
+
+    /// Sum of exterior gaps to AABB obstacles (empty space toward other labels).
+    pub fn aabb_gap_sum(&self, cand: Aabb) -> f64 {
+        self.aabbs.iter().map(|a| aabb_gap(cand, *a).max(0.0)).sum()
+    }
+
     pub fn clash_penalty(&self, cand: Aabb, margin: f64) -> f64 {
         let mut pen = 0.0;
         let padded = cand.inflate(margin);
@@ -190,6 +210,31 @@ impl Occupancy {
             }
         }
         pen
+    }
+}
+
+/// Exterior gap between AABBs (≥0); overlap is the negative min penetration.
+fn aabb_gap(a: Aabb, b: Aabb) -> f64 {
+    let dx = if a.x1 < b.x0 {
+        b.x0 - a.x1
+    } else if b.x1 < a.x0 {
+        a.x0 - b.x1
+    } else {
+        0.0
+    };
+    let dy = if a.y1 < b.y0 {
+        b.y0 - a.y1
+    } else if b.y1 < a.y0 {
+        a.y0 - b.y1
+    } else {
+        0.0
+    };
+    if dx > 0.0 || dy > 0.0 {
+        dx.hypot(dy)
+    } else {
+        let ox = (a.x1.min(b.x1) - a.x0.max(b.x0)).max(0.0);
+        let oy = (a.y1.min(b.y1) - a.y0.max(b.y0)).max(0.0);
+        -ox.min(oy)
     }
 }
 
@@ -330,6 +375,52 @@ pub fn least_clash_side(occ: &Occupancy, req: &PlaceRequest) -> Side {
         }
     }
     best
+}
+
+/// Seed with no side bias: minimize clash, then maximize air to other ink.
+///
+/// Each side grows gap until clear (same as [`place_greedy`]). Among those
+/// poses, pick max clearance / AABB spread. `req.preferred` is ignored.
+pub fn place_auto(occ: &Occupancy, req: &PlaceRequest) -> Placement {
+    const SIDES: [Side; 4] = [Side::Above, Side::Right, Side::Below, Side::Left];
+    let mut best: Option<(f64, Placement)> = None;
+    for (si, side) in SIDES.into_iter().enumerate() {
+        let mut gap = req.min_gap;
+        let mut side_best: Option<(f64, Placement)> = None;
+        while gap <= req.max_gap + 1e-9 {
+            let p = force_place(req, side, gap);
+            let pen = occ.clash_penalty(p.bounds, req.margin);
+            if pen <= 1e-12 {
+                side_best = Some((0.0, p));
+                break;
+            }
+            let score = pen + (gap - req.min_gap) * 1e-6;
+            let replace = match &side_best {
+                None => true,
+                Some((s, _)) => score < *s,
+            };
+            if replace {
+                side_best = Some((score, p));
+            }
+            gap += req.gap_step;
+        }
+        let Some((_, p)) = side_best else {
+            continue;
+        };
+        let pen = occ.clash_penalty(p.bounds, req.margin);
+        let air = occ.clearance(p.bounds, req.margin);
+        let spread = occ.aabb_gap_sum(p.bounds);
+        let score = pen * 1e6 - air * 100.0 - spread * 0.05 + si as f64 * 1e-9;
+        let replace = match &best {
+            None => true,
+            Some((s, _)) => score < *s,
+        };
+        if replace {
+            best = Some((score, p));
+        }
+    }
+    best.map(|(_, p)| p)
+        .unwrap_or_else(|| force_place(req, Side::Above, req.min_gap))
 }
 
 fn force_place(req: &PlaceRequest, side: Side, gap: f64) -> Placement {
@@ -681,6 +772,34 @@ mod tests {
             p.bounds
         );
         assert_eq!(least_clash_side(&occ, &req), p.side);
+    }
+
+    #[test]
+    fn place_auto_picks_the_open_side() {
+        let mut occ = Occupancy::new();
+        occ.add_aabb(Aabb::new(12.0, -6.0, 48.0, 6.0)); // block right
+        occ.add_aabb(Aabb::new(-6.0, 12.0, 6.0, 48.0)); // block below
+        occ.add_aabb(Aabb::new(-48.0, -6.0, -12.0, 6.0)); // block left
+        let ink = InkAtOrigin {
+            x0: -10.0,
+            y0: -4.0,
+            x1: 10.0,
+            y1: 4.0,
+        };
+        let req = PlaceRequest {
+            anchor: (0.0, 0.0),
+            ink,
+            preferred: Side::Right,
+            min_gap: 8.0,
+            max_gap: 16.0,
+            gap_step: 2.0,
+            margin: 1.0,
+            tip_standoff: None,
+            label_pullback: 0.0,
+        };
+        let p = place_auto(&occ, &req);
+        assert_eq!(p.side, Side::Above, "open air is above: {:?}", p.bounds);
+        assert!(!occ.clashes(p.bounds, req.margin));
     }
 
     #[test]

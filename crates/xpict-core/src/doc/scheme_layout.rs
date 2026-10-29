@@ -1241,7 +1241,7 @@ fn label_offset_dir(pts: &[(f64, f64)], pos: super::LabelPos) -> (f64, f64) {
     let up = |p: (f64, f64)| -p.1;
     let left = |p: (f64, f64)| -p.0;
     match pos {
-        super::LabelPos::Above => {
+        super::LabelPos::Above | super::LabelPos::Auto => {
             if up(p1) >= up(p2) {
                 p1
             } else {

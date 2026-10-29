@@ -709,7 +709,10 @@ pub struct TextNode {
     pub opts: Option<Opts>,
 }
 
-/// Side of an edge shaft (or mol caption) for a label placement.
+/// Side of an edge shaft, mol caption, or callout for a label placement.
+///
+/// [`Self::Auto`] (callout `prefer` omitted) seeds by clash/air with no
+/// directional push in the solver. Edge `pos` omitted still means [`Self::Above`].
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
@@ -720,6 +723,7 @@ pub enum LabelPos {
     Below,
     Left,
     Right,
+    Auto,
 }
 
 /// Placed label: `{ "id": "adh", "pos": "below" }` (`pos` optional → above).

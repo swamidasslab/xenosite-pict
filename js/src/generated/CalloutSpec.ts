@@ -5,4 +5,8 @@ import type { MolText } from "./MolText";
 /**
  * Callout annotation (arrow / freer placement).
  */
-export type CalloutSpec = { atoms?: Array<number>, bonds?: Array<[number, number]>, text: MolText, arrow: boolean, prefer?: LabelPos, color?: string, scale?: number, z?: number, };
+export type CalloutSpec = { atoms?: Array<number>, bonds?: Array<[number, number]>, text: MolText, arrow: boolean, 
+/**
+ * Side bias. Omit or `"auto"` → seed by clash/air, solve with no PreferSide.
+ */
+prefer?: LabelPos, color?: string, scale?: number, z?: number, };

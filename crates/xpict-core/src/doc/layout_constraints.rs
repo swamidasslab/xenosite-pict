@@ -2462,9 +2462,10 @@ pub fn callout_kit(
     tip_xy: (f64, f64),
     target: (f64, f64),
     tip_standoff: f64,
-    preferred: Side,
+    preferred: Option<Side>,
     clash_dist: f64,
     route_points: &[(f64, f64)],
+    other_labels: &[Aabb],
 ) -> (NodeId, NodeId) {
     let _ = world.insert(
         "mol/annotations",
@@ -2528,13 +2529,33 @@ pub fn callout_kit(
         clash_dist,
         strength: 6.0,
     });
-    constraints.push(Constraint::PreferSide {
-        a: label_id.clone(),
-        b: "mol/chem".into(),
-        side: preferred,
-        strength: 1.5,
-        align_along: 0.0,
-    });
+    if let Some(side) = preferred {
+        constraints.push(Constraint::PreferSide {
+            a: label_id.clone(),
+            b: "mol/chem".into(),
+            side,
+            strength: 1.5,
+            align_along: 0.0,
+        });
+    }
+    for (i, box_) in other_labels.iter().enumerate() {
+        if box_.width() <= 0.0 && box_.height() <= 0.0 {
+            continue;
+        }
+        let oid = world.insert(
+            format!("{cid}/other{i}"),
+            &cid,
+            ObjectType::Group,
+            Shape::Aabb(*box_),
+            true,
+        );
+        hard.push(HardConstraint::Outside {
+            a: label_id.clone(),
+            b: oid,
+            clash_dist,
+            lagrangian: LAGRANGIAN_CLEAR,
+        });
+    }
     // Label box stays one CC-bond from the target (tip standoff is separate).
     constraints.push(Constraint::MinGap {
         a: label_id.clone(),
@@ -3155,9 +3176,10 @@ pub fn refine_callout(
     tip_xy: (f64, f64),
     target: (f64, f64),
     tip_standoff: f64,
-    preferred: Side,
+    preferred: Option<Side>,
     clash_dist: f64,
     routes: &[(f64, f64)],
+    other_labels: &[Aabb],
 ) -> ((f64, f64), (f64, f64), Vec<(f64, f64)>) {
     let mut world = LayoutWorld::new("mol");
     install_chem(&mut world, bonds, &[], &[]);
@@ -3175,6 +3197,7 @@ pub fn refine_callout(
         preferred,
         clash_dist,
         routes,
+        other_labels,
     );
     let opts = SolveOpts {
         max_iters: 100,
@@ -3611,6 +3634,65 @@ mod tests {
             contain,
             vec![LAGRANGIAN_CONTAIN],
             "inside region contain is the third Lagrangian, after clear and tether"
+        );
+    }
+
+    #[test]
+    fn callout_kit_auto_omits_prefer_side() {
+        let mut w = LayoutWorld::new("mol");
+        install_chem(&mut w, &[], &[(0, 0.0, 0.0)], &[]);
+        let mut cs = Vec::new();
+        let mut hard = Vec::new();
+        let _ = callout_kit(
+            &mut w,
+            &mut cs,
+            &mut hard,
+            0,
+            Aabb::new(10.0, -20.0, 40.0, -8.0),
+            (0.0, -8.0),
+            (0.0, 0.0),
+            8.0,
+            None,
+            3.0,
+            &[],
+            &[],
+        );
+        assert!(
+            cs.iter()
+                .all(|c| !matches!(c, Constraint::PreferSide { .. })),
+            "auto must not push a side: {cs:?}"
+        );
+    }
+
+    #[test]
+    fn callout_kit_locked_side_emits_prefer_side() {
+        let mut w = LayoutWorld::new("mol");
+        install_chem(&mut w, &[], &[(0, 0.0, 0.0)], &[]);
+        let mut cs = Vec::new();
+        let mut hard = Vec::new();
+        let _ = callout_kit(
+            &mut w,
+            &mut cs,
+            &mut hard,
+            0,
+            Aabb::new(10.0, -8.0, 40.0, 8.0),
+            (8.0, 0.0),
+            (0.0, 0.0),
+            8.0,
+            Some(Side::Right),
+            3.0,
+            &[],
+            &[],
+        );
+        assert!(
+            cs.iter().any(|c| matches!(
+                c,
+                Constraint::PreferSide {
+                    side: Side::Right,
+                    ..
+                }
+            )),
+            "locked prefer still emits PreferSide: {cs:?}"
         );
     }
 
@@ -4838,8 +4920,9 @@ mod tests {
                             (48.0, 18.0),
                             (45.0, 20.0),
                             8.0,
-                            Side::Right,
+                            Some(Side::Right),
                             3.0,
+                            &[],
                             &[],
                         );
                         solve(
@@ -4877,9 +4960,10 @@ mod tests {
                             (48.0, 18.0),
                             (45.0, 20.0),
                             8.0,
-                            Side::Right,
+                            Some(Side::Right),
                             3.0,
                             &routes,
+                            &[],
                         );
                         solve(
                             &mut w,

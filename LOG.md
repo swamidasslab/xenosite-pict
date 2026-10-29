@@ -2,6 +2,8 @@
 
 ## 2026-10-29
 
+- Callout `prefer` omitted (or `"auto"`) seeds by min clash / max air to other chrome and solves with no PreferSide. Kitchen-sink phenol OH lands like `above` from those rules (OH glyph + exo occupy the right). Locked `above`/`below`/`left`/`right` still emit PreferSide.
+
 - Xenobase Epirubicin network (`net:23d813ec34`): heads sat in anthracycline rings and shafts cut other mols. Bond-line clash treats a ring hole as air (centroid → nearest bond ~0.866·bond > ½-bond standoff), so hug stopped at the centroid and 2-point chords never injected a bow. Chem now owns a filled convex hull; signed distance is min(raster, geometry) so holes stay occupied. Hug cap is the chem AABB exit, not the other centroid (packed fused rings have span < half-width). Tight corridors keep ink-lip poses instead of a `min_shaft` stub inside the rings. Thick stroke half-width is in shaft clash.
 
 - Example 5 shafts were Catmull squiggles: five controls on a ~26px corridor plus 8px consecutive-point Outside had to zigzag, and a 0.5px last chord aimed the head off the incoming shaft. Drop the consecutive-point Outside (that was the overshoot), prune controls closer than 4px after the solve, and paint the head along that last chord. Hinges at ¼ / ¾ stay so a reversed lane still aims at the centroid.

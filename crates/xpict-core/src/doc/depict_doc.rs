@@ -455,7 +455,7 @@ mod tests {
                 bonds: None,
                 text: MolText::Plain("OH".into()),
                 arrow: true,
-                prefer: Some(crate::doc::LabelPos::Above),
+                prefer: None,
                 color: None,
                 scale: None,
                 z: None,
