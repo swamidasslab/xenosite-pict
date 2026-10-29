@@ -2,7 +2,7 @@
 
 ## 2026-10-29
 
-- Coterminal scheme arrows (A→B and B→A, or two A→B) shared a path, so ParallelClear flung one shaft. Group by unordered mol pair / shared terminals, solve one centerline, then miter-offset lanes at `SCHEME_EDGE_CLEARANCE` so they stay a constant distance along the whole path (including curves). Reverse members keep their painted direction.
+- Coterminal scheme arrows (A→B and B→A, or two A→B) shared a path, so ParallelClear flung one shaft. Group by unordered mol pair / shared terminals, solve one centerline, then miter-offset lanes so they stay a constant distance along the whole path (including curves). Reverse members keep their painted direction. Lane gap is `COTERMINAL_LANE_PX` (8px, compact pair); `SCHEME_EDGE_CLEARANCE` (one bond) still applies between unrelated parallel shafts.
 
 ## 2026-10-27
 

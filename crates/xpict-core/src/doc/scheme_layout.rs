@@ -24,6 +24,10 @@ use super::{DepictSpec, DocPaint, EdgeNode, LayoutOpts};
 pub const SCHEME_INK_STANDOFF: f64 = 2.0 * BOND_PX;
 /// Minimum gap between nearly-parallel overlapping shafts.
 pub const SCHEME_EDGE_CLEARANCE: f64 = BOND_PX;
+/// Center-to-center gap between coterminal lanes. Unrelated parallel shafts
+/// still use [`SCHEME_EDGE_CLEARANCE`]; paired A→B / B→A should sit like a
+/// compact double arrow, not a bond-length apart.
+const COTERMINAL_LANE_PX: f64 = 8.0;
 /// Default scheme-arrow stroke (matches [`crate::arrows`] house width).
 const SHAFT_STROKE_PX: f64 = 1.6;
 const LABEL_FONT_PX: f64 = 11.0;
@@ -231,7 +235,7 @@ fn lane_offsets(n: usize) -> Vec<f64> {
     }
     let mid = (n - 1) as f64 / 2.0;
     (0..n)
-        .map(|i| (i as f64 - mid) * SCHEME_EDGE_CLEARANCE)
+        .map(|i| (i as f64 - mid) * COTERMINAL_LANE_PX)
         .collect()
 }
 
@@ -239,7 +243,7 @@ fn group_half_width(n: usize) -> f64 {
     if n <= 1 {
         0.0
     } else {
-        (n as f64 - 1.0) * 0.5 * SCHEME_EDGE_CLEARANCE
+        (n as f64 - 1.0) * 0.5 * COTERMINAL_LANE_PX
     }
 }
 
@@ -1505,11 +1509,11 @@ mod tests {
     fn lane_offsets_straddle_the_centerline() {
         assert_eq!(lane_offsets(1), vec![0.0]);
         let two = lane_offsets(2);
-        assert!((two[1] - two[0] - SCHEME_EDGE_CLEARANCE).abs() < 1e-9);
+        assert!((two[1] - two[0] - COTERMINAL_LANE_PX).abs() < 1e-9);
         assert!((two[0] + two[1]).abs() < 1e-9);
         let three = lane_offsets(3);
         assert!((three[1]).abs() < 1e-9);
-        assert!((three[2] - three[0] - 2.0 * SCHEME_EDGE_CLEARANCE).abs() < 1e-9);
+        assert!((three[2] - three[0] - 2.0 * COTERMINAL_LANE_PX).abs() < 1e-9);
     }
 
     #[test]
@@ -1761,8 +1765,8 @@ mod tests {
         );
         let sep = mean_nearest_sep(&a, &b);
         assert!(
-            (sep - SCHEME_EDGE_CLEARANCE).abs() < 6.0,
-            "lanes should sit one clearance apart, got {sep} a={a:?} b={b:?}"
+            (sep - COTERMINAL_LANE_PX).abs() < 6.0,
+            "lanes should sit COTERMINAL_LANE_PX apart, got {sep} a={a:?} b={b:?}"
         );
         let (lo, hi) = sep_spread(&a, &b);
         assert!(
@@ -1805,8 +1809,8 @@ mod tests {
         }
         let sep = mean_nearest_sep(&a, &b);
         assert!(
-            (sep - SCHEME_EDGE_CLEARANCE).abs() < 8.0,
-            "curved lanes should stay one clearance apart, got {sep} a={a:?} b={b:?}"
+            (sep - COTERMINAL_LANE_PX).abs() < 8.0,
+            "curved lanes should stay COTERMINAL_LANE_PX apart, got {sep} a={a:?} b={b:?}"
         );
         let (lo, hi) = sep_spread(&a, &b);
         assert!(
