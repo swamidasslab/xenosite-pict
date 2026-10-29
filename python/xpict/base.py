@@ -82,6 +82,14 @@ class PictBase:
         right = self.to_spec()
         return type(right)(grid_join(other, right).root)
 
+    def __str__(self) -> str:
+        """The drawing as HTML, so ``df.style`` shows xpict cells as images.
+
+        pandas renders cells with ``str()``; ``repr()`` stays the readable
+        dataclass / model form.
+        """
+        return self._repr_html_()
+
     def _repr_html_(self) -> str:
         from xpict.display import render_depict_html
 

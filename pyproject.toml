@@ -64,6 +64,8 @@ dev = [
   "basedpyright>=1.40.2",
   "ipykernel>=7.4.0",
   "xenosite-forest>=0.10",
+  "pandas>=2",
+  "jinja2>=3",
 ]
 docs = [
   "mkdocs>=1.6,<2",
