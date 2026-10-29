@@ -180,7 +180,13 @@ fn compose_reaction(
                 let (a, b) = edge_anchors(src_box, tgt_box, ANCHOR_GAP);
                 vec![a, b]
             });
-        let mut pts = simplify_route(&route, KINK_PX);
+        // Orthogonal ELK jogs still flatten under KINK_PX. Polyline/splines
+        // keep refine vertices: collinear collapse undoes a chem-clearing bow.
+        let mut pts = if edge.edge_routing_or(layout) == EdgeRouting::Orthogonal {
+            simplify_route(&route, KINK_PX)
+        } else {
+            simplify_route(&route, 0.0)
+        };
         let route_len: f64 = pts
             .windows(2)
             .map(|w| {
@@ -1996,5 +2002,125 @@ mod tests {
             plain.width,
             labeled.width
         );
+    }
+
+    fn on_curve_verts(d: &str) -> Vec<(f64, f64)> {
+        let pts = path_coords(d);
+        if d.contains('C') && pts.len() >= 4 {
+            let mut v = vec![pts[0]];
+            let mut i = 3;
+            while i < pts.len() {
+                v.push(pts[i]);
+                i += 3;
+            }
+            v
+        } else {
+            pts
+        }
+    }
+
+    fn composed_mol_ink(scene: &Scene, p: (f64, f64)) -> f64 {
+        use crate::doc::layout_constraints::{edge_signed_distance, Shape};
+        let pt = Shape::Point { x: p.0, y: p.1 };
+        let mut best = f64::INFINITY;
+        for vp in &scene.viewports {
+            let (ox, oy) = vp.local_origin();
+            for layer in &vp.layers {
+                if layer.name == LayerName::Halo {
+                    continue;
+                }
+                for prim in &layer.primitives {
+                    for s in super::super::scheme_layout::prim_ink_shapes(prim, ox, oy) {
+                        best = best.min(edge_signed_distance(&pt, &s));
+                    }
+                    // Stroke-only bonds are not filled ink stamps.
+                    if layer.name == LayerName::Bonds {
+                        if let Primitive::Path { d, .. } = prim {
+                            let pts: Vec<(f64, f64)> = path_coords(d)
+                                .into_iter()
+                                .map(|(x, y)| (x + ox, y + oy))
+                                .collect();
+                            for w in pts.windows(2) {
+                                best = best.min(edge_signed_distance(
+                                    &pt,
+                                    &Shape::Line {
+                                        x0: w[0].0,
+                                        y0: w[0].1,
+                                        x1: w[1].0,
+                                        y1: w[1].1,
+                                    },
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        best
+    }
+
+    #[test]
+    fn down_coterminal_pair_shafts_clear_chem() {
+        let spec: DepictSpec = serde_json::from_str(
+            r#"{
+              "type": "reaction_scheme",
+              "layout": {"direction": "down", "edge_routing": "polyline"},
+              "children": [
+                {"type": "mol", "id": "A", "smiles": "c1ccccc1O", "name": "phenol"},
+                {"type": "mol", "id": "B", "smiles": "c1ccccc1C=O", "name": "benzaldehyde"},
+                {"type": "edge", "sources": "A", "targets": "B", "arrow": "forward"},
+                {"type": "edge", "sources": "B", "targets": "A", "arrow": "forward"}
+              ]
+            }"#,
+        )
+        .unwrap();
+        let out = crate::doc::render(&spec).expect("render");
+        let scene = &out[0].scene;
+        let mut n = 0usize;
+        for p in &scene.overlays {
+            let Primitive::Path {
+                d, class: Some(c), ..
+            } = p
+            else {
+                continue;
+            };
+            if !c.contains("edge") || c.contains("head") {
+                continue;
+            }
+            n += 1;
+            let verts = on_curve_verts(d);
+            assert!(
+                verts.len() >= 3 && d.contains('C'),
+                "down-pair chord through chem must bow (Catmull), got {d}"
+            );
+            let mut clustered = 0usize;
+            for w in verts.windows(2) {
+                if (w[0].0 - w[1].0).hypot(w[0].1 - w[1].1) < 4.0 {
+                    clustered += 1;
+                }
+            }
+            assert!(
+                clustered < 2,
+                "controls collapsed into a ladder rung: verts={verts:?} d={d}"
+            );
+            let samples = crate::catmull::sample_open_catmull(&verts, 8);
+            for p in samples {
+                let dist = composed_mol_ink(scene, p);
+                assert!(
+                    dist > 2.0,
+                    "edge {n} sample ({:.1},{:.1}) hits mol ink: d={dist:.1} verts={verts:?} d={d}",
+                    p.0,
+                    p.1
+                );
+            }
+            if n == 1 {
+                let (tip, tan) = crate::catmull::open_catmull_end_frame(&verts);
+                assert!(
+                    tan.1 > 0.5,
+                    "A→B head must point down at B: tip={tip:?} tan={tan:?} verts={verts:?}"
+                );
+            }
+        }
+        assert_eq!(n, 2, "expected the reverse pair");
     }
 }

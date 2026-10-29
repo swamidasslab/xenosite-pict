@@ -503,7 +503,10 @@ fn harpoon_poly(
 
 /// Build overlay primitives for one edge given a resolved route.
 pub fn edge_primitives(edge: &EdgePaintIn) -> Vec<EdgePrim> {
-    let pts = simplify_route(&edge.pts, KINK_PX);
+    // Catmull / refine vertices are clearance DOF. Flattening “collinear”
+    // jogs under KINK_PX turns a chem-avoiding bow back into a cutting chord.
+    let kink = if edge.curve_catmull { 0.0 } else { KINK_PX };
+    let pts = simplify_route(&edge.pts, kink);
     if polyline_length(&pts) < 4.0 {
         return Vec::new();
     }
