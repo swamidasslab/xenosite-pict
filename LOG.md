@@ -2,6 +2,7 @@
 
 ## 2026-10-29
 
+- Coterminal connections (two A→B, or A→B plus B→A) are grouped before ELK: one representative edge is routed, then the path is copied (reversed for the back arrow) onto the other members. Refine still offset-lanes the group. Sending both paths had ELK packing two corridors.
 - Spending leftover ELK corridor as extra standoff left scheme arrows as `min_shaft` stubs when mols moved apart (examples 2–3). Tips now hug ink by ½ bond (`PreferPose` + `RayThrough` + hard Outside vs chem / other tip). Extra gap is shaft; `layer_spacing` 48→160 lengthens the pair instead of padding air.
 - Example 4 labeled A→B / B→A (`ox` above, `red` below) was a tilted blob: ELK packed both reverse-edge labels into the corridor, and refine's path-relative above/below put them on the same side of an 8px pair. Coterminal pairs skip ELK labels; refine seeds from the group centerline with screen-up/down sides and a bundle half-width offset so the shafts stay parallel lanes.
 - `mol("C")` painted a blank canvas: silent-carbon logic hid the label whenever charge was 0, including methane (no bonds). Isolated carbon now gets `CH4` / `C`; bonded carbons stay skeletal vertices. Same rule in `display_label` so a missing `AtomIn.label` still paints.

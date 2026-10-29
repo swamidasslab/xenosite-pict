@@ -370,19 +370,24 @@ fn build_elk_graph(spec: &DepictSpec, layout: &LayoutOpts, sizes: &[(String, f64
         })
         .collect();
 
-    let coterminal = coterminal_pair_counts(spec);
+    // One ELK edge per unordered mol pair. Coterminal A→B / B→A (or two A→B)
+    // share a corridor; ELK only needs to route the representative.
+    let reps = coterminal_elk_rep(spec);
     let mut edges = Vec::new();
     for (i, e) in spec.edges().iter().enumerate() {
+        if reps.get(i).copied() != Some(i) {
+            continue;
+        }
+        let n_members = reps.iter().filter(|&&r| r == i).count();
         let eid = format!("e{i}");
         let mut entry = json!({
             "id": eid,
             "sources": e.sources.as_slice(),
             "targets": e.targets.as_slice(),
         });
-        // Coterminal A→B / B→A labels belong to the refine pass. Feeding both
-        // to ELK widens the pack and bends the shared corridor into a mess.
-        let share = coterminal.get(&unordered_mol_pair(e)).copied().unwrap_or(0);
-        if share <= 1 {
+        // Group labels belong to the refine pass. One ELK label still widens
+        // the pack and bends the shared corridor.
+        if n_members <= 1 {
             if let Some(labels) = elk_edge_labels(spec, e, &format!("e{i}")) {
                 entry["labels"] = labels;
             }
@@ -413,12 +418,38 @@ fn unordered_mol_pair(e: &EdgeNode) -> (String, String) {
     }
 }
 
-fn coterminal_pair_counts(spec: &DepictSpec) -> HashMap<(String, String), usize> {
-    let mut m = HashMap::new();
-    for e in spec.edges() {
-        *m.entry(unordered_mol_pair(e)).or_insert(0) += 1;
+fn edge_src_tgt(e: &EdgeNode) -> (&str, &str) {
+    let s = e
+        .sources
+        .as_slice()
+        .first()
+        .map(String::as_str)
+        .unwrap_or("");
+    let t = e
+        .targets
+        .as_slice()
+        .first()
+        .map(String::as_str)
+        .unwrap_or("");
+    (s, t)
+}
+
+/// Representative (first) edge index for each unordered mol pair.
+fn coterminal_elk_rep(spec: &DepictSpec) -> Vec<usize> {
+    let n = spec.edges().len();
+    let mut first: HashMap<(String, String), usize> = HashMap::new();
+    let mut rep = vec![0; n];
+    for (i, e) in spec.edges().iter().enumerate() {
+        let r = *first.entry(unordered_mol_pair(e)).or_insert(i);
+        rep[i] = r;
     }
-    m
+    rep
+}
+
+fn member_reverses_rep(member: &EdgeNode, rep: &EdgeNode) -> bool {
+    let (s, t) = edge_src_tgt(member);
+    let (rs, rt) = edge_src_tgt(rep);
+    s == rt && t == rs && s != t
 }
 
 fn routing_name(r: EdgeRouting) -> &'static str {
@@ -503,14 +534,24 @@ fn parse_elk_placement(
     }
 
     let edges_out = laid.get("edges").and_then(|e| e.as_array());
-    let mut edge_paths = Vec::with_capacity(spec.edges().len());
-    for i in 0..spec.edges().len() {
-        let eid = format!("e{i}");
-        let path = edges_out.and_then(|arr| {
+    let reps = coterminal_elk_rep(spec);
+    let spec_edges = spec.edges();
+    let mut edge_paths = Vec::with_capacity(spec_edges.len());
+    for i in 0..spec_edges.len() {
+        let r = reps[i];
+        let eid = format!("e{r}");
+        let mut path = edges_out.and_then(|arr| {
             arr.iter()
                 .find(|e| e.get("id").and_then(|v| v.as_str()) == Some(eid.as_str()))
                 .and_then(edge_path_from_elk)
         });
+        if let (Some(pts), Some(member), Some(rep)) =
+            (path.as_mut(), spec_edges.get(i), spec_edges.get(r))
+        {
+            if member_reverses_rep(member, rep) {
+                pts.reverse();
+            }
+        }
         edge_paths.push(path);
     }
 
@@ -1790,12 +1831,105 @@ mod tests {
             .map(|p| (p.id.clone(), p.scene.width, p.scene.height))
             .collect();
         let graph = build_elk_graph(&spec, &LayoutOpts::default(), &sizes);
-        for e in graph["edges"].as_array().expect("edges") {
+        let edges = graph["edges"].as_array().expect("edges");
+        assert_eq!(
+            edges.len(),
+            1,
+            "ELK should see one edge for a coterminal pair: {edges:?}"
+        );
+        assert_eq!(edges[0]["id"], "e0");
+        for e in edges {
             assert!(
                 e.get("labels").is_none(),
                 "coterminal labels must not go to ELK: {e}"
             );
         }
+    }
+
+    #[test]
+    fn two_forward_arrows_send_one_elk_edge() {
+        let spec = DepictSpec::ReactionScheme {
+            id: None,
+            children: vec![
+                Node::Mol(MolNode {
+                    id: Some("A".into()),
+                    smiles: Some("C".into()),
+                    ..Default::default()
+                }),
+                Node::Mol(MolNode {
+                    id: Some("B".into()),
+                    smiles: Some("O".into()),
+                    ..Default::default()
+                }),
+                Node::Edge(EdgeNode {
+                    type_: EdgeNodeKind::Edge,
+                    sources: MolIds::One("A".into()),
+                    targets: MolIds::One("B".into()),
+                    label: None,
+                    edge_routing: None,
+                    role: None,
+                    arrow: EdgeArrow::Forward,
+                    color: None,
+                    stroke_width: None,
+                    dashed: false,
+                }),
+                Node::Edge(EdgeNode {
+                    type_: EdgeNodeKind::Edge,
+                    sources: MolIds::One("A".into()),
+                    targets: MolIds::One("B".into()),
+                    label: None,
+                    edge_routing: None,
+                    role: None,
+                    arrow: EdgeArrow::Forward,
+                    color: None,
+                    stroke_width: None,
+                    dashed: false,
+                }),
+            ],
+            layout: None,
+            opts: None,
+            color: None,
+            scale: None,
+            aromatic: None,
+            debug_box: None,
+            debug_align: None,
+            pad: None,
+        };
+        let paints = vec![paint("A", 80.0, 60.0), paint("B", 80.0, 60.0)];
+        let sizes: Vec<(String, f64, f64)> = paints
+            .iter()
+            .map(|p| (p.id.clone(), p.scene.width, p.scene.height))
+            .collect();
+        let graph = build_elk_graph(&spec, &LayoutOpts::default(), &sizes);
+        assert_eq!(graph["edges"].as_array().expect("edges").len(), 1);
+    }
+
+    #[test]
+    fn parse_copies_elk_path_onto_reverse_member() {
+        let spec = pair_spec(false);
+        let laid = serde_json::json!({
+            "id": "root",
+            "width": 200.0,
+            "height": 80.0,
+            "children": [
+                {"id": "A", "x": 0.0, "y": 0.0},
+                {"id": "B", "x": 100.0, "y": 0.0}
+            ],
+            "edges": [{
+                "id": "e0",
+                "sections": [{
+                    "startPoint": {"x": 80.0, "y": 30.0},
+                    "endPoint": {"x": 100.0, "y": 30.0}
+                }]
+            }]
+        })
+        .to_string();
+        let sizes = vec![("A".into(), 80.0, 60.0), ("B".into(), 80.0, 60.0)];
+        let p = parse_elk_placement(&spec, &laid, &sizes).expect("parse");
+        let a = p.edge_paths[0].clone().expect("rep");
+        let b = p.edge_paths[1].clone().expect("rev");
+        assert_eq!(a, vec![(80.0, 30.0), (100.0, 30.0)]);
+        assert_eq!(b, vec![(100.0, 30.0), (80.0, 30.0)]);
     }
 
     fn overlay_shafts(scene: &Scene) -> Vec<Vec<(f64, f64)>> {
