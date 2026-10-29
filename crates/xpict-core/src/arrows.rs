@@ -421,32 +421,48 @@ fn label_point(pts: &[Pt]) -> (f64, f64, f64, f64) {
     ((x1 + x2) * 0.5, (y1 + y2) * 0.5, px, py)
 }
 
-fn offset_polyline(pts: &[Pt], dist: f64) -> Vec<Pt> {
+/// Parallel-curve offset of a polyline by `dist` along the left normal.
+///
+/// Interior vertices use a miter so every segment stays exactly `dist`
+/// from its source (constant lane width, including at corners). A 180°
+/// fold falls back to the unit bisector.
+pub(crate) fn offset_polyline(pts: &[Pt], dist: f64) -> Vec<Pt> {
     if pts.len() < 2 {
         return pts.to_vec();
     }
     let n = pts.len();
+    let seg_n = |i: usize| {
+        let (ux, uy) = unit(pts[i + 1].0 - pts[i].0, pts[i + 1].1 - pts[i].1);
+        perp(ux, uy)
+    };
     let mut out = Vec::with_capacity(n);
     for (i, &(x, y)) in pts.iter().enumerate() {
-        let (px, py) = if i == 0 {
-            let (ux, uy) = unit(pts[1].0 - x, pts[1].1 - y);
-            perp(ux, uy)
-        } else if i + 1 == n {
-            let (ux, uy) = unit(x - pts[i - 1].0, y - pts[i - 1].1);
-            perp(ux, uy)
-        } else {
-            let (u1x, u1y) = unit(x - pts[i - 1].0, y - pts[i - 1].1);
-            let (u2x, u2y) = unit(pts[i + 1].0 - x, pts[i + 1].1 - y);
-            let (p1x, p1y) = perp(u1x, u1y);
-            let (p2x, p2y) = perp(u2x, u2y);
-            let mut px = p1x + p2x;
-            let mut py = p1y + p2y;
+        if i == 0 {
+            let (px, py) = seg_n(0);
+            out.push((x + px * dist, y + py * dist));
+            continue;
+        }
+        if i + 1 == n {
+            let (px, py) = seg_n(n - 2);
+            out.push((x + px * dist, y + py * dist));
+            continue;
+        }
+        let (n1x, n1y) = seg_n(i - 1);
+        let (n2x, n2y) = seg_n(i);
+        let denom = 1.0 + n1x * n2x + n1y * n2y;
+        if denom.abs() < 1e-6 {
+            let mut px = n1x + n2x;
+            let mut py = n1y + n2y;
             let l = hypot(px, py).max(1e-9);
             px /= l;
             py /= l;
-            (px, py)
-        };
-        out.push((x + px * dist, y + py * dist));
+            out.push((x + px * dist, y + py * dist));
+        } else {
+            out.push((
+                x + dist * (n1x + n2x) / denom,
+                y + dist * (n1y + n2y) / denom,
+            ));
+        }
     }
     out
 }
@@ -894,6 +910,13 @@ mod tests {
         assert_eq!(offset_polyline(&[(0.0, 0.0)], 2.0).len(), 1);
         let off = offset_polyline(&[(0.0, 0.0), (10.0, 0.0), (10.0, 10.0)], 2.0);
         assert_eq!(off.len(), 3);
+        // Miter keeps both segments exactly `dist` away (90° corner).
+        assert!((off[0].1 - 2.0).abs() < 1e-9, "{off:?}");
+        assert!(
+            (off[1].0 - 8.0).abs() < 1e-9 && (off[1].1 - 2.0).abs() < 1e-9,
+            "{off:?}"
+        );
+        assert!((off[2].0 - 8.0).abs() < 1e-9, "{off:?}");
         let (x, y, _, _) = label_point(&[]);
         assert_eq!((x, y), (0.0, 0.0));
         let _ = label_point(&[(5.0, 5.0)]);

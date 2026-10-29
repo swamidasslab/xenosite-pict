@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 
-use crate::arrows::{edge_anchors, min_shaft_px, ANCHOR_GAP};
+use crate::arrows::{edge_anchors, min_shaft_px, offset_polyline, ANCHOR_GAP};
 use crate::metrics::BOND_PX;
 use crate::scene::{LayerName, MoleculeIn, Primitive, TextAnchor};
 
@@ -15,7 +15,7 @@ use super::layout_constraints::{
     LAGRANGIAN_TETHER,
 };
 use super::layout_items::Aabb;
-use super::{DepictSpec, DocPaint, LayoutOpts};
+use super::{DepictSpec, DocPaint, EdgeNode, LayoutOpts};
 
 /// Desired gap from painted mol ink to the shaft tip (two bonds).
 ///
@@ -48,6 +48,231 @@ const POSE_STRENGTH: f64 = 0.35;
 const RAY_TO_CENTROID: f64 = 4.0;
 /// Hold the endpoint at the ink-standoff pose on that ray.
 const ENDPOINT_POSE: f64 = 1.5;
+/// Endpoints within this gap count as the same geometric terminal.
+const COTERMINAL_PX: f64 = 8.0;
+
+/// Coterminal arrows (same unordered mol pair, or shared endpoints even if
+/// reversed) share one solved centerline, then paint as parallel lanes.
+struct ArrowGroup {
+    /// Edge indices; `members[0]` is the representative installed in the solver.
+    members: Vec<usize>,
+    /// True when that member's painted direction is opposite the centerline.
+    reversed: Vec<bool>,
+}
+
+fn edge_src_tgt(edge: &EdgeNode) -> (String, String) {
+    let src = edge.sources.as_slice().first().cloned().unwrap_or_default();
+    let tgt = edge.targets.as_slice().first().cloned().unwrap_or_default();
+    (src, tgt)
+}
+
+fn unordered_mol_pair(src: &str, tgt: &str) -> (String, String) {
+    if src <= tgt {
+        (src.to_string(), tgt.to_string())
+    } else {
+        (tgt.to_string(), src.to_string())
+    }
+}
+
+fn pt_dist(a: (f64, f64), b: (f64, f64)) -> f64 {
+    (a.0 - b.0).hypot(a.1 - b.1)
+}
+
+fn path_ends(pts: &[(f64, f64)]) -> Option<((f64, f64), (f64, f64))> {
+    if pts.len() < 2 {
+        return None;
+    }
+    Some((pts[0], pts[pts.len() - 1]))
+}
+
+/// `Some(reversed)` when `a` and `b` share terminals within [`COTERMINAL_PX`].
+fn seeds_coterminal(a: &[(f64, f64)], b: &[(f64, f64)]) -> Option<bool> {
+    let (a0, a1) = path_ends(a)?;
+    let (b0, b1) = path_ends(b)?;
+    let fwd = pt_dist(a0, b0) + pt_dist(a1, b1);
+    let rev = pt_dist(a0, b1) + pt_dist(a1, b0);
+    if fwd <= 2.0 * COTERMINAL_PX {
+        Some(false)
+    } else if rev <= 2.0 * COTERMINAL_PX {
+        Some(true)
+    } else {
+        None
+    }
+}
+
+fn member_reversed(
+    member_seed: &[(f64, f64)],
+    rep_seed: &[(f64, f64)],
+    member_src: &str,
+    member_tgt: &str,
+    rep_src: &str,
+    rep_tgt: &str,
+) -> bool {
+    // Mol pair is the source of truth: A→B vs B→A with identical seeds still reverse.
+    if member_src == rep_tgt && member_tgt == rep_src && member_src != member_tgt {
+        return true;
+    }
+    if member_src == rep_src && member_tgt == rep_tgt {
+        return false;
+    }
+    if let Some(rev) = seeds_coterminal(member_seed, rep_seed) {
+        return rev;
+    }
+    if let (Some((m0, m1)), Some((c0, c1))) = (path_ends(member_seed), path_ends(rep_seed)) {
+        let fwd = pt_dist(m0, c0) + pt_dist(m1, c1);
+        let rev = pt_dist(m0, c1) + pt_dist(m1, c0);
+        if (rev - fwd).abs() > 1.0 {
+            return rev < fwd;
+        }
+    }
+    false
+}
+
+fn find_group(parent: &mut [usize], mut i: usize) -> usize {
+    while parent[i] != i {
+        let p = parent[i];
+        parent[i] = parent[p];
+        i = p;
+    }
+    i
+}
+
+/// Partition edges that share an unordered mol pair or the same terminals.
+fn coterminal_groups(edges: &[&EdgeNode], seed_pts: &[Vec<(f64, f64)>]) -> Vec<ArrowGroup> {
+    let n = edges.len();
+    if n == 0 {
+        return Vec::new();
+    }
+    let mut parent: Vec<usize> = (0..n).collect();
+    for i in 0..n {
+        let (si, ti) = edge_src_tgt(edges[i]);
+        for j in (i + 1)..n {
+            let (sj, tj) = edge_src_tgt(edges[j]);
+            let same_pair = unordered_mol_pair(&si, &ti) == unordered_mol_pair(&sj, &tj)
+                && !(si.is_empty() && ti.is_empty());
+            let same_ends = seeds_coterminal(&seed_pts[i], &seed_pts[j]).is_some();
+            if same_pair || same_ends {
+                let a = find_group(&mut parent, i);
+                let b = find_group(&mut parent, j);
+                if a != b {
+                    parent[b] = a;
+                }
+            }
+        }
+    }
+    let mut buckets: HashMap<usize, Vec<usize>> = HashMap::new();
+    let mut order = Vec::new();
+    for i in 0..n {
+        let r = find_group(&mut parent, i);
+        if !buckets.contains_key(&r) {
+            order.push(r);
+        }
+        buckets.entry(r).or_default().push(i);
+    }
+    order
+        .into_iter()
+        .map(|r| {
+            let members = buckets.remove(&r).unwrap_or_default();
+            let rep = members[0];
+            let (rs, rt) = edge_src_tgt(edges[rep]);
+            let reversed: Vec<bool> = members
+                .iter()
+                .map(|&i| {
+                    if i == rep {
+                        false
+                    } else {
+                        let (s, t) = edge_src_tgt(edges[i]);
+                        member_reversed(&seed_pts[i], &seed_pts[rep], &s, &t, &rs, &rt)
+                    }
+                })
+                .collect();
+            ArrowGroup { members, reversed }
+        })
+        .collect()
+}
+
+fn group_centerline(group: &ArrowGroup, seed_pts: &[Vec<(f64, f64)>]) -> Vec<(f64, f64)> {
+    let template = seed_pts[group.members[0]].clone();
+    if group.members.len() == 1 || template.is_empty() {
+        return template;
+    }
+    let n = template.len();
+    let mut acc = template.clone();
+    let mut count = 1.0;
+    for (&i, &rev) in group.members.iter().zip(&group.reversed).skip(1) {
+        let mut pts = seed_pts[i].clone();
+        if rev {
+            pts.reverse();
+        }
+        if pts.len() != n {
+            continue;
+        }
+        // Skip a reversed copy of the same points: averaging those collapses
+        // the shaft to its midpoint.
+        if seeds_coterminal(&pts, &template) != Some(false) {
+            continue;
+        }
+        for (j, p) in pts.iter().enumerate() {
+            acc[j].0 += p.0;
+            acc[j].1 += p.1;
+        }
+        count += 1.0;
+    }
+    for p in &mut acc {
+        p.0 /= count;
+        p.1 /= count;
+    }
+    acc
+}
+
+fn lane_offsets(n: usize) -> Vec<f64> {
+    if n <= 1 {
+        return vec![0.0];
+    }
+    let mid = (n - 1) as f64 / 2.0;
+    (0..n)
+        .map(|i| (i as f64 - mid) * SCHEME_EDGE_CLEARANCE)
+        .collect()
+}
+
+fn group_half_width(n: usize) -> f64 {
+    if n <= 1 {
+        0.0
+    } else {
+        (n as f64 - 1.0) * 0.5 * SCHEME_EDGE_CLEARANCE
+    }
+}
+
+fn replace_edge_points(world: &mut LayoutWorld, eid: &str, pts: &[(f64, f64)]) {
+    let children = world
+        .get(eid)
+        .map(|n| n.children.clone())
+        .unwrap_or_default();
+    let mut keep = Vec::new();
+    for c in children {
+        let drop = world
+            .get(&c)
+            .map(|n| n.object_type == ObjectType::EdgePoint)
+            .unwrap_or(false);
+        if drop {
+            world.nodes.remove(&c);
+        } else {
+            keep.push(c);
+        }
+    }
+    if let Some(n) = world.get_mut(eid) {
+        n.children = keep;
+    }
+    for (k, &(x, y)) in pts.iter().enumerate() {
+        world.insert(
+            format!("{eid}/p{k}"),
+            eid,
+            ObjectType::EdgePoint,
+            Shape::Point { x, y },
+            true,
+        );
+    }
+}
 
 /// Refined shaft polylines and optional label poses `(x, y, rotate_deg)`.
 pub struct RefinedEdges {
@@ -161,6 +386,23 @@ pub fn refine_scheme_edges(
         seed_pts.push(pts);
     }
 
+    let groups = coterminal_groups(&spec.edges(), &seed_pts);
+    let n_edges = spec.edges().len();
+    let mut is_follower = vec![false; n_edges];
+    let mut group_of = vec![0usize; n_edges];
+    let mut centerlines = seed_pts.clone();
+    for (gi, group) in groups.iter().enumerate() {
+        for &i in &group.members {
+            group_of[i] = gi;
+        }
+        if group.members.len() > 1 {
+            centerlines[group.members[0]] = group_centerline(group, &seed_pts);
+            for &i in group.members.iter().skip(1) {
+                is_follower[i] = true;
+            }
+        }
+    }
+
     for (i, edge) in spec.edges().iter().enumerate() {
         let eid = format!("scheme/edges/e{i}");
         world.insert(
@@ -170,6 +412,9 @@ pub fn refine_scheme_edges(
             Shape::Polyline(vec![]),
             true,
         );
+        if is_follower[i] {
+            continue;
+        }
         let src = edge
             .sources
             .as_slice()
@@ -182,7 +427,7 @@ pub fn refine_scheme_edges(
             .first()
             .map(String::as_str)
             .unwrap_or("");
-        let pts = &seed_pts[i];
+        let pts = &centerlines[i];
         // Painted ends stop at ink+standoff along a ray through the centroid.
         // The ray itself may cross chem — do not emit isotropic Outside vs ink.
         // Standoff is min(two bonds, how far the ELK seed already sits from ink)
@@ -291,19 +536,27 @@ pub fn refine_scheme_edges(
         }
     }
 
-    let n_edges = spec.edges().len();
     for i in 0..n_edges {
+        if is_follower[i] {
+            continue;
+        }
         let a = format!("scheme/edges/e{i}");
         for j in (i + 1)..n_edges {
+            if is_follower[j] {
+                continue;
+            }
             let b = format!("scheme/edges/e{j}");
+            let clash = SCHEME_EDGE_CLEARANCE
+                + group_half_width(groups[group_of[i]].members.len())
+                + group_half_width(groups[group_of[j]].members.len());
             hard.push(HardConstraint::ParallelClear {
                 a: a.clone(),
                 b: b.clone(),
-                clash_dist: SCHEME_EDGE_CLEARANCE,
+                clash_dist: clash,
                 lagrangian: LAGRANGIAN_CLEAR,
             });
-            let sa = Shape::Polyline(seed_pts[i].clone());
-            let sb = Shape::Polyline(seed_pts[j].clone());
+            let sa = Shape::Polyline(centerlines[i].clone());
+            let sb = Shape::Polyline(centerlines[j].clone());
             if !shapes_properly_cross(&sa, &sb) {
                 cs.push(Constraint::PolyCross {
                     a: a.clone(),
@@ -322,11 +575,25 @@ pub fn refine_scheme_edges(
     };
     let _ = solve(&mut world, &cs, &hard, &opts);
 
-    // Shafts stay put: the arrow is the frozen endpoints. Labels cannot shove them.
-    for (i, pts) in seed_pts.iter().enumerate() {
-        let eid = format!("scheme/edges/e{i}");
-        for k in 0..pts.len() {
-            world.freeze(&format!("{eid}/p{k}"));
+    // One solved centerline per coterminal group; lanes are a constant-width
+    // offset so ParallelClear cannot fling a coincident reverse arrow.
+    for group in &groups {
+        let rep = group.members[0];
+        let eid = format!("scheme/edges/e{rep}");
+        let center = match world.eval_shape(&eid) {
+            Some(Shape::Polyline(p)) if p.len() >= 2 => p,
+            _ => centerlines[rep].clone(),
+        };
+        let offs = lane_offsets(group.members.len());
+        for (lane, &i) in group.members.iter().enumerate() {
+            let mut pts = offset_polyline(&center, offs[lane]);
+            if group.reversed[lane] {
+                pts.reverse();
+            }
+            if pts.len() >= 2 {
+                replace_edge_points(&mut world, &format!("scheme/edges/e{i}"), &pts);
+                out_paths[i] = Some(pts);
+            }
         }
     }
 
@@ -1234,6 +1501,26 @@ mod tests {
         assert!(hard_g(&w, &h) > 0.0);
     }
 
+    #[test]
+    fn lane_offsets_straddle_the_centerline() {
+        assert_eq!(lane_offsets(1), vec![0.0]);
+        let two = lane_offsets(2);
+        assert!((two[1] - two[0] - SCHEME_EDGE_CLEARANCE).abs() < 1e-9);
+        assert!((two[0] + two[1]).abs() < 1e-9);
+        let three = lane_offsets(3);
+        assert!((three[1]).abs() < 1e-9);
+        assert!((three[2] - three[0] - 2.0 * SCHEME_EDGE_CLEARANCE).abs() < 1e-9);
+    }
+
+    #[test]
+    fn reverse_member_follows_mol_pair_not_identical_seed() {
+        let seed = vec![(0.0, 0.0), (40.0, 0.0)];
+        assert!(member_reversed(&seed, &seed, "B", "A", "A", "B"));
+        assert!(!member_reversed(&seed, &seed, "A", "B", "A", "B"));
+        let rev = vec![(40.0, 0.0), (0.0, 0.0)];
+        assert!(member_reversed(&rev, &seed, "B", "A", "A", "B"));
+    }
+
     fn mol_node(id: &str) -> crate::doc::Node {
         crate::doc::Node::Mol(crate::doc::MolNode {
             id: Some(id.into()),
@@ -1367,6 +1654,164 @@ mod tests {
         assert!(
             shapes_properly_cross(&Shape::Polyline(a.clone()), &Shape::Polyline(b.clone())),
             "ELK X must remain after refine: {a:?} vs {b:?}"
+        );
+    }
+
+    fn mean_nearest_sep(a: &[(f64, f64)], b: &[(f64, f64)]) -> f64 {
+        let sa = crate::catmull::sample_open_catmull(a, 8);
+        let sb = crate::catmull::sample_open_catmull(b, 8);
+        let mut sum = 0.0;
+        let mut n = 0.0;
+        for &(x, y) in &sa {
+            let mut best = f64::INFINITY;
+            for w in sb.windows(2) {
+                let (x0, y0) = w[0];
+                let (x1, y1) = w[1];
+                let vx = x1 - x0;
+                let vy = y1 - y0;
+                let l2 = vx * vx + vy * vy;
+                let t = if l2 < 1e-12 {
+                    0.0
+                } else {
+                    ((x - x0) * vx + (y - y0) * vy) / l2
+                }
+                .clamp(0.0, 1.0);
+                let d = (x - (x0 + t * vx)).hypot(y - (y0 + t * vy));
+                best = best.min(d);
+            }
+            if best.is_finite() {
+                sum += best;
+                n += 1.0;
+            }
+        }
+        if n > 0.0 {
+            sum / n
+        } else {
+            0.0
+        }
+    }
+
+    fn sep_spread(a: &[(f64, f64)], b: &[(f64, f64)]) -> (f64, f64) {
+        let sa = crate::catmull::sample_open_catmull(a, 8);
+        let sb = crate::catmull::sample_open_catmull(b, 8);
+        let mut lo = f64::INFINITY;
+        let mut hi: f64 = 0.0;
+        for &(x, y) in &sa {
+            let mut best = f64::INFINITY;
+            for w in sb.windows(2) {
+                let (x0, y0) = w[0];
+                let (x1, y1) = w[1];
+                let vx = x1 - x0;
+                let vy = y1 - y0;
+                let l2 = vx * vx + vy * vy;
+                let t = if l2 < 1e-12 {
+                    0.0
+                } else {
+                    ((x - x0) * vx + (y - y0) * vy) / l2
+                }
+                .clamp(0.0, 1.0);
+                best = best.min((x - (x0 + t * vx)).hypot(y - (y0 + t * vy)));
+            }
+            lo = lo.min(best);
+            hi = hi.max(best);
+        }
+        (lo, hi)
+    }
+
+    #[test]
+    fn coterminal_reverse_arrows_offset_not_flung() {
+        let spec = scheme(vec![
+            mol_node("A"),
+            mol_node("B"),
+            edge_node("A", "B", None),
+            edge_node("B", "A", None),
+        ]);
+        let layout = LayoutOpts::default();
+        let positions = HashMap::from([("A".into(), (0.0, 0.0)), ("B".into(), (240.0, 0.0))]);
+        let sizes = vec![("A".into(), 80.0, 80.0), ("B".into(), 80.0, 80.0)];
+        let paints = vec![
+            chem_paint("A", 80.0, 80.0, 40.0, 40.0),
+            chem_paint("B", 80.0, 80.0, 40.0, 40.0),
+        ];
+        // Same geometric terminals, even though the second edge is reversed.
+        let seed = vec![(80.0, 40.0), (240.0, 40.0)];
+        let refined = refine_scheme_edges(
+            &spec,
+            &layout,
+            &positions,
+            &[Some(seed.clone()), Some(seed.clone())],
+            &paints,
+            &sizes,
+        );
+        let a = refined.edge_paths[0].clone().expect("e0");
+        let b = refined.edge_paths[1].clone().expect("e1");
+        for p in a.iter().chain(&b) {
+            assert!(
+                (15.0..105.0).contains(&p.1) && (40.0..280.0).contains(&p.0),
+                "coterminal arrow flung off the corridor: {p:?} a={a:?} b={b:?}"
+            );
+        }
+        assert!(
+            a[0].0 < a[a.len() - 1].0,
+            "A→B must keep forward sense: {a:?}"
+        );
+        assert!(
+            b[0].0 > b[b.len() - 1].0,
+            "B→A must keep reverse sense: {b:?}"
+        );
+        let sep = mean_nearest_sep(&a, &b);
+        assert!(
+            (sep - SCHEME_EDGE_CLEARANCE).abs() < 6.0,
+            "lanes should sit one clearance apart, got {sep} a={a:?} b={b:?}"
+        );
+        let (lo, hi) = sep_spread(&a, &b);
+        assert!(
+            hi - lo < 4.0,
+            "offset must stay constant along the path: lo={lo} hi={hi} a={a:?} b={b:?}"
+        );
+    }
+
+    #[test]
+    fn two_forward_arrows_share_offset_lanes() {
+        let spec = scheme(vec![
+            mol_node("A"),
+            mol_node("B"),
+            edge_node("A", "B", None),
+            edge_node("A", "B", None),
+        ]);
+        let layout = LayoutOpts::default();
+        let positions = HashMap::from([("A".into(), (0.0, 0.0)), ("B".into(), (240.0, 0.0))]);
+        let sizes = vec![("A".into(), 80.0, 80.0), ("B".into(), 80.0, 80.0)];
+        let paints = vec![
+            chem_paint("A", 80.0, 80.0, 40.0, 40.0),
+            chem_paint("B", 80.0, 80.0, 40.0, 40.0),
+        ];
+        let seed = vec![(80.0, 40.0), (160.0, 80.0), (240.0, 40.0)];
+        let refined = refine_scheme_edges(
+            &spec,
+            &layout,
+            &positions,
+            &[Some(seed.clone()), Some(seed)],
+            &paints,
+            &sizes,
+        );
+        let a = refined.edge_paths[0].clone().expect("e0");
+        let b = refined.edge_paths[1].clone().expect("e1");
+        for p in a.iter().chain(&b) {
+            assert!(
+                (-20.0..140.0).contains(&p.1) && (40.0..280.0).contains(&p.0),
+                "parallel A→B flung: {p:?} a={a:?} b={b:?}"
+            );
+        }
+        let sep = mean_nearest_sep(&a, &b);
+        assert!(
+            (sep - SCHEME_EDGE_CLEARANCE).abs() < 8.0,
+            "curved lanes should stay one clearance apart, got {sep} a={a:?} b={b:?}"
+        );
+        let (lo, hi) = sep_spread(&a, &b);
+        assert!(
+            hi - lo < 8.0,
+            "curved offset must stay even along the path: lo={lo} hi={hi} a={a:?} b={b:?}"
         );
     }
 
