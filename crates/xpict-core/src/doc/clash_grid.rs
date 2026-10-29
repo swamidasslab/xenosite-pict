@@ -31,6 +31,9 @@ pub enum InkStamp {
         x: f64,
         y: f64,
     },
+    /// Filled closed polygon (convex hull). Stroke `PointSet` outlines leave
+    /// ring interiors as air; arrows then hug the hole and cut the skeleton.
+    Polygon(Vec<(f64, f64)>),
 }
 
 /// Cached occupancy + chamfer signed distance (positive = outside ink).
@@ -130,6 +133,23 @@ fn stamp_aabb(s: &InkStamp) -> Aabb {
             y0.max(y1) + r,
         ),
         InkStamp::Point { x, y } => Aabb::new(x, y, x, y),
+        InkStamp::Polygon(ref pts) => {
+            if pts.is_empty() {
+                Aabb::new(0.0, 0.0, 0.0, 0.0)
+            } else {
+                let mut x0 = f64::INFINITY;
+                let mut y0 = f64::INFINITY;
+                let mut x1 = f64::NEG_INFINITY;
+                let mut y1 = f64::NEG_INFINITY;
+                for &(x, y) in pts {
+                    x0 = x0.min(x);
+                    y0 = y0.min(y);
+                    x1 = x1.max(x);
+                    y1 = y1.max(y);
+                }
+                Aabb::new(x0, y0, x1, y1)
+            }
+        }
     }
 }
 
@@ -155,6 +175,7 @@ fn stamp(occ: &mut [u8], cols: usize, rows: usize, x0: f64, y0: f64, cell: f64, 
             y,
             (STROKE_PX * 0.5).max(cell),
         ),
+        InkStamp::Polygon(ref pts) => fill_polygon(occ, cols, rows, x0, y0, cell, pts),
     }
 }
 
@@ -195,6 +216,61 @@ fn fill_circle(
             let x = x0 + (col as f64 + 0.5) * cell;
             let y = y0 + (row as f64 + 0.5) * cell;
             if (x - cx) * (x - cx) + (y - cy) * (y - cy) <= rr {
+                occ[row * cols + col] = 1;
+            }
+        }
+    }
+}
+
+fn point_in_poly(px: f64, py: f64, pts: &[(f64, f64)]) -> bool {
+    let n = pts.len();
+    if n < 3 {
+        return false;
+    }
+    let mut inside = false;
+    let mut j = n - 1;
+    for i in 0..n {
+        let (xi, yi) = pts[i];
+        let (xj, yj) = pts[j];
+        if ((yi > py) != (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi + 1e-18) + xi) {
+            inside = !inside;
+        }
+        j = i;
+    }
+    inside
+}
+
+fn fill_polygon(
+    occ: &mut [u8],
+    cols: usize,
+    rows: usize,
+    x0: f64,
+    y0: f64,
+    cell: f64,
+    pts: &[(f64, f64)],
+) {
+    if pts.len() < 3 {
+        return;
+    }
+    let mut px0 = f64::INFINITY;
+    let mut py0 = f64::INFINITY;
+    let mut px1 = f64::NEG_INFINITY;
+    let mut py1 = f64::NEG_INFINITY;
+    for &(x, y) in pts {
+        px0 = px0.min(x);
+        py0 = py0.min(y);
+        px1 = px1.max(x);
+        py1 = py1.max(y);
+    }
+    let c0 = ix(px0, x0, cell, cols);
+    let c1 = ix(px1, x0, cell, cols);
+    let r0 = ix(py0, y0, cell, rows);
+    let r1 = ix(py1, y0, cell, rows);
+    for row in r0..=r1 {
+        for col in c0..=c1 {
+            let x = x0 + (col as f64 + 0.5) * cell;
+            let y = y0 + (row as f64 + 0.5) * cell;
+            if point_in_poly(x, y, pts) {
                 occ[row * cols + col] = 1;
             }
         }
@@ -348,5 +424,23 @@ mod tests {
             "corner of the diagonal's AABB must be air, not filled ink: {d}"
         );
         assert!(g.signed_at(40.0, 40.0) < 0.0);
+    }
+
+    #[test]
+    fn polygon_stamp_fills_the_interior() {
+        let hex: Vec<(f64, f64)> = (0..6)
+            .map(|i| {
+                let a = i as f64 * std::f64::consts::PI / 3.0;
+                (30.0 * a.cos(), 30.0 * a.sin())
+            })
+            .collect();
+        let g = ClashGrid::from_stamps(&[InkStamp::Polygon(hex)]).unwrap();
+        assert!(
+            g.signed_at(0.0, 0.0) < 0.0,
+            "hexagon center must be occupied: {}",
+            g.signed_at(0.0, 0.0)
+        );
+        let d = g.signed_at(80.0, 0.0);
+        assert!(d > 40.0, "well outside the hexagon: {d}");
     }
 }

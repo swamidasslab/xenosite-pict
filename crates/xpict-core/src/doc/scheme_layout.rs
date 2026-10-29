@@ -250,6 +250,11 @@ fn group_half_width(n: usize) -> f64 {
     }
 }
 
+/// Centerline vs chem: ink hug + lane half-width + half the painted stroke.
+fn shaft_chem_clash(stroke_width: Option<f64>, bundle_n: usize) -> f64 {
+    SCHEME_INK_STANDOFF + group_half_width(bundle_n) + stroke_width.unwrap_or(SHAFT_STROKE_PX) * 0.5
+}
+
 fn replace_edge_points(world: &mut LayoutWorld, eid: &str, pts: &[(f64, f64)]) {
     let children = world
         .get(eid)
@@ -457,7 +462,7 @@ pub fn refine_scheme_edges(
         // Consecutive-point Outside used to force 8px gaps on a ~26px
         // corridor and the Catmull became a squiggle — do not add those.
         let bundle_n = groups[group_of[i]].members.len();
-        let shaft_clash = SCHEME_INK_STANDOFF + group_half_width(bundle_n);
+        let shaft_clash = shaft_chem_clash(edge.stroke_width, bundle_n);
         let injected =
             pts.len() == 2 && !chord_clears_chem(&world, pose0, pose1, &mol_ids, shaft_clash);
         let ctrl: Vec<(f64, f64)> = if injected {
@@ -829,9 +834,6 @@ fn scheme_label_clears_leaf(label: &str, id: &str, n: &LayoutNode) -> bool {
 }
 
 fn min_ink_signed(world: &LayoutWorld, under: &str, p: (f64, f64)) -> f64 {
-    if let Some(d) = world.ink_signed(under, p.0, p.1) {
-        return d;
-    }
     let pt = Shape::Point { x: p.0, y: p.1 };
     let mut best = f64::INFINITY;
     let mut stack = vec![under.to_string()];
@@ -853,6 +855,11 @@ fn min_ink_signed(world: &LayoutWorld, under: &str, p: (f64, f64)) -> f64 {
             continue;
         }
         best = best.min(edge_signed_distance(&pt, &s));
+    }
+    // Raster is extra (glyphs); it must not replace the hull. Bond-only
+    // grids treat ring holes as air and arrows hug the centroid.
+    if let Some(d) = world.ink_signed(under, p.0, p.1) {
+        best = best.min(d);
     }
     best
 }
@@ -906,17 +913,52 @@ fn shaft_endpoint_poses(
     if along(p1) - along(p0) >= min_shaft {
         return (p0, p1);
     }
+    // Tight corridor: sit on the ink lips rather than inventing a min_shaft
+    // stub whose tips land inside the rings (thick heads then vanish on chem).
     let q0 = ray_ink_pose(world, src_chem, src_c, src_toward, 2.0, span);
     let q1 = ray_ink_pose(world, tgt_chem, tgt_c, tgt_toward, 2.0, span);
-    if along(q1) - along(q0) >= min_shaft {
+    if along(q1) - along(q0) > CLOSE_CTRL_PX {
         return (q0, q1);
     }
-    let mid = span * 0.5;
-    let half = min_shaft * 0.5;
+    let mid = (along(q0) + along(q1)) * 0.5;
+    let half = min_shaft.min(span * 0.25).max(CLOSE_CTRL_PX);
     (at(mid - half), at(mid + half))
 }
 
+/// Distance along `centroid → toward` to the facing face of `chem`'s AABB.
+fn chem_ray_exit_t(world: &LayoutWorld, chem: &str, centroid: (f64, f64), ux: f64, uy: f64) -> f64 {
+    let Some(n) = world.get(chem) else {
+        return 0.0;
+    };
+    let a = n.world_shape().aabb();
+    if a.width() <= 1e-9 && a.height() <= 1e-9 {
+        return 0.0;
+    }
+    let mut t: f64 = 0.0;
+    if ux.abs() > 1e-12 {
+        let tx = if ux > 0.0 {
+            (a.x1 - centroid.0) / ux
+        } else {
+            (a.x0 - centroid.0) / ux
+        };
+        t = t.max(tx);
+    }
+    if uy.abs() > 1e-12 {
+        let ty = if uy > 0.0 {
+            (a.y1 - centroid.1) / uy
+        } else {
+            (a.y0 - centroid.1) / uy
+        };
+        t = t.max(ty);
+    }
+    t.max(0.0)
+}
+
 /// Walk from `centroid` toward `toward` until chem signed distance ≥ `clash`.
+///
+/// `max_t` is a floor (centroid span). The walk must still reach the facing
+/// hull lip: two packed fused rings have span < half-width, and capping at
+/// span left the tip in a ring hole.
 fn ray_ink_pose(
     world: &LayoutWorld,
     chem: &str,
@@ -930,7 +972,9 @@ fn ray_ink_pose(
     let l = dx.hypot(dy).max(1e-9);
     let ux = dx / l;
     let uy = dy / l;
-    let cap = max_t.max(clash);
+    let cap = max_t
+        .max(clash)
+        .max(chem_ray_exit_t(world, chem, centroid, ux, uy) + clash);
     let at = |t: f64| (centroid.0 + ux * t, centroid.1 + uy * t);
     if world.get(chem).is_none() || !min_ink_signed(world, chem, at(0.0)).is_finite() {
         return at(clash.min(cap));
@@ -1528,6 +1572,130 @@ mod tests {
             "pose should sit 30px from the chain ink, not from the centroid: p={p:?} d={d}"
         );
         assert!(p.0 > 120.0, "must walk past the protruding atom: {p:?}");
+    }
+
+    fn benzene_atoms_bonds(
+        cx: f64,
+        cy: f64,
+    ) -> (Vec<(f64, f64, f64, f64)>, Vec<(usize, f64, f64)>) {
+        let r = BOND_PX;
+        let atoms: Vec<(usize, f64, f64)> = (0..6)
+            .map(|i| {
+                let a = i as f64 * std::f64::consts::PI / 3.0;
+                (i, cx + r * a.cos(), cy + r * a.sin())
+            })
+            .collect();
+        let bonds: Vec<(f64, f64, f64, f64)> = (0..6)
+            .map(|i| {
+                let a = atoms[i];
+                let b = atoms[(i + 1) % 6];
+                (a.1, a.2, b.1, b.2)
+            })
+            .collect();
+        (bonds, atoms)
+    }
+
+    #[test]
+    fn ring_hole_is_occupied_chem() {
+        let mut world = LayoutWorld::rooted("scheme", ObjectType::Scheme);
+        world.insert(
+            "mol",
+            "scheme",
+            ObjectType::Mol,
+            Shape::Aabb(Aabb::new(-40.0, -40.0, 40.0, 40.0)),
+            true,
+        );
+        let (bonds, atoms) = benzene_atoms_bonds(0.0, 0.0);
+        crate::doc::layout_constraints::install_chem_under(
+            &mut world,
+            "mol",
+            &bonds,
+            &atoms,
+            &[],
+            &[],
+        );
+        let hole = min_ink_signed(&world, "mol/chem", (0.0, 0.0));
+        assert!(
+            hole < 0.0,
+            "benzene centroid is inside the ring, not air: {hole}"
+        );
+    }
+
+    #[test]
+    fn ray_ink_pose_walks_out_of_a_ring_hole() {
+        let mut world = LayoutWorld::rooted("scheme", ObjectType::Scheme);
+        world.insert(
+            "mol",
+            "scheme",
+            ObjectType::Mol,
+            Shape::Aabb(Aabb::new(-40.0, -40.0, 40.0, 40.0)),
+            true,
+        );
+        let (bonds, atoms) = benzene_atoms_bonds(0.0, 0.0);
+        crate::doc::layout_constraints::install_chem_under(
+            &mut world,
+            "mol",
+            &bonds,
+            &atoms,
+            &[],
+            &[],
+        );
+        let p = ray_ink_pose(
+            &world,
+            "mol/chem",
+            (0.0, 0.0),
+            (200.0, 0.0),
+            SCHEME_INK_STANDOFF,
+            180.0,
+        );
+        let d = min_ink_signed(&world, "mol/chem", p);
+        assert!(
+            p.0 > BOND_PX,
+            "must leave the hexagon, not sit in the hole: p={p:?}"
+        );
+        assert!(
+            (d - SCHEME_INK_STANDOFF).abs() < 4.0,
+            "pose should sit ½-bond past the ring lip: p={p:?} d={d}"
+        );
+    }
+
+    #[test]
+    fn ray_ink_pose_exits_when_centroid_span_is_short() {
+        let mut world = LayoutWorld::rooted("scheme", ObjectType::Scheme);
+        world.insert(
+            "mol",
+            "scheme",
+            ObjectType::Mol,
+            Shape::Aabb(Aabb::new(-40.0, -40.0, 40.0, 40.0)),
+            true,
+        );
+        let (bonds, atoms) = benzene_atoms_bonds(0.0, 0.0);
+        crate::doc::layout_constraints::install_chem_under(
+            &mut world,
+            "mol",
+            &bonds,
+            &atoms,
+            &[],
+            &[],
+        );
+        // Packed fused rings: the other centroid sits inside this mol.
+        let p = ray_ink_pose(
+            &world,
+            "mol/chem",
+            (0.0, 0.0),
+            (20.0, 0.0),
+            SCHEME_INK_STANDOFF,
+            20.0,
+        );
+        let d = min_ink_signed(&world, "mol/chem", p);
+        assert!(
+            p.0 > BOND_PX,
+            "short span must not pin the tip in the hole: p={p:?}"
+        );
+        assert!(
+            d + 1.0 >= SCHEME_INK_STANDOFF,
+            "must still hug the lip: p={p:?} d={d}"
+        );
     }
 
     fn refine_pair_at_gap(gap: f64) -> Vec<(f64, f64)> {
@@ -2615,11 +2783,15 @@ mod tests {
             chem_paint("B", 80.0, 80.0, 40.0, 40.0),
         ];
         let seed = vec![(40.0, 80.0), (120.0, 180.0), (40.0, 280.0)];
-        let unlabeled = scheme(vec![
-            mol_node("A"),
-            edge_node("A", "B", None),
-            mol_node("B"),
-        ]);
+        let thick = |label: Option<&str>| {
+            let mut e = match edge_node("A", "B", label) {
+                crate::doc::Node::Edge(e) => e,
+                other => panic!("{other:?}"),
+            };
+            e.stroke_width = Some(4.8);
+            crate::doc::Node::Edge(e)
+        };
+        let unlabeled = scheme(vec![mol_node("A"), thick(None), mol_node("B")]);
         let labeled = scheme(vec![
             mol_node("A"),
             crate::doc::Node::Text(crate::doc::TextNode {
@@ -2630,14 +2802,7 @@ mod tests {
                 scale: None,
                 opts: None,
             }),
-            {
-                let mut e = match edge_node("A", "B", Some("lab")) {
-                    crate::doc::Node::Edge(e) => e,
-                    other => panic!("{other:?}"),
-                };
-                e.stroke_width = Some(4.8);
-                crate::doc::Node::Edge(e)
-            },
+            thick(Some("lab")),
             mol_node("B"),
         ]);
         let a = refine_scheme_edges(

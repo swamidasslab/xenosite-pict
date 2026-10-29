@@ -2334,4 +2334,176 @@ mod tests {
             "A→B must point down at benzaldehyde: tan={tan:?} verts={a_verts:?}"
         );
     }
+
+    fn bond_points(scene: &Scene, id: Option<&str>) -> Vec<(f64, f64)> {
+        let mut pts = Vec::new();
+        for vp in &scene.viewports {
+            if let Some(want) = id {
+                if vp.id.as_deref() != Some(want) {
+                    continue;
+                }
+            }
+            let (ox, oy) = vp.local_origin();
+            for layer in &vp.layers {
+                if layer.name != LayerName::Bonds {
+                    continue;
+                }
+                for prim in &layer.primitives {
+                    if let Primitive::Path { d, .. } = prim {
+                        pts.extend(path_coords(d).into_iter().map(|(x, y)| (x + ox, y + oy)));
+                    }
+                }
+            }
+        }
+        pts
+    }
+
+    fn skeleton_signed_mol(scene: &Scene, id: &str, p: (f64, f64)) -> f64 {
+        use crate::doc::layout_constraints::{convex_hull_pts, edge_signed_distance, Shape};
+        let pt = Shape::Point { x: p.0, y: p.1 };
+        let mut best = f64::INFINITY;
+        let vp = scene
+            .viewports
+            .iter()
+            .find(|v| v.id.as_deref() == Some(id))
+            .unwrap_or_else(|| panic!("viewport {id}"));
+        let (ox, oy) = vp.local_origin();
+        for layer in &vp.layers {
+            if layer.name != LayerName::Bonds {
+                continue;
+            }
+            for prim in &layer.primitives {
+                if let Primitive::Path { d, .. } = prim {
+                    let pts: Vec<(f64, f64)> = path_coords(d)
+                        .into_iter()
+                        .map(|(x, y)| (x + ox, y + oy))
+                        .collect();
+                    for w in pts.windows(2) {
+                        best = best.min(edge_signed_distance(
+                            &pt,
+                            &Shape::Line {
+                                x0: w[0].0,
+                                y0: w[0].1,
+                                x1: w[1].0,
+                                y1: w[1].1,
+                            },
+                        ));
+                    }
+                }
+            }
+        }
+        let hull = convex_hull_pts(&bond_points(scene, Some(id)));
+        if hull.len() >= 3 {
+            best = best.min(edge_signed_distance(&pt, &Shape::PointSet(hull)));
+        }
+        best
+    }
+
+    /// Anthracycline / naphthalene arrows used to land in ring holes: signed
+    /// distance to bond lines is large at the centroid, so hug never walked out.
+    #[test]
+    fn fused_ring_heads_sit_outside_the_skeleton() {
+        let spec: crate::doc::DepictSpec = serde_json::from_str(
+            r#"{
+              "type": "reaction_scheme",
+              "layout": {"direction": "right", "edge_routing": "polyline"},
+              "children": [
+                {"type": "mol", "id": "A", "smiles": "c1ccc2ccccc2c1", "name": "naphthalene"},
+                {"type": "mol", "id": "B", "smiles": "c1ccc2ccccc2c1"},
+                {"type": "edge", "sources": "A", "targets": "B", "arrow": "forward", "stroke_width": 4.8}
+              ]
+            }"#,
+        )
+        .unwrap();
+        let scene = crate::doc::render(&spec).expect("render").remove(0).scene;
+        let shafts = overlay_shaft_ds(&scene);
+        let heads = overlay_heads(&scene);
+        assert_eq!(shafts.len(), 1);
+        assert_eq!(heads.len(), 1);
+        let (d, verts) = &shafts[0];
+        let (tip, _) = crate::catmull::open_catmull_end_frame(verts);
+        let h = path_coords(&heads[0]);
+        let htip = h[1];
+        for (name, p) in [("shaft tip", tip), ("head tip", htip)] {
+            let dist = skeleton_signed_mol(&scene, "B", p);
+            assert!(
+                dist > 2.0,
+                "{name} sits in B's rings: d={dist:.1} p={p:?} verts={verts:?} shaft={d}"
+            );
+        }
+        let start = verts[0];
+        let da = skeleton_signed_mol(&scene, "A", start);
+        assert!(
+            da > 2.0,
+            "src tip sits in A's rings: d={da:.1} p={start:?} verts={verts:?} shaft={d}"
+        );
+        let span = {
+            let a = verts[0];
+            let b = *verts.last().unwrap();
+            (b.0 - a.0).hypot(b.1 - a.1)
+        };
+        assert!(
+            span > crate::arrows::head_px(Some(4.8)),
+            "thick-stroke shaft must stay long enough to see: span={span} verts={verts:?}"
+        );
+        let a0 = verts[0];
+        let a1 = *verts.last().unwrap();
+        let vx = a1.0 - a0.0;
+        let vy = a1.1 - a0.1;
+        let l2 = (vx * vx + vy * vy).max(1e-9);
+        for p in crate::catmull::sample_open_catmull(verts, 8) {
+            let t = ((p.0 - a0.0) * vx + (p.1 - a0.1) * vy) / l2;
+            if t < 0.12 || t > 0.88 {
+                continue;
+            }
+            for id in ["A", "B"] {
+                let dist = skeleton_signed_mol(&scene, id, p);
+                assert!(
+                    dist > 1.0,
+                    "shaft sample ({:.1},{:.1}) t={t:.2} hits {id}: d={dist:.1} verts={verts:?} {d}",
+                    p.0,
+                    p.1
+                );
+            }
+        }
+    }
+
+    /// A→C across a row used to cut the middle benzene (2-point chord, ring
+    /// hole looked like clearance so refine never injected a bow).
+    #[test]
+    fn arrow_across_a_row_bows_around_the_middle_mol() {
+        let spec: crate::doc::DepictSpec = serde_json::from_str(
+            r#"{
+              "type": "reaction_scheme",
+              "layout": {"direction": "right", "edge_routing": "polyline"},
+              "children": [
+                {"type": "mol", "id": "A", "smiles": "c1ccccc1"},
+                {"type": "mol", "id": "B", "smiles": "c1ccccc1"},
+                {"type": "mol", "id": "C", "smiles": "c1ccccc1"},
+                {"type": "edge", "sources": "A", "targets": "B", "arrow": "forward"},
+                {"type": "edge", "sources": "B", "targets": "C", "arrow": "forward"},
+                {"type": "edge", "sources": "A", "targets": "C", "arrow": "forward"}
+              ]
+            }"#,
+        )
+        .unwrap();
+        let scene = crate::doc::render(&spec).expect("render").remove(0).scene;
+        let shafts = overlay_shaft_ds(&scene);
+        assert_eq!(shafts.len(), 3, "A→B, B→C, A→C");
+        let (d, verts) = &shafts[2];
+        let samples = if verts.len() >= 3 {
+            crate::catmull::sample_open_catmull(verts, 8)
+        } else {
+            verts.clone()
+        };
+        for p in samples {
+            let dist = skeleton_signed_mol(&scene, "B", p);
+            assert!(
+                dist > 2.0,
+                "A→C sample ({:.1},{:.1}) cuts B: d={dist:.1} verts={verts:?} {d}",
+                p.0,
+                p.1
+            );
+        }
+    }
 }

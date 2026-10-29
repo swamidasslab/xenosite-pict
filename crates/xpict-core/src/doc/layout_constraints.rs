@@ -808,7 +808,13 @@ fn stamps_from_shape(s: &Shape) -> Vec<InkStamp> {
             r: bond_half_stroke().max(1.0),
         }],
         Shape::Polyline(pts) => polyline_stamps(pts, false),
-        Shape::PointSet(pts) => polyline_stamps(pts, true),
+        Shape::PointSet(pts) => {
+            let mut stamps = polyline_stamps(pts, true);
+            if pts.len() >= 3 {
+                stamps.push(InkStamp::Polygon(pts.clone()));
+            }
+            stamps
+        }
     }
 }
 
@@ -2172,6 +2178,19 @@ pub fn install_chem_under(
             true,
         );
     }
+    let cloud: Vec<(f64, f64)> = atoms.iter().map(|&(_, x, y)| (x, y)).collect();
+    let hull = convex_hull_pts(&cloud);
+    if hull.len() >= 3 {
+        // Bond lines leave ring interiors as air. A filled hull is the
+        // occupied region arrows must hug and bow around.
+        world.insert(
+            format!("{parent}/chem/hull"),
+            &chem,
+            ObjectType::Group,
+            Shape::PointSet(hull),
+            true,
+        );
+    }
     for &(idx, cx, cy, r) in shades {
         let aid = format!("{parent}/chem/atoms/a{idx}");
         if world.get(&aid).is_none() {
@@ -3001,7 +3020,7 @@ pub fn bezier_path_from_proxy(proxy: &Shape, _curve: f64) -> String {
 
 pub use crate::catmull::centripetal_catmull_rom_closed_path;
 
-fn convex_hull_pts(pts: &[(f64, f64)]) -> Vec<(f64, f64)> {
+pub(crate) fn convex_hull_pts(pts: &[(f64, f64)]) -> Vec<(f64, f64)> {
     if pts.len() < 2 {
         return pts.to_vec();
     }
@@ -4617,6 +4636,37 @@ mod tests {
                 .any(|h| matches!(h, HardConstraint::Outside { b, .. } if b.ends_with("/bonds"))),
             "empty bonds folder is not ink: {hard:?}"
         );
+    }
+
+    #[test]
+    fn chem_hull_fills_a_benzene_hole() {
+        let r = crate::metrics::BOND_PX;
+        let atoms: Vec<(usize, f64, f64)> = (0..6)
+            .map(|i| {
+                let a = i as f64 * std::f64::consts::PI / 3.0;
+                (i, r * a.cos(), r * a.sin())
+            })
+            .collect();
+        let bonds: Vec<(f64, f64, f64, f64)> = (0..6)
+            .map(|i| {
+                let a = atoms[i];
+                let b = atoms[(i + 1) % 6];
+                (a.1, a.2, b.1, b.2)
+            })
+            .collect();
+        let mut w = LayoutWorld::rooted("mol", ObjectType::Mol);
+        install_chem_under(&mut w, "mol", &bonds, &atoms, &[], &[]);
+        assert!(
+            w.get("mol/chem/hull").is_some(),
+            "hexagon must install a filled hull leaf"
+        );
+        let d = edge_signed_distance(
+            &Shape::Point { x: 0.0, y: 0.0 },
+            &w.get("mol/chem/hull").unwrap().world_shape(),
+        );
+        assert!(d < 0.0, "ring center is inside the hull: {d}");
+        let ink = w.ink_signed("mol/chem", 0.0, 0.0).expect("chem raster");
+        assert!(ink < 0.0, "raster must occupy the hole too: {ink}");
     }
 
     /// Wall-clock + iteration stats for paint-style refine kits (noise=0).
