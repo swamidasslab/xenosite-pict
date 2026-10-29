@@ -1027,7 +1027,7 @@ pub enum LayoutAlgorithm {
 ///
 /// Spacing (px, document space) controls packing tightness:
 /// - [`Self::node_spacing`] — gap between nodes in the same layer (default ~20)
-/// - [`Self::layer_spacing`] — gap between reactant/product layers (default ~0)
+/// - [`Self::layer_spacing`] — gap between reactant/product layers (default ~20)
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
 #[cfg_attr(feature = "codegen", ts(export))]
@@ -1058,7 +1058,7 @@ impl LayoutOpts {
     /// Default within-layer gap for reaction schemes (px).
     pub const DEFAULT_NODE_SPACING: f64 = 20.0;
     /// Default between-layer gap for reaction schemes (px).
-    pub const DEFAULT_LAYER_SPACING: f64 = 0.0;
+    pub const DEFAULT_LAYER_SPACING: f64 = 20.0;
 
     pub fn algorithm_or_default(&self) -> LayoutAlgorithm {
         self.algorithm.unwrap_or_default()

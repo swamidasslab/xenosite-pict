@@ -41,7 +41,7 @@ fn algorithm_elk(a: LayoutAlgorithm) -> &'static str {
 
 /// Backend-agnostic [`LayoutOpts`] → ELK `layoutOptions` map.
 ///
-/// Reaction diagrams pack tightly (node spacing ~20, layer spacing ~0) and pin
+/// Reaction diagrams pack tightly (node spacing ~20, layer spacing ~20) and pin
 /// `unnecessaryBendpoints=false` so shafts only bend where they turn.
 pub fn scheme_layout_options(kind: DiagramKind, opts: &LayoutOpts) -> BTreeMap<String, String> {
     let mut base: BTreeMap<String, String> = BTreeMap::from([

@@ -2,6 +2,7 @@
 
 ## 2026-10-29
 
+- Default scheme `layer_spacing` is 20px (was 0). Flush ELK layers jammed mol captions (`ethanol` / `acetaldehyde`) into one line; a small between-layer gap also lengthens the arrow corridor.
 - Dropped `LayoutOpts.refine`. Scheme layout always runs the constraint pass after ELK; there is no stock-ELK opt-out on the wire.
 - Coterminal scheme arrows (A→B and B→A, or two A→B) shared a path, so ParallelClear flung one shaft. Group by unordered mol pair / shared terminals, solve one centerline, then miter-offset lanes so they stay a constant distance along the whole path (including curves). Reverse members keep their painted direction. Lane gap is `COTERMINAL_LANE_PX` (8px, compact pair); `SCHEME_EDGE_CLEARANCE` (one bond) still applies between unrelated parallel shafts.
 

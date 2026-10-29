@@ -189,7 +189,7 @@ not bit-identical to elkjs 0.9. Needs **Rust ≥ 1.85**.
 (buffer / union / difference / even-odd contours / halo). Python draw uses
 `_native.Shape`; Shapely is no longer a dependency.
 
-`diagram.kind: reaction` packs ELK tightly (node spacing ~20, layer spacing ~0)
+`diagram.kind: reaction` packs ELK tightly (node spacing ~20, layer spacing ~20)
 via Rust `compose_scheme` (ELK + arrow overlays). Live wire form is
 `type: reaction_scheme`. Orthogonal shafts stay axis-aligned; polyline bends
 use a larger fillet radius.
