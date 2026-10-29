@@ -10,20 +10,19 @@ use crate::metrics::BOND_PX;
 use crate::scene::{LayerName, MoleculeIn, Primitive, TextAnchor};
 
 use super::layout_constraints::{
-    edge_signed_distance, push_clear_leaves_where, shapes_properly_cross, solve, Constraint,
-    HardConstraint, LayoutNode, LayoutWorld, ObjectType, Shape, SolveOpts, LAGRANGIAN_CLEAR,
-    LAGRANGIAN_TETHER,
+    edge_signed_distance, push_clear_leaves, push_clear_leaves_where, shapes_properly_cross, solve,
+    Constraint, HardConstraint, LayoutNode, LayoutWorld, ObjectType, Shape, SolveOpts,
+    LAGRANGIAN_CLEAR, LAGRANGIAN_TETHER,
 };
 use super::layout_items::Aabb;
 use super::{DepictSpec, DocPaint, EdgeNode, LayoutOpts};
 
-/// Desired gap from painted mol ink (chem **and** captions) to the shaft tip
-/// (two bonds).
+/// Gap from painted mol ink (chem **and** captions) to the shaft tip.
 ///
-/// Tight ELK packs keep the seed clearance. Leftover corridor after
-/// [`min_shaft_px`] is spent as extra air so a larger `layer_spacing` actually
-/// clears captions and protruding groups instead of only lengthening the shaft.
-pub const SCHEME_INK_STANDOFF: f64 = 2.0 * BOND_PX;
+/// Half a bond: close enough to read as “from this mol”, far enough not to
+/// sit on heteroatoms. Extra space between mols is shaft — the solver hugs
+/// this pose, so shifting molecules lengthens the arrow.
+pub const SCHEME_INK_STANDOFF: f64 = 0.5 * BOND_PX;
 /// Minimum gap between nearly-parallel overlapping shafts.
 pub const SCHEME_EDGE_CLEARANCE: f64 = BOND_PX;
 /// Center-to-center gap between coterminal lanes. Unrelated parallel shafts
@@ -434,59 +433,21 @@ pub fn refine_scheme_edges(
             .map(String::as_str)
             .unwrap_or("");
         let pts = &centerlines[i];
-        // Painted ends stop at ink+standoff along a ray through the centroid.
-        // The ray itself may cross chem — do not emit isotropic Outside vs ink.
-        // Tight packs keep the ELK seed clearance. Leftover corridor after
-        // min_shaft is extra air (captions, CHO) rather than a longer shaft
-        // sitting on the box lip. min_shaft expansion still prevents darts.
+        // Tip pose is ink + pad along the centroid ray. The solver holds that
+        // with PreferPose, RayThrough, Outside vs chem, and Outside vs the
+        // other tip (min shaft). ELK length is not a cap — leftover corridor
+        // is shaft, so moving the mols lengthens the arrow.
         let last = pts.len().saturating_sub(1);
         let src_c = mol_centroid(&paint_of, positions, &size_of, src);
         let tgt_c = mol_centroid(&paint_of, positions, &size_of, tgt);
-        let span = (tgt_c.0 - src_c.0).hypot(tgt_c.1 - src_c.1);
         let src_chem = format!("scheme/mols/{src}/chem");
         let tgt_chem = format!("scheme/mols/{tgt}/chem");
-        let (clash0, clash1) = if pts.len() >= 2 {
-            let ux = (tgt_c.0 - src_c.0) / span.max(1e-9);
-            let uy = (tgt_c.1 - src_c.1) / span.max(1e-9);
-            let elk_len = (pts[last].0 - pts[0].0) * ux + (pts[last].1 - pts[0].1) * uy;
-            let extra = corridor_extra(elk_len, edge.stroke_width);
-            (
-                ink_standoff(
-                    elk_capped_standoff(&world, &src_chem, pts[0], SCHEME_INK_STANDOFF),
-                    extra,
-                ),
-                ink_standoff(
-                    elk_capped_standoff(&world, &tgt_chem, pts[last], SCHEME_INK_STANDOFF),
-                    extra,
-                ),
-            )
+        let min_shaft = min_shaft_px(edge.stroke_width);
+        let (pose0, pose1) = if pts.len() >= 2 {
+            shaft_endpoint_poses(&world, &src_chem, &tgt_chem, src_c, tgt_c, min_shaft)
         } else {
-            (SCHEME_INK_STANDOFF, SCHEME_INK_STANDOFF)
+            (src_c, tgt_c)
         };
-        let max_t = span.max(clash0).max(clash1);
-        let mut pose0 = if pts.len() >= 2 {
-            ray_ink_pose(&world, &src_chem, src_c, tgt_c, clash0, max_t)
-        } else {
-            src_c
-        };
-        let mut pose1 = if pts.len() >= 2 {
-            ray_ink_pose(&world, &tgt_chem, tgt_c, src_c, clash1, max_t)
-        } else {
-            tgt_c
-        };
-        if pts.len() >= 2 {
-            let ux = (tgt_c.0 - src_c.0) / span.max(1e-9);
-            let uy = (tgt_c.1 - src_c.1) / span.max(1e-9);
-            let elk_len = (pts[last].0 - pts[0].0) * ux + (pts[last].1 - pts[0].1) * uy;
-            let min_shaft = min_shaft_px(edge.stroke_width).min(elk_len.abs().max(20.0));
-            if (pose1.0 - pose0.0) * ux + (pose1.1 - pose0.1) * uy < min_shaft {
-                let mx = (pose0.0 + pose1.0) * 0.5;
-                let my = (pose0.1 + pose1.1) * 0.5;
-                let half = min_shaft * 0.5;
-                pose0 = (mx - ux * half, my - uy * half);
-                pose1 = (mx + ux * half, my + uy * half);
-            }
-        }
         for (k, &(x, y)) in pts.iter().enumerate() {
             let mut pose = if pts.len() >= 2 && k == 0 {
                 pose0
@@ -543,6 +504,18 @@ pub fn refine_scheme_edges(
                 b: neighbor1,
                 p: tgt_centroid,
                 strength: RAY_TO_CENTROID,
+            });
+            let p0 = format!("{eid}/p0");
+            let p_end = format!("{eid}/p{last}");
+            // Point vs leaf: keep tips out of atoms. The ½-bond hug is PreferPose
+            // along the ray — isotropic Outside at that gap shoves off the ray.
+            push_clear_leaves(&world, &mut hard, &p0, &src_chem, 2.0);
+            push_clear_leaves(&world, &mut hard, &p_end, &tgt_chem, 2.0);
+            hard.push(HardConstraint::Outside {
+                a: p0,
+                b: p_end,
+                clash_dist: min_shaft,
+                lagrangian: LAGRANGIAN_CLEAR,
             });
         }
     }
@@ -821,31 +794,34 @@ fn min_ink_signed(world: &LayoutWorld, under: &str, p: (f64, f64)) -> f64 {
     best
 }
 
-/// Half of the leftover ELK corridor after a paint-able shaft. Tight packs
-/// yield ~0; a roomy `layer_spacing` becomes clearance from ink.
-fn corridor_extra(elk_len: f64, stroke_width: Option<f64>) -> f64 {
-    let len = elk_len.abs();
-    let min_shaft = min_shaft_px(stroke_width).min(len.max(20.0));
-    (len - min_shaft).max(0.0) * 0.5
-}
-
-/// Seed clearance plus leftover corridor, capped at two bonds.
-fn ink_standoff(seed_clearance: f64, extra: f64) -> f64 {
-    SCHEME_INK_STANDOFF.min(seed_clearance.max(0.0) + extra.max(0.0))
-}
-
-/// `min(max_standoff, ELK seed’s clash-grid clearance)`. Never negative.
-fn elk_capped_standoff(
+/// Tips hug ink by [`SCHEME_INK_STANDOFF`] on the centroid ray. If that would
+/// cross, sit on the ink lip so the shaft still fills the corridor.
+fn shaft_endpoint_poses(
     world: &LayoutWorld,
-    chem: &str,
-    elk_pt: (f64, f64),
-    max_standoff: f64,
-) -> f64 {
-    let d = min_ink_signed(world, chem, elk_pt);
-    if !d.is_finite() {
-        return max_standoff;
+    src_chem: &str,
+    tgt_chem: &str,
+    src_c: (f64, f64),
+    tgt_c: (f64, f64),
+    min_shaft: f64,
+) -> ((f64, f64), (f64, f64)) {
+    let span = (tgt_c.0 - src_c.0).hypot(tgt_c.1 - src_c.1);
+    let ux = (tgt_c.0 - src_c.0) / span.max(1e-9);
+    let uy = (tgt_c.1 - src_c.1) / span.max(1e-9);
+    let along = |p: (f64, f64)| (p.0 - src_c.0) * ux + (p.1 - src_c.1) * uy;
+    let at = |t: f64| (src_c.0 + ux * t, src_c.1 + uy * t);
+    let p0 = ray_ink_pose(world, src_chem, src_c, tgt_c, SCHEME_INK_STANDOFF, span);
+    let p1 = ray_ink_pose(world, tgt_chem, tgt_c, src_c, SCHEME_INK_STANDOFF, span);
+    if along(p1) - along(p0) >= min_shaft {
+        return (p0, p1);
     }
-    max_standoff.min(d.max(0.0))
+    let q0 = ray_ink_pose(world, src_chem, src_c, tgt_c, 2.0, span);
+    let q1 = ray_ink_pose(world, tgt_chem, tgt_c, src_c, 2.0, span);
+    if along(q1) - along(q0) >= min_shaft {
+        return (q0, q1);
+    }
+    let mid = span * 0.5;
+    let half = min_shaft * 0.5;
+    (at(mid - half), at(mid + half))
 }
 
 /// Walk from `centroid` toward `toward` until chem signed distance ≥ `clash`.
@@ -1178,8 +1154,8 @@ mod tests {
     use crate::doc::layout_items::ATOM_DISK_R_PX;
 
     #[test]
-    fn ink_standoff_constant_is_two_bonds() {
-        assert!((SCHEME_INK_STANDOFF - 2.0 * BOND_PX).abs() < 1e-12);
+    fn ink_standoff_constant_is_half_bond() {
+        assert!((SCHEME_INK_STANDOFF - 0.5 * BOND_PX).abs() < 1e-12);
     }
 
     #[test]
@@ -1312,17 +1288,18 @@ mod tests {
         );
         let da0 = paint_ink_signed(&paints[0], positions["A"], (x0, y0));
         let db1 = paint_ink_signed(&paints[1], positions["B"], (x1, y1));
-        let want_a =
-            SCHEME_INK_STANDOFF.min(paint_ink_signed(&paints[0], positions["A"], seed[0]).max(0.0));
-        let want_b =
-            SCHEME_INK_STANDOFF.min(paint_ink_signed(&paints[1], positions["B"], seed[1]).max(0.0));
         assert!(
-            da0 + 4.0 >= want_a,
-            "src should sit ≥min(2bond, ELK clearance) from A's ink: {da0} want={want_a} pts={pts:?} ca={ca:?}"
+            da0 + 4.0 >= SCHEME_INK_STANDOFF,
+            "src should hug A's ink by ~½ bond: {da0} pts={pts:?} ca={ca:?}"
         );
         assert!(
-            db1 + 4.0 >= want_b,
-            "tgt should sit ≥min(2bond, ELK clearance) from B's ink: {db1} want={want_b} pts={pts:?} cb={cb:?}"
+            db1 + 4.0 >= SCHEME_INK_STANDOFF,
+            "tgt should hug B's ink by ~½ bond: {db1} pts={pts:?} cb={cb:?}"
+        );
+        let shaft = (x1 - x0).hypot(y1 - y0);
+        assert!(
+            shaft > min_shaft_px(None),
+            "shaft should span chem-to-chem, not a min_shaft stub: shaft={shaft} pts={pts:?}"
         );
         let line_a = point_to_line(x0, y0, x1, y1, ca.0, ca.1);
         let line_b = point_to_line(x0, y0, x1, y1, cb.0, cb.1);
@@ -1388,32 +1365,63 @@ mod tests {
         assert!(p.0 > 120.0, "must walk past the protruding atom: {p:?}");
     }
 
+    fn refine_pair_at_gap(gap: f64) -> Vec<(f64, f64)> {
+        let spec = scheme(vec![
+            mol_node("A"),
+            edge_node("A", "B", None),
+            mol_node("B"),
+        ]);
+        let aw = 80.0;
+        let positions = HashMap::from([("A".into(), (0.0, 0.0)), ("B".into(), (aw + gap, 0.0))]);
+        let sizes = vec![("A".into(), aw, 80.0), ("B".into(), aw, 80.0)];
+        let paints = vec![
+            chem_paint("A", aw, 80.0, 40.0, 40.0),
+            chem_paint("B", aw, 80.0, 40.0, 40.0),
+        ];
+        let seed = vec![(aw, 40.0), (aw + gap, 40.0)];
+        refine_scheme_edges(
+            &spec,
+            &LayoutOpts::default(),
+            &positions,
+            &[Some(seed)],
+            &paints,
+            &sizes,
+        )
+        .edge_paths[0]
+            .clone()
+            .expect("path")
+    }
+
     #[test]
-    fn corridor_extra_is_zero_when_elk_is_just_a_shaft() {
-        let extra = corridor_extra(min_shaft_px(None), None);
-        assert!(extra.abs() < 1e-9, "no leftover corridor: extra={extra}");
-        let roomy = corridor_extra(80.0, None);
+    fn shaft_grows_when_mols_move_apart() {
+        let tight = refine_pair_at_gap(80.0);
+        let roomy = refine_pair_at_gap(200.0);
+        let len = |pts: &[(f64, f64)]| {
+            let a = pts[0];
+            let b = pts[pts.len() - 1];
+            (b.0 - a.0).hypot(b.1 - a.1)
+        };
+        let d_tight = len(&tight);
+        let d_roomy = len(&roomy);
         assert!(
-            roomy > 20.0,
-            "80px ELK gap should yield substantial air: extra={roomy}"
+            d_roomy > d_tight + 80.0,
+            "extra mol gap must become shaft, not air: tight={d_tight} roomy={d_roomy}"
         );
         assert!(
-            (ink_standoff(4.0, roomy) - SCHEME_INK_STANDOFF).abs() < 1e-9
-                || ink_standoff(4.0, roomy) > 20.0,
-            "roomy extra must clear a 4px caption lip: {}",
-            ink_standoff(4.0, roomy)
+            (d_roomy - d_tight - 120.0).abs() < 24.0,
+            "200−80 gap should show up on the shaft: tight={d_tight} roomy={d_roomy}"
         );
     }
 
     #[test]
-    fn roomy_elk_gap_clears_caption_better_than_seed() {
+    fn caption_on_the_ray_is_ink_but_leftover_is_shaft() {
         let spec = scheme(vec![
             mol_node("A"),
             edge_node("A", "B", None),
             mol_node("B"),
         ]);
         let layout = LayoutOpts::default();
-        let positions = HashMap::from([("A".into(), (0.0, 0.0)), ("B".into(), (0.0, 180.0))]);
+        let positions = HashMap::from([("A".into(), (0.0, 0.0)), ("B".into(), (0.0, 280.0))]);
         let sizes = vec![("A".into(), 100.0, 100.0), ("B".into(), 100.0, 100.0)];
         let mut paints = vec![
             chem_paint("A", 100.0, 100.0, 50.0, 40.0),
@@ -1430,7 +1438,7 @@ mod tests {
             class: Some("mol-caption".into()),
             data_text: Some("phenol".into()),
         });
-        let seed = vec![(50.0, 100.0), (50.0, 180.0)];
+        let seed = vec![(50.0, 100.0), (50.0, 280.0)];
         let refined = refine_scheme_edges(
             &spec,
             &layout,
@@ -1443,60 +1451,21 @@ mod tests {
         let (x0, y0) = pts[0];
         let (x1, y1) = pts[pts.len() - 1];
         let da = paint_ink_signed(&paints[0], positions["A"], (x0, y0));
-        let db = paint_ink_signed(&paints[1], positions["B"], (x1, y1));
-        let seed_a = paint_ink_signed(&paints[0], positions["A"], seed[0]).max(0.0);
         assert!(
-            y0 > 100.0 && y0 < 180.0,
-            "src end should sit in the corridor, not on the caption lip: pts={pts:?}"
+            y0 > 100.0,
+            "src end should sit past the caption, not on it: pts={pts:?}"
         );
         assert!(
-            da + 1.0 >= seed_a + 8.0,
-            "leftover corridor should become caption air: da={da} seed={seed_a} pts={pts:?}"
+            da + 2.0 >= SCHEME_INK_STANDOFF,
+            "caption is ink: tip should hug it, not sit on the lip: da={da} pts={pts:?}"
         );
         assert!(
-            db > 8.0,
-            "tgt end should clear B chem, not sit on the box lip: db={db} pts={pts:?}"
+            (y1 - y0).abs() > 80.0,
+            "leftover corridor is shaft: pts={pts:?}"
         );
         assert!(
             (x1 - x0).abs() < 12.0,
             "down-flow shaft should stay near vertical: pts={pts:?}"
-        );
-    }
-
-    #[test]
-    fn elk_standoff_is_min_of_two_bonds_and_seed_clearance() {
-        let mut world = LayoutWorld::rooted("scheme", ObjectType::Scheme);
-        world.insert(
-            "mol",
-            "scheme",
-            ObjectType::Mol,
-            Shape::Aabb(Aabb::new(0.0, 0.0, 200.0, 80.0)),
-            true,
-        );
-        crate::doc::layout_constraints::install_chem_under(
-            &mut world,
-            "mol",
-            &[(0.0, 40.0, 120.0, 40.0)],
-            &[(0, 0.0, 40.0), (1, 120.0, 40.0)],
-            &[],
-            &[],
-        );
-        let tight = (128.0, 40.0);
-        let roomy = (200.0, 40.0);
-        let cap_tight = elk_capped_standoff(&world, "mol/chem", tight, SCHEME_INK_STANDOFF);
-        let cap_roomy = elk_capped_standoff(&world, "mol/chem", roomy, SCHEME_INK_STANDOFF);
-        let d_tight = min_ink_signed(&world, "mol/chem", tight);
-        assert!(
-            (cap_tight - d_tight.max(0.0)).abs() < 1e-9,
-            "tight ELK seed must not demand two bonds: cap={cap_tight} d={d_tight}"
-        );
-        assert!(
-            cap_tight < SCHEME_INK_STANDOFF,
-            "tight clearance {cap_tight} should be below two bonds"
-        );
-        assert!(
-            (cap_roomy - SCHEME_INK_STANDOFF).abs() < 1e-9,
-            "roomy ELK seed should use the two-bond cap: {cap_roomy}"
         );
     }
 
@@ -2002,17 +1971,17 @@ mod tests {
         );
         let da = paint_ink_signed(&paints[0], positions["A"], (x0, y0));
         let db = paint_ink_signed(&paints[1], positions["B"], (x1, y1));
-        let want_a =
-            SCHEME_INK_STANDOFF.min(paint_ink_signed(&paints[0], positions["A"], seed[0]).max(0.0));
-        let want_b =
-            SCHEME_INK_STANDOFF.min(paint_ink_signed(&paints[1], positions["B"], seed[1]).max(0.0));
         assert!(
-            da + 4.0 >= want_a,
-            "src should sit ≥min(2bond, ELK clearance) from A's ink: {da} want={want_a} pts={pts:?} ca={ca:?}"
+            da + 4.0 >= SCHEME_INK_STANDOFF,
+            "src should hug A's ink by ~½ bond, inside the empty AABB: {da} pts={pts:?} ca={ca:?}"
         );
         assert!(
-            db + 4.0 >= want_b,
-            "tgt should sit ≥min(2bond, ELK clearance) from B's ink: {db} want={want_b} pts={pts:?} cb={cb:?}"
+            db + 4.0 >= SCHEME_INK_STANDOFF,
+            "tgt should hug B's ink by ~½ bond, inside the empty AABB: {db} pts={pts:?} cb={cb:?}"
+        );
+        assert!(
+            x0 < 200.0 && x1 > 400.0,
+            "tips sit inside the oversized boxes, not on the ELK lips: pts={pts:?}"
         );
         let line_a = point_to_line(x0, y0, x1, y1, ca.0, ca.1);
         let line_b = point_to_line(x0, y0, x1, y1, cb.0, cb.1);
