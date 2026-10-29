@@ -2,6 +2,7 @@
 
 ## 2026-10-29
 
+- `mol("C")` painted a blank canvas: silent-carbon logic hid the label whenever charge was 0, including methane (no bonds). Isolated carbon now gets `CH4` / `C`; bonded carbons stay skeletal vertices. Same rule in `display_label` so a missing `AtomIn.label` still paints.
 - Down-flow coterminal arrows sat on mol names and CHO: leftover ELK corridor was spent as a longer shaft on the box lip (`clamp_not_past_seed`), and default `below` captions occupied the corridor. Leftover after `min_shaft` is now extra ink standoff; default `layer_spacing` is 48px; omitted mol `name` pos in vertical schemes is `right`.
 - Default scheme `layer_spacing` went 0→20 so flush ELK layers would not jam `ethanol` / `acetaldehyde` into one line. 20px was still too tight for vertical arrows (see above).
 - Dropped `LayoutOpts.refine`. Scheme layout always runs the constraint pass after ELK; there is no stock-ELK opt-out on the wire.

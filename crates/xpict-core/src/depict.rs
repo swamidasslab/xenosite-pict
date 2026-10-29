@@ -45,9 +45,10 @@ pub fn frame_offset(mol: &MoleculeIn) -> (f64, f64) {
         max_x = 0.0;
         max_y = 0.0;
     }
+    let degree = atom_bond_degree(mol);
     let label_pad = FONT_PX * 0.85;
     for a in &mol.atoms {
-        if display_label(a).is_some() {
+        if display_label(a, *degree.get(&a.index).unwrap_or(&0)).is_some() {
             min_x = min_x.min(a.x - label_pad);
             max_x = max_x.max(a.x + label_pad * 1.6);
             min_y = min_y.min(a.y - label_pad);
@@ -97,9 +98,10 @@ pub(crate) fn depict_chem(mol: &MoleculeIn) -> Scene {
         max_x = 0.0;
         max_y = 0.0;
     }
+    let degree = atom_bond_degree(mol);
     let label_pad = FONT_PX * 0.85;
     for a in &mol.atoms {
-        if display_label(a).is_some() {
+        if display_label(a, *degree.get(&a.index).unwrap_or(&0)).is_some() {
             min_x = min_x.min(a.x - label_pad);
             max_x = max_x.max(a.x + label_pad * 1.6);
             min_y = min_y.min(a.y - label_pad);
@@ -116,7 +118,7 @@ pub(crate) fn depict_chem(mol: &MoleculeIn) -> Scene {
         .map(|a| labels::AtomIn {
             x: a.x + dx,
             y: a.y + dy,
-            label: display_label(a),
+            label: display_label(a, *degree.get(&a.index).unwrap_or(&0)),
         })
         .collect();
     let label_bonds: Vec<labels::BondIn> = mol
@@ -343,15 +345,32 @@ pub(crate) fn depict_chem(mol: &MoleculeIn) -> Scene {
     scene
 }
 
-/// Explicit ``label``, else heteroatom / charged symbol (carbons stay silent).
+/// Bond degree for each atom index (missing keys are 0).
+fn atom_bond_degree(mol: &MoleculeIn) -> HashMap<i32, usize> {
+    let mut d = HashMap::new();
+    for a in &mol.atoms {
+        d.entry(a.index).or_insert(0);
+    }
+    for b in &mol.bonds {
+        *d.entry(b.begin).or_insert(0) += 1;
+        *d.entry(b.end).or_insert(0) += 1;
+    }
+    d
+}
+
+/// Explicit ``label``, else heteroatom / charged / isolated-carbon symbol.
+///
+/// Bonded carbons stay silent (skeletal vertices). Isolated carbon (no bonds)
+/// still paints so `mol("C")` is not a blank canvas.
 ///
 /// `label: Some("")` is an **explicit silence** (no element-symbol fallback).
-/// `label: None` still invents heteroatom / charged carbon text. Chem text is
-/// not owned by chrome annotations — replace via `star_labels` on `*` atoms.
+/// `label: None` still invents heteroatom / charged / isolated-carbon text.
+/// Chem text is not owned by chrome annotations — replace via `star_labels`
+/// on `*` atoms.
 ///
 /// Appends a charge suffix when the label body does not already include one
 /// (matches Python ``display_text``).
-fn display_label(a: &AtomIn) -> Option<String> {
+fn display_label(a: &AtomIn, n_bonds: usize) -> Option<String> {
     let mut body = if let Some(ref l) = a.label {
         let t = l.trim();
         if t.is_empty() {
@@ -364,7 +383,7 @@ fn display_label(a: &AtomIn) -> Option<String> {
     };
     if body.is_none() {
         let sym = a.symbol();
-        if sym == "C" && a.charge == 0 {
+        if sym == "C" && a.charge == 0 && n_bonds > 0 {
             return None;
         }
         body = Some(sym.to_string());

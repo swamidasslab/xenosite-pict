@@ -166,7 +166,19 @@ fn to_molecule_in(id: &str, parsed: &Parsed, coords: &LayoutResult, source: &str
         .map(|(&a, &b)| (a, b))
         .collect();
     let (xs, ys) = scale_to_paint(coords, &bonds_idx);
-    let atoms: Vec<AtomIn> = (0..parsed.layout.n_atoms())
+    let n_atoms = parsed.layout.n_atoms();
+    let mut degree = vec![0u32; n_atoms];
+    for i in 0..parsed.layout.n_bonds() {
+        let a = parsed.layout.bond_from[i] as usize;
+        let b = parsed.layout.bond_to[i] as usize;
+        if a < n_atoms {
+            degree[a] += 1;
+        }
+        if b < n_atoms {
+            degree[b] += 1;
+        }
+    }
+    let atoms: Vec<AtomIn> = (0..n_atoms)
         .map(|i| {
             let z = parsed.layout.atomic_numbers[i] as u32;
             let charge = parsed.layout.formal_charges[i];
@@ -174,7 +186,7 @@ fn to_molecule_in(id: &str, parsed: &Parsed, coords: &LayoutResult, source: &str
             let hs = parsed.implicit_hs.get(i).copied().unwrap_or(0);
             // Charge stays on `AtomIn.charge`; `display_label` appends the
             // suffix so we do not bake it into the string twice.
-            let label = atom_display_label(&element, hs, 0);
+            let label = atom_display_label(&element, hs, 0, degree[i]);
             AtomIn {
                 index: parsed.atom_indices.get(i).copied().unwrap_or(i as i32),
                 element: Some(element),
@@ -688,6 +700,26 @@ mod tests {
         assert!(ok);
         assert_eq!(molecules[0].molecule.as_ref().unwrap().atoms.len(), 3);
         assert!(frames.contains_key("m_0"));
+    }
+
+    #[test]
+    fn isolated_carbon_gets_ch4_label() {
+        let mol = free_layout("C", "m").unwrap().molecule;
+        let got: Vec<String> = mol.atoms.iter().filter_map(|a| a.label.clone()).collect();
+        assert!(
+            got.iter().any(|g| g == "CH4"),
+            "methane must paint CH4, got {got:?}"
+        );
+        let ethane = free_layout("CC", "m").unwrap().molecule;
+        assert!(
+            ethane.atoms.iter().all(|a| a.label.is_none()),
+            "bonded carbons stay silent, got {:?}",
+            ethane
+                .atoms
+                .iter()
+                .map(|a| a.label.clone())
+                .collect::<Vec<_>>()
+        );
     }
 
     /// Chematic→paint must append implicit H on heteroatoms (OH / NH2), not

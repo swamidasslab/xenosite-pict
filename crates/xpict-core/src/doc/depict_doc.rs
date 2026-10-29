@@ -351,6 +351,41 @@ mod tests {
     }
 
     #[test]
+    fn depict_methane_paints_ch4_not_blank() {
+        let spec = DepictSpec::Mol(MolNode {
+            smiles: Some("C".into()),
+            ..Default::default()
+        });
+        let painted = depict(&spec).unwrap();
+        assert_eq!(painted.len(), 1);
+        let texts: Vec<&str> = painted[0]
+            .scene
+            .viewports
+            .iter()
+            .flat_map(|v| v.layers.iter())
+            .flat_map(|l| l.primitives.iter())
+            .filter_map(|p| match p {
+                crate::scene::Primitive::Path {
+                    data_text: Some(t), ..
+                } => Some(t.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            texts
+                .iter()
+                .any(|t| t.contains("CH₄") || t.contains("CH4") || t.contains('C')),
+            "mol(\"C\") must paint a carbon label, got {texts:?}"
+        );
+        assert!(
+            painted[0].scene.width > 8.0 && painted[0].scene.height > 8.0,
+            "methane canvas must not be empty: {}x{}",
+            painted[0].scene.width,
+            painted[0].scene.height
+        );
+    }
+
+    #[test]
     fn depict_aligned_pair() {
         let spec = DepictSpec::Group {
             id: None,
