@@ -148,6 +148,12 @@ impl Rendered {
         xpict_core::scene_to_pdf(&self.scene).map_err(Error::Message)
     }
 
+    /// PNG raster at `scale` × the SVG size.
+    #[cfg(feature = "png")]
+    pub fn to_png(&self, scale: f32) -> Result<Vec<u8>, Error> {
+        xpict_core::scene_to_png(&self.scene, scale).map_err(Error::Message)
+    }
+
     /// CoordGen pose frame JSON.
     pub fn frame(&self) -> &str {
         &self.frame_molblock

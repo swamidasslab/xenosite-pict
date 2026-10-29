@@ -1,6 +1,6 @@
 //! Scene → PDF for journals that want vector PDF/EPS rather than SVG.
 //!
-//! Labels are already glyph outlines, so no font database is needed.
+//! Atom labels are glyph outlines; `<text>` items use the bundled Liberation Sans.
 
 use crate::scene::Scene;
 use crate::svg::scene_to_svg;
@@ -12,8 +12,7 @@ pub fn scene_to_pdf(scene: &Scene) -> Result<Vec<u8>, String> {
 
 /// Convert an xpict SVG string to a single-page vector PDF.
 pub fn svg_to_pdf(svg: &str) -> Result<Vec<u8>, String> {
-    let opts = svg2pdf::usvg::Options::default();
-    let tree = svg2pdf::usvg::Tree::from_str(svg, &opts).map_err(|e| e.to_string())?;
+    let tree = crate::usvg_tree::parse(svg)?;
     svg2pdf::to_pdf(
         &tree,
         svg2pdf::ConversionOptions::default(),
@@ -32,5 +31,12 @@ mod tests {
         let pdf = svg_to_pdf(svg).expect("pdf");
         assert!(pdf.starts_with(b"%PDF-"));
         assert!(pdf.windows(9).any(|w| w == b"/MediaBox"));
+    }
+
+    #[test]
+    fn text_embeds_bundled_font() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 20" width="80" height="20"><text x="2" y="15" font-size="12" font-family="Liberation Sans, Arial, sans-serif">Caption</text></svg>"##;
+        let pdf = svg_to_pdf(svg).expect("pdf");
+        assert!(pdf.windows(14).any(|w| w == b"LiberationSans"));
     }
 }

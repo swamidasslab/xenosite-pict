@@ -28,7 +28,9 @@ font = ["dep:ttf-parser", "geom"]
 # not on the crates.io default feature set.
 codegen = ["dep:schemars", "dep:ts-rs"]
 # SVG → PDF (svg2pdf). Native + Python; off for wasm to keep the web build small.
-pdf = ["dep:svg2pdf"]
+pdf = ["dep:svg2pdf", "dep:usvg", "font"]
+# SVG → PNG (resvg). Native + Python; off for wasm (browsers rasterize SVG).
+png = ["dep:resvg", "dep:usvg", "font"]
 
 [dependencies]
 # CoordGen + ELK are always on (native, Python, and wasm). SMILES is the
@@ -44,7 +46,10 @@ schemars = { version = "0.8", optional = true }
 ts-rs = { version = "10", optional = true, features = ["serde-compat"] }
 canonaut = "1.1.0"
 pathfinding = "4.14"
-svg2pdf = { version = "0.13", optional = true, default-features = false }
+svg2pdf = { version = "0.13", optional = true, default-features = false, features = ["text"] }
+resvg = { version = "0.45", optional = true, default-features = false, features = ["text"] }
+# `<text>` rendering uses the bundled Liberation Sans only (no system fonts).
+usvg = { version = "0.45", optional = true, default-features = false, features = ["text"] }
 
 [dev-dependencies]
 regex = "1"

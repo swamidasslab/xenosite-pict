@@ -38,6 +38,24 @@ fn svg_to_pdf(svg: &str) -> PyResult<std::borrow::Cow<'static, [u8]>> {
         .map_err(PyRuntimeError::new_err)
 }
 
+/// SVG → PNG bytes at `scale` × the SVG size (bundled Liberation Sans).
+#[pyfunction]
+#[pyo3(signature = (svg, scale = 2.0))]
+fn svg_to_png(svg: &str, scale: f32) -> PyResult<std::borrow::Cow<'static, [u8]>> {
+    xpict_core::svg_to_png(svg, scale)
+        .map(std::borrow::Cow::Owned)
+        .map_err(PyRuntimeError::new_err)
+}
+
+/// SVG → raw RGBA8 bytes (no PNG encode) and `(width, height)`.
+#[pyfunction]
+#[pyo3(signature = (svg, scale = 2.0))]
+fn svg_to_rgba(svg: &str, scale: f32) -> PyResult<(std::borrow::Cow<'static, [u8]>, u32, u32)> {
+    xpict_core::svg_to_rgba(svg, scale)
+        .map(|(b, w, h)| (std::borrow::Cow::Owned(b), w, h))
+        .map_err(PyRuntimeError::new_err)
+}
+
 /// Resolve cascading mol chrome for every mol in document order (spec semantics).
 #[pyfunction]
 fn resolve_depict_chrome(spec_json: &str) -> PyResult<String> {
@@ -898,6 +916,8 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(centered_displacements, m)?)?;
     m.add_function(wrap_pyfunction!(scene_to_svg, m)?)?;
     m.add_function(wrap_pyfunction!(svg_to_pdf, m)?)?;
+    m.add_function(wrap_pyfunction!(svg_to_png, m)?)?;
+    m.add_function(wrap_pyfunction!(svg_to_rgba, m)?)?;
     m.add_function(wrap_pyfunction!(resolve_depict_chrome, m)?)?;
     m.add_function(wrap_pyfunction!(compose_scheme, m)?)?;
     m.add_function(wrap_pyfunction!(depict_doc, m)?)?;

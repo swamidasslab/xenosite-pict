@@ -29,6 +29,10 @@ pub mod metrics;
 pub mod molfile;
 #[cfg(feature = "pdf")]
 pub mod pdf;
+#[cfg(feature = "png")]
+pub mod png;
+#[cfg(any(feature = "pdf", feature = "png"))]
+mod usvg_tree;
 pub mod plotdot;
 pub mod rings;
 pub mod scene;
@@ -126,6 +130,8 @@ pub use markup::parse_label_markup;
 pub use metrics::{BOND_PX, OFFSET_FRAC, OFFSET_PX, SCALE, SHADE_FRAC, STROKE_PX};
 #[cfg(feature = "pdf")]
 pub use pdf::{scene_to_pdf, svg_to_pdf};
+#[cfg(feature = "png")]
+pub use png::{scene_to_png, svg_to_png, svg_to_rgba};
 pub use plotdot::{PlotDot, ShadeDisk};
 pub use rings::{
     apply_ring_interiors, aromatic_ring_circles, bond_interior_normals,
