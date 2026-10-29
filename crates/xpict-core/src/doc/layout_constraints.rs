@@ -704,6 +704,17 @@ pub enum HardConstraint {
         clash_dist: f64,
         lagrangian: u8,
     },
+    /// Open segment `from → to` (node anchors) stays `clash_dist` outside `b`.
+    ///
+    /// Callout shafts use this so a label above the target cannot draw
+    /// through a closer annotation (kitchen-sink “exo”).
+    SegmentOutside {
+        from: NodeId,
+        to: NodeId,
+        b: NodeId,
+        clash_dist: f64,
+        lagrangian: u8,
+    },
 }
 
 fn hard_lagrangian(h: &HardConstraint) -> u8 {
@@ -711,7 +722,8 @@ fn hard_lagrangian(h: &HardConstraint) -> u8 {
         HardConstraint::Outside { lagrangian, .. }
         | HardConstraint::Inside { lagrangian, .. }
         | HardConstraint::MaxDist { lagrangian, .. }
-        | HardConstraint::ParallelClear { lagrangian, .. } => *lagrangian,
+        | HardConstraint::ParallelClear { lagrangian, .. }
+        | HardConstraint::SegmentOutside { lagrangian, .. } => *lagrangian,
     }
 }
 
@@ -728,6 +740,12 @@ pub const ATOM_NUMBER_TETHER_PX: f64 = 0.3 * BOND_PX;
 /// Longer than [`ATOM_NUMBER_TETHER_PX`] so words like “ortho” can clear ink
 /// while still staying associated with the atom.
 pub const ATOM_TEXT_TETHER_PX: f64 = 0.5 * BOND_PX;
+
+/// Hard MaxDist ceiling for **outside** region text vs its hull (~0.5 CC-bond).
+///
+/// Auto used to allow 3 bonds + a centroid Repel, which parked kitchen-sink
+/// “ring” in empty page below the box. Snug like atom text.
+pub const REGION_TEXT_TETHER_PX: f64 = 0.5 * BOND_PX;
 
 fn shape_anchor(shape: &Shape) -> (f64, f64) {
     match shape {
@@ -929,6 +947,27 @@ fn primitive_leaf(shape: &Shape) -> bool {
 /// Mol-kit wrapper: hard Outside vs every bond line under `mol/chem/bonds`.
 fn push_clear_bonds(world: &LayoutWorld, hard: &mut Vec<HardConstraint>, a: &str, clash_dist: f64) {
     push_clear_leaves(world, hard, a, "mol/chem/bonds", clash_dist);
+}
+
+/// Hard Outside vs every shade disk under `mol/chem` (non-index labels).
+fn push_clear_shades(
+    world: &LayoutWorld,
+    hard: &mut Vec<HardConstraint>,
+    a: &str,
+    clash_dist: f64,
+) {
+    push_clear_leaves_where(world, hard, a, "mol/chem", clash_dist, |_, n| {
+        n.object_type == ObjectType::Shade
+    });
+}
+
+/// True when `box_` is the callout target mark (atom circle / chem disk).
+pub(crate) fn aabb_covers_target(box_: Aabb, target: (f64, f64)) -> bool {
+    let pad = 1.0;
+    box_.x0 - pad <= target.0
+        && target.0 <= box_.x1 + pad
+        && box_.y0 - pad <= target.1
+        && target.1 <= box_.y1 + pad
 }
 
 /// Object kind → which kit installed it (debug / filtering).
@@ -1799,6 +1838,24 @@ pub fn hard_g(world: &LayoutWorld, h: &HardConstraint) -> f64 {
             };
             parallel_clear_g(&sa, &sb, *clash_dist)
         }
+        HardConstraint::SegmentOutside {
+            from,
+            to,
+            b,
+            clash_dist,
+            ..
+        } => {
+            let (sa, sb) = match (world.eval_shape(from), world.eval_shape(to)) {
+                (Some(a), Some(c)) => (a, c),
+                _ => return 0.0,
+            };
+            let Some(obs) = world.eval_shape(b) else {
+                return 0.0;
+            };
+            let (x0, y0) = shape_anchor(&sa);
+            let (x1, y1) = shape_anchor(&sb);
+            clash_dist - edge_signed_distance(&Shape::Line { x0, y0, x1, y1 }, &obs)
+        }
     }
 }
 
@@ -2452,14 +2509,16 @@ pub fn region_text_kit(
             a: text_id.clone(),
             b: hull_id.clone(),
             opt_dist: clash_dist,
-            strength: 1.5,
+            strength: 8.0,
+        });
+        hard.push(HardConstraint::MaxDist {
+            a: text_id.clone(),
+            b: hull_id.clone(),
+            dist: REGION_TEXT_TETHER_PX,
+            lagrangian: LAGRANGIAN_TETHER,
         });
         if preferred.is_some() {
             push_placement_pose(constraints, &text_id, &Shape::Aabb(text_ink));
-        } else {
-            let half = 0.5 * hull_aabb.width().hypot(hull_aabb.height());
-            let tether = (half + crate::metrics::BOND_PX).max(crate::metrics::BOND_PX * 3.0);
-            push_auto_away(world, constraints, hard, &text_id, &hull_id, &rid, tether);
         }
     }
     if let Some(side) = preferred {
@@ -2490,7 +2549,10 @@ pub fn region_text_kit(
             clash_dist,
             lagrangian: LAGRANGIAN_CLEAR,
         });
-        if preferred.is_none() {
+        let (cx, cy) = box_.center();
+        let in_hull =
+            hull_aabb.x0 <= cx && cx <= hull_aabb.x1 && hull_aabb.y0 <= cy && cy <= hull_aabb.y1;
+        if preferred.is_none() && !in_hull {
             constraints.push(Constraint::MinGap {
                 a: text_id.clone(),
                 b: oid,
@@ -2642,6 +2704,22 @@ pub fn callout_kit(
             clash_dist,
             lagrangian: LAGRANGIAN_CLEAR,
         });
+        if !aabb_covers_target(*box_, target) {
+            // Shaft (label → tip) must miss nearby chrome (kitchen-sink exo).
+            hard.push(HardConstraint::SegmentOutside {
+                from: label_id.clone(),
+                to: tip_id.clone(),
+                b: oid.clone(),
+                clash_dist,
+                lagrangian: LAGRANGIAN_CLEAR,
+            });
+            hard.push(HardConstraint::Outside {
+                a: tip_id.clone(),
+                b: oid.clone(),
+                clash_dist,
+                lagrangian: LAGRANGIAN_CLEAR,
+            });
+        }
         if preferred.is_none() {
             // Keep pushing past mere non-overlap so a clash-free Right seed
             // still migrates away from nearby chrome.
@@ -2653,6 +2731,15 @@ pub fn callout_kit(
             });
         }
     }
+    // Tip stays on the label→target ray so the painted shaft aims at the atom
+    // (and its highlight circle), not a laterally shifted standoff.
+    constraints.push(Constraint::RayThrough {
+        a: label_id.clone(),
+        b: target_id.clone(),
+        p: tip_id.clone(),
+        strength: 8.0,
+    });
+    push_clear_shades(world, hard, &label_id, clash_dist);
     // Label box stays one CC-bond from the target (tip standoff is separate).
     constraints.push(Constraint::MinGap {
         a: label_id.clone(),
@@ -2732,7 +2819,8 @@ pub fn callout_kit(
 ///   No-overlap outranks association — a shared PHR let snug+tether cover "2".
 ///
 /// No PreferPose — a greedy seed is only the NM start; pinning it made numbers
-/// look randomly parked. Shade is **not** a layout obstacle.
+/// look randomly parked. Shade is a layout obstacle only when `avoid_shade`
+/// (custom text / callouts / regions). Atom indexes may sit on wash + halo.
 const ATOM_SNUG_STRENGTH: f64 = 14.0;
 const ATOM_MILD_REPEL: f64 = 2.5;
 
@@ -2745,7 +2833,7 @@ pub fn atom_number_kit(
     clash_dist: f64,
     tether_px: f64,
     _halo_pad: Option<f64>,
-    _avoid_shade: bool,
+    avoid_shade: bool,
 ) -> NodeId {
     let _ = world.insert(
         "mol/annotations",
@@ -2838,7 +2926,24 @@ pub fn atom_number_kit(
             });
         }
     }
-    // Intentionally no Outside vs shade — wash is not a placement obstacle.
+    if avoid_shade {
+        push_clear_shades(world, hard, &id, clash_dist);
+        let mut stack = vec!["mol/chem".to_string()];
+        while let Some(nid) = stack.pop() {
+            let Some(n) = world.get(&nid) else {
+                continue;
+            };
+            stack.extend(n.children.iter().cloned());
+            if n.object_type == ObjectType::Shade {
+                constraints.push(Constraint::Outside {
+                    a: id.clone(),
+                    b: nid,
+                    clash_dist,
+                    strength: ATOM_MILD_REPEL,
+                });
+            }
+        }
+    }
     // No PreferPose: snug + mild repel own the soft energy.
     let _ = ink;
     id
@@ -3281,6 +3386,8 @@ pub fn refine_region_text(
 /// Refine callout label + tip; returns `(label_dxy, tip_dxy, route_xy_world)`.
 pub fn refine_callout(
     bonds: &[(f64, f64, f64, f64)],
+    atoms: &[(usize, f64, f64)],
+    shades: &[(usize, f64, f64, f64)],
     label_rest: Aabb,
     tip_xy: (f64, f64),
     target: (f64, f64),
@@ -3291,7 +3398,7 @@ pub fn refine_callout(
     other_labels: &[Aabb],
 ) -> ((f64, f64), (f64, f64), Vec<(f64, f64)>) {
     let mut world = LayoutWorld::new("mol");
-    install_chem(&mut world, bonds, &[], &[]);
+    install_chem(&mut world, bonds, atoms, shades);
     let mut cs = Vec::new();
     let mut hard = Vec::new();
     let (label_id, tip_id) = callout_kit(
@@ -3770,6 +3877,51 @@ mod tests {
                 .all(|c| !matches!(c, Constraint::PreferSide { .. })),
             "auto region must not push a side: {cs:?}"
         );
+        let tether: Vec<_> = hard
+            .iter()
+            .filter_map(|h| match h {
+                HardConstraint::MaxDist { dist, .. } => Some(*dist),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(tether, vec![REGION_TEXT_TETHER_PX]);
+        assert!(
+            cs.iter().all(|c| !matches!(c, Constraint::Repel { .. })),
+            "outside Auto must not repel off the hull: {cs:?}"
+        );
+    }
+
+    #[test]
+    fn callout_kit_shaft_keeps_off_other_labels() {
+        let mut w = LayoutWorld::new("mol");
+        install_chem(&mut w, &[], &[(0, 0.0, 0.0)], &[]);
+        let mut cs = Vec::new();
+        let mut hard = Vec::new();
+        let exo = Aabb::new(-6.0, -18.0, 6.0, -8.0);
+        let _ = callout_kit(
+            &mut w,
+            &mut cs,
+            &mut hard,
+            0,
+            Aabb::new(-20.0, -40.0, 20.0, -28.0),
+            (0.0, -10.0),
+            (0.0, 0.0),
+            8.0,
+            None,
+            3.0,
+            &[],
+            &[exo],
+        );
+        assert!(
+            hard.iter()
+                .any(|h| matches!(h, HardConstraint::SegmentOutside { .. })),
+            "callout shaft must hard-clear other labels: {hard:?}"
+        );
+        assert!(
+            cs.iter()
+                .any(|c| matches!(c, Constraint::RayThrough { .. })),
+            "tip must stay on the label→target ray: {cs:?}"
+        );
     }
 
     #[test]
@@ -3996,7 +4148,7 @@ mod tests {
             4.0,
             ATOM_NUMBER_TETHER_PX,
             Some(2.0),
-            true,
+            false,
         );
         let e = energy(&w, &cs, &[], 0.0);
         assert!(e.is_finite());
@@ -4013,6 +4165,34 @@ mod tests {
         assert!(
             !shade_soft && !shade_hard,
             "atom_number_kit must not constrain vs shade"
+        );
+    }
+
+    #[test]
+    fn atom_number_kit_clears_shade_when_asked() {
+        let mut w = LayoutWorld::new("mol");
+        install_chem(&mut w, &[], &[(0, 0.0, 0.0)], &[(0, 0.0, 0.0, 8.0)]);
+        let mut cs = Vec::new();
+        let mut hard = Vec::new();
+        let ink = Aabb::new(-2.0, -2.0, 2.0, 2.0);
+        let _ = atom_number_kit(
+            &mut w,
+            &mut cs,
+            &mut hard,
+            0,
+            ink,
+            4.0,
+            ATOM_TEXT_TETHER_PX,
+            None,
+            true,
+        );
+        let shade_hard = hard.iter().any(|h| match h {
+            HardConstraint::Outside { b, .. } => b.ends_with("/shade"),
+            _ => false,
+        });
+        assert!(
+            shade_hard,
+            "custom atom labels must keep off shade: {hard:?}"
         );
     }
 

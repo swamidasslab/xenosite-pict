@@ -3,7 +3,8 @@
 
 use crate::doc::chrome::MolText;
 use crate::doc::layout_items::{
-    place_region_auto, place_region_edge, Aabb, InkAtOrigin, Occupancy, Side, CLASH_MARGIN_PX,
+    padded_label_ink, place_region_auto, place_region_edge, Aabb, InkAtOrigin, Occupancy, Side,
+    CLASH_MARGIN_PX, LABEL_PAD_X_PX,
 };
 use crate::doc::spec::{
     DepictSpec, Label, LabelItem, LabelPos, LayoutDirection, MolNode, Node, TextNode,
@@ -110,7 +111,15 @@ fn add_prim_to_occupancy(occ: &mut Occupancy, p: &Primitive, ox: f64, oy: f64) {
     let mut y1 = f64::NEG_INFINITY;
     expand_prim_aabb(p, ox, oy, &mut x0, &mut y0, &mut x1, &mut y1);
     if x0.is_finite() && x1 > x0 && y1 > y0 {
-        occ.add_aabb(Aabb::new(x0, y0, x1, y1));
+        let box_ = Aabb::new(x0, y0, x1, y1);
+        let class = prim_class(p).unwrap_or("");
+        // Circles keep their true radius; text occupancy gets horizontal air.
+        let box_ = if class.contains("circle") || class.contains("shade") {
+            box_
+        } else {
+            box_.inflate_xy(LABEL_PAD_X_PX, 0.0)
+        };
+        occ.add_aabb(box_);
     }
 }
 
@@ -434,7 +443,7 @@ pub fn apply_mol_captions(spec: &DepictSpec, node: &MolNode, mut scene: Scene) -
             continue;
         };
         let (asc, desc) = markup_ascent_descent_px(ink.font_px);
-        let target_right = mol_x0 - ink.margin;
+        let target_right = mol_x0 - ink.margin - LABEL_PAD_X_PX;
         let x = target_right - tx1;
         let em_h = asc + desc;
         let y = cy - em_h * 0.5 + asc; // baseline so em box is centered
@@ -460,7 +469,7 @@ pub fn apply_mol_captions(spec: &DepictSpec, node: &MolNode, mut scene: Scene) -
             continue;
         };
         let (asc, desc) = markup_ascent_descent_px(ink.font_px);
-        let target_left = mol_x1 + ink.margin;
+        let target_left = mol_x1 + ink.margin + LABEL_PAD_X_PX;
         let x = target_left - tx0;
         let em_h = asc + desc;
         let y = cy - em_h * 0.5 + asc;
@@ -488,12 +497,12 @@ pub fn apply_mol_captions(spec: &DepictSpec, node: &MolNode, mut scene: Scene) -
         else {
             continue;
         };
-        let ink_at = InkAtOrigin {
+        let ink_at = padded_label_ink(InkAtOrigin {
             x0: tx0,
             y0: ty0,
             x1: tx1,
             y1: ty1,
-        };
+        });
         let side = match ink.pos {
             LabelPos::AboveLeft => Side::AboveLeft,
             LabelPos::AboveRight => Side::AboveRight,
@@ -533,12 +542,12 @@ pub fn apply_mol_captions(spec: &DepictSpec, node: &MolNode, mut scene: Scene) -
         else {
             continue;
         };
-        let ink_at = InkAtOrigin {
+        let ink_at = padded_label_ink(InkAtOrigin {
             x0: tx0,
             y0: ty0,
             x1: tx1,
             y1: ty1,
-        };
+        });
         let p = place_region_auto(
             &ann_occ_auto,
             structure,

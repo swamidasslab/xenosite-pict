@@ -2,6 +2,8 @@
 
 ## 2026-10-29
 
+- Kitchen-sink chrome: Auto slightly prefers compass directions radially out from the occupancy centroid through the atom (a top oxygen stays above / above-left, not empty-page Right). Phenol need not sit strictly vertical when exo occupies that ray — the shaft slides along the label edge (`callout_arrow_clearing`) so it still meets the highlight circle. Index numbers skip Outside vs a circle on the same atom so “6” can honor its 0.3-bond tether to the OH. Outside region text has a 0.5-bond MaxDist to the hull (no 3-bond Repel), so “ring” snugs to the box. Layout ink is x-padded so neighboring labels do not jam; custom text keeps off shade, indexes may sit on wash.
+
 - `prefer` / Auto placement use eight compass directions: the four cardinals plus 45° `above_right` / `above_left` / `below_right` / `below_left`. Auto still picks the clash-free slot farthest from other ink (a lower-left bulk seeds above-right). Locked `prefer: "above_right"` pins that diagonal.
 
 - Auto is not hardcoded Above. Point-anchored labels (`place_auto`) pick the clash-free cardinal farthest from the occupancy centroid — a top oxygen seeds above, a right-hand substituent seeds right; empty-page Right loses because it is closer to the bulk. Region labels (`place_region_auto`) aim away from chrome *outside* the hull (an OH on top seeds Below) so a landscape box does not slide to empty-page Right. Auto refine still has no PreferSide; it Repels from the chem centroid under a MaxDist tether. Kitchen-sink phenol OH / exo sit above the oxygen; ring text sits below the box, away from the OH cluster.

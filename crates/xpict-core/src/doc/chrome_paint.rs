@@ -16,13 +16,14 @@ use crate::doc::chrome::{
     Z_REGION_LABEL,
 };
 use crate::doc::layout_constraints::{
-    bezier_path_from_proxy, hull_proxy, refine_atom_number, refine_callout, refine_region_text,
-    Shape, ATOM_NUMBER_TETHER_PX, ATOM_TEXT_TETHER_PX,
+    aabb_covers_target, bezier_path_from_proxy, hull_proxy, refine_atom_number, refine_callout,
+    refine_region_text, Shape, ATOM_NUMBER_TETHER_PX, ATOM_TEXT_TETHER_PX, REGION_TEXT_TETHER_PX,
 };
 use crate::doc::layout_items::{
-    callout_arrow, place_auto, place_greedy, place_region_auto, place_region_edge,
-    tip_standoff_clearing, Aabb, InkAtOrigin, Occupancy, PlaceRequest, Seg, Side, ATOM_DISK_R_PX,
-    CLASH_MARGIN_PX, CONTAIN_MARGIN_PX, HALF_BOND_PX,
+    callout_arrow, callout_arrow_clearing, padded_label_ink, place_auto, place_greedy,
+    place_region_auto, place_region_edge, tip_standoff_clearing, Aabb, InkAtOrigin, Occupancy,
+    PlaceRequest, Seg, Side, ATOM_DISK_R_PX, CLASH_MARGIN_PX, CONTAIN_MARGIN_PX, HALF_BOND_PX,
+    LABEL_PAD_X_PX,
 };
 use crate::doc::spec::{LabelPos, MolNode};
 use crate::doc::text_paint::{markup_bounds_at_origin, outline_markup};
@@ -352,6 +353,19 @@ fn point_to_seg(px: f64, py: f64, x0: f64, y0: f64, x1: f64, y1: f64) -> f64 {
     (px - qx).hypot(py - qy)
 }
 
+fn point_to_line(px: f64, py: f64, x0: f64, y0: f64, x1: f64, y1: f64) -> f64 {
+    let dx = x1 - x0;
+    let dy = y1 - y0;
+    let len2 = dx * dx + dy * dy;
+    if len2 < 1e-18 {
+        return (px - x0).hypot(py - y0);
+    }
+    let t = ((px - x0) * dx + (py - y0) * dy) / len2;
+    let qx = x0 + t * dx;
+    let qy = y0 + t * dy;
+    (px - qx).hypot(py - qy)
+}
+
 fn closest_on_seg(px: f64, py: f64, x0: f64, y0: f64, x1: f64, y1: f64) -> (f64, f64) {
     let dx = x1 - x0;
     let dy = y1 - y0;
@@ -565,21 +579,29 @@ fn atom_label_primitive(
         LabelRole::Number => NUMBER_GAP_PX,
         LabelRole::Text => TEXT_GAP_PX,
     };
+    // Highlight circle on this atom is underlay. Index numbers snug to chem
+    // (same as shade); a hard Outside vs that disk made kitchen-sink "6"
+    // infeasible vs the 0.3-bond tether and parked it left of the OH.
+    let keep_other: Vec<Aabb> = other_labels
+        .iter()
+        .copied()
+        .filter(|b| role != LabelRole::Number || !aabb_covers_target(*b, (ax, ay)))
+        .collect();
     // Index/mapno: short tether. Custom text: longer, and a full bond when an
     // index (or other label) is already on the atom so keep-off can sit beside.
     let tether = match role {
         LabelRole::Number => ATOM_NUMBER_TETHER_PX,
-        LabelRole::Text if !other_labels.is_empty() => BOND_PX,
+        LabelRole::Text if !keep_other.is_empty() => BOND_PX,
         LabelRole::Text => ATOM_TEXT_TETHER_PX,
     };
     let anchor = "middle";
     let (bx0, by0, bx1, by1) = markup_bounds_at_origin(content, font_px, anchor)?;
-    let ink = InkAtOrigin {
+    let ink = padded_label_ink(InkAtOrigin {
         x0: bx0,
         y0: by0,
         x1: bx1,
         y1: by1,
-    };
+    });
     // Bond-clear seed first (same Occupancy rule as region/callout) — PreferPose
     // alone was leaving numbers on ring bonds (kitchen-sink "2"). Also clear
     // aromatic circle strokes (inside phenol) like bond ink.
@@ -588,11 +610,17 @@ fn atom_label_primitive(
         LabelRole::Number => Occupancy::from_bonds(mol, dx, dy, STROKE_PX.max(0.8)),
     };
     push_aromatic_circle_obstacles(&mut occ, mol, dx, dy);
-    for &box_ in other_labels {
+    for &box_ in &keep_other {
         occ.add_aabb(box_);
     }
     for box_ in chem_text_boxes(mol, dx, dy).values() {
-        occ.add_aabb(*box_);
+        occ.add_aabb(box_.inflate_xy(LABEL_PAD_X_PX, 0.0));
+    }
+    // Custom text keeps off shade; atom indexes may sit on wash (halo paint).
+    if role == LabelRole::Text {
+        for &(_, cx, cy, r) in shades {
+            occ.add_aabb(Aabb::new(cx - r, cy - r, cx + r, cy + r));
+        }
     }
     let margin = CLASH_MARGIN_PX + STROKE_PX.max(0.8) * 0.5;
     let req = PlaceRequest {
@@ -625,23 +653,25 @@ fn atom_label_primitive(
         .collect();
     let mut atom_texts: Vec<(usize, Aabb)> = chem_text_boxes(mol, dx, dy)
         .into_iter()
-        .map(|(idx, b)| (idx.max(0) as usize, b))
+        .map(|(idx, b)| (idx.max(0) as usize, b.inflate_xy(LABEL_PAD_X_PX, 0.0)))
         .collect();
-    for (i, &box_) in other_labels.iter().enumerate() {
+    for (i, &box_) in keep_other.iter().enumerate() {
         atom_texts.push((10_000 + i, box_));
     }
     let atom_idx = a.index.max(0) as usize;
+    let avoid_shade = role == LabelRole::Text;
+    let shade_obs: &[(usize, f64, f64, f64)] = if avoid_shade { shades } else { &[] };
     let (dtx, dty) = refine_atom_number(
         &bonds,
         &atoms,
-        &[],
+        shade_obs,
         &atom_texts,
         atom_idx,
         seed,
         CLASH_MARGIN_PX,
         tether,
         None,
-        false,
+        avoid_shade,
     );
     // AL already hard-clears bonds + MaxDist-tethers to the atom. A post-nudge
     // along bond normals was shoving numbers far off their atoms after a good
@@ -832,6 +862,24 @@ fn region_primitives(
         pad += 4.0;
     }
     let (x0, y0, x1, y1) = aabb(&cover, pad);
+    // Circle/bezier also keep ring-bonded non-member neighbours outside, so a
+    // region on one ring of a fused system does not bleed into the next.
+    // Substituents (non-ring bonds) stay free so the circle stays centred.
+    // (Not for the box pad above — growing a box never clears a point.)
+    let mut exclude_xy = exclude_xy;
+    for b in &mol.bonds {
+        for (a, o) in [(b.begin, b.end), (b.end, b.begin)] {
+            if include_set.contains(&a)
+                && !include_set.contains(&o)
+                && !spec.exclude.contains(&(o.max(0) as u32))
+                && ring_bond(mol, b.index)
+            {
+                if let Some(at) = find_atom(mol, o as u32) {
+                    exclude_xy.push(atom_xy(at, dx, dy));
+                }
+            }
+        }
+    }
     let fill = fill_parts(spec.fill.as_ref());
     let stroke = stroke_parts(spec.stroke.as_ref(), fill.is_some());
     let opacity = fill_opacity(spec.fill.as_ref()).min(1.0);
@@ -895,12 +943,16 @@ fn region_primitives(
                 .to_string();
             if let Some((bx0, by0, bx1, by1)) = markup_bounds_at_origin(content, font_px, "middle")
             {
-                let ink = InkAtOrigin {
+                let raw = InkAtOrigin {
                     x0: bx0,
                     y0: by0,
                     x1: bx1,
                     y1: by1,
                 };
+                // Outside labels need x-pad vs neighboring chrome. Inside, pad
+                // would inflate the box that the hull must contain and shove
+                // the glyph toward the nucleus.
+                let ink = if inside { raw } else { padded_label_ink(raw) };
                 let occ = region_label_occupancy(
                     mol,
                     dx,
@@ -1286,21 +1338,41 @@ fn callout_primitives(
     let Some((bx0, by0, bx1, by1)) = markup_bounds_at_origin(content, font_px, anchor) else {
         return Vec::new();
     };
-    let ink = InkAtOrigin {
+    let ink = padded_label_ink(InkAtOrigin {
         x0: bx0,
         y0: by0,
         x1: bx1,
         y1: by1,
-    };
+    });
     // Tip must clear chem atom text and stroked bonds — not just the nucleus.
-    let chem_boxes: Vec<Aabb> = chem_text_boxes(mol, dx, dy).into_values().collect();
+    let chem_boxes: Vec<Aabb> = chem_text_boxes(mol, dx, dy)
+        .into_values()
+        .map(|b| b.inflate_xy(LABEL_PAD_X_PX, 0.0))
+        .collect();
     let bonds = bond_segs(mol, dx, dy);
     let bond_half = STROKE_PX.max(0.8) * 0.5;
     let mut tip_obstacles = chem_boxes.clone();
     for &(x0, y0, x1, y1) in &bonds {
         tip_obstacles.push(Seg::new(x0, y0, x1, y1).thick_aabb(bond_half));
     }
-    let base_tip = (FONT_PX * 0.55).max(4.0);
+    // Highlight circle around the target: tip sits on that stroke, not the nucleus.
+    let mark_r = caption_boxes
+        .iter()
+        .filter_map(|&b| {
+            let (cx, cy) = b.center();
+            let r = 0.5 * b.width().min(b.height());
+            if (cx - ax).hypot(cy - ay) <= r + 2.0 {
+                Some(r)
+            } else {
+                None
+            }
+        })
+        .fold(0.0_f64, f64::max);
+    if mark_r > 0.0 {
+        // Chem / bonds that sit on the highlighted atom are behind the circle.
+        tip_obstacles.retain(|b| !aabb_covers_target(*b, (ax, ay)));
+    }
+    let base_tip = (FONT_PX * 0.55).max(4.0).max(mark_r + CLASH_MARGIN_PX);
     let mut occ = Occupancy::from_molecule(mol, dx, dy, Some(ATOM_DISK_R_PX.max(FONT_PX * 0.45)));
     for &(_, cx, cy, r) in shades {
         occ.add_aabb(Aabb::new(cx - r, cy - r, cx + r, cy + r));
@@ -1319,7 +1391,7 @@ fn callout_primitives(
                 base_tip,
                 &tip_obstacles,
                 CLASH_MARGIN_PX,
-                CALLOUT_TEXT_GAP_PX + BOND_PX,
+                CALLOUT_TEXT_GAP_PX + BOND_PX + mark_r,
             )
         } else {
             base_tip
@@ -1338,7 +1410,7 @@ fn callout_primitives(
         ink,
         preferred: hint_side,
         min_gap,
-        max_gap: min_gap + BOND_PX * 1.5,
+        max_gap: min_gap + BOND_PX * 2.5,
         gap_step: 4.0,
         margin: CLASH_MARGIN_PX,
         tip_standoff: if spec.arrow {
@@ -1366,8 +1438,18 @@ fn callout_primitives(
     .unwrap_or_else(|| tip_point_fallback((ax, ay), side, tip_standoff));
     let mut other = chem_boxes.clone();
     other.extend_from_slice(caption_boxes);
-    let (label_dxy, tip_dxy, _) = refine_callout(
+    let atoms: Vec<(usize, f64, f64)> = mol
+        .atoms
+        .iter()
+        .map(|a| {
+            let (x, y) = atom_xy(a, dx, dy);
+            (a.index.max(0) as usize, x, y)
+        })
+        .collect();
+    let (label_dxy, _tip_dxy, _) = refine_callout(
         &bonds,
+        &atoms,
+        shades,
         seed.bounds,
         tip0,
         (ax, ay),
@@ -1389,22 +1471,35 @@ fn callout_primitives(
     let placed_bounds = seed
         .bounds
         .translated(label_dxy.0 + nudge_x, label_dxy.1 + nudge_y);
-    let tip = clear_tip_from_obstacles(
-        (tip0.0 + tip_dxy.0, tip0.1 + tip_dxy.1),
-        (ax, ay),
-        &tip_obstacles,
-        CLASH_MARGIN_PX,
-    );
-    // Rebuild arrow: start pulled off the label, tip short of chem/bonds.
+    // Paint both ends from the placed label toward the atom so the shaft
+    // stays on that ray (meeting the highlight circle). Do not splice in an
+    // independently shifted tip — that is what offset the kitchen-sink line.
+    let paint_side = Side::from_vec(placed_bounds.center().0 - ax, placed_bounds.center().1 - ay)
+        .unwrap_or(side);
+    let paint_standoff = seed_standoff(paint_side);
     let (arrow_from, arrow_to) = if spec.arrow {
-        let (from, _) = callout_arrow(
-            placed_bounds,
+        // Occupancy ink is x-padded; attach the shaft to the glyph box.
+        let arrow_bounds = placed_bounds.inflate_xy(-LABEL_PAD_X_PX, 0.0);
+        let (from, to) = callout_arrow_clearing(
+            arrow_bounds,
             (ax, ay),
-            side,
-            tip_standoff,
+            paint_side,
+            paint_standoff,
             CALLOUT_LABEL_PULLBACK_PX,
+            caption_boxes,
+            CLASH_MARGIN_PX,
         );
-        (from, Some(tip))
+        let to = to.map(|t| {
+            if mark_r > 0.0 {
+                // Highlight circle: tip already sits on that stroke. Pulling
+                // away from the atom to clear chem OH shortens the shaft off
+                // the circle (kitchen-sink phenol).
+                t
+            } else {
+                clear_tip_from_obstacles(t, (ax, ay), &tip_obstacles, CLASH_MARGIN_PX)
+            }
+        });
+        (from, to)
     } else {
         (None, None)
     };
@@ -1549,6 +1644,33 @@ fn boundary_atom(mol: &MoleculeIn, idx: i32, included: &std::collections::HashSe
     })
 }
 
+/// True when `bond` lies on a cycle (its ends stay connected without it).
+fn ring_bond(mol: &MoleculeIn, bond: i32) -> bool {
+    let Some(b0) = mol.bonds.iter().find(|b| b.index == bond) else {
+        return false;
+    };
+    let mut seen = std::collections::HashSet::from([b0.begin]);
+    let mut stack = vec![b0.begin];
+    while let Some(a) = stack.pop() {
+        for b in mol.bonds.iter().filter(|b| b.index != bond) {
+            let o = if b.begin == a {
+                b.end
+            } else if b.end == a {
+                b.begin
+            } else {
+                continue;
+            };
+            if o == b0.end {
+                return true;
+            }
+            if seen.insert(o) {
+                stack.push(o);
+            }
+        }
+    }
+    false
+}
+
 fn push_disk_samples(out: &mut Vec<(f64, f64)>, cx: f64, cy: f64, r: f64) {
     for k in 0..8 {
         let t = std::f64::consts::TAU * k as f64 / 8.0;
@@ -1590,7 +1712,7 @@ fn region_label_occupancy(
         occ.add_aabb(box_);
     }
     for box_ in chem_text_boxes(mol, dx, dy).values() {
-        occ.add_aabb(*box_);
+        occ.add_aabb(box_.inflate_xy(LABEL_PAD_X_PX, 0.0));
     }
     occ
 }
@@ -3761,6 +3883,23 @@ mod tests {
             ring.center().1 > region_box.center().1,
             "ring auto should sit below the box (away from the OH cluster), not above: ring={ring:?} box={region_box:?}"
         );
+        let ring_gap = crate::doc::layout_constraints::edge_signed_distance(
+            &Shape::Aabb(ring),
+            &Shape::Aabb(region_box),
+        );
+        assert!(
+            ring_gap <= REGION_TEXT_TETHER_PX + 2.0,
+            "ring {ring:?} too far from box {region_box:?}: gap={ring_gap}"
+        );
+        let oh = label_box_by_text(&out, "OH");
+        let six_gap = crate::doc::layout_constraints::edge_signed_distance(
+            &Shape::Aabb(six),
+            &Shape::Aabb(oh),
+        );
+        assert!(
+            six_gap <= ATOM_NUMBER_TETHER_PX + 4.0,
+            "index 6 {six:?} too far from OH {oh:?}: gap={six_gap}"
+        );
     }
 
     fn callout_label_box(scene: &Scene) -> Aabb {
@@ -3838,10 +3977,11 @@ mod tests {
             .remove(0)
     }
 
-    /// Auto is not hardcoded Above. Scene-space (not svg_coords): the OH
-    /// circle is the oxygen. Callout / exo sit on the far side of that
-    /// circle from the ring box; ring text sits on the far side of the box
-    /// from the OH cluster (not empty-page Right).
+    /// Auto is not hardcoded vertical-above. Scene-space (not svg_coords):
+    /// the OH circle is the oxygen. Callout / exo sit on the far side of
+    /// that circle from the ring box (a 45° offset around exo is fine;
+    /// empty-page Right is not). Ring text sits on the far side of the box
+    /// from the OH cluster.
     #[test]
     fn kitchen_sink_callout_auto_matches_above() {
         let auto = kitchen_sink_phenol(None);
@@ -3892,6 +4032,119 @@ mod tests {
             ring_along > 0.0,
             "ring label should sit on the far side of the box from the OH: ring={ring:?} box={region_box:?} circle={circle:?}"
         );
+        let ring_gap = crate::doc::layout_constraints::edge_signed_distance(
+            &Shape::Aabb(ring),
+            &Shape::Aabb(region_box),
+        );
+        assert!(
+            ring_gap <= REGION_TEXT_TETHER_PX + 2.0,
+            "ring {ring:?} too far from box {region_box:?}: gap={ring_gap}"
+        );
+        let six = label_box_by_text(&auto.scene, "6");
+        let oh = label_box_by_text(&auto.scene, "OH");
+        let six_gap = crate::doc::layout_constraints::edge_signed_distance(
+            &Shape::Aabb(six),
+            &Shape::Aabb(oh),
+        );
+        assert!(
+            six_gap <= ATOM_NUMBER_TETHER_PX + 4.0,
+            "index 6 {six:?} too far from OH {oh:?}: gap={six_gap}"
+        );
+        kitchen_sink_shaft_and_shade_asserts(&auto.scene);
+    }
+
+    fn kitchen_sink_shaft_and_shade_asserts(scene: &Scene) {
+        let exo = label_box_by_text(scene, "exo");
+        let ortho = label_box_by_text(scene, "ortho");
+        let two = label_box_by_text(scene, "2");
+        let circle = layer_prims(scene)
+            .into_iter()
+            .find_map(|p| match p {
+                Primitive::Circle {
+                    cx,
+                    cy,
+                    r,
+                    class: Some(c),
+                    ..
+                } if c.contains("atom-circle") => Some((*cx, *cy, *r)),
+                _ => None,
+            })
+            .expect("OH circle");
+        let (arrow_from, arrow_to) = layer_prims(scene)
+            .into_iter()
+            .find_map(|p| match p {
+                Primitive::Path {
+                    d, class: Some(c), ..
+                } if c.contains("callout-arrow") => {
+                    let n = path_nums(d);
+                    if n.len() >= 4 {
+                        Some(((n[0], n[1]), (n[n.len() - 2], n[n.len() - 1])))
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            })
+            .expect("callout arrow");
+        let (cx, cy, cr) = circle;
+        let tip_r = (arrow_to.0 - cx).hypot(arrow_to.1 - cy);
+        assert!(
+            (tip_r - cr).abs() < 8.0,
+            "tip should meet the circle stroke, not a shifted nucleus: tip={:?} circle=({cx},{cy},r={cr}) dist={tip_r}",
+            arrow_to
+        );
+        let d_axis = point_to_line(cx, cy, arrow_from.0, arrow_from.1, arrow_to.0, arrow_to.1);
+        assert!(
+            d_axis < cr + 2.0,
+            "shaft should aim at the circle, not shift off-axis: from={:?} to={:?} circle=({cx},{cy}) d={d_axis}",
+            arrow_from,
+            arrow_to
+        );
+        let shaft_hits_exo = {
+            let mut hit = false;
+            for i in 0..=16 {
+                let t = i as f64 / 16.0;
+                let px = arrow_from.0 + t * (arrow_to.0 - arrow_from.0);
+                let py = arrow_from.1 + t * (arrow_to.1 - arrow_from.1);
+                if px >= exo.x0 && px <= exo.x1 && py >= exo.y0 && py <= exo.y1 {
+                    hit = true;
+                    break;
+                }
+            }
+            hit
+        };
+        assert!(
+            !shaft_hits_exo,
+            "callout shaft {:?}→{:?} must miss exo {exo:?}",
+            arrow_from, arrow_to
+        );
+        assert!(
+            !two.overlaps(ortho),
+            "index 2 {two:?} overlaps ortho {ortho:?}"
+        );
+        let shades: Vec<(f64, f64, f64)> = layer_prims(scene)
+            .into_iter()
+            .filter_map(|p| match p {
+                Primitive::Circle {
+                    cx,
+                    cy,
+                    r,
+                    class: Some(c),
+                    ..
+                } if c.contains("shade") => Some((*cx, *cy, *r)),
+                _ => None,
+            })
+            .collect();
+        assert!(!shades.is_empty(), "kitchen sink paints shade disks");
+        for (sx, sy, sr) in &shades {
+            let qx = sx.clamp(ortho.x0, ortho.x1);
+            let qy = sy.clamp(ortho.y0, ortho.y1);
+            let d = (sx - qx).hypot(sy - qy);
+            assert!(
+                d + 1e-6 >= *sr,
+                "ortho {ortho:?} overlaps shade at ({sx},{sy}) r={sr} (d={d})"
+            );
+        }
     }
 
     fn label_box_by_text(scene: &Scene, text: &str) -> Aabb {
@@ -4430,6 +4683,71 @@ mod tests {
                 (x - cx).hypot(y - cy) <= r + 1e-6,
                 "({x},{y}) outside disk ({cx},{cy}) r={r}"
             );
+        }
+    }
+
+    #[test]
+    fn region_circle_keeps_fused_ring_neighbours_out() {
+        // Two fused squares (0-1-2-3 | 2-3-4-5) plus a substituent 6 on 0.
+        // Region on the left square: the circle must keep 4 and 5 (ring
+        // neighbours) out, but is not pushed off by the substituent.
+        let mol = molecule(
+            "f",
+            vec![
+                c(0, 0.0, 0.0),
+                c(1, 0.0, 30.0),
+                c(2, 30.0, 30.0),
+                c(3, 30.0, 0.0),
+                c(4, 60.0, 30.0),
+                c(5, 60.0, 0.0),
+                c(6, -26.0, -15.0),
+            ],
+            vec![
+                bond(0, 0, 1),
+                bond(1, 1, 2),
+                bond(2, 2, 3),
+                bond(3, 3, 0),
+                bond(4, 2, 4),
+                bond(5, 4, 5),
+                bond(6, 5, 3),
+                bond(7, 0, 6),
+            ],
+        );
+        assert!(ring_bond(&mol, 4));
+        assert!(!ring_bond(&mol, 7));
+        let (dx, dy) = frame_offset(&mol);
+        let scene = crate::depict::depict_molecule(&mol);
+        let mut spec = ex6_region(RegionStyle::Circle, None);
+        spec.atoms = vec![0, 1, 2, 3];
+        spec.exclude = vec![];
+        let node = MolNode {
+            region: Some(crate::doc::chrome::RegionField::One(spec)),
+            ..Default::default()
+        };
+        let out = apply_mol_chrome(&node, &mol, scene);
+        let (cx, cy, r) = layer_prims(&out)
+            .into_iter()
+            .find_map(|p| match p {
+                Primitive::Circle {
+                    cx,
+                    cy,
+                    r,
+                    class: Some(c),
+                    ..
+                } if c.contains("region") => Some((*cx, *cy, *r)),
+                _ => None,
+            })
+            .expect("region circle");
+        for (x, y) in [(60.0, 30.0), (60.0, 0.0)] {
+            let d = (x + dx - cx).hypot(y + dy - cy);
+            assert!(
+                d + 1e-6 >= r,
+                "fused neighbour ({x},{y}) inside: d={d} r={r}"
+            );
+        }
+        for (x, y) in [(0.0, 0.0), (0.0, 30.0), (30.0, 30.0), (30.0, 0.0)] {
+            let d = (x + dx - cx).hypot(y + dy - cy);
+            assert!(d <= r + 1e-6, "member ({x},{y}) outside: d={d} r={r}");
         }
     }
 

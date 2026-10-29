@@ -8,6 +8,10 @@ use crate::scene::{AtomIn, MoleculeIn};
 
 /// Default “no clash” air: 0.1 CC-bond.
 pub const CLASH_MARGIN_PX: f64 = 0.1 * BOND_PX;
+/// Extra layout width on every label so neighboring text is not jammed.
+///
+/// Paint is unchanged; only the clash / occupancy box grows in x.
+pub const LABEL_PAD_X_PX: f64 = 0.2 * BOND_PX;
 /// Name / outside-region hug: 0.5 CC-bond.
 pub const HALF_BOND_PX: f64 = 0.5 * BOND_PX;
 /// Atom treated as a disk for contain / clash (not a dimensionless point).
@@ -44,6 +48,11 @@ impl Aabb {
 
     pub fn inflate(self, m: f64) -> Self {
         Self::new(self.x0 - m, self.y0 - m, self.x1 + m, self.y1 + m)
+    }
+
+    /// Grow independently in x and y (label horizontal air uses `my = 0`).
+    pub fn inflate_xy(self, mx: f64, my: f64) -> Self {
+        Self::new(self.x0 - mx, self.y0 - my, self.x1 + mx, self.y1 + my)
     }
 
     pub fn overlaps(self, other: Aabb) -> bool {
@@ -341,6 +350,28 @@ impl Occupancy {
         }
         pen
     }
+
+    /// True when a callout shaft clips an obstacle that is not the target mark.
+    ///
+    /// Label-box clash stays primary (`1e9`). A blocked shaft is a milder Auto
+    /// veto so Above-through-exo loses to a 45° pose still past the atom,
+    /// without empty-page Right winning.
+    pub fn shaft_hits(&self, p: &Placement, margin: f64, anchor: (f64, f64)) -> bool {
+        let (Some(from), Some(to)) = (p.arrow_from, p.arrow_to) else {
+            return false;
+        };
+        for &a in &self.aabbs {
+            let (cx, cy) = a.center();
+            let reach = 0.5 * a.width().hypot(a.height());
+            if (cx - anchor.0).hypot(cy - anchor.1) <= reach + 1.0 {
+                continue;
+            }
+            if seg_aabb_min_dist(from.0, from.1, to.0, to.1, a) < margin {
+                return true;
+            }
+        }
+        false
+    }
 }
 
 /// Exterior gap between AABBs (≥0); overlap is the negative min penetration.
@@ -417,6 +448,20 @@ impl InkAtOrigin {
     pub fn translated(self, x: f64, y: f64) -> Aabb {
         Aabb::new(self.x0 + x, self.y0 + y, self.x1 + x, self.y1 + y)
     }
+
+    /// Widen the layout box in x so clash / occupancy keep neighboring text apart.
+    pub fn pad_x(self, pad: f64) -> Self {
+        Self {
+            x0: self.x0 - pad,
+            x1: self.x1 + pad,
+            ..self
+        }
+    }
+}
+
+/// Layout ink for chrome / caption text: painted glyphs plus horizontal air.
+pub fn padded_label_ink(ink: InkAtOrigin) -> InkAtOrigin {
+    ink.pad_x(LABEL_PAD_X_PX)
 }
 
 /// Point on `ink` (origin-relative) nearest the incoming `unit` direction.
@@ -526,12 +571,13 @@ pub fn least_clash_side(occ: &Occupancy, req: &PlaceRequest) -> Side {
     best
 }
 
-/// Seed with no side bias: min clash, then farthest from other ink.
+/// Seed with no side bias: min clash, then **radially out** from the bulk.
 ///
 /// Each side grows gap until clear (same as [`place_greedy`]). Among those
-/// poses, maximize local air and distance from the occupancy bulk. Empty-page
-/// Right still loses when the bulk sits the other way, but a top oxygen is
-/// not a hardcoded Above — a substituent on the right still seeds Right.
+/// poses, slightly prefer compass directions aligned with `anchor − bulk`
+/// (a top oxygen seeds above / above-left / above-right). Empty-page Right
+/// is not radial-out from a ring below the OH. A blocked shaft may nudge
+/// one slot (above → above-right) but cannot jump to the empty page.
 /// `req.preferred` is ignored.
 pub fn place_auto(occ: &Occupancy, req: &PlaceRequest) -> Placement {
     let bulk = occ.centroid().unwrap_or(req.anchor);
@@ -560,7 +606,12 @@ pub fn place_auto(occ: &Occupancy, req: &PlaceRequest) -> Placement {
             continue;
         };
         let pen = occ.clash_penalty(p.bounds, req.margin);
-        let score = auto_score(p.bounds, bulk, pen);
+        let shaft = if occ.shaft_hits(&p, req.margin, req.anchor) {
+            1.0
+        } else {
+            0.0
+        };
+        let score = auto_score(&p, bulk, req.anchor, pen, shaft);
         let replace = match &best {
             None => true,
             Some((s, _)) => score < *s,
@@ -573,14 +624,26 @@ pub fn place_auto(occ: &Occupancy, req: &PlaceRequest) -> Placement {
         .unwrap_or_else(|| force_place(req, Side::Right, req.min_gap))
 }
 
-/// Lower is better. Clash first, then distance from the ink bulk.
+/// Lower is better. Label-box clash first; then a mild radial-out bias.
 ///
-/// Local air is **not** in this score: empty-page Left/Right have huge
-/// clearance but sit next to the molecule, which is the original Auto bug.
-fn auto_score(bounds: Aabb, bulk: (f64, f64), pen: f64) -> f64 {
-    let (cx, cy) = bounds.center();
+/// `radial` is the cosine of the angle between (label − anchor) and
+/// (anchor − bulk): 1 = straight out from the molecule center through the
+/// atom. That is a slight Auto preference, not a hard side lock. A blocked
+/// callout shaft costs one compass step: above-through-exo loses to a
+/// far-side 45° (the intended tradeoff), not to empty-page Right.
+fn auto_score(p: &Placement, bulk: (f64, f64), anchor: (f64, f64), pen: f64, shaft: f64) -> f64 {
+    let (cx, cy) = p.bounds.center();
+    let (lx, ly) = (cx - anchor.0, cy - anchor.1);
+    let llen = lx.hypot(ly).max(1e-6);
+    let (rx, ry) = (anchor.0 - bulk.0, anchor.1 - bulk.1);
+    let rlen = rx.hypot(ry).max(1e-6);
+    let radial = (lx * rx + ly * ry) / (llen * rlen);
+    let along = lx * rx + ly * ry;
     let sep = (cx - bulk.0).hypot(cy - bulk.1);
-    pen * 1e9 - sep * 10.0
+    // Clash 1e9. Radial ~1e4 (slight far-side bias). A blocked shaft is
+    // one compass step: above-through-exo loses to above-right, not to
+    // empty-page Right (radial ~ 0). Along/sep only tie-break.
+    pen * 1e9 + shaft * 1.2e4 - radial * 1e4 - along * 10.0 - sep
 }
 
 fn force_place(req: &PlaceRequest, side: Side, gap: f64) -> Placement {
@@ -616,25 +679,100 @@ pub fn callout_arrow(
     tip_standoff: f64,
     label_pullback: f64,
 ) -> (Option<(f64, f64)>, Option<(f64, f64)>) {
-    let (ax, ay) = anchor;
+    arrow_from_edge(
+        facing_edge_mid(bounds, side),
+        anchor,
+        tip_standoff,
+        label_pullback,
+    )
+}
+
+/// Like [`callout_arrow`], but slide the start along the facing edge so the
+/// shaft misses other labels (kitchen-sink exo) while still aiming at `anchor`.
+///
+/// Center attachment is tried first (radial). Corners are fallbacks. Obstacles
+/// whose center sits on the target (highlight circle, chem disk) are skipped.
+pub fn callout_arrow_clearing(
+    bounds: Aabb,
+    anchor: (f64, f64),
+    side: Side,
+    tip_standoff: f64,
+    label_pullback: f64,
+    obstacles: &[Aabb],
+    margin: f64,
+) -> (Option<(f64, f64)>, Option<(f64, f64)>) {
+    let mut fallback = callout_arrow(bounds, anchor, side, tip_standoff, label_pullback);
+    for edge in facing_edge_samples(bounds, side) {
+        let arrow = arrow_from_edge(edge, anchor, tip_standoff, label_pullback);
+        let (Some(from), Some(to)) = arrow else {
+            continue;
+        };
+        if !shaft_hits_obstacles(from, to, obstacles, margin, anchor) {
+            return arrow;
+        }
+        if fallback.0.is_none() {
+            fallback = arrow;
+        }
+    }
+    fallback
+}
+
+fn facing_edge_mid(bounds: Aabb, side: Side) -> (f64, f64) {
     let (ux, uy) = side.unit();
-    let edge = {
-        let hx = if ux > 1e-9 {
-            bounds.x0
-        } else if ux < -1e-9 {
-            bounds.x1
-        } else {
-            bounds.center().0
-        };
-        let hy = if uy > 1e-9 {
-            bounds.y0
-        } else if uy < -1e-9 {
-            bounds.y1
-        } else {
-            bounds.center().1
-        };
-        (hx, hy)
+    let hx = if ux > 1e-9 {
+        bounds.x0
+    } else if ux < -1e-9 {
+        bounds.x1
+    } else {
+        bounds.center().0
     };
+    let hy = if uy > 1e-9 {
+        bounds.y0
+    } else if uy < -1e-9 {
+        bounds.y1
+    } else {
+        bounds.center().1
+    };
+    (hx, hy)
+}
+
+fn facing_edge_samples(bounds: Aabb, side: Side) -> Vec<(f64, f64)> {
+    let (ux, uy) = side.unit();
+    let mut edges: Vec<((f64, f64), (f64, f64))> = Vec::new();
+    if ux > 1e-9 {
+        edges.push(((bounds.x0, bounds.y0), (bounds.x0, bounds.y1)));
+    } else if ux < -1e-9 {
+        edges.push(((bounds.x1, bounds.y0), (bounds.x1, bounds.y1)));
+    }
+    if uy > 1e-9 {
+        edges.push(((bounds.x0, bounds.y0), (bounds.x1, bounds.y0)));
+    } else if uy < -1e-9 {
+        edges.push(((bounds.x0, bounds.y1), (bounds.x1, bounds.y1)));
+    }
+    if edges.is_empty() {
+        return vec![bounds.center()];
+    }
+    let mut out = vec![facing_edge_mid(bounds, side)];
+    for &(a, b) in &edges {
+        for k in 0..=8 {
+            let t = k as f64 / 8.0;
+            let p = (a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t);
+            if out.iter().any(|q| (q.0 - p.0).hypot(q.1 - p.1) < 0.5) {
+                continue;
+            }
+            out.push(p);
+        }
+    }
+    out
+}
+
+fn arrow_from_edge(
+    edge: (f64, f64),
+    anchor: (f64, f64),
+    tip_standoff: f64,
+    label_pullback: f64,
+) -> (Option<(f64, f64)>, Option<(f64, f64)>) {
+    let (ax, ay) = anchor;
     let dx = ax - edge.0;
     let dy = ay - edge.1;
     let len = dx.hypot(dy).max(1e-6);
@@ -642,11 +780,9 @@ pub fn callout_arrow(
     let uy = dy / len;
     let pull = label_pullback.max(0.0).min(len * 0.4);
     let from = (edge.0 + ux * pull, edge.1 + uy * pull);
-    // Tip short of anchor; leave room for the label pullback.
     let max_st = (len - pull).max(0.0) * 0.9;
     let st = tip_standoff.max(0.0).min(max_st);
     let to = (ax - ux * st, ay - uy * st);
-    // Degenerate: keep a short forward stub.
     let span = (to.0 - from.0) * ux + (to.1 - from.1) * uy;
     if span < 1.0 {
         let mid = pull + (len - pull) * 0.5;
@@ -661,6 +797,26 @@ pub fn callout_arrow(
         return (Some(from), Some(to));
     }
     (Some(from), Some(to))
+}
+
+fn shaft_hits_obstacles(
+    from: (f64, f64),
+    to: (f64, f64),
+    obstacles: &[Aabb],
+    margin: f64,
+    anchor: (f64, f64),
+) -> bool {
+    for &a in obstacles {
+        let (cx, cy) = a.center();
+        let reach = 0.5 * a.width().hypot(a.height());
+        if (cx - anchor.0).hypot(cy - anchor.1) <= reach + 1.0 {
+            continue;
+        }
+        if seg_aabb_min_dist(from.0, from.1, to.0, to.1, a) < margin {
+            return true;
+        }
+    }
+    false
 }
 
 /// Tip point on the preferred side of `anchor`, `standoff` px away.
@@ -1122,6 +1278,100 @@ mod tests {
             p.bounds
         );
         assert!(p.bounds.center().0 > 0.0 && p.bounds.center().1 < 0.0);
+    }
+
+    #[test]
+    fn place_auto_callout_is_radial_when_shaft_is_clear() {
+        // No exo on the above ray: Auto stays vertical / radial-out.
+        let mut occ = Occupancy::new();
+        occ.add_aabb(Aabb::new(-40.0, 10.0, 40.0, 50.0));
+        let ink = InkAtOrigin {
+            x0: -16.0,
+            y0: -5.0,
+            x1: 16.0,
+            y1: 5.0,
+        };
+        let req = PlaceRequest {
+            anchor: (0.0, 0.0),
+            ink,
+            preferred: Side::Right,
+            min_gap: 28.0,
+            max_gap: 72.0,
+            gap_step: 4.0,
+            margin: 2.0,
+            tip_standoff: Some(8.0),
+            label_pullback: 2.0,
+        };
+        let p = place_auto(&occ, &req);
+        assert_eq!(
+            p.side,
+            Side::Above,
+            "clear above-ray should stay radial-out, not empty Right: {:?}",
+            p.side
+        );
+    }
+
+    #[test]
+    fn place_auto_callout_stays_radial_when_exo_blocks_the_ray() {
+        // Target at origin; bulk below; a label sits on the above ray (kitchen-sink
+        // exo). Auto may stay vertical — offset around exo is paint-time
+        // (`callout_arrow_clearing`), not empty-page Right.
+        let mut occ = Occupancy::new();
+        occ.add_aabb(Aabb::new(-8.0, -22.0, 8.0, -10.0));
+        occ.add_aabb(Aabb::new(-40.0, 10.0, 40.0, 50.0));
+        let ink = InkAtOrigin {
+            x0: -16.0,
+            y0: -5.0,
+            x1: 16.0,
+            y1: 5.0,
+        };
+        let req = PlaceRequest {
+            anchor: (0.0, 0.0),
+            ink,
+            preferred: Side::Above,
+            min_gap: 28.0,
+            max_gap: 72.0,
+            gap_step: 4.0,
+            margin: 2.0,
+            tip_standoff: Some(8.0),
+            label_pullback: 2.0,
+        };
+        let p = place_auto(&occ, &req);
+        assert!(
+            matches!(p.side, Side::Above | Side::AboveLeft | Side::AboveRight),
+            "must stay past the OH, not empty-page Right: {:?}",
+            p.side
+        );
+        assert!(
+            p.bounds.center().1 < 0.0,
+            "must sit above the bulk: {:?}",
+            p.bounds
+        );
+        assert!(
+            !matches!(p.side, Side::Right | Side::Left),
+            "empty-page side is not radial-out: {:?}",
+            p.side
+        );
+    }
+
+    #[test]
+    fn callout_arrow_clearing_slides_off_blocker() {
+        // Wide label above a small exo, tip on a highlight-circle standoff —
+        // same geometry as kitchen-sink phenol / exo.
+        let bounds = Aabb::new(-28.0, -48.0, 28.0, -36.0);
+        let exo = Aabb::new(-8.0, -24.0, 8.0, -16.0);
+        let (from, to) =
+            callout_arrow_clearing(bounds, (0.0, 0.0), Side::Above, 14.0, 2.0, &[exo], 2.0);
+        let (from, to) = (from.expect("from"), to.expect("to"));
+        let d = super::seg_aabb_min_dist(from.0, from.1, to.0, to.1, exo);
+        assert!(
+            d + 1e-6 >= 2.0,
+            "shaft {from:?}→{to:?} still hits exo (d={d})"
+        );
+        assert!(
+            to.1 < -10.0,
+            "tip should stay above the origin on the callout ray: {to:?}"
+        );
     }
 
     #[test]
