@@ -712,8 +712,9 @@ pub struct TextNode {
 /// Side of an edge shaft, mol caption, or callout for a label placement.
 ///
 /// [`Self::Auto`] (callout `prefer` / outside region `pos` omitted) seeds by
-/// min clash and max distance from other ink — not an alias for
-/// [`Self::Above`]. Edge `pos` omitted still means [`Self::Above`].
+/// min clash and max distance from other ink over eight compass directions
+/// (cardinals + 45°) — not an alias for [`Self::Above`]. Edge `pos` omitted
+/// still means [`Self::Above`].
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
@@ -724,6 +725,10 @@ pub enum LabelPos {
     Below,
     Left,
     Right,
+    AboveLeft,
+    AboveRight,
+    BelowLeft,
+    BelowRight,
     Auto,
 }
 

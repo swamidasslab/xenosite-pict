@@ -1413,16 +1413,9 @@ fn constraint_energy(world: &LayoutWorld, c: &Constraint) -> f64 {
             let (ax, ay) = sa.aabb().center();
             let (bx, by) = sb.aabb().center();
             let (dx, dy) = (ax - bx, ay - by);
-            let good = match side {
-                Side::Right => dx,
-                Side::Left => -dx,
-                Side::Below => dy,
-                Side::Above => -dy,
-            };
-            let ortho = match side {
-                Side::Left | Side::Right => dy,
-                Side::Above | Side::Below => dx,
-            };
+            let (ux, uy) = side.unit();
+            let good = dx * ux + dy * uy;
+            let ortho = dx * (-uy) + dy * ux;
             let along = align_along.max(0.0);
             strength * hinge_below(good, 0.0) + along * strength * ortho * ortho
         }
@@ -3835,6 +3828,38 @@ mod tests {
                 }
             )),
             "locked prefer still emits PreferSide: {cs:?}"
+        );
+    }
+
+    #[test]
+    fn callout_kit_locked_diagonal_emits_prefer_side() {
+        let mut w = LayoutWorld::new("mol");
+        install_chem(&mut w, &[], &[(0, 0.0, 0.0)], &[]);
+        let mut cs = Vec::new();
+        let mut hard = Vec::new();
+        let _ = callout_kit(
+            &mut w,
+            &mut cs,
+            &mut hard,
+            0,
+            Aabb::new(8.0, -20.0, 28.0, -8.0),
+            (6.0, -6.0),
+            (0.0, 0.0),
+            8.0,
+            Some(Side::AboveRight),
+            3.0,
+            &[],
+            &[],
+        );
+        assert!(
+            cs.iter().any(|c| matches!(
+                c,
+                Constraint::PreferSide {
+                    side: Side::AboveRight,
+                    ..
+                }
+            )),
+            "locked 45° prefer still emits PreferSide: {cs:?}"
         );
     }
 

@@ -799,7 +799,7 @@
           ]
         },
         "prefer": {
-          "description": "Side bias. Omit or `\"auto\"` → seed by clash/air, solve with no PreferSide.",
+          "description": "Side bias. Omit or `\"auto\"` → seed farthest from other ink over the eight compass directions (cardinals + 45°), not a hardcoded above. Locked `\"above_right\"` / `\"below_left\"` / … pin that 45° slot.",
           "anyOf": [
             {
               "$ref": "#/definitions/LabelPos"
@@ -1758,13 +1758,17 @@
       "additionalProperties": false
     },
     "LabelPos": {
-      "description": "Side of an edge shaft, mol caption, or callout for a label placement.\n\n[`Self::Auto`] (callout `prefer` omitted) seeds by clash/air with no directional push in the solver. Edge `pos` omitted still means [`Self::Above`].",
+      "description": "Side of an edge shaft, mol caption, or callout for a label placement.\n\n[`Self::Auto`] (callout `prefer` / outside region `pos` omitted) seeds by min clash and max distance from other ink over eight compass directions (cardinals + 45°) — not an alias for [`Self::Above`]. Edge `pos` omitted still means [`Self::Above`].",
       "type": "string",
       "enum": [
         "above",
         "below",
         "left",
         "right",
+        "above_left",
+        "above_right",
+        "below_left",
+        "below_right",
         "auto"
       ]
     },

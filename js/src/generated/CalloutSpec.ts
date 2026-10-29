@@ -7,6 +7,8 @@ import type { MolText } from "./MolText";
  */
 export type CalloutSpec = { atoms?: Array<number>, bonds?: Array<[number, number]>, text: MolText, arrow: boolean, 
 /**
- * Side bias. Omit or `"auto"` → seed by clash/air, solve with no PreferSide.
+ * Side bias. Omit or `"auto"` → seed farthest from other ink over the
+ * eight compass directions (cardinals + 45°), not a hardcoded above.
+ * Locked `"above_right"` / `"below_left"` / … pin that 45° slot.
  */
 prefer?: LabelPos, color?: string, scale?: number, z?: number, };

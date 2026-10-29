@@ -2,6 +2,8 @@
 
 ## 2026-10-29
 
+- `prefer` / Auto placement use eight compass directions: the four cardinals plus 45° `above_right` / `above_left` / `below_right` / `below_left`. Auto still picks the clash-free slot farthest from other ink (a lower-left bulk seeds above-right). Locked `prefer: "above_right"` pins that diagonal.
+
 - Auto is not hardcoded Above. Point-anchored labels (`place_auto`) pick the clash-free cardinal farthest from the occupancy centroid — a top oxygen seeds above, a right-hand substituent seeds right; empty-page Right loses because it is closer to the bulk. Region labels (`place_region_auto`) aim away from chrome *outside* the hull (an OH on top seeds Below) so a landscape box does not slide to empty-page Right. Auto refine still has no PreferSide; it Repels from the chem centroid under a MaxDist tether. Kitchen-sink phenol OH / exo sit above the oxygen; ring text sits below the box, away from the OH cluster.
 
 - Callout `prefer` omitted (or `"auto"`) seeds by min clash / max air to other chrome and solves with no PreferSide. Kitchen-sink phenol OH lands like `above` from those rules (OH glyph + exo occupy the right). Locked `above`/`below`/`left`/`right` still emit PreferSide.

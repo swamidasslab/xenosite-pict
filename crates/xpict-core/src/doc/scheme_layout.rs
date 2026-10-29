@@ -1269,6 +1269,31 @@ fn label_offset_dir(pts: &[(f64, f64)], pos: super::LabelPos) -> (f64, f64) {
                 p1
             }
         }
+        super::LabelPos::AboveLeft
+        | super::LabelPos::AboveRight
+        | super::LabelPos::BelowLeft
+        | super::LabelPos::BelowRight => {
+            let (ax, ay) = label_offset_dir(
+                pts,
+                match pos {
+                    super::LabelPos::AboveLeft | super::LabelPos::AboveRight => {
+                        super::LabelPos::Above
+                    }
+                    _ => super::LabelPos::Below,
+                },
+            );
+            let (rx, ry) = label_offset_dir(
+                pts,
+                match pos {
+                    super::LabelPos::AboveRight | super::LabelPos::BelowRight => {
+                        super::LabelPos::Right
+                    }
+                    _ => super::LabelPos::Left,
+                },
+            );
+            let l = (ax + rx).hypot(ay + ry).max(1e-6);
+            ((ax + rx) / l, (ay + ry) / l)
+        }
     }
 }
 

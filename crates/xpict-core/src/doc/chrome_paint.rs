@@ -931,7 +931,7 @@ fn region_primitives(
                         RegionStyle::Circle => {
                             let mut best: Option<(f64, crate::doc::layout_items::Placement)> = None;
                             let bulk = occ.centroid().unwrap_or(atom_centroid);
-                            for side in [Side::Right, Side::Below, Side::Left, Side::Above] {
+                            for side in Side::ALL_8 {
                                 let p =
                                     place_circle_label(circ_cx, circ_cy, circ_r, ink, side, &occ);
                                 let pen = occ.clash_penalty(p.bounds, CLASH_MARGIN_PX);
@@ -1121,6 +1121,10 @@ fn label_pos_side(pos: LabelPos) -> Side {
         LabelPos::Right => Side::Right,
         LabelPos::Above | LabelPos::Auto => Side::Above,
         LabelPos::Below => Side::Below,
+        LabelPos::AboveLeft => Side::AboveLeft,
+        LabelPos::AboveRight => Side::AboveRight,
+        LabelPos::BelowLeft => Side::BelowLeft,
+        LabelPos::BelowRight => Side::BelowRight,
     }
 }
 
@@ -1964,35 +1968,27 @@ fn circle_label_at(
     gap: f64,
     slide: f64,
 ) -> crate::doc::layout_items::Placement {
-    let (nx, ny) = match side {
-        Side::Right => (1.0, 0.0),
-        Side::Left => (-1.0, 0.0),
-        Side::Below => (0.0, 1.0),
-        Side::Above => (0.0, -1.0),
-    };
+    let (nx, ny) = side.unit();
     let tx = -ny;
     let ty = nx;
     let dist = r + gap;
-    let mid_y = (ink.y0 + ink.y1) * 0.5;
-    let mid_x = (ink.x0 + ink.x1) * 0.5;
-    let (x, y) = match side {
-        Side::Right => {
-            let edge = cx + dist * nx + slide * r * tx;
-            (edge - ink.x0, cy + slide * r * ty - mid_y)
-        }
-        Side::Left => {
-            let edge = cx + dist * nx + slide * r * tx;
-            (edge - ink.x1, cy + slide * r * ty - mid_y)
-        }
-        Side::Above => {
-            let edge = cy + dist * ny + slide * r * ty;
-            (cx + slide * r * tx - mid_x, edge - ink.y1)
-        }
-        Side::Below => {
-            let edge = cy + dist * ny + slide * r * ty;
-            (cx + slide * r * tx - mid_x, edge - ink.y0)
-        }
+    let px = cx + dist * nx + slide * r * tx;
+    let py = cy + dist * ny + slide * r * ty;
+    let hx = if nx > 1e-9 {
+        ink.x0
+    } else if nx < -1e-9 {
+        ink.x1
+    } else {
+        (ink.x0 + ink.x1) * 0.5
     };
+    let hy = if ny > 1e-9 {
+        ink.y0
+    } else if ny < -1e-9 {
+        ink.y1
+    } else {
+        (ink.y0 + ink.y1) * 0.5
+    };
+    let (x, y) = (px - hx, py - hy);
     crate::doc::layout_items::Placement {
         x,
         y,
@@ -4337,6 +4333,38 @@ mod tests {
             arrow_stroke.as_deref(),
             label_fill.as_deref(),
             "default: arrow stroke == label fill"
+        );
+    }
+
+    #[test]
+    fn callout_prefer_above_right_sits_in_that_quadrant() {
+        let mol = ethanol();
+        let (dx, dy) = frame_offset(&mol);
+        let scene = crate::depict::depict_molecule(&mol);
+        let node = MolNode {
+            callout: Some(crate::doc::chrome::CalloutField::One(CalloutSpec {
+                atoms: Some(vec![0]),
+                bonds: None,
+                text: MolText::Plain("Me".into()),
+                arrow: true,
+                prefer: Some(LabelPos::AboveRight),
+                color: None,
+                scale: None,
+                z: None,
+            })),
+            ..Default::default()
+        };
+        let out = apply_mol_chrome(&node, &mol, scene);
+        let label = callout_label_box(&out);
+        let (ax, ay) = (mol.atoms[0].x + dx, mol.atoms[0].y + dy);
+        let (lx, ly) = label.center();
+        assert!(
+            lx > ax,
+            "above_right label should be right of the atom: label={label:?} atom=({ax:.1},{ay:.1})"
+        );
+        assert!(
+            ly < ay,
+            "above_right label should be above the atom: label={label:?} atom=({ax:.1},{ay:.1})"
         );
     }
 

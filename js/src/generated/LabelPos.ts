@@ -3,7 +3,9 @@
 /**
  * Side of an edge shaft, mol caption, or callout for a label placement.
  *
- * [`Self::Auto`] (callout `prefer` omitted) seeds by clash/air with no
- * directional push in the solver. Edge `pos` omitted still means [`Self::Above`].
+ * [`Self::Auto`] (callout `prefer` / outside region `pos` omitted) seeds by
+ * min clash and max distance from other ink over eight compass directions
+ * (cardinals + 45°) — not an alias for [`Self::Above`]. Edge `pos` omitted
+ * still means [`Self::Above`].
  */
-export type LabelPos = "above" | "below" | "left" | "right" | "auto";
+export type LabelPos = "above" | "below" | "left" | "right" | "above_left" | "above_right" | "below_left" | "below_right" | "auto";

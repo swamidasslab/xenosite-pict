@@ -368,8 +368,9 @@ pub struct CalloutSpec {
     pub text: MolText,
     #[serde(default = "default_true")]
     pub arrow: bool,
-    /// Side bias. Omit or `"auto"` → seed farthest from other ink (not a
-    /// hardcoded above), solve with no PreferSide.
+    /// Side bias. Omit or `"auto"` → seed farthest from other ink over the
+    /// eight compass directions (cardinals + 45°), not a hardcoded above.
+    /// Locked `"above_right"` / `"below_left"` / … pin that 45° slot.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub prefer: Option<LabelPos>,
@@ -928,6 +929,11 @@ mod tests {
             serde_json::from_str(r#"{"atoms":[6],"text":"OH","arrow":true,"prefer":"auto"}"#)
                 .unwrap();
         assert_eq!(explicit.prefer, Some(crate::doc::LabelPos::Auto));
+        let diag: CalloutSpec = serde_json::from_str(
+            r#"{"atoms":[6],"text":"OH","arrow":true,"prefer":"above_right"}"#,
+        )
+        .unwrap();
+        assert_eq!(diag.prefer, Some(crate::doc::LabelPos::AboveRight));
     }
 
     #[test]

@@ -26,7 +26,7 @@ AromaticStyle = Literal['circle', 'kekule']
 RegionTextPlace = Literal['outside', 'inside']
 
 
-LabelPos = Literal['above', 'below', 'left', 'right', 'auto']
+LabelPos = Literal['above', 'below', 'left', 'right', 'above_left', 'above_right', 'below_left', 'below_right', 'auto']
 
 
 class MolTextSpecDict(TypedDict, total=False):

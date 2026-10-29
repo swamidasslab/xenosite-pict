@@ -85,25 +85,75 @@ impl Seg {
 }
 
 /// Preferred placement side relative to an anchor / region edge.
+///
+/// Four cardinals plus four 45° diagonals (SVG +y down).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Side {
     Left,
     Right,
     Above,
     Below,
+    AboveLeft,
+    AboveRight,
+    BelowLeft,
+    BelowRight,
 }
 
 impl Side {
-    pub fn all_cw_from(self) -> [Side; 4] {
-        match self {
-            Side::Right => [Side::Right, Side::Above, Side::Left, Side::Below],
-            Side::Left => [Side::Left, Side::Below, Side::Right, Side::Above],
-            Side::Above => [Side::Above, Side::Right, Side::Below, Side::Left],
-            Side::Below => [Side::Below, Side::Left, Side::Above, Side::Right],
+    /// Clockwise from Right, including 45° diagonals.
+    pub const ALL_8: [Side; 8] = [
+        Side::Right,
+        Side::BelowRight,
+        Side::Below,
+        Side::BelowLeft,
+        Side::Left,
+        Side::AboveLeft,
+        Side::Above,
+        Side::AboveRight,
+    ];
+
+    pub fn is_diagonal(self) -> bool {
+        matches!(
+            self,
+            Side::AboveLeft | Side::AboveRight | Side::BelowLeft | Side::BelowRight
+        )
+    }
+
+    /// Rotate through alternates. Cardinals stay on the four axis slots so a
+    /// locked `prefer: above` does not jump to a 45° seed; diagonals walk all 8.
+    pub fn all_cw_from(self) -> Vec<Side> {
+        if self.is_diagonal() {
+            let i = Self::ALL_8.iter().position(|&s| s == self).unwrap_or(0);
+            let mut out = Self::ALL_8.to_vec();
+            out.rotate_left(i);
+            out
+        } else {
+            match self {
+                Side::Right => vec![Side::Right, Side::Above, Side::Left, Side::Below],
+                Side::Left => vec![Side::Left, Side::Below, Side::Right, Side::Above],
+                Side::Above => vec![Side::Above, Side::Right, Side::Below, Side::Left],
+                Side::Below => vec![Side::Below, Side::Left, Side::Above, Side::Right],
+                _ => Self::ALL_8.to_vec(),
+            }
         }
     }
 
-    /// Dominant cardinal of a SVG vector (+y down). `None` if the vector is ~0.
+    /// Unit vector from the anchor toward the label (SVG +y down).
+    pub fn unit(self) -> (f64, f64) {
+        const S: f64 = std::f64::consts::FRAC_1_SQRT_2;
+        match self {
+            Side::Right => (1.0, 0.0),
+            Side::BelowRight => (S, S),
+            Side::Below => (0.0, 1.0),
+            Side::BelowLeft => (-S, S),
+            Side::Left => (-1.0, 0.0),
+            Side::AboveLeft => (-S, -S),
+            Side::Above => (0.0, -1.0),
+            Side::AboveRight => (S, -S),
+        }
+    }
+
+    /// 8-way compass of a SVG vector (+y down). `None` if the vector is ~0.
     pub fn from_vec(dx: f64, dy: f64) -> Option<Self> {
         if !dx.is_finite() || !dy.is_finite() {
             return None;
@@ -111,17 +161,14 @@ impl Side {
         if dx.abs() < 1e-6 && dy.abs() < 1e-6 {
             return None;
         }
-        Some(if dx.abs() >= dy.abs() {
-            if dx > 0.0 {
-                Side::Right
-            } else {
-                Side::Left
-            }
-        } else if dy > 0.0 {
-            Side::Below
-        } else {
-            Side::Above
-        })
+        let mut d = dy.atan2(dx).to_degrees() + 22.5;
+        if d < 0.0 {
+            d += 360.0;
+        }
+        if d >= 360.0 {
+            d -= 360.0;
+        }
+        Some(Self::ALL_8[(d / 45.0).floor() as usize])
     }
 }
 
@@ -372,6 +419,25 @@ impl InkAtOrigin {
     }
 }
 
+/// Point on `ink` (origin-relative) nearest the incoming `unit` direction.
+fn facing_hit(ink: InkAtOrigin, ux: f64, uy: f64) -> (f64, f64) {
+    let hx = if ux > 1e-9 {
+        ink.x0
+    } else if ux < -1e-9 {
+        ink.x1
+    } else {
+        (ink.x0 + ink.x1) * 0.5
+    };
+    let hy = if uy > 1e-9 {
+        ink.y0
+    } else if uy < -1e-9 {
+        ink.y1
+    } else {
+        (ink.y0 + ink.y1) * 0.5
+    };
+    (hx, hy)
+}
+
 /// Request to place a text item near an anchor.
 #[derive(Debug, Clone)]
 pub struct PlaceRequest {
@@ -460,9 +526,6 @@ pub fn least_clash_side(occ: &Occupancy, req: &PlaceRequest) -> Side {
     best
 }
 
-/// Cardinals with no preferred-side bias (order is a last-resort exact tie).
-const AUTO_SIDES: [Side; 4] = [Side::Right, Side::Below, Side::Left, Side::Above];
-
 /// Seed with no side bias: min clash, then farthest from other ink.
 ///
 /// Each side grows gap until clear (same as [`place_greedy`]). Among those
@@ -473,7 +536,7 @@ const AUTO_SIDES: [Side; 4] = [Side::Right, Side::Below, Side::Left, Side::Above
 pub fn place_auto(occ: &Occupancy, req: &PlaceRequest) -> Placement {
     let bulk = occ.centroid().unwrap_or(req.anchor);
     let mut best: Option<(f64, Placement)> = None;
-    for side in AUTO_SIDES {
+    for side in Side::ALL_8 {
         let mut gap = req.min_gap;
         let mut side_best: Option<(f64, Placement)> = None;
         while gap <= req.max_gap + 1e-9 {
@@ -523,32 +586,10 @@ fn auto_score(bounds: Aabb, bulk: (f64, f64), pen: f64) -> f64 {
 fn force_place(req: &PlaceRequest, side: Side, gap: f64) -> Placement {
     let (ax, ay) = req.anchor;
     let ink = req.ink;
-    let (x, y) = match side {
-        Side::Right => {
-            // Label left edge at ax + gap.
-            let x = ax + gap - ink.x0;
-            let y = ay - (ink.y0 + ink.y1) * 0.5;
-            (x, y)
-        }
-        Side::Left => {
-            // Label right edge at ax - gap.
-            let x = ax - gap - ink.x1;
-            let y = ay - (ink.y0 + ink.y1) * 0.5;
-            (x, y)
-        }
-        Side::Above => {
-            // Label bottom at ay - gap.
-            let x = ax - (ink.x0 + ink.x1) * 0.5;
-            let y = ay - gap - ink.y1;
-            (x, y)
-        }
-        Side::Below => {
-            // Label top at ay + gap.
-            let x = ax - (ink.x0 + ink.x1) * 0.5;
-            let y = ay + gap - ink.y0;
-            (x, y)
-        }
-    };
+    let (ux, uy) = side.unit();
+    let (hx, hy) = facing_hit(ink, ux, uy);
+    let x = ax + gap * ux - hx;
+    let y = ay + gap * uy - hy;
     let bounds = ink.translated(x, y);
     let (arrow_from, arrow_to) = match req.tip_standoff {
         Some(st) => callout_arrow(bounds, (ax, ay), side, st, req.label_pullback),
@@ -576,11 +617,23 @@ pub fn callout_arrow(
     label_pullback: f64,
 ) -> (Option<(f64, f64)>, Option<(f64, f64)>) {
     let (ax, ay) = anchor;
-    let edge = match side {
-        Side::Right => (bounds.x0, bounds.center().1),
-        Side::Left => (bounds.x1, bounds.center().1),
-        Side::Above => (bounds.center().0, bounds.y1),
-        Side::Below => (bounds.center().0, bounds.y0),
+    let (ux, uy) = side.unit();
+    let edge = {
+        let hx = if ux > 1e-9 {
+            bounds.x0
+        } else if ux < -1e-9 {
+            bounds.x1
+        } else {
+            bounds.center().0
+        };
+        let hy = if uy > 1e-9 {
+            bounds.y0
+        } else if uy < -1e-9 {
+            bounds.y1
+        } else {
+            bounds.center().1
+        };
+        (hx, hy)
     };
     let dx = ax - edge.0;
     let dy = ay - edge.1;
@@ -613,12 +666,8 @@ pub fn callout_arrow(
 /// Tip point on the preferred side of `anchor`, `standoff` px away.
 pub fn tip_point_from_anchor(anchor: (f64, f64), side: Side, standoff: f64) -> (f64, f64) {
     let (ax, ay) = anchor;
-    match side {
-        Side::Right => (ax + standoff, ay),
-        Side::Left => (ax - standoff, ay),
-        Side::Above => (ax, ay - standoff),
-        Side::Below => (ax, ay + standoff),
-    }
+    let (ux, uy) = side.unit();
+    (ax + standoff * ux, ay + standoff * uy)
 }
 
 /// Grow tip standoff until the tip clears every obstacle AABB (+ margin).
@@ -665,7 +714,7 @@ pub fn place_region_edge(
     flip_sides: bool,
 ) -> Placement {
     let sides: Vec<Side> = if flip_sides {
-        preferred.all_cw_from().to_vec()
+        preferred.all_cw_from()
     } else {
         vec![preferred]
     };
@@ -722,9 +771,9 @@ pub fn place_region_auto(
     let far = occ
         .centroid_outside(region)
         .and_then(|(bx, by)| Side::from_vec(about.0 - bx, about.1 - by));
-    let sides: [Side; 4] = match far {
+    let sides: Vec<Side> = match far {
         Some(s) => s.all_cw_from(),
-        None => AUTO_SIDES,
+        None => Side::ALL_8.to_vec(),
     };
     let max_bump = BOND_PX.max(24.0) * 2.0;
     let bumps = [
@@ -814,6 +863,10 @@ fn force_region(
                 let x = region.x1 - margin - ink.x1;
                 (x, y)
             }
+            Side::AboveRight => (region.x1 - margin - ink.x1, region.y0 + margin - ink.y0),
+            Side::AboveLeft => (region.x0 + margin - ink.x0, region.y0 + margin - ink.y0),
+            Side::BelowRight => (region.x1 - margin - ink.x1, region.y1 - margin - ink.y1),
+            Side::BelowLeft => (region.x0 + margin - ink.x0, region.y1 - margin - ink.y1),
         }
     } else {
         match side {
@@ -837,6 +890,10 @@ fn force_region(
                 let x = region.x1 + margin - ink.x0;
                 (x, y)
             }
+            Side::AboveRight => (region.x1 + margin - ink.x0, region.y0 - margin - ink.y1),
+            Side::AboveLeft => (region.x0 - margin - ink.x1, region.y0 - margin - ink.y1),
+            Side::BelowRight => (region.x1 + margin - ink.x0, region.y1 + margin - ink.y0),
+            Side::BelowLeft => (region.x0 - margin - ink.x1, region.y1 + margin - ink.y0),
         }
     };
     Placement {
@@ -910,7 +967,7 @@ mod tests {
         };
         let p = place_greedy(&occ, &req);
         assert!(
-            matches!(p.side, Side::Above | Side::Below),
+            !matches!(p.side, Side::Left | Side::Right),
             "least-clash fallback should leave the bond, got {:?}",
             p.side
         );
@@ -919,7 +976,10 @@ mod tests {
             "vertical seed should clear the horizontal bond: {:?}",
             p.bounds
         );
-        assert_eq!(least_clash_side(&occ, &req), p.side);
+        assert!(
+            !matches!(least_clash_side(&occ, &req), Side::Left | Side::Right),
+            "least-clash side should leave the bond"
+        );
     }
 
     #[test]
@@ -946,7 +1006,11 @@ mod tests {
             label_pullback: 0.0,
         };
         let p = place_auto(&occ, &req);
-        assert_eq!(p.side, Side::Above, "open air is above: {:?}", p.bounds);
+        assert!(
+            matches!(p.side, Side::Above | Side::AboveLeft | Side::AboveRight),
+            "open air is above: {:?}",
+            p.side
+        );
         assert!(!occ.clashes(p.bounds, req.margin));
     }
 
@@ -978,10 +1042,14 @@ mod tests {
             label_pullback: 0.0,
         };
         let p = place_auto(&occ, &req);
-        assert_eq!(
-            p.side,
-            Side::Above,
-            "bulk is below; Right has no clash but is next to the ring: {:?}",
+        assert!(
+            matches!(p.side, Side::Above | Side::AboveLeft | Side::AboveRight),
+            "bulk is below; empty Right is next to the ring: {:?}",
+            p.side
+        );
+        assert!(
+            p.bounds.center().1 < 0.0,
+            "should sit above the bulk: {:?}",
             p.bounds
         );
     }
@@ -1011,7 +1079,61 @@ mod tests {
             label_pullback: 0.0,
         };
         let p = place_auto(&occ, &req);
-        assert_eq!(p.side, Side::Right, "bulk is left: {:?}", p.bounds);
+        assert!(
+            matches!(p.side, Side::Right | Side::AboveRight | Side::BelowRight),
+            "bulk is left: {:?}",
+            p.side
+        );
+        assert!(
+            p.bounds.center().0 > 0.0,
+            "should sit to the right of the bulk: {:?}",
+            p.bounds
+        );
+    }
+
+    #[test]
+    fn place_auto_picks_a_45_degree_when_that_is_farthest() {
+        // Bulk in the lower-left quadrant: farthest clash-free slot is above-right.
+        let mut occ = Occupancy::new();
+        occ.add_aabb(Aabb::new(-40.0, 8.0, -8.0, 40.0));
+        occ.add_aabb(Aabb::new(-40.0, 40.0, 8.0, 56.0));
+        let ink = InkAtOrigin {
+            x0: -6.0,
+            y0: -4.0,
+            x1: 6.0,
+            y1: 4.0,
+        };
+        let req = PlaceRequest {
+            anchor: (0.0, 0.0),
+            ink,
+            preferred: Side::Above,
+            min_gap: 8.0,
+            max_gap: 24.0,
+            gap_step: 4.0,
+            margin: 1.0,
+            tip_standoff: None,
+            label_pullback: 0.0,
+        };
+        let p = place_auto(&occ, &req);
+        assert_eq!(
+            p.side,
+            Side::AboveRight,
+            "bulk is lower-left: {:?}",
+            p.bounds
+        );
+        assert!(p.bounds.center().0 > 0.0 && p.bounds.center().1 < 0.0);
+    }
+
+    #[test]
+    fn side_from_vec_is_eight_way() {
+        assert_eq!(Side::from_vec(10.0, 0.0), Some(Side::Right));
+        assert_eq!(Side::from_vec(10.0, 10.0), Some(Side::BelowRight));
+        assert_eq!(Side::from_vec(0.0, 10.0), Some(Side::Below));
+        assert_eq!(Side::from_vec(-10.0, 10.0), Some(Side::BelowLeft));
+        assert_eq!(Side::from_vec(-10.0, 0.0), Some(Side::Left));
+        assert_eq!(Side::from_vec(-10.0, -10.0), Some(Side::AboveLeft));
+        assert_eq!(Side::from_vec(0.0, -10.0), Some(Side::Above));
+        assert_eq!(Side::from_vec(10.0, -10.0), Some(Side::AboveRight));
     }
 
     #[test]

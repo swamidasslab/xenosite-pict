@@ -652,6 +652,10 @@ fn resolve_edge_label(spec: &DepictSpec, edge: &EdgeNode) -> (Option<String>, Op
         LabelPos::Below => "below".into(),
         LabelPos::Left => "left".into(),
         LabelPos::Right => "right".into(),
+        LabelPos::AboveLeft => "above_left".into(),
+        LabelPos::AboveRight => "above_right".into(),
+        LabelPos::BelowLeft => "below_left".into(),
+        LabelPos::BelowRight => "below_right".into(),
     });
     (text, pos)
 }
