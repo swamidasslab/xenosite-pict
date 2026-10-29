@@ -56,7 +56,7 @@
     "review:build": "vite build --config review/vite.config.ts",
     "test:catalog": "tsx review/catalog.smoke.ts",
     "test:visual": "playwright test --config review/playwright.config.ts",
-    "test:api": "tsx src/api.smoke.ts && tsx src/align.smoke.ts && tsx src/scheme.smoke.ts && tsx review/catalog.smoke.ts",
+    "test:api": "tsx src/api.smoke.ts && tsx src/align.smoke.ts && tsx src/scheme.smoke.ts && tsx src/cache.smoke.ts && tsx review/catalog.smoke.ts",
     "test": "npm run check && npm run test:api",
     "build:pages": "bash ../scripts/build_pages.sh",
     "prepack": "npm run build:ts && npm run build:copy-wasm"

@@ -6,6 +6,7 @@
  */
 
 export { xpict } from "./api.js";
+export { SvgCache } from "./cache.js";
 export type {
   Mol,
   Rendered,
