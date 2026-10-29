@@ -151,6 +151,7 @@ pub struct RegionSpec {
     pub atoms: Vec<u32>,
     /// Atom indices that must stay outside.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(feature = "codegen", ts(as = "Option<Vec<u32>>", optional))]
     pub exclude: Vec<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
@@ -205,9 +206,11 @@ impl RegionField {
 pub struct CircleSpec {
     /// One circle centered on each atom index.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(feature = "codegen", ts(as = "Option<Vec<u32>>", optional))]
     pub atoms: Vec<u32>,
     /// Bond endpoint pairs — one circle at each bond midpoint (`[begin, end]`, order-insensitive).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(feature = "codegen", ts(as = "Option<Vec<(u32, u32)>>", optional))]
     pub bonds: Vec<(u32, u32)>,
     /// Ordered ring atoms — one circle at the ring centroid (aromatic-style).
     #[serde(default, skip_serializing_if = "Option::is_none")]

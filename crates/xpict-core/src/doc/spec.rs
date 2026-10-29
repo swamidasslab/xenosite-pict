@@ -882,12 +882,16 @@ impl LabelItem {
 #[cfg_attr(feature = "codegen", ts(export))]
 pub struct LabelLanes {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(feature = "codegen", ts(as = "Option<Vec<String>>", optional))]
     pub above: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(feature = "codegen", ts(as = "Option<Vec<String>>", optional))]
     pub below: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(feature = "codegen", ts(as = "Option<Vec<String>>", optional))]
     pub left: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(feature = "codegen", ts(as = "Option<Vec<String>>", optional))]
     pub right: Vec<String>,
 }
 
