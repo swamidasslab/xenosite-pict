@@ -645,6 +645,10 @@ pub enum Constraint {
     /// Spring `a`'s anchor to the live midpoint of `b` (arc-length mid of a
     /// painted open polyline; otherwise the shape center).
     Midpoint { a: NodeId, b: NodeId, strength: f64 },
+    /// Linear maximize-distance: energy is `-strength * d`. Kits pair this
+    /// with a [`HardConstraint::MaxDist`] tether so the label cannot fly away.
+    /// Auto placement uses it instead of [`Constraint::PreferSide`].
+    Repel { a: NodeId, b: NodeId, strength: f64 },
 }
 
 /// No-overlap (Outside). Strongest hard group.
@@ -739,6 +743,69 @@ fn push_placement_pose(constraints: &mut Vec<Constraint>, id: &str, rest: &Shape
         x,
         y,
         strength: POSE_STRENGTH,
+    });
+}
+
+fn chem_atom_centroid(world: &LayoutWorld) -> Option<(f64, f64)> {
+    let atoms = world.get("mol/chem/atoms")?;
+    let mut sx = 0.0;
+    let mut sy = 0.0;
+    let mut n = 0.0;
+    for id in &atoms.children {
+        let Some(node) = world.get(id) else {
+            continue;
+        };
+        for cid in &node.children {
+            let Some(c) = world.get(cid) else {
+                continue;
+            };
+            if !matches!(c.object_type, ObjectType::Coord) {
+                continue;
+            }
+            let (x, y) = shape_anchor(&c.world_shape());
+            sx += x;
+            sy += y;
+            n += 1.0;
+        }
+    }
+    if n < 1.0 {
+        None
+    } else {
+        Some((sx / n, sy / n))
+    }
+}
+
+/// Auto: no side bias. Repel from the chem centroid; MaxDist keeps association.
+fn push_auto_away(
+    world: &mut LayoutWorld,
+    constraints: &mut Vec<Constraint>,
+    hard: &mut Vec<HardConstraint>,
+    label_id: &str,
+    target_id: &str,
+    parent_id: &str,
+    tether_px: f64,
+) {
+    hard.push(HardConstraint::MaxDist {
+        a: label_id.to_string(),
+        b: target_id.to_string(),
+        dist: tether_px,
+        lagrangian: LAGRANGIAN_TETHER,
+    });
+    let Some((cx, cy)) = chem_atom_centroid(world) else {
+        return;
+    };
+    let cid = format!("{parent_id}/bulk");
+    let _ = world.insert(
+        &cid,
+        parent_id,
+        ObjectType::Coord,
+        Shape::Point { x: cx, y: cy },
+        true,
+    );
+    constraints.push(Constraint::Repel {
+        a: label_id.to_string(),
+        b: cid,
+        strength: 0.6,
     });
 }
 
@@ -1466,6 +1533,16 @@ fn constraint_energy(world: &LayoutWorld, c: &Constraint) -> f64 {
             let dx = ax - mx;
             let dy = ay - my;
             strength * (dx * dx + dy * dy)
+        }
+        Constraint::Repel { a, b, strength } => {
+            let (sa, sb) = match pair_eval(world, a, b) {
+                Some(p) => p,
+                None => return 0.0,
+            };
+            let (ax, ay) = shape_anchor(&sa);
+            let (bx, by) = shape_anchor(&sb);
+            let d = (ax - bx).hypot(ay - by);
+            -strength * d
         }
     }
 }
@@ -2298,11 +2375,12 @@ pub fn region_text_kit(
     hull: Shape,
     text_ink: Aabb,
     inside: bool,
-    preferred: Side,
+    preferred: Option<Side>,
     clash_dist: f64,
     side_about: (f64, f64),
     other_labels: &[Aabb],
 ) -> NodeId {
+    let hull_aabb = hull.aabb();
     let _ = world.insert(
         "mol/annotations",
         "mol",
@@ -2321,7 +2399,7 @@ pub fn region_text_kit(
         format!("mol/annotations/regions/r{region_idx}"),
         &regs,
         ObjectType::Region,
-        Shape::Aabb(hull.aabb()),
+        Shape::Aabb(hull_aabb),
         true,
     );
     let hull_id = world.insert(
@@ -2383,15 +2461,23 @@ pub fn region_text_kit(
             opt_dist: clash_dist,
             strength: 1.5,
         });
-        push_placement_pose(constraints, &text_id, &Shape::Aabb(text_ink));
+        if preferred.is_some() {
+            push_placement_pose(constraints, &text_id, &Shape::Aabb(text_ink));
+        } else {
+            let half = 0.5 * hull_aabb.width().hypot(hull_aabb.height());
+            let tether = (half + crate::metrics::BOND_PX).max(crate::metrics::BOND_PX * 3.0);
+            push_auto_away(world, constraints, hard, &text_id, &hull_id, &rid, tether);
+        }
     }
-    constraints.push(Constraint::PreferSide {
-        a: text_id.clone(),
-        b: side_ref,
-        side: preferred,
-        strength: if inside { 4.0 } else { 2.0 },
-        align_along: 0.35,
-    });
+    if let Some(side) = preferred {
+        constraints.push(Constraint::PreferSide {
+            a: text_id.clone(),
+            b: side_ref,
+            side,
+            strength: if inside { 4.0 } else { 2.0 },
+            align_along: 0.35,
+        });
+    }
     push_clear_bonds(world, hard, &text_id, clash_dist);
     // Prior chrome labels / circles (kitchen-sink atom numbers, callouts, …).
     for (i, box_) in other_labels.iter().enumerate() {
@@ -2407,10 +2493,18 @@ pub fn region_text_kit(
         );
         hard.push(HardConstraint::Outside {
             a: text_id.clone(),
-            b: oid,
+            b: oid.clone(),
             clash_dist,
             lagrangian: LAGRANGIAN_CLEAR,
         });
+        if preferred.is_none() {
+            constraints.push(Constraint::MinGap {
+                a: text_id.clone(),
+                b: oid,
+                dist: crate::metrics::BOND_PX,
+                strength: 2.5,
+            });
+        }
     }
     // Avoid shade disks (labels sit in front, but still clear painted wash).
     // Inside snug: mild shade Outside so shade cannot pin the seed far out.
@@ -2551,10 +2645,20 @@ pub fn callout_kit(
         );
         hard.push(HardConstraint::Outside {
             a: label_id.clone(),
-            b: oid,
+            b: oid.clone(),
             clash_dist,
             lagrangian: LAGRANGIAN_CLEAR,
         });
+        if preferred.is_none() {
+            // Keep pushing past mere non-overlap so a clash-free Right seed
+            // still migrates away from nearby chrome.
+            constraints.push(Constraint::MinGap {
+                a: label_id.clone(),
+                b: oid,
+                dist: crate::metrics::BOND_PX,
+                strength: 2.5,
+            });
+        }
     }
     // Label box stays one CC-bond from the target (tip standoff is separate).
     constraints.push(Constraint::MinGap {
@@ -2569,7 +2673,19 @@ pub fn callout_kit(
         opt_dist: crate::metrics::BOND_PX * 0.5,
         strength: 0.4,
     });
-    push_placement_pose(constraints, &label_id, &Shape::Aabb(label_ink));
+    if preferred.is_some() {
+        push_placement_pose(constraints, &label_id, &Shape::Aabb(label_ink));
+    } else {
+        push_auto_away(
+            world,
+            constraints,
+            hard,
+            &label_id,
+            &target_id,
+            &cid,
+            crate::metrics::BOND_PX * 3.0,
+        );
+    }
     push_placement_pose(
         constraints,
         &tip_id,
@@ -3126,7 +3242,7 @@ pub fn refine_region_text(
     hull: Shape,
     text_rest: Aabb,
     inside: bool,
-    preferred: Side,
+    preferred: Option<Side>,
     clash_dist: f64,
     other_labels: &[Aabb],
 ) -> (f64, f64) {
@@ -3606,7 +3722,7 @@ mod tests {
             Shape::Aabb(Aabb::new(0.0, 0.0, 40.0, 40.0)),
             ink,
             true,
-            Side::Left,
+            Some(Side::Left),
             3.0,
             (20.0, 20.0),
             &[],
@@ -3634,6 +3750,32 @@ mod tests {
             contain,
             vec![LAGRANGIAN_CONTAIN],
             "inside region contain is the third Lagrangian, after clear and tether"
+        );
+    }
+
+    #[test]
+    fn region_text_kit_auto_omits_prefer_side() {
+        let mut w = LayoutWorld::new("mol");
+        install_chem(&mut w, &[], &[(0, 0.0, 0.0)], &[]);
+        let mut cs = Vec::new();
+        let mut hard = Vec::new();
+        let _ = region_text_kit(
+            &mut w,
+            &mut cs,
+            &mut hard,
+            0,
+            Shape::Aabb(Aabb::new(0.0, 0.0, 40.0, 40.0)),
+            Aabb::new(-4.0, -22.0, 4.0, -14.0),
+            false,
+            None,
+            3.0,
+            (20.0, 20.0),
+            &[],
+        );
+        assert!(
+            cs.iter()
+                .all(|c| !matches!(c, Constraint::PreferSide { .. })),
+            "auto region must not push a side: {cs:?}"
         );
     }
 
@@ -4837,7 +4979,7 @@ mod tests {
                             Shape::Aabb(Aabb::new(-8.0, -15.0, 55.0, 28.0)),
                             Aabb::new(15.0, -28.0, 35.0, -16.0),
                             false,
-                            Side::Above,
+                            Some(Side::Above),
                             3.0,
                             (20.0, 0.0),
                             &[],
@@ -4881,7 +5023,7 @@ mod tests {
                             // Outside-style seed (above), circle already grown.
                             Aabb::new(5.0, -48.0, 25.0, -36.0),
                             true,
-                            Side::Above,
+                            Some(Side::Above),
                             3.0,
                             (15.0, 0.0),
                             &[],

@@ -368,7 +368,8 @@ pub struct CalloutSpec {
     pub text: MolText,
     #[serde(default = "default_true")]
     pub arrow: bool,
-    /// Side bias. Omit or `"auto"` → seed by clash/air, solve with no PreferSide.
+    /// Side bias. Omit or `"auto"` → seed farthest from other ink (not a
+    /// hardcoded above), solve with no PreferSide.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub prefer: Option<LabelPos>,

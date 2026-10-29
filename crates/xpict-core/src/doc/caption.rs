@@ -2,7 +2,7 @@
 //! [`MolNode::label`], painted into the mol scene.
 
 use crate::doc::chrome::MolText;
-use crate::doc::layout_items::{Aabb, Occupancy, CLASH_MARGIN_PX};
+use crate::doc::layout_items::{place_region_auto, Aabb, InkAtOrigin, Occupancy, CLASH_MARGIN_PX};
 use crate::doc::spec::{
     DepictSpec, Label, LabelItem, LabelPos, LayoutDirection, MolNode, Node, TextNode,
 };
@@ -349,12 +349,14 @@ pub fn apply_mol_captions(spec: &DepictSpec, node: &MolNode, mut scene: Scene) -
     let mut below: Vec<&CaptionInk> = Vec::new();
     let mut left: Vec<&CaptionInk> = Vec::new();
     let mut right: Vec<&CaptionInk> = Vec::new();
+    let mut auto: Vec<&CaptionInk> = Vec::new();
     for ink in &resolved {
         match ink.pos {
-            LabelPos::Above | LabelPos::Auto => above.push(ink),
+            LabelPos::Above => above.push(ink),
             LabelPos::Below => below.push(ink),
             LabelPos::Left => left.push(ink),
             LabelPos::Right => right.push(ink),
+            LabelPos::Auto => auto.push(ink),
         }
     }
 
@@ -471,6 +473,43 @@ pub fn apply_mol_captions(spec: &DepictSpec, node: &MolNode, mut scene: Scene) -
         });
     }
 
+    // Auto: sit outside the structure AABB on the side farthest from other chrome.
+    let structure = Aabb::new(mol_x0, mol_y0, mol_x1, mol_y1);
+    let ann_occ_auto = annotation_occupancy_from_scene(&scene);
+    for ink in auto {
+        let Some((tx0, ty0, tx1, ty1)) = markup_bounds_at_origin(&ink.text, ink.font_px, "middle")
+        else {
+            continue;
+        };
+        let ink_at = InkAtOrigin {
+            x0: tx0,
+            y0: ty0,
+            x1: tx1,
+            y1: ty1,
+        };
+        let p = place_region_auto(
+            &ann_occ_auto,
+            structure,
+            ink_at,
+            ink.margin,
+            CLASH_MARGIN_PX,
+            (cx, cy),
+        );
+        placed.push(PlacedCaption {
+            ink: CaptionInk {
+                text: ink.text.clone(),
+                pos: ink.pos,
+                font_px: ink.font_px,
+                fill: ink.fill.clone(),
+                margin: ink.margin,
+            },
+            x: p.x,
+            y: p.y,
+            anchor: "middle",
+            bounds: (p.bounds.x0, p.bounds.y0, p.bounds.x1, p.bounds.y1),
+        });
+    }
+
     if placed.is_empty() {
         return scene;
     }
@@ -485,9 +524,16 @@ pub fn apply_mol_captions(spec: &DepictSpec, node: &MolNode, mut scene: Scene) -
         // Nudge along preferred axis away from the mol / annotations.
         let (dx, dy) = match p.ink.pos {
             LabelPos::Below => (0.0, 2.0),
-            LabelPos::Above | LabelPos::Auto => (0.0, -2.0),
+            LabelPos::Above => (0.0, -2.0),
             LabelPos::Left => (-2.0, 0.0),
             LabelPos::Right => (2.0, 0.0),
+            LabelPos::Auto => {
+                let (pcx, pcy) = ((rest.x0 + rest.x1) * 0.5, (rest.y0 + rest.y1) * 0.5);
+                let vx = pcx - cx;
+                let vy = pcy - cy;
+                let l = vx.hypot(vy).max(1e-6);
+                (2.0 * vx / l, 2.0 * vy / l)
+            }
         };
         for step in 1..120 {
             let ox = dx * step as f64;

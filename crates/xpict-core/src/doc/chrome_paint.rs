@@ -20,7 +20,7 @@ use crate::doc::layout_constraints::{
     Shape, ATOM_NUMBER_TETHER_PX, ATOM_TEXT_TETHER_PX,
 };
 use crate::doc::layout_items::{
-    callout_arrow, least_clash_side, place_auto, place_greedy, place_region_edge,
+    callout_arrow, place_auto, place_greedy, place_region_auto, place_region_edge,
     tip_standoff_clearing, Aabb, InkAtOrigin, Occupancy, PlaceRequest, Seg, Side, ATOM_DISK_R_PX,
     CLASH_MARGIN_PX, CONTAIN_MARGIN_PX, HALF_BOND_PX,
 };
@@ -583,7 +583,10 @@ fn atom_label_primitive(
     // Bond-clear seed first (same Occupancy rule as region/callout) — PreferPose
     // alone was leaving numbers on ring bonds (kitchen-sink "2"). Also clear
     // aromatic circle strokes (inside phenol) like bond ink.
-    let mut occ = Occupancy::from_bonds(mol, dx, dy, STROKE_PX.max(0.8));
+    let mut occ = match role {
+        LabelRole::Text => Occupancy::from_molecule(mol, dx, dy, Some(ATOM_DISK_R_PX)),
+        LabelRole::Number => Occupancy::from_bonds(mol, dx, dy, STROKE_PX.max(0.8)),
+    };
     push_aromatic_circle_obstacles(&mut occ, mol, dx, dy);
     for &box_ in other_labels {
         occ.add_aabb(box_);
@@ -592,41 +595,24 @@ fn atom_label_primitive(
         occ.add_aabb(*box_);
     }
     let margin = CLASH_MARGIN_PX + STROKE_PX.max(0.8) * 0.5;
-    // Wide atom_label text: chem-travel alternate can point into a bond. Pick
-    // the side with least clash at min_gap first so the seed does not start
-    // straddling ink (AL cannot always recover from a bad PreferPose-like start).
-    let preferred = match role {
-        LabelRole::Text => least_clash_side(
-            &occ,
-            &PlaceRequest {
-                anchor: (ax, ay),
-                ink,
-                preferred: chem_preferred,
-                min_gap,
-                max_gap: min_gap + tether,
-                gap_step: 0.5,
-                margin,
-                tip_standoff: None,
-                label_pullback: 0.0,
-            },
-        ),
-        LabelRole::Number => chem_preferred,
+    let req = PlaceRequest {
+        anchor: (ax, ay),
+        ink,
+        preferred: chem_preferred,
+        min_gap,
+        // Keep seeds inside the hard MaxDist tether for this role.
+        max_gap: min_gap + tether,
+        gap_step: 0.5,
+        margin,
+        tip_standoff: None,
+        label_pullback: 0.0,
     };
-    let greedy = place_greedy(
-        &occ,
-        &PlaceRequest {
-            anchor: (ax, ay),
-            ink,
-            preferred,
-            min_gap,
-            // Keep seeds inside the hard MaxDist tether for this role.
-            max_gap: min_gap + tether,
-            gap_step: 0.5,
-            margin,
-            tip_standoff: None,
-            label_pullback: 0.0,
-        },
-    );
+    // Custom text: auto seed farthest from the rest of the mol (not chem-travel).
+    // Numbers keep the travel-opposite track.
+    let greedy = match role {
+        LabelRole::Text => place_auto(&occ, &req),
+        LabelRole::Number => place_greedy(&occ, &req),
+    };
     let seed = greedy.bounds;
     let bonds = bond_segs(mol, dx, dy);
     let atoms: Vec<(usize, f64, f64)> = mol
@@ -889,7 +875,11 @@ fn region_primitives(
                 styled.place.unwrap_or(RegionTextPlace::Outside),
                 RegionTextPlace::Inside
             );
-            let pos = styled.pos.unwrap_or(LabelPos::Above);
+            let pos = styled.pos.unwrap_or(if inside {
+                LabelPos::Above
+            } else {
+                LabelPos::Auto
+            });
             let font_px = FONT_PX
                 * styled
                     .scale
@@ -920,19 +910,56 @@ fn region_primitives(
                     other_labels,
                     !inside,
                 );
-                let side = label_pos_side(pos);
-                let seed = seed_region_label(
-                    spec.style,
-                    &occ,
-                    region_box,
-                    circ_cx,
-                    circ_cy,
-                    circ_r,
-                    ink,
-                    side,
-                    atom_centroid,
-                    !inside,
-                );
+                let lock_side = match pos {
+                    LabelPos::Auto => None,
+                    side => Some(label_pos_side(side)),
+                };
+                let seed = match lock_side {
+                    Some(side) => seed_region_label(
+                        spec.style,
+                        &occ,
+                        region_box,
+                        circ_cx,
+                        circ_cy,
+                        circ_r,
+                        ink,
+                        side,
+                        atom_centroid,
+                        !inside,
+                    ),
+                    None => match spec.style {
+                        RegionStyle::Circle => {
+                            let mut best: Option<(f64, crate::doc::layout_items::Placement)> = None;
+                            let bulk = occ.centroid().unwrap_or(atom_centroid);
+                            for side in [Side::Right, Side::Below, Side::Left, Side::Above] {
+                                let p =
+                                    place_circle_label(circ_cx, circ_cy, circ_r, ink, side, &occ);
+                                let pen = occ.clash_penalty(p.bounds, CLASH_MARGIN_PX);
+                                let (cx, cy) = p.bounds.center();
+                                let sep = (cx - bulk.0).hypot(cy - bulk.1);
+                                let score = pen * 1e9 - sep * 10.0;
+                                let replace = match &best {
+                                    None => true,
+                                    Some((s, _)) => score < *s,
+                                };
+                                if replace {
+                                    best = Some((score, p));
+                                }
+                            }
+                            best.map(|(_, p)| p).unwrap_or_else(|| {
+                                place_circle_label(circ_cx, circ_cy, circ_r, ink, Side::Right, &occ)
+                            })
+                        }
+                        RegionStyle::Box | RegionStyle::Bezier => place_region_auto(
+                            &occ,
+                            region_box,
+                            ink,
+                            CLASH_MARGIN_PX,
+                            CLASH_MARGIN_PX,
+                            atom_centroid,
+                        ),
+                    },
+                };
                 if inside {
                     match spec.style {
                         RegionStyle::Circle => {}
@@ -988,7 +1015,7 @@ fn region_primitives(
                     solve_hull,
                     seed.bounds,
                     inside,
-                    side,
+                    lock_side,
                     CLASH_MARGIN_PX,
                     other_labels,
                 );
@@ -1294,7 +1321,11 @@ fn callout_primitives(
             base_tip
         }
     };
-    let hint_side = lock_side.unwrap_or(Side::Above);
+    let hint_side = lock_side.unwrap_or_else(|| {
+        occ.centroid()
+            .and_then(|(bx, by)| Side::from_vec(ax - bx, ay - by))
+            .unwrap_or(Side::Right)
+    });
     let hint_standoff = seed_standoff(hint_side);
     // Label edge: past the tip by ≥ half a bond, and ≥ one bond from the atom.
     let min_gap = CALLOUT_TEXT_GAP_PX.max(hint_standoff + HALF_BOND_PX);
@@ -1542,7 +1573,7 @@ fn region_label_occupancy(
     other_labels: &[Aabb],
     include_shade: bool,
 ) -> Occupancy {
-    let mut occ = Occupancy::from_bonds(mol, dx, dy, STROKE_PX.max(0.8));
+    let mut occ = Occupancy::from_molecule(mol, dx, dy, Some(ATOM_DISK_R_PX));
     if include_shade {
         for &(_, cx, cy, r) in shades {
             occ.add_aabb(Aabb::new(cx - r, cy - r, cx + r, cy + r));
@@ -1553,6 +1584,9 @@ fn region_label_occupancy(
     }
     for &box_ in other_labels {
         occ.add_aabb(box_);
+    }
+    for box_ in chem_text_boxes(mol, dx, dy).values() {
+        occ.add_aabb(*box_);
     }
     occ
 }
@@ -3710,6 +3744,27 @@ mod tests {
             !region_box.contains(exo),
             "exo {exo:?} is on OH, not a ring atom: box {region_box:?}"
         );
+        // O sits above the ring: exo seeds away from that bulk (above the OH).
+        // Frame offset moves y=0, so compare to the oxygen circle, not SVG origin.
+        let circle = find("circle").expect("OH circle");
+        assert!(
+            exo.center().1 < circle.center().1,
+            "exo should sit above the OH (away from the ring): exo={exo:?} circle={circle:?}"
+        );
+        assert!(
+            (exo.center().0 - circle.center().0).abs() < 40.0,
+            "exo should stay near the oxygen x, not slide off to a side: exo={exo:?} circle={circle:?}"
+        );
+        // Ring text: not the empty-page right of a wide box. The OH cluster
+        // occupies the top, so max-distance from other chrome sits below.
+        assert!(
+            ring.center().0 > region_box.x0 + 10.0 && ring.center().0 < region_box.x1 - 10.0,
+            "ring label should stay near the box midline, not slide to a side: ring={ring:?} box={region_box:?}"
+        );
+        assert!(
+            ring.center().1 > region_box.center().1,
+            "ring auto should sit below the box (away from the OH cluster), not above: ring={ring:?} box={region_box:?}"
+        );
     }
 
     fn callout_label_box(scene: &Scene) -> Aabb {
@@ -3787,31 +3842,75 @@ mod tests {
             .remove(0)
     }
 
-    /// Omitted `prefer` is auto: clash/air seed, no PreferSide. On this kitchen
-    /// sink that lands like `above` (OH glyph and exo occupy the right).
+    /// Auto is not hardcoded Above. Scene-space (not svg_coords): the OH
+    /// circle is the oxygen. Callout / exo sit on the far side of that
+    /// circle from the ring box; ring text sits on the far side of the box
+    /// from the OH cluster (not empty-page Right).
     #[test]
     fn kitchen_sink_callout_auto_matches_above() {
         let auto = kitchen_sink_phenol(None);
-        let above = kitchen_sink_phenol(Some(LabelPos::Above));
-        let a = callout_label_box(&auto.scene);
-        let b = callout_label_box(&above.scene);
-        let (acx, acy) = a.center();
-        let (bcx, bcy) = b.center();
-        let d = (acx - bcx).hypot(acy - bcy);
+        let callout = callout_label_box(&auto.scene);
+        let exo = label_box_by_text(&auto.scene, "exo");
+        let ring = label_box_by_text(&auto.scene, "ring");
+        let circle = layer_prims(&auto.scene)
+            .into_iter()
+            .find_map(|p| match p {
+                Primitive::Circle {
+                    cx,
+                    cy,
+                    r,
+                    class: Some(c),
+                    ..
+                } if c.contains("atom-circle") => Some(Aabb::new(cx - r, cy - r, cx + r, cy + r)),
+                _ => None,
+            })
+            .expect("OH circle");
+        let region_box = layer_prims(&auto.scene)
+            .into_iter()
+            .find_map(|p| match p {
+                Primitive::Path {
+                    d, class: Some(c), ..
+                } if c.contains("region") && c.contains("box") && !c.contains("region-label") => {
+                    path_aabb(d)
+                }
+                _ => None,
+            })
+            .expect("region box");
+        let (ox, oy) = circle.center();
+        let (rcx, rcy) = region_box.center();
+        let far_x = ox - rcx;
+        let far_y = oy - rcy;
+        let call_along = (callout.center().0 - ox) * far_x + (callout.center().1 - oy) * far_y;
         assert!(
-            d < 18.0,
-            "auto should match above from clash/air alone: d={d:.1} auto={a:?} above={b:?}"
+            call_along > 0.0,
+            "callout should sit past the OH, away from the ring: callout={callout:?} circle={circle:?} box={region_box:?}"
         );
-        let o = auto
-            .svg_coords
-            .iter()
-            .find(|a| a.element == "O")
-            .expect("oxygen");
+        let exo_along = (exo.center().0 - ox) * far_x + (exo.center().1 - oy) * far_y;
         assert!(
-            acy < o.y,
-            "auto callout should sit above the OH: cy={acy:.1} oxygen_y={:.1} box={a:?}",
-            o.y
+            exo_along > 0.0,
+            "exo should sit past the OH, away from the ring: exo={exo:?} circle={circle:?}"
         );
+        let ring_along =
+            (ring.center().0 - rcx) * (rcx - ox) + (ring.center().1 - rcy) * (rcy - oy);
+        assert!(
+            ring_along > 0.0,
+            "ring label should sit on the far side of the box from the OH: ring={ring:?} box={region_box:?} circle={circle:?}"
+        );
+    }
+
+    fn label_box_by_text(scene: &Scene, text: &str) -> Aabb {
+        layer_prims(scene)
+            .into_iter()
+            .find_map(|p| match p {
+                Primitive::Path {
+                    d,
+                    class: Some(_),
+                    data_text: Some(t),
+                    ..
+                } if t == text => path_aabb(d),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("label {text}"))
     }
 
     #[test]

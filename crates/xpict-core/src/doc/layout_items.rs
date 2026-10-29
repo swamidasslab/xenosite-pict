@@ -102,6 +102,27 @@ impl Side {
             Side::Below => [Side::Below, Side::Left, Side::Above, Side::Right],
         }
     }
+
+    /// Dominant cardinal of a SVG vector (+y down). `None` if the vector is ~0.
+    pub fn from_vec(dx: f64, dy: f64) -> Option<Self> {
+        if !dx.is_finite() || !dy.is_finite() {
+            return None;
+        }
+        if dx.abs() < 1e-6 && dy.abs() < 1e-6 {
+            return None;
+        }
+        Some(if dx.abs() >= dy.abs() {
+            if dx > 0.0 {
+                Side::Right
+            } else {
+                Side::Left
+            }
+        } else if dy > 0.0 {
+            Side::Below
+        } else {
+            Side::Above
+        })
+    }
 }
 
 /// Fixed chem obstacles in SVG / document space.
@@ -168,6 +189,7 @@ impl Occupancy {
     /// How badly `cand` overlaps obstacles (0 = clear). Bond crossings weigh
     /// more than soft AABB overlaps so greedy fallbacks avoid straddling ink.
     /// Min air from `cand` to any obstacle (negative if overlapping), minus `margin`.
+    #[allow(dead_code)]
     pub fn clearance(&self, cand: Aabb, margin: f64) -> f64 {
         let mut best = f64::INFINITY;
         for &a in &self.aabbs {
@@ -183,8 +205,69 @@ impl Occupancy {
     }
 
     /// Sum of exterior gaps to AABB obstacles (empty space toward other labels).
+    #[allow(dead_code)]
     pub fn aabb_gap_sum(&self, cand: Aabb) -> f64 {
         self.aabbs.iter().map(|a| aabb_gap(cand, *a).max(0.0)).sum()
+    }
+
+    /// Center of mass of AABB centers and segment midpoints (the ink bulk).
+    pub fn centroid(&self) -> Option<(f64, f64)> {
+        self.centroid_where(|_| true)
+    }
+
+    /// Centroid of obstacles whose centers sit **outside** `inside`.
+    ///
+    /// Used so a region label aims away from neighboring chrome (OH, callout)
+    /// rather than from its own enclosed atoms (those already sit in the hull).
+    pub fn centroid_outside(&self, inside: Aabb) -> Option<(f64, f64)> {
+        self.centroid_where(|(cx, cy)| {
+            cx < inside.x0 || cx > inside.x1 || cy < inside.y0 || cy > inside.y1
+        })
+    }
+
+    fn centroid_where(&self, keep: impl Fn((f64, f64)) -> bool) -> Option<(f64, f64)> {
+        let mut sx = 0.0;
+        let mut sy = 0.0;
+        let mut n = 0.0;
+        for a in &self.aabbs {
+            let (cx, cy) = a.center();
+            if !keep((cx, cy)) {
+                continue;
+            }
+            sx += cx;
+            sy += cy;
+            n += 1.0;
+        }
+        for s in &self.segs {
+            let c = (0.5 * (s.x0 + s.x1), 0.5 * (s.y0 + s.y1));
+            if !keep(c) {
+                continue;
+            }
+            sx += c.0;
+            sy += c.1;
+            n += 1.0;
+        }
+        if n < 1.0 {
+            None
+        } else {
+            Some((sx / n, sy / n))
+        }
+    }
+
+    /// Nearby-ink repulsion: close obstacles dominate, empty page does not.
+    #[allow(dead_code)]
+    pub fn clutter(&self, cand: Aabb) -> f64 {
+        const EPS: f64 = 8.0;
+        let mut e = 0.0;
+        for &a in &self.aabbs {
+            let g = aabb_gap(cand, a).max(0.0);
+            e += 1.0 / (g + EPS).powi(2);
+        }
+        for &s in &self.segs {
+            let g = (seg_aabb_min_dist(s.x0, s.y0, s.x1, s.y1, cand) - self.seg_half).max(0.0);
+            e += 1.0 / (g + EPS).powi(2);
+        }
+        e
     }
 
     pub fn clash_penalty(&self, cand: Aabb, margin: f64) -> f64 {
@@ -377,14 +460,20 @@ pub fn least_clash_side(occ: &Occupancy, req: &PlaceRequest) -> Side {
     best
 }
 
-/// Seed with no side bias: minimize clash, then maximize air to other ink.
+/// Cardinals with no preferred-side bias (order is a last-resort exact tie).
+const AUTO_SIDES: [Side; 4] = [Side::Right, Side::Below, Side::Left, Side::Above];
+
+/// Seed with no side bias: min clash, then farthest from other ink.
 ///
 /// Each side grows gap until clear (same as [`place_greedy`]). Among those
-/// poses, pick max clearance / AABB spread. `req.preferred` is ignored.
+/// poses, maximize local air and distance from the occupancy bulk. Empty-page
+/// Right still loses when the bulk sits the other way, but a top oxygen is
+/// not a hardcoded Above — a substituent on the right still seeds Right.
+/// `req.preferred` is ignored.
 pub fn place_auto(occ: &Occupancy, req: &PlaceRequest) -> Placement {
-    const SIDES: [Side; 4] = [Side::Above, Side::Right, Side::Below, Side::Left];
+    let bulk = occ.centroid().unwrap_or(req.anchor);
     let mut best: Option<(f64, Placement)> = None;
-    for (si, side) in SIDES.into_iter().enumerate() {
+    for side in AUTO_SIDES {
         let mut gap = req.min_gap;
         let mut side_best: Option<(f64, Placement)> = None;
         while gap <= req.max_gap + 1e-9 {
@@ -408,9 +497,7 @@ pub fn place_auto(occ: &Occupancy, req: &PlaceRequest) -> Placement {
             continue;
         };
         let pen = occ.clash_penalty(p.bounds, req.margin);
-        let air = occ.clearance(p.bounds, req.margin);
-        let spread = occ.aabb_gap_sum(p.bounds);
-        let score = pen * 1e6 - air * 100.0 - spread * 0.05 + si as f64 * 1e-9;
+        let score = auto_score(p.bounds, bulk, pen);
         let replace = match &best {
             None => true,
             Some((s, _)) => score < *s,
@@ -420,7 +507,17 @@ pub fn place_auto(occ: &Occupancy, req: &PlaceRequest) -> Placement {
         }
     }
     best.map(|(_, p)| p)
-        .unwrap_or_else(|| force_place(req, Side::Above, req.min_gap))
+        .unwrap_or_else(|| force_place(req, Side::Right, req.min_gap))
+}
+
+/// Lower is better. Clash first, then distance from the ink bulk.
+///
+/// Local air is **not** in this score: empty-page Left/Right have huge
+/// clearance but sit next to the molecule, which is the original Auto bug.
+fn auto_score(bounds: Aabb, bulk: (f64, f64), pen: f64) -> f64 {
+    let (cx, cy) = bounds.center();
+    let sep = (cx - bulk.0).hypot(cy - bulk.1);
+    pen * 1e9 - sep * 10.0
 }
 
 fn force_place(req: &PlaceRequest, side: Side, gap: f64) -> Placement {
@@ -606,6 +703,57 @@ pub fn place_region_edge(
         }
     }
     least_bad
+}
+
+/// Auto region seed: sit on the hull side facing away from *other* chrome.
+///
+/// Interior atoms are already inside the hull, so they do not pick the side —
+/// a landscape box would otherwise always slide to empty-page Right. Neighbor
+/// chrome (OH, callout, …) does: an obstacle on top seeds Below. Grows on the
+/// chosen side until clear, then rotates if that edge is blocked.
+pub fn place_region_auto(
+    occ: &Occupancy,
+    region: Aabb,
+    ink: InkAtOrigin,
+    edge_margin: f64,
+    clash_margin: f64,
+    about: (f64, f64),
+) -> Placement {
+    let far = occ
+        .centroid_outside(region)
+        .and_then(|(bx, by)| Side::from_vec(about.0 - bx, about.1 - by));
+    let sides: [Side; 4] = match far {
+        Some(s) => s.all_cw_from(),
+        None => AUTO_SIDES,
+    };
+    let max_bump = BOND_PX.max(24.0) * 2.0;
+    let bumps = [
+        0.0, 2.0, 4.0, 6.0, 8.0, 12.0, 16.0, 20.0, 24.0, 28.0, 32.0, 40.0, 48.0, 56.0, 64.0,
+    ];
+    let mut least_bad: Option<(f64, Placement)> = None;
+    for side in sides {
+        for &bump in &bumps {
+            if bump > max_bump + 1e-9 {
+                continue;
+            }
+            let p = force_region(region, ink, false, side, edge_margin + bump, 0.0, about);
+            let pen = occ.clash_penalty(p.bounds, clash_margin);
+            if pen <= 1e-12 {
+                return p;
+            }
+            let score = pen + bump * 1e-6;
+            let replace = match &least_bad {
+                None => true,
+                Some((s, _)) => score < *s,
+            };
+            if replace {
+                least_bad = Some((score, p));
+            }
+        }
+    }
+    least_bad
+        .map(|(_, p)| p)
+        .unwrap_or_else(|| force_region(region, ink, false, Side::Right, edge_margin, 0.0, about))
 }
 
 fn clash_penalty(occ: &Occupancy, cand: Aabb, margin: f64) -> f64 {
@@ -800,6 +948,96 @@ mod tests {
         let p = place_auto(&occ, &req);
         assert_eq!(p.side, Side::Above, "open air is above: {:?}", p.bounds);
         assert!(!occ.clashes(p.bounds, req.margin));
+    }
+
+    #[test]
+    fn place_auto_empty_page_on_the_right_still_picks_away_from_bulk() {
+        // Ring of ink below the anchor; Right is clash-free empty canvas.
+        let mut occ = Occupancy::new();
+        for i in 0..6 {
+            let t = std::f64::consts::TAU * i as f64 / 6.0 + std::f64::consts::FRAC_PI_2;
+            let x = 30.0 * t.cos();
+            let y = 40.0 + 30.0 * t.sin();
+            occ.add_aabb(Aabb::new(x - 4.0, y - 4.0, x + 4.0, y + 4.0));
+        }
+        let ink = InkAtOrigin {
+            x0: -20.0,
+            y0: -4.0,
+            x1: 20.0,
+            y1: 4.0,
+        };
+        let req = PlaceRequest {
+            anchor: (0.0, 0.0),
+            ink,
+            preferred: Side::Right,
+            min_gap: 8.0,
+            max_gap: 40.0,
+            gap_step: 4.0,
+            margin: 1.0,
+            tip_standoff: None,
+            label_pullback: 0.0,
+        };
+        let p = place_auto(&occ, &req);
+        assert_eq!(
+            p.side,
+            Side::Above,
+            "bulk is below; Right has no clash but is next to the ring: {:?}",
+            p.bounds
+        );
+    }
+
+    #[test]
+    fn place_auto_is_not_always_above() {
+        // Bulk to the left of the anchor: the far side is Right.
+        let mut occ = Occupancy::new();
+        occ.add_aabb(Aabb::new(-48.0, -8.0, -8.0, 8.0));
+        occ.add_aabb(Aabb::new(-48.0, -24.0, -8.0, -10.0));
+        occ.add_aabb(Aabb::new(-48.0, 10.0, -8.0, 24.0));
+        let ink = InkAtOrigin {
+            x0: -8.0,
+            y0: -4.0,
+            x1: 8.0,
+            y1: 4.0,
+        };
+        let req = PlaceRequest {
+            anchor: (0.0, 0.0),
+            ink,
+            preferred: Side::Above,
+            min_gap: 8.0,
+            max_gap: 24.0,
+            gap_step: 4.0,
+            margin: 1.0,
+            tip_standoff: None,
+            label_pullback: 0.0,
+        };
+        let p = place_auto(&occ, &req);
+        assert_eq!(p.side, Side::Right, "bulk is left: {:?}", p.bounds);
+    }
+
+    #[test]
+    fn place_region_auto_picks_away_from_top_obstacle_not_empty_right() {
+        let mut occ = Occupancy::new();
+        // Obstacle on the top edge (like an OH); Right of the box is empty.
+        occ.add_aabb(Aabb::new(40.0, -18.0, 60.0, -2.0));
+        let region = Aabb::new(0.0, 0.0, 100.0, 80.0);
+        let ink = InkAtOrigin {
+            x0: -10.0,
+            y0: -5.0,
+            x1: 10.0,
+            y1: 5.0,
+        };
+        let p = place_region_auto(&occ, region, ink, 4.0, 1.0, (50.0, 40.0));
+        assert_eq!(
+            p.side,
+            Side::Below,
+            "OH is on top; auto sits on the far side, not empty Right or above the OH: {:?}",
+            p.bounds
+        );
+        assert!(
+            p.bounds.y0 >= 80.0 - 1.0,
+            "should sit below the box: {:?}",
+            p.bounds
+        );
     }
 
     #[test]

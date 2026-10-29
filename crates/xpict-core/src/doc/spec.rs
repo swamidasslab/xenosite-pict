@@ -711,8 +711,9 @@ pub struct TextNode {
 
 /// Side of an edge shaft, mol caption, or callout for a label placement.
 ///
-/// [`Self::Auto`] (callout `prefer` omitted) seeds by clash/air with no
-/// directional push in the solver. Edge `pos` omitted still means [`Self::Above`].
+/// [`Self::Auto`] (callout `prefer` / outside region `pos` omitted) seeds by
+/// min clash and max distance from other ink — not an alias for
+/// [`Self::Above`]. Edge `pos` omitted still means [`Self::Above`].
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]

@@ -2,6 +2,8 @@
 
 ## 2026-10-29
 
+- Auto is not hardcoded Above. Point-anchored labels (`place_auto`) pick the clash-free cardinal farthest from the occupancy centroid — a top oxygen seeds above, a right-hand substituent seeds right; empty-page Right loses because it is closer to the bulk. Region labels (`place_region_auto`) aim away from chrome *outside* the hull (an OH on top seeds Below) so a landscape box does not slide to empty-page Right. Auto refine still has no PreferSide; it Repels from the chem centroid under a MaxDist tether. Kitchen-sink phenol OH / exo sit above the oxygen; ring text sits below the box, away from the OH cluster.
+
 - Callout `prefer` omitted (or `"auto"`) seeds by min clash / max air to other chrome and solves with no PreferSide. Kitchen-sink phenol OH lands like `above` from those rules (OH glyph + exo occupy the right). Locked `above`/`below`/`left`/`right` still emit PreferSide.
 
 - Xenobase Epirubicin network (`net:23d813ec34`): heads sat in anthracycline rings and shafts cut other mols. Bond-line clash treats a ring hole as air (centroid → nearest bond ~0.866·bond > ½-bond standoff), so hug stopped at the centroid and 2-point chords never injected a bow. Chem now owns a filled convex hull; signed distance is min(raster, geometry) so holes stay occupied. Hug cap is the chem AABB exit, not the other centroid (packed fused rings have span < half-width). Tight corridors keep ink-lip poses instead of a `min_shaft` stub inside the rings. Thick stroke half-width is in shaft clash.
