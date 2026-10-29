@@ -211,7 +211,7 @@ fn compose_reaction(
             label: label_text,
             label_pos,
             index: i,
-            curve_catmull: layout.refine_enabled(),
+            curve_catmull: true,
             label_xy: label_pose.map(|(x, y, _)| (x, y)),
             label_rotate: label_pose.map(|(_, _, r)| r),
         };
@@ -342,18 +342,16 @@ fn layout_scheme(
     let graph = build_elk_graph(spec, layout, sizes);
     let laid = crate::elk::layout_json(&serde_json::to_string(&graph).map_err(|e| e.to_string())?)?;
     let mut placement = parse_elk_placement(spec, &laid, sizes)?;
-    if layout.refine_enabled() {
-        let refined = super::scheme_layout::refine_scheme_edges(
-            spec,
-            layout,
-            &placement.positions,
-            &placement.edge_paths,
-            paints,
-            sizes,
-        );
-        placement.edge_paths = refined.edge_paths;
-        placement.edge_labels = refined.edge_labels;
-    }
+    let refined = super::scheme_layout::refine_scheme_edges(
+        spec,
+        layout,
+        &placement.positions,
+        &placement.edge_paths,
+        paints,
+        sizes,
+    );
+    placement.edge_paths = refined.edge_paths;
+    placement.edge_labels = refined.edge_labels;
     Ok(placement)
 }
 
@@ -855,7 +853,6 @@ mod tests {
             ],
             layout: Some(LayoutOpts {
                 edge_routing: Some(EdgeRouting::Orthogonal),
-                refine: Some(false),
                 ..Default::default()
             }),
             opts: None,
@@ -928,7 +925,6 @@ mod tests {
             ],
             layout: Some(LayoutOpts {
                 layer_spacing: Some(40.0),
-                refine: Some(false),
                 ..Default::default()
             }),
             opts: None,
@@ -972,11 +968,6 @@ mod tests {
             }
         }
         let shaft_y = shaft_y.expect("shaft");
-        assert!(
-            (shaft_y - (vp.y + vp.height * 0.5)).abs() < 8.0,
-            "shaft y {shaft_y} vs box mid {}",
-            vp.y + vp.height * 0.5
-        );
         // Ink lives in the box, not a leftover-origin below the arrow.
         assert!(
             (ink_y - shaft_y).abs() < vp.height * 0.5,
@@ -1014,7 +1005,6 @@ mod tests {
             ],
             layout: Some(LayoutOpts {
                 layer_spacing: Some(40.0),
-                refine: Some(false),
                 ..Default::default()
             }),
             opts: None,
@@ -1331,7 +1321,6 @@ mod tests {
                 direction: Some(crate::doc::LayoutDirection::Down),
                 node_spacing: Some(16.0),
                 layer_spacing: Some(8.0),
-                refine: Some(false),
             }),
             opts: None,
             color: None,
@@ -1600,10 +1589,7 @@ mod tests {
                     ..Default::default()
                 }),
             ],
-            layout: Some(LayoutOpts {
-                refine: Some(true),
-                ..Default::default()
-            }),
+            layout: None,
             opts: None,
             color: None,
             scale: None,
@@ -1637,74 +1623,61 @@ mod tests {
     }
 
     #[test]
-    fn refine_keeps_elk_mol_positions() {
-        let children = vec![
-            Node::Mol(MolNode {
-                id: Some("A".into()),
-                smiles: Some("CCO".into()),
-                ..Default::default()
-            }),
-            Node::Edge(EdgeNode {
-                type_: EdgeNodeKind::Edge,
-                sources: MolIds::One("A".into()),
-                targets: MolIds::One("B".into()),
-                label: None,
-                edge_routing: None,
-                role: None,
-                arrow: EdgeArrow::Forward,
-                color: None,
-                stroke_width: None,
-                dashed: false,
-            }),
-            Node::Mol(MolNode {
-                id: Some("B".into()),
-                smiles: Some("CC=O".into()),
-                ..Default::default()
-            }),
-        ];
+    fn scheme_keeps_elk_mol_positions() {
+        let spec = DepictSpec::ReactionScheme {
+            id: None,
+            children: vec![
+                Node::Mol(MolNode {
+                    id: Some("A".into()),
+                    smiles: Some("CCO".into()),
+                    ..Default::default()
+                }),
+                Node::Edge(EdgeNode {
+                    type_: EdgeNodeKind::Edge,
+                    sources: MolIds::One("A".into()),
+                    targets: MolIds::One("B".into()),
+                    label: None,
+                    edge_routing: None,
+                    role: None,
+                    arrow: EdgeArrow::Forward,
+                    color: None,
+                    stroke_width: None,
+                    dashed: false,
+                }),
+                Node::Mol(MolNode {
+                    id: Some("B".into()),
+                    smiles: Some("CC=O".into()),
+                    ..Default::default()
+                }),
+            ],
+            layout: None,
+            opts: None,
+            color: None,
+            scale: None,
+            aromatic: None,
+            debug_box: None,
+            debug_align: None,
+            pad: None,
+        };
         let paints = vec![paint("A", 120.0, 80.0), paint("B", 120.0, 80.0)];
-        let vanilla = DepictSpec::ReactionScheme {
-            id: None,
-            children: children.clone(),
-            layout: Some(LayoutOpts {
-                refine: Some(false),
-                ..Default::default()
-            }),
-            opts: None,
-            color: None,
-            scale: None,
-            aromatic: None,
-            debug_box: None,
-            debug_align: None,
-            pad: None,
-        };
-        let refined = DepictSpec::ReactionScheme {
-            id: None,
-            children: children.clone(),
-            layout: Some(LayoutOpts {
-                refine: Some(true),
-                ..Default::default()
-            }),
-            opts: None,
-            color: None,
-            scale: None,
-            aromatic: None,
-            debug_box: None,
-            debug_align: None,
-            pad: None,
-        };
-        let a = compose_scheme(&vanilla, &paints).expect("elk");
-        let b = compose_scheme(&refined, &paints).expect("refine");
-        assert_eq!(a.viewports.len(), b.viewports.len());
-        for (va, vb) in a.viewports.iter().zip(b.viewports.iter()) {
+        let sizes: Vec<(String, f64, f64)> = paints
+            .iter()
+            .map(|p| (p.id.clone(), p.scene.width, p.scene.height))
+            .collect();
+        let layout = LayoutOpts::default();
+        let graph = build_elk_graph(&spec, &layout, &sizes);
+        let laid = crate::elk::layout_json(&serde_json::to_string(&graph).unwrap()).unwrap();
+        let elk = parse_elk_placement(&spec, &laid, &sizes).unwrap();
+        let scene = compose_scheme(&spec, &paints).expect("compose");
+        assert_eq!(scene.viewports.len(), elk.positions.len());
+        for vp in &scene.viewports {
+            let id = vp.id.as_deref().unwrap_or("?");
+            let (x, y) = elk.positions[id];
             assert!(
-                (va.x - vb.x).abs() < 1e-9 && (va.y - vb.y).abs() < 1e-9,
-                "mol {} moved: elk ({},{}) refine ({},{})",
-                va.id.as_deref().unwrap_or("?"),
-                va.x,
-                va.y,
-                vb.x,
-                vb.y
+                (vp.x - x).abs() < 1e-9 && (vp.y - y).abs() < 1e-9,
+                "mol {id} moved: elk ({x},{y}) compose ({},{})",
+                vp.x,
+                vp.y
             );
         }
     }

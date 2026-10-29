@@ -360,7 +360,6 @@ class LayoutOptsDict(TypedDict, total=False):
     edge_routing: NotRequired[EdgeRouting]
     layer_spacing: NotRequired[float]
     node_spacing: NotRequired[float]
-    refine: NotRequired[bool]
 
 
 class ReactionSchemeNodeDict(TypedDict, total=False):

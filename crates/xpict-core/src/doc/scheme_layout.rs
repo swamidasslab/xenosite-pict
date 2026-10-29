@@ -1215,10 +1215,7 @@ mod tests {
         ];
         let refined = refine_scheme_edges(
             &spec,
-            &LayoutOpts {
-                refine: Some(true),
-                ..Default::default()
-            },
+            &LayoutOpts::default(),
             &positions,
             &[Some(seed.clone())],
             &paints,
@@ -1596,10 +1593,7 @@ mod tests {
         DepictSpec::ReactionScheme {
             id: None,
             children,
-            layout: Some(LayoutOpts {
-                refine: Some(true),
-                ..Default::default()
-            }),
+            layout: None,
             opts: None,
             color: None,
             scale: None,

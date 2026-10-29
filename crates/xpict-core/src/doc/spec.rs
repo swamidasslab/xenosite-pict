@@ -1052,11 +1052,6 @@ pub struct LayoutOpts {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub layer_spacing: Option<f64>,
-    /// After ELK, refine edge routes and labels with the constraint solver.
-    /// Omit or `true` → refine on; `false` → stock ELK placement.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "codegen", ts(optional))]
-    pub refine: Option<bool>,
 }
 
 impl LayoutOpts {
@@ -1083,11 +1078,6 @@ impl LayoutOpts {
 
     pub fn layer_spacing_or_default(&self) -> f64 {
         self.layer_spacing.unwrap_or(Self::DEFAULT_LAYER_SPACING)
-    }
-
-    /// Energy-refine edges after ELK unless the host opted out.
-    pub fn refine_enabled(&self) -> bool {
-        self.refine != Some(false)
     }
 }
 
