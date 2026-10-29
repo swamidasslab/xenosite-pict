@@ -3,7 +3,9 @@
 
 use crate::doc::chrome::MolText;
 use crate::doc::layout_items::{Aabb, Occupancy, CLASH_MARGIN_PX};
-use crate::doc::spec::{DepictSpec, Label, LabelItem, LabelPos, MolNode, Node, TextNode};
+use crate::doc::spec::{
+    DepictSpec, Label, LabelItem, LabelPos, LayoutDirection, MolNode, Node, TextNode,
+};
 use crate::doc::text_paint::{markup_ascent_descent_px, markup_bounds_at_origin, outline_markup};
 use crate::metrics::{BOND_PX, FONT_PX};
 use crate::scene::{LayerName, Primitive, Scene};
@@ -183,16 +185,33 @@ fn path_xy(d: &str) -> Vec<(f64, f64)> {
     out
 }
 
-/// Bare id / omitted `pos` on mol captions → below (edges keep their own defaults).
-fn mol_caption_placements(lab: &Label) -> Vec<(String, LabelPos)> {
+/// Omitted caption `pos`: below the mol, except vertical schemes put the name
+/// beside the structure so it does not sit in the arrow corridor.
+fn scheme_caption_pos(spec: &DepictSpec) -> LabelPos {
+    match spec {
+        DepictSpec::ReactionScheme { layout, .. } => match layout
+            .as_ref()
+            .map(|l| l.direction_or_default())
+            .unwrap_or_default()
+        {
+            LayoutDirection::Down | LayoutDirection::Up => LabelPos::Right,
+            _ => LabelPos::Below,
+        },
+        _ => LabelPos::Below,
+    }
+}
+
+/// Bare id / omitted `pos` on mol captions → [`scheme_caption_pos`] (edges keep
+/// their own defaults).
+fn mol_caption_placements(lab: &Label, default_pos: LabelPos) -> Vec<(String, LabelPos)> {
     match lab {
-        Label::Id(id) => vec![(id.clone(), LabelPos::Below)],
-        Label::Placed(p) => vec![(p.id.clone(), p.pos.unwrap_or(LabelPos::Below))],
+        Label::Id(id) => vec![(id.clone(), default_pos)],
+        Label::Placed(p) => vec![(p.id.clone(), p.pos.unwrap_or(default_pos))],
         Label::Items(items) => items
             .iter()
             .map(|it| match it {
-                LabelItem::Id(s) => (s.clone(), LabelPos::Below),
-                LabelItem::Placed(p) => (p.id.clone(), p.pos.unwrap_or(LabelPos::Below)),
+                LabelItem::Id(s) => (s.clone(), default_pos),
+                LabelItem::Placed(p) => (p.id.clone(), p.pos.unwrap_or(default_pos)),
             })
             .collect(),
         Label::Lanes(lanes) => {
@@ -240,13 +259,13 @@ struct CaptionInk {
     margin: f64,
 }
 
-fn name_to_ink(name: &MolText) -> Option<CaptionInk> {
+fn name_to_ink(name: &MolText, default_pos: LabelPos) -> Option<CaptionInk> {
     let styled = name.as_styled();
     let text = styled.content.trim().to_string();
     if text.is_empty() {
         return None;
     }
-    let pos = styled.pos.unwrap_or(LabelPos::Below);
+    let pos = styled.pos.unwrap_or(default_pos);
     let fill = styled
         .color
         .as_deref()
@@ -271,7 +290,8 @@ struct PlacedCaption {
     bounds: (f64, f64, f64, f64),
 }
 
-/// Fold mol caption glyph paths into `scene` (expands canvas; default side below).
+/// Fold mol caption glyph paths into `scene` (expands canvas; default side
+/// below, or right when the reaction scheme flows up/down).
 ///
 /// Prefers privileged [`MolNode::name`]; also paints legacy [`MolNode::label`]
 /// text-node refs. Captions use chem markup. Gap to mol ink uses typographic
@@ -281,14 +301,15 @@ struct PlacedCaption {
 /// DOF. Placement snugs to structure, then nudges clear of regions and other
 /// annotations so they do not overlap the label.
 pub fn apply_mol_captions(spec: &DepictSpec, node: &MolNode, mut scene: Scene) -> Scene {
+    let default_pos = scheme_caption_pos(spec);
     let mut resolved: Vec<CaptionInk> = Vec::new();
     if let Some(ref name) = node.name {
-        if let Some(ink) = name_to_ink(name) {
+        if let Some(ink) = name_to_ink(name, default_pos) {
             resolved.push(ink);
         }
     }
     if let Some(ref lab) = node.label {
-        for (id, pos) in mol_caption_placements(lab) {
+        for (id, pos) in mol_caption_placements(lab, default_pos) {
             let Some(t) = text_node(spec, &id) else {
                 continue;
             };
@@ -660,6 +681,54 @@ mod tests {
             hit,
             "expected mol-caption overlay, got {:?}",
             overlay_prims(&out)
+        );
+    }
+
+    #[test]
+    fn vertical_scheme_default_name_sits_beside_not_in_corridor() {
+        let spec: DepictSpec = serde_json::from_str(
+            r#"{
+              "type": "reaction_scheme",
+              "layout": {"direction": "down"},
+              "children": [
+                {"type": "mol", "id": "A", "smiles": "CCO", "name": "ethanol"},
+                {"type": "mol", "id": "B", "smiles": "CC=O", "name": "acetaldehyde"},
+                {"type": "edge", "source": "A", "target": "B", "arrow": "forward"}
+              ]
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(scheme_caption_pos(&spec), LabelPos::Right);
+        let node = spec.mols()[0].clone();
+        let base = crate::depict::depict_molecule(&ethanol());
+        let (_sx0, sy0, sx1, sy1) = structure_aabb(&base).expect("structure");
+        let out = apply_mol_captions(&spec, &node, base);
+        let mut cap_x0 = f64::INFINITY;
+        let mut cap_y0 = f64::INFINITY;
+        let mut cap_y1 = f64::NEG_INFINITY;
+        for p in overlay_prims(&out) {
+            if let Primitive::Path {
+                d, class: Some(c), ..
+            } = p
+            {
+                if c.contains("mol-caption-metrics") {
+                    for (x, y) in path_xy(d) {
+                        cap_x0 = cap_x0.min(x);
+                        cap_y0 = cap_y0.min(y);
+                        cap_y1 = cap_y1.max(y);
+                    }
+                }
+            }
+        }
+        assert!(cap_x0.is_finite(), "expected caption metrics");
+        assert!(
+            cap_x0 + 1.0 >= sx1,
+            "down-flow name should sit to the right of the structure, not below: cap_x0={cap_x0} struct_right={sx1}"
+        );
+        let cy = (cap_y0 + cap_y1) * 0.5;
+        assert!(
+            cy > sy0 && cy < sy1 + (sy1 - sy0),
+            "side caption should sit next to the mol, not under it: cy={cy} struct y={sy0}..{sy1}"
         );
     }
 

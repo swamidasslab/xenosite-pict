@@ -35,7 +35,9 @@ align_to?: AlignTo,
  */
 label?: Label, 
 /**
- * Privileged figure name / caption painted inside the mol SVG (default below).
+ * Privileged figure name / caption painted inside the mol SVG (default
+ * below; vertical reaction schemes default to the right so the name is
+ * not in the arrow corridor).
  */
 name?: MolText, 
 /**

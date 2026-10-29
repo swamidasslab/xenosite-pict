@@ -294,7 +294,7 @@ class MolNode(StrictModel):
     id: str | None = None
     label: Annotated[Label | None, Field(description='Caption: [`Label`] (string id, list, or `{id, pos?}` — text-node refs).')] = None
     molfile: str | None = None
-    name: Annotated[MolText | None, Field(description='Privileged figure name / caption painted inside the mol SVG (default below).')] = None
+    name: Annotated[MolText | None, Field(description='Privileged figure name / caption painted inside the mol SVG (default below; vertical reaction schemes default to the right so the name is not in the arrow corridor).')] = None
     opts: Annotated[Opts | None, Field(description='Cascade patches for this node (list or singleton).')] = None
     pad: Annotated[float | None, Field(description='Post-layout SVG viewBox pad (px). Omit → small house default (rarely override).')] = None
     region: Annotated[RegionField | None, Field(description='Region highlight(s) — one object or a list.')] = None
