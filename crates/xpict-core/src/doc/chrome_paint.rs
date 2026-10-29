@@ -72,9 +72,10 @@ pub fn apply_mol_chrome(node: &MolNode, mol: &MoleculeIn, mut scene: Scene) -> S
     // Mutual clash among chrome labels in this pass. Mol `name` is placed
     // after chrome (not a constraint); caption_boxes is usually empty here.
     let mut placed_label_boxes: Vec<Aabb> = caption_boxes.clone();
-    // Atom-indexed chrome (numbers + custom text) so region hulls can cover
-    // labels on included atoms. Circles stay clash-only, not cover.
+    // Atom-indexed chrome (numbers + custom text) so region hulls and
+    // atom-circles can cover labels on included atoms.
     let mut atom_chrome_boxes: Vec<(i32, Aabb)> = Vec::new();
+    let mut atom_number_boxes: Vec<(i32, Aabb)> = Vec::new();
 
     if aromatic {
         for p in aromatic_circle_primitives(mol, dx, dy) {
@@ -82,11 +83,28 @@ pub fn apply_mol_chrome(node: &MolNode, mol: &MoleculeIn, mut scene: Scene) -> S
         }
     }
 
-    // Place atom numbers/labels and circles before regions so the hull can
-    // cover included-atom chrome and region text can keep off it. Callouts last.
+    // Numbers first so the highlight circle can enclose them (stroke must not
+    // cut the glyph). Custom text after the circle so "exo" keeps off it.
+    // Regions last among labels so the hull covers included-atom chrome.
+    paint_atom_labels_for_role(
+        &anns,
+        LabelRole::Number,
+        mol,
+        node,
+        &neighbors,
+        dx,
+        dy,
+        &shade,
+        mol.weight,
+        &mut placed_label_boxes,
+        &mut atom_chrome_boxes,
+        &mut atom_number_boxes,
+        &mut label_prims,
+        &mut halo_prims,
+    );
     for ann in &anns {
         if let Annotation::Circle { spec, z, .. } = ann {
-            for p in circle_primitives(mol, node, spec, dx, dy) {
+            for p in circle_primitives(mol, node, spec, dx, dy, &atom_number_boxes) {
                 match &p {
                     Primitive::Circle { cx, cy, r, .. } => {
                         placed_label_boxes.push(Aabb::new(cx - r, cy - r, cx + r, cy + r));
@@ -102,44 +120,22 @@ pub fn apply_mol_chrome(node: &MolNode, mol: &MoleculeIn, mut scene: Scene) -> S
             }
         }
     }
-    for ann in &anns {
-        if let Annotation::AtomLabel {
-            atom,
-            text,
-            role,
-            scale,
-            color,
-            z,
-        } = ann
-        {
-            let items = expand_atom_labels(mol, *atom, text, *role, node);
-            for (ai, content) in items {
-                if let Some((p, box_, halo)) = atom_label_primitive(
-                    mol,
-                    &neighbors,
-                    ai,
-                    &content,
-                    *role,
-                    *scale,
-                    color.as_deref(),
-                    dx,
-                    dy,
-                    &shade,
-                    &placed_label_boxes,
-                    mol.weight,
-                ) {
-                    if let Some(h) = halo {
-                        halo_prims.push(h);
-                    }
-                    placed_label_boxes.push(box_);
-                    if let Some(a) = mol.atoms.get(ai) {
-                        atom_chrome_boxes.push((a.index, box_));
-                    }
-                    label_prims.push((*z, p));
-                }
-            }
-        }
-    }
+    paint_atom_labels_for_role(
+        &anns,
+        LabelRole::Text,
+        mol,
+        node,
+        &neighbors,
+        dx,
+        dy,
+        &shade,
+        mol.weight,
+        &mut placed_label_boxes,
+        &mut atom_chrome_boxes,
+        &mut atom_number_boxes,
+        &mut label_prims,
+        &mut halo_prims,
+    );
     for ann in &anns {
         if let Annotation::Region { spec, z } = ann {
             // Hull under shade; region text always in the front Labels layer.
@@ -217,6 +213,75 @@ pub fn apply_mol_chrome(node: &MolNode, mol: &MoleculeIn, mut scene: Scene) -> S
         }
     }
     scene
+}
+
+fn paint_atom_labels_for_role(
+    anns: &[Annotation],
+    role_want: LabelRole,
+    mol: &MoleculeIn,
+    node: &MolNode,
+    neighbors: &[Vec<(f64, f64)>],
+    dx: f64,
+    dy: f64,
+    shade: &[(usize, f64, f64, f64)],
+    weight: f64,
+    placed_label_boxes: &mut Vec<Aabb>,
+    atom_chrome_boxes: &mut Vec<(i32, Aabb)>,
+    atom_number_boxes: &mut Vec<(i32, Aabb)>,
+    label_prims: &mut Vec<(i32, Primitive)>,
+    halo_prims: &mut Vec<Primitive>,
+) {
+    for ann in anns {
+        let Annotation::AtomLabel {
+            atom,
+            text,
+            role,
+            scale,
+            color,
+            z,
+        } = ann
+        else {
+            continue;
+        };
+        if *role != role_want {
+            continue;
+        }
+        let items = expand_atom_labels(mol, *atom, text, *role, node);
+        for (ai, content) in items {
+            if let Some((p, box_, halo)) = atom_label_primitive(
+                mol,
+                neighbors,
+                ai,
+                &content,
+                *role,
+                *scale,
+                color.as_deref(),
+                dx,
+                dy,
+                shade,
+                placed_label_boxes,
+                weight,
+            ) {
+                if let Some(h) = halo {
+                    halo_prims.push(h);
+                }
+                // Numbers snug on unpadded glyph ink; later labels still keep
+                // a horizontal pad off the occupancy box so "2"/"ortho" do not jam.
+                if *role == LabelRole::Number {
+                    placed_label_boxes.push(box_.inflate_xy(LABEL_PAD_X_PX, 0.0));
+                    if let Some(a) = mol.atoms.get(ai) {
+                        atom_number_boxes.push((a.index, box_));
+                    }
+                } else {
+                    placed_label_boxes.push(box_);
+                }
+                if let Some(a) = mol.atoms.get(ai) {
+                    atom_chrome_boxes.push((a.index, box_));
+                }
+                label_prims.push((*z, p));
+            }
+        }
+    }
 }
 
 fn strip_depict_aromatic_circles(scene: &mut Scene) {
@@ -579,14 +644,9 @@ fn atom_label_primitive(
         LabelRole::Number => NUMBER_GAP_PX,
         LabelRole::Text => TEXT_GAP_PX,
     };
-    // Highlight circle on this atom is underlay. Index numbers snug to chem
-    // (same as shade); a hard Outside vs that disk made kitchen-sink "6"
-    // infeasible vs the 0.3-bond tether and parked it left of the OH.
-    let keep_other: Vec<Aabb> = other_labels
-        .iter()
-        .copied()
-        .filter(|b| role != LabelRole::Number || !aabb_covers_target(*b, (ax, ay)))
-        .collect();
+    // Numbers paint before the highlight circle (the disk then grows to
+    // enclose them). Custom text keeps off whatever is already placed.
+    let keep_other: Vec<Aabb> = other_labels.to_vec();
     // Index/mapno: short tether. Custom text: longer, and a full bond when an
     // index (or other label) is already on the atom so keep-off can sit beside.
     let tether = match role {
@@ -596,12 +656,17 @@ fn atom_label_primitive(
     };
     let anchor = "middle";
     let (bx0, by0, bx1, by1) = markup_bounds_at_origin(content, font_px, anchor)?;
-    let ink = padded_label_ink(InkAtOrigin {
+    let glyph = InkAtOrigin {
         x0: bx0,
         y0: by0,
         x1: bx1,
         y1: by1,
-    });
+    };
+    // Indexes snug to chem; x-pad is occupancy for later labels, not this glyph.
+    let ink = match role {
+        LabelRole::Number => glyph,
+        LabelRole::Text => padded_label_ink(glyph),
+    };
     // Bond-clear seed first (same Occupancy rule as region/callout) — PreferPose
     // alone was leaving numbers on ring bonds (kitchen-sink "2"). Also clear
     // aromatic circle strokes (inside phenol) like bond ink.
@@ -614,7 +679,11 @@ fn atom_label_primitive(
         occ.add_aabb(box_);
     }
     for box_ in chem_text_boxes(mol, dx, dy).values() {
-        occ.add_aabb(box_.inflate_xy(LABEL_PAD_X_PX, 0.0));
+        let chem = match role {
+            LabelRole::Number => *box_,
+            LabelRole::Text => box_.inflate_xy(LABEL_PAD_X_PX, 0.0),
+        };
+        occ.add_aabb(chem);
     }
     // Custom text keeps off shade; atom indexes may sit on wash (halo paint).
     if role == LabelRole::Text {
@@ -653,7 +722,13 @@ fn atom_label_primitive(
         .collect();
     let mut atom_texts: Vec<(usize, Aabb)> = chem_text_boxes(mol, dx, dy)
         .into_iter()
-        .map(|(idx, b)| (idx.max(0) as usize, b.inflate_xy(LABEL_PAD_X_PX, 0.0)))
+        .map(|(idx, b)| {
+            let box_ = match role {
+                LabelRole::Number => b,
+                LabelRole::Text => b.inflate_xy(LABEL_PAD_X_PX, 0.0),
+            };
+            (idx.max(0) as usize, box_)
+        })
         .collect();
     for (i, &box_) in keep_other.iter().enumerate() {
         atom_texts.push((10_000 + i, box_));
@@ -2314,12 +2389,22 @@ fn atom_circle_radius(text: Option<&str>, r_scale: f64) -> f64 {
     ((hw.hypot(hh) + FONT_PX * 0.25) * r_scale).max(floor)
 }
 
+fn aabb_corners(box_: Aabb) -> [(f64, f64); 4] {
+    [
+        (box_.x0, box_.y0),
+        (box_.x1, box_.y0),
+        (box_.x1, box_.y1),
+        (box_.x0, box_.y1),
+    ]
+}
+
 fn circle_primitives(
     mol: &MoleculeIn,
     node: &MolNode,
     spec: &CircleSpec,
     dx: f64,
     dy: f64,
+    cover_boxes: &[(i32, Aabb)],
 ) -> Vec<Primitive> {
     let mut out = Vec::new();
     let fill = fill_parts(spec.fill.as_ref());
@@ -2335,20 +2420,21 @@ fn circle_primitives(
     for &ai in &spec.atoms {
         if let Some(a) = find_atom(mol, ai) {
             let (ax, ay) = atom_xy(a, dx, dy);
-            let (cx0, cy0, r0) = if let Some(box_) = text_boxes.get(&a.index) {
-                let (ccx, ccy, rr) = covering_circle(&[
-                    (box_.x0, box_.y0),
-                    (box_.x1, box_.y0),
-                    (box_.x1, box_.y1),
-                    (box_.x0, box_.y1),
-                ]);
-                (ccx, ccy, (rr + CLASH_MARGIN_PX) * r_scale)
+            let mut pts: Vec<(f64, f64)> = vec![(ax, ay)];
+            if let Some(box_) = text_boxes.get(&a.index) {
+                pts.extend(aabb_corners(*box_));
             } else {
-                (
-                    ax,
-                    ay,
-                    atom_circle_radius(atom_display_text_for_circle(node, a), r_scale),
-                )
+                let fr = atom_circle_radius(atom_display_text_for_circle(node, a), r_scale);
+                pts.extend([(ax + fr, ay), (ax - fr, ay), (ax, ay + fr), (ax, ay - fr)]);
+            }
+            for (idx, box_) in cover_boxes {
+                if *idx == a.index {
+                    pts.extend(aabb_corners(*box_));
+                }
+            }
+            let (cx0, cy0, r0) = {
+                let (ccx, ccy, rr) = covering_circle(&pts);
+                (ccx, ccy, (rr + CLASH_MARGIN_PX) * r_scale)
             };
             // Clear non-incident bonds (bonds into this atom must enter the disk).
             let foreign: Vec<_> = bonds
@@ -2360,8 +2446,17 @@ fn circle_primitives(
                     d0 > ATOM_DISK_R_PX * 2.0 && d1 > ATOM_DISK_R_PX * 2.0
                 })
                 .collect();
-            let (cx, cy, r) =
+            let (cx, cy, mut r) =
                 circle_clear_bonds(cx0, cy0, r0, ax, ay, &foreign, floor_r, CLASH_MARGIN_PX);
+            // Bond-clear can shrink; keep the index strictly inside the disk
+            // so the stroke does not cut the glyph.
+            for (idx, box_) in cover_boxes {
+                if *idx == a.index {
+                    for (x, y) in aabb_corners(*box_) {
+                        r = r.max((x - cx).hypot(y - cy) + CLASH_MARGIN_PX);
+                    }
+                }
+            }
             out.push(Primitive::Circle {
                 cx,
                 cy,
@@ -3174,6 +3269,31 @@ mod tests {
     }
 
     #[test]
+    fn atom_circle_encloses_index_on_same_atom() {
+        let mol = ethanol();
+        let scene = crate::depict::depict_molecule(&mol);
+        let node = MolNode {
+            atom_number: Some(AtomNumberSpec::ByName(AtomNumberBy::Index)),
+            circle: Some(crate::doc::chrome::CircleField::One(CircleSpec {
+                atoms: vec![2],
+                bonds: vec![],
+                ring: None,
+                fill: None,
+                stroke: Some(StrokeSpec {
+                    color: Some("#06c".into()),
+                    width: Some(1.5),
+                    dash: None,
+                }),
+                scale: None,
+                z: None,
+            })),
+            ..Default::default()
+        };
+        let out = apply_mol_chrome(&node, &mol, scene);
+        assert_circle_encloses_index(&out, "2");
+    }
+
+    #[test]
     fn circle_bonds_paint_midpoint_circle() {
         let mol = ethanol();
         let (dx, dy) = frame_offset(&mol);
@@ -3900,6 +4020,7 @@ mod tests {
             six_gap <= ATOM_NUMBER_TETHER_PX + 4.0,
             "index 6 {six:?} too far from OH {oh:?}: gap={six_gap}"
         );
+        assert_circle_encloses_index(&out, "6");
     }
 
     fn callout_label_box(scene: &Scene) -> Aabb {
@@ -4054,6 +4175,7 @@ mod tests {
     }
 
     fn kitchen_sink_shaft_and_shade_asserts(scene: &Scene) {
+        assert_circle_encloses_index(scene, "6");
         let exo = label_box_by_text(scene, "exo");
         let ortho = label_box_by_text(scene, "ortho");
         let two = label_box_by_text(scene, "2");
@@ -4160,6 +4282,31 @@ mod tests {
                 _ => None,
             })
             .unwrap_or_else(|| panic!("label {text}"))
+    }
+
+    /// Glyph corners must sit inside the disk (air-gapped from the stroke).
+    fn assert_circle_encloses_index(scene: &Scene, text: &str) {
+        let (cx, cy, r) = layer_prims(scene)
+            .into_iter()
+            .find_map(|p| match p {
+                Primitive::Circle {
+                    cx,
+                    cy,
+                    r,
+                    class: Some(c),
+                    ..
+                } if c.contains("atom-circle") => Some((*cx, *cy, *r)),
+                _ => None,
+            })
+            .expect("atom-circle");
+        let box_ = label_box_by_text(scene, text);
+        for (x, y) in aabb_corners(box_) {
+            let d = (x - cx).hypot(y - cy);
+            assert!(
+                d + 1.0 <= r,
+                "index {text} corner ({x},{y}) must sit inside the circle, not on the stroke: d={d} r={r} box={box_:?}"
+            );
+        }
     }
 
     #[test]

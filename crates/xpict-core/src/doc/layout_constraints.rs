@@ -730,10 +730,10 @@ fn hard_lagrangian(h: &HardConstraint) -> u8 {
 /// How hard the placement well pulls, relative to clash hinges (strength ~3–8).
 const POSE_STRENGTH: f64 = 0.35;
 
-/// Hard MaxDist ceiling for **index / mapno** numbers (~0.3 CC-bond).
+/// Hard MaxDist ceiling for **index / mapno** numbers (~0.2 CC-bond).
 ///
 /// Closest-point: some part of the glyph must reach within this gap of home.
-pub const ATOM_NUMBER_TETHER_PX: f64 = 0.3 * BOND_PX;
+pub const ATOM_NUMBER_TETHER_PX: f64 = 0.2 * BOND_PX;
 
 /// Hard MaxDist ceiling for custom **atom_label** text (~0.5 CC-bond).
 ///
