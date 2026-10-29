@@ -2,6 +2,8 @@
 
 ## 2026-10-29
 
+- Chrome kits (not the solver) own product rules: tether length, `avoid_shade`, skip the destination mark on a callout shaft, MinGap vs chrome outside a region hull. Dropped unused `halo_pad`, Occupancy `clearance`/`clutter`/`aabb_gap_sum`, and the `t10000` fake atom-text slot for prior labels (`other_labels` on the atom kit, same as callout/region). Region text hard-clears shade; dead Inside rows on frozen chem vs a frozen hull are gone.
+
 - Kitchen-sink chrome: the OH highlight **includes** the atom index (numbers place first; the disk grows around chem + index) so the stroke does not cut “6”. Indexes snug closer (`ATOM_NUMBER_TETHER_PX` 0.2·bond, unpadded glyph vs chem). Auto slightly prefers compass directions radially out from the occupancy centroid through the atom (a top oxygen stays above / above-left, not empty-page Right). Phenol need not sit strictly vertical when exo occupies that ray — the shaft slides along the label edge (`callout_arrow_clearing`) so it still meets the highlight circle. Outside region text has a 0.5-bond MaxDist to the hull (no 3-bond Repel), so “ring” snugs to the box. Layout ink is x-padded so neighboring labels do not jam; custom text keeps off shade, indexes may sit on wash.
 
 - `prefer` / Auto placement use eight compass directions: the four cardinals plus 45° `above_right` / `above_left` / `below_right` / `below_left`. Auto still picks the clash-free slot farthest from other ink (a lower-left bulk seeds above-right). Locked `prefer: "above_right"` pins that diagonal.

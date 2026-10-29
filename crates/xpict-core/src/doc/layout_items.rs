@@ -64,6 +64,11 @@ impl Aabb {
         self.x0 <= other.x0 && self.y0 <= other.y0 && self.x1 >= other.x1 && self.y1 >= other.y1
     }
 
+    /// True when `p` lies inside this box, expanded by `pad`.
+    pub fn covers_point(self, p: (f64, f64), pad: f64) -> bool {
+        self.x0 - pad <= p.0 && p.0 <= self.x1 + pad && self.y0 - pad <= p.1 && p.1 <= self.y1 + pad
+    }
+
     pub fn center(self) -> (f64, f64) {
         ((self.x0 + self.x1) * 0.5, (self.y0 + self.y1) * 0.5)
     }
@@ -242,30 +247,6 @@ impl Occupancy {
         self.clash_penalty(cand, margin) > 0.0
     }
 
-    /// How badly `cand` overlaps obstacles (0 = clear). Bond crossings weigh
-    /// more than soft AABB overlaps so greedy fallbacks avoid straddling ink.
-    /// Min air from `cand` to any obstacle (negative if overlapping), minus `margin`.
-    #[allow(dead_code)]
-    pub fn clearance(&self, cand: Aabb, margin: f64) -> f64 {
-        let mut best = f64::INFINITY;
-        for &a in &self.aabbs {
-            best = best.min(aabb_gap(cand, a));
-        }
-        for &s in &self.segs {
-            best = best.min(seg_aabb_min_dist(s.x0, s.y0, s.x1, s.y1, cand) - self.seg_half);
-        }
-        if !best.is_finite() {
-            return 1.0e6;
-        }
-        best - margin
-    }
-
-    /// Sum of exterior gaps to AABB obstacles (empty space toward other labels).
-    #[allow(dead_code)]
-    pub fn aabb_gap_sum(&self, cand: Aabb) -> f64 {
-        self.aabbs.iter().map(|a| aabb_gap(cand, *a).max(0.0)).sum()
-    }
-
     /// Center of mass of AABB centers and segment midpoints (the ink bulk).
     pub fn centroid(&self) -> Option<(f64, f64)> {
         self.centroid_where(|_| true)
@@ -310,22 +291,8 @@ impl Occupancy {
         }
     }
 
-    /// Nearby-ink repulsion: close obstacles dominate, empty page does not.
-    #[allow(dead_code)]
-    pub fn clutter(&self, cand: Aabb) -> f64 {
-        const EPS: f64 = 8.0;
-        let mut e = 0.0;
-        for &a in &self.aabbs {
-            let g = aabb_gap(cand, a).max(0.0);
-            e += 1.0 / (g + EPS).powi(2);
-        }
-        for &s in &self.segs {
-            let g = (seg_aabb_min_dist(s.x0, s.y0, s.x1, s.y1, cand) - self.seg_half).max(0.0);
-            e += 1.0 / (g + EPS).powi(2);
-        }
-        e
-    }
-
+    /// How badly `cand` overlaps obstacles (0 = clear). Bond crossings weigh
+    /// more than AABB overlaps so greedy fallbacks avoid straddling ink.
     pub fn clash_penalty(&self, cand: Aabb, margin: f64) -> f64 {
         let mut pen = 0.0;
         let padded = cand.inflate(margin);
@@ -360,42 +327,7 @@ impl Occupancy {
         let (Some(from), Some(to)) = (p.arrow_from, p.arrow_to) else {
             return false;
         };
-        for &a in &self.aabbs {
-            let (cx, cy) = a.center();
-            let reach = 0.5 * a.width().hypot(a.height());
-            if (cx - anchor.0).hypot(cy - anchor.1) <= reach + 1.0 {
-                continue;
-            }
-            if seg_aabb_min_dist(from.0, from.1, to.0, to.1, a) < margin {
-                return true;
-            }
-        }
-        false
-    }
-}
-
-/// Exterior gap between AABBs (≥0); overlap is the negative min penetration.
-fn aabb_gap(a: Aabb, b: Aabb) -> f64 {
-    let dx = if a.x1 < b.x0 {
-        b.x0 - a.x1
-    } else if b.x1 < a.x0 {
-        a.x0 - b.x1
-    } else {
-        0.0
-    };
-    let dy = if a.y1 < b.y0 {
-        b.y0 - a.y1
-    } else if b.y1 < a.y0 {
-        a.y0 - b.y1
-    } else {
-        0.0
-    };
-    if dx > 0.0 || dy > 0.0 {
-        dx.hypot(dy)
-    } else {
-        let ox = (a.x1.min(b.x1) - a.x0.max(b.x0)).max(0.0);
-        let oy = (a.y1.min(b.y1) - a.y0.max(b.y0)).max(0.0);
-        -ox.min(oy)
+        shaft_hits_obstacles(from, to, &self.aabbs, margin, anchor)
     }
 }
 
@@ -509,10 +441,8 @@ pub struct Placement {
     pub x: f64,
     pub y: f64,
     pub bounds: Aabb,
-    #[allow(dead_code)] // useful for tests / next chrome migrants
     pub side: Side,
-    /// Arrow from label edge → tip (callouts).
-    #[allow(dead_code)] // paint may rebuild the segment after refine
+    /// Arrow from label edge → tip (callouts). Paint may rebuild after refine.
     pub arrow_from: Option<(f64, f64)>,
     pub arrow_to: Option<(f64, f64)>,
 }
@@ -688,10 +618,10 @@ pub fn callout_arrow(
 }
 
 /// Like [`callout_arrow`], but slide the start along the facing edge so the
-/// shaft misses other labels (kitchen-sink exo) while still aiming at `anchor`.
+/// shaft misses other labels while still aiming at `anchor`.
 ///
-/// Center attachment is tried first (radial). Corners are fallbacks. Obstacles
-/// whose center sits on the target (highlight circle, chem disk) are skipped.
+/// Center attachment is tried first (radial). Corners are fallbacks. The
+/// destination mark (highlight circle / chem disk covering `anchor`) is skipped.
 pub fn callout_arrow_clearing(
     bounds: Aabb,
     anchor: (f64, f64),
@@ -807,9 +737,8 @@ fn shaft_hits_obstacles(
     anchor: (f64, f64),
 ) -> bool {
     for &a in obstacles {
-        let (cx, cy) = a.center();
-        let reach = 0.5 * a.width().hypot(a.height());
-        if (cx - anchor.0).hypot(cy - anchor.1) <= reach + 1.0 {
+        // Destination mark covering the target is the tip's home, not a miss.
+        if a.covers_point(anchor, 1.0) {
             continue;
         }
         if seg_aabb_min_dist(from.0, from.1, to.0, to.1, a) < margin {

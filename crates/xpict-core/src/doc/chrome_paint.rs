@@ -16,8 +16,8 @@ use crate::doc::chrome::{
     Z_REGION_LABEL,
 };
 use crate::doc::layout_constraints::{
-    aabb_covers_target, bezier_path_from_proxy, hull_proxy, refine_atom_number, refine_callout,
-    refine_region_text, Shape, ATOM_NUMBER_TETHER_PX, ATOM_TEXT_TETHER_PX, REGION_TEXT_TETHER_PX,
+    bezier_path_from_proxy, hull_proxy, refine_atom_number, refine_callout, refine_region_text,
+    Shape, ATOM_NUMBER_TETHER_PX, ATOM_TEXT_TETHER_PX, REGION_TEXT_TETHER_PX,
 };
 use crate::doc::layout_items::{
     callout_arrow, callout_arrow_clearing, padded_label_ink, place_auto, place_greedy,
@@ -644,14 +644,11 @@ fn atom_label_primitive(
         LabelRole::Number => NUMBER_GAP_PX,
         LabelRole::Text => TEXT_GAP_PX,
     };
-    // Numbers paint before the highlight circle (the disk then grows to
-    // enclose them). Custom text keeps off whatever is already placed.
-    let keep_other: Vec<Aabb> = other_labels.to_vec();
-    // Index/mapno: short tether. Custom text: longer, and a full bond when an
-    // index (or other label) is already on the atom so keep-off can sit beside.
+    // Index/mapno: short tether. Custom text: longer, and a full bond when
+    // other chrome is already on the atom so keep-off can sit beside.
     let tether = match role {
         LabelRole::Number => ATOM_NUMBER_TETHER_PX,
-        LabelRole::Text if !keep_other.is_empty() => BOND_PX,
+        LabelRole::Text if !other_labels.is_empty() => BOND_PX,
         LabelRole::Text => ATOM_TEXT_TETHER_PX,
     };
     let anchor = "middle";
@@ -667,15 +664,14 @@ fn atom_label_primitive(
         LabelRole::Number => glyph,
         LabelRole::Text => padded_label_ink(glyph),
     };
-    // Bond-clear seed first (same Occupancy rule as region/callout) — PreferPose
-    // alone was leaving numbers on ring bonds (kitchen-sink "2"). Also clear
-    // aromatic circle strokes (inside phenol) like bond ink.
+    // Bond-clear seed first (same Occupancy rule as region/callout). Also
+    // clear aromatic circle strokes like bond ink.
     let mut occ = match role {
         LabelRole::Text => Occupancy::from_molecule(mol, dx, dy, Some(ATOM_DISK_R_PX)),
         LabelRole::Number => Occupancy::from_bonds(mol, dx, dy, STROKE_PX.max(0.8)),
     };
     push_aromatic_circle_obstacles(&mut occ, mol, dx, dy);
-    for &box_ in &keep_other {
+    for &box_ in other_labels {
         occ.add_aabb(box_);
     }
     for box_ in chem_text_boxes(mol, dx, dy).values() {
@@ -720,7 +716,7 @@ fn atom_label_primitive(
             (a.index.max(0) as usize, x, y)
         })
         .collect();
-    let mut atom_texts: Vec<(usize, Aabb)> = chem_text_boxes(mol, dx, dy)
+    let atom_texts: Vec<(usize, Aabb)> = chem_text_boxes(mol, dx, dy)
         .into_iter()
         .map(|(idx, b)| {
             let box_ = match role {
@@ -730,9 +726,6 @@ fn atom_label_primitive(
             (idx.max(0) as usize, box_)
         })
         .collect();
-    for (i, &box_) in keep_other.iter().enumerate() {
-        atom_texts.push((10_000 + i, box_));
-    }
     let atom_idx = a.index.max(0) as usize;
     let avoid_shade = role == LabelRole::Text;
     let shade_obs: &[(usize, f64, f64, f64)] = if avoid_shade { shades } else { &[] };
@@ -745,7 +738,7 @@ fn atom_label_primitive(
         seed,
         CLASH_MARGIN_PX,
         tether,
-        None,
+        other_labels,
         avoid_shade,
     );
     // AL already hard-clears bonds + MaxDist-tethers to the atom. A post-nudge
@@ -899,8 +892,7 @@ fn region_primitives(
             push_aabb_corners(&mut cover, *box_);
         }
     }
-    // Chrome numbers/labels on included atoms belong in the annotation
-    // (kitchen-sink "ortho" sat outside the box when only chem text was covered).
+    // Chrome numbers/labels on included atoms belong in the region hull.
     for &(idx, box_) in atom_chrome {
         if include_set.contains(&idx) {
             push_aabb_corners(&mut cover, box_);
@@ -1445,7 +1437,7 @@ fn callout_primitives(
         .fold(0.0_f64, f64::max);
     if mark_r > 0.0 {
         // Chem / bonds that sit on the highlighted atom are behind the circle.
-        tip_obstacles.retain(|b| !aabb_covers_target(*b, (ax, ay)));
+        tip_obstacles.retain(|b| !b.covers_point((ax, ay), 1.0));
     }
     let base_tip = (FONT_PX * 0.55).max(4.0).max(mark_r + CLASH_MARGIN_PX);
     let mut occ = Occupancy::from_molecule(mol, dx, dy, Some(ATOM_DISK_R_PX.max(FONT_PX * 0.45)));
@@ -1548,7 +1540,7 @@ fn callout_primitives(
         .translated(label_dxy.0 + nudge_x, label_dxy.1 + nudge_y);
     // Paint both ends from the placed label toward the atom so the shaft
     // stays on that ray (meeting the highlight circle). Do not splice in an
-    // independently shifted tip — that is what offset the kitchen-sink line.
+    // independently shifted tip.
     let paint_side = Side::from_vec(placed_bounds.center().0 - ax, placed_bounds.center().1 - ay)
         .unwrap_or(side);
     let paint_standoff = seed_standoff(paint_side);
@@ -1567,8 +1559,8 @@ fn callout_primitives(
         let to = to.map(|t| {
             if mark_r > 0.0 {
                 // Highlight circle: tip already sits on that stroke. Pulling
-                // away from the atom to clear chem OH shortens the shaft off
-                // the circle (kitchen-sink phenol).
+                // away from the atom to clear chem would shorten it off the
+                // circle.
                 t
             } else {
                 clear_tip_from_obstacles(t, (ax, ay), &tip_obstacles, CLASH_MARGIN_PX)

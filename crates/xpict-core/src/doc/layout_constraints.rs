@@ -13,7 +13,8 @@
 //! Nested node paths (`mol/chem/…`, `scheme/edges/e0/…`), edge-aware shapes,
 //! per-type kits, and a Nelder–Mead minimizer that stops on **pose motion in
 //! CSS-px** (not ΔE). `energy` / `hard_g` / `solve` / `apply_params` never
-//! branch on [`ObjectType`] or path prefixes.
+//! branch on [`ObjectType`] or path prefixes. Product rules (tether length,
+//! `avoid_shade`, skip the destination mark on a shaft) live in the kits.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -706,8 +707,8 @@ pub enum HardConstraint {
     },
     /// Open segment `from → to` (node anchors) stays `clash_dist` outside `b`.
     ///
-    /// Callout shafts use this so a label above the target cannot draw
-    /// through a closer annotation (kitchen-sink “exo”).
+    /// Callout shafts use this so a label cannot draw through intervening
+    /// chrome on the way to the target.
     SegmentOutside {
         from: NodeId,
         to: NodeId,
@@ -743,8 +744,8 @@ pub const ATOM_TEXT_TETHER_PX: f64 = 0.5 * BOND_PX;
 
 /// Hard MaxDist ceiling for **outside** region text vs its hull (~0.5 CC-bond).
 ///
-/// Auto used to allow 3 bonds + a centroid Repel, which parked kitchen-sink
-/// “ring” in empty page below the box. Snug like atom text.
+/// Same length as [`ATOM_TEXT_TETHER_PX`]: the caption stays associated with
+/// the hull. Auto callouts keep a longer travel budget (they have a shaft).
 pub const REGION_TEXT_TETHER_PX: f64 = 0.5 * BOND_PX;
 
 fn shape_anchor(shape: &Shape) -> (f64, f64) {
@@ -959,15 +960,6 @@ fn push_clear_shades(
     push_clear_leaves_where(world, hard, a, "mol/chem", clash_dist, |_, n| {
         n.object_type == ObjectType::Shade
     });
-}
-
-/// True when `box_` is the callout target mark (atom circle / chem disk).
-pub(crate) fn aabb_covers_target(box_: Aabb, target: (f64, f64)) -> bool {
-    let pad = 1.0;
-    box_.x0 - pad <= target.0
-        && target.0 <= box_.x1 + pad
-        && box_.y0 - pad <= target.1
-        && target.1 <= box_.y1 + pad
 }
 
 /// Object kind → which kit installed it (debug / filtering).
@@ -2531,7 +2523,8 @@ pub fn region_text_kit(
         });
     }
     push_clear_bonds(world, hard, &text_id, clash_dist);
-    // Prior chrome labels / circles (kitchen-sink atom numbers, callouts, …).
+    // Prior chrome: hard keep-off. Auto MinGap only vs labels *outside* the
+    // hull — chrome the region already covers must not push the caption away.
     for (i, box_) in other_labels.iter().enumerate() {
         if box_.width() <= 0.0 && box_.height() <= 0.0 {
             continue;
@@ -2549,9 +2542,7 @@ pub fn region_text_kit(
             clash_dist,
             lagrangian: LAGRANGIAN_CLEAR,
         });
-        let (cx, cy) = box_.center();
-        let in_hull =
-            hull_aabb.x0 <= cx && cx <= hull_aabb.x1 && hull_aabb.y0 <= cy && cy <= hull_aabb.y1;
+        let in_hull = hull_aabb.covers_point(box_.center(), 0.0);
         if preferred.is_none() && !in_hull {
             constraints.push(Constraint::MinGap {
                 a: text_id.clone(),
@@ -2561,41 +2552,23 @@ pub fn region_text_kit(
             });
         }
     }
-    // Avoid shade disks (labels sit in front, but still clear painted wash).
-    // Inside snug: mild shade Outside so shade cannot pin the seed far out.
-    // Walk the chem subtree (not the whole world) so extra mols in a scheme
-    // world do not leak into this kit.
+    // Non-index labels keep off shade. Hard Outside (same as callouts / custom
+    // atom text). Soft twin is milder for inside labels so wash does not pin
+    // the seed to the far edge of a filled region.
+    push_clear_shades(world, hard, &text_id, clash_dist);
     let mut stack = vec!["mol/chem".to_string()];
-    let hull_id = format!("mol/annotations/regions/r{region_idx}/hull");
     while let Some(nid) = stack.pop() {
         let Some(n) = world.get(&nid) else {
             continue;
         };
         stack.extend(n.children.iter().cloned());
-        match n.object_type {
-            ObjectType::Shade => {
-                constraints.push(Constraint::Outside {
-                    a: text_id.clone(),
-                    b: nid.clone(),
-                    clash_dist: 1.0,
-                    strength: if inside { 1.5 } else { 3.0 },
-                });
-                constraints.push(Constraint::Inside {
-                    a: nid,
-                    b: hull_id.clone(),
-                    pad: CONTAIN_MARGIN_PX,
-                    strength: 2.0,
-                });
-            }
-            ObjectType::Coord => {
-                constraints.push(Constraint::Inside {
-                    a: nid,
-                    b: hull_id.clone(),
-                    pad: CONTAIN_MARGIN_PX,
-                    strength: 2.0,
-                });
-            }
-            _ => {}
+        if n.object_type == ObjectType::Shade {
+            constraints.push(Constraint::Outside {
+                a: text_id.clone(),
+                b: nid,
+                clash_dist: 1.0,
+                strength: if inside { 1.5 } else { 3.0 },
+            });
         }
     }
     text_id
@@ -2704,8 +2677,9 @@ pub fn callout_kit(
             clash_dist,
             lagrangian: LAGRANGIAN_CLEAR,
         });
-        if !aabb_covers_target(*box_, target) {
-            // Shaft (label → tip) must miss nearby chrome (kitchen-sink exo).
+        if !box_.covers_point(target, 1.0) {
+            // Shaft misses intervening chrome. The destination mark (circle /
+            // chem on the target) is the tip's home, not an obstacle.
             hard.push(HardConstraint::SegmentOutside {
                 from: label_id.clone(),
                 to: tip_id.clone(),
@@ -2820,7 +2794,8 @@ pub fn callout_kit(
 ///
 /// No PreferPose — a greedy seed is only the NM start; pinning it made numbers
 /// look randomly parked. Shade is a layout obstacle only when `avoid_shade`
-/// (custom text / callouts / regions). Atom indexes may sit on wash + halo.
+/// (custom text; callouts / regions use the same rule in their kits). Atom
+/// indexes may sit on wash + halo.
 const ATOM_SNUG_STRENGTH: f64 = 14.0;
 const ATOM_MILD_REPEL: f64 = 2.5;
 
@@ -2832,7 +2807,7 @@ pub fn atom_number_kit(
     ink: Aabb,
     clash_dist: f64,
     tether_px: f64,
-    _halo_pad: Option<f64>,
+    other_labels: &[Aabb],
     avoid_shade: bool,
 ) -> NodeId {
     let _ = world.insert(
@@ -2907,9 +2882,7 @@ pub fn atom_number_kit(
             });
         }
     }
-    // Chem text and prior annotation boxes (`t{10000+}`): hard Outside + mild
-    // soft twin. Keep-off-labels is AL — a soft hinge loses to snug MinimizeDist
-    // (kitchen-sink "2" vs "ortho").
+    // Chem text: hard Outside + mild soft twin (sit beside, not on, the glyph).
     if let Some(texts) = world.get("mol/chem/atom_texts") {
         for tid in texts.children.clone() {
             hard.push(HardConstraint::Outside {
@@ -2925,6 +2898,32 @@ pub fn atom_number_kit(
                 strength: ATOM_MILD_REPEL,
             });
         }
+    }
+    // Prior chrome (indexes, circles, custom text): same keep-off. AL, not a
+    // soft hinge — snug MinimizeDist would otherwise cover a neighbor.
+    for (i, box_) in other_labels.iter().enumerate() {
+        if box_.width() <= 0.0 && box_.height() <= 0.0 {
+            continue;
+        }
+        let oid = world.insert(
+            format!("mol/annotations/atom_numbers/n{atom_idx}_other{i}"),
+            &nums,
+            ObjectType::Group,
+            Shape::Aabb(*box_),
+            true,
+        );
+        hard.push(HardConstraint::Outside {
+            a: id.clone(),
+            b: oid.clone(),
+            clash_dist,
+            lagrangian: LAGRANGIAN_CLEAR,
+        });
+        constraints.push(Constraint::Outside {
+            a: id.clone(),
+            b: oid,
+            clash_dist,
+            strength: ATOM_MILD_REPEL,
+        });
     }
     if avoid_shade {
         push_clear_shades(world, hard, &id, clash_dist);
@@ -2945,7 +2944,6 @@ pub fn atom_number_kit(
         }
     }
     // No PreferPose: snug + mild repel own the soft energy.
-    let _ = ink;
     id
 }
 
@@ -3436,10 +3434,10 @@ pub fn refine_callout(
     ((label.tx, label.ty), (tip.tx, tip.ty), route_out)
 }
 
-/// Refine atom number / custom atom label after a PreferPose seed.
+/// Refine atom number / custom atom label after a greedy/auto seed.
 ///
-/// `atom_texts` are fixed chem (and prior annotation) AABBs — the solver moves
-/// the annotation Outside them. `halo_pad` / `avoid_shade` as in [`atom_number_kit`].
+/// `atom_texts` are fixed chem AABBs (snug home + keep-off). `other_labels`
+/// are prior chrome boxes. `avoid_shade` as in [`atom_number_kit`].
 pub fn refine_atom_number(
     bonds: &[(f64, f64, f64, f64)],
     atoms: &[(usize, f64, f64)],
@@ -3449,7 +3447,7 @@ pub fn refine_atom_number(
     rest: Aabb,
     clash_dist: f64,
     tether_px: f64,
-    halo_pad: Option<f64>,
+    other_labels: &[Aabb],
     avoid_shade: bool,
 ) -> (f64, f64) {
     let mut world = LayoutWorld::new("mol");
@@ -3464,7 +3462,7 @@ pub fn refine_atom_number(
         rest,
         clash_dist,
         tether_px,
-        halo_pad,
+        other_labels,
         avoid_shade,
     );
     let opts = SolveOpts {
@@ -4147,7 +4145,7 @@ mod tests {
             ink,
             4.0,
             ATOM_NUMBER_TETHER_PX,
-            Some(2.0),
+            &[],
             false,
         );
         let e = energy(&w, &cs, &[], 0.0);
@@ -4183,7 +4181,7 @@ mod tests {
             ink,
             4.0,
             ATOM_TEXT_TETHER_PX,
-            None,
+            &[],
             true,
         );
         let shade_hard = hard.iter().any(|h| match h {
@@ -4216,7 +4214,7 @@ mod tests {
             ink,
             3.0,
             ATOM_NUMBER_TETHER_PX,
-            None,
+            &[],
             false,
         );
         let bond_h: Vec<_> = hard
@@ -4285,7 +4283,7 @@ mod tests {
             ink,
             3.0,
             ATOM_NUMBER_TETHER_PX,
-            None,
+            &[],
             false,
         );
         let tether: Vec<_> = hard
@@ -4319,7 +4317,7 @@ mod tests {
             ink,
             3.0,
             ATOM_TEXT_TETHER_PX,
-            None,
+            &[],
             false,
         );
         let text_tether: Vec<_> = hard_text
@@ -4358,7 +4356,7 @@ mod tests {
             ink,
             3.0,
             ATOM_NUMBER_TETHER_PX,
-            None,
+            &[],
             false,
         );
         let tether: Vec<_> = hard
@@ -4399,7 +4397,7 @@ mod tests {
             ink,
             3.0,
             ATOM_NUMBER_TETHER_PX,
-            None,
+            &[],
             false,
         );
         let g0 = hard
@@ -4463,7 +4461,7 @@ mod tests {
             ink,
             clash,
             ATOM_NUMBER_TETHER_PX,
-            None,
+            &[],
             false,
         );
         let g0 = max_hard_violation(&w, &hard);
@@ -4501,15 +4499,15 @@ mod tests {
     #[test]
     fn atom_number_kit_clears_prior_labels_hard() {
         let mut w = LayoutWorld::new("mol");
-        install_chem_with_texts(
+        install_chem(
             &mut w,
             &[(0.0, 0.0, 30.0, 0.0)],
             &[(0, 0.0, 0.0), (1, 30.0, 0.0)],
             &[],
-            &[(10_000, Aabb::new(6.0, -5.0, 14.0, 5.0))],
         );
         let mut cs = Vec::new();
         let mut hard = Vec::new();
+        let prior = Aabb::new(6.0, -5.0, 14.0, 5.0);
         let _ = atom_number_kit(
             &mut w,
             &mut cs,
@@ -4518,7 +4516,7 @@ mod tests {
             Aabb::new(5.0, -6.0, 25.0, 6.0),
             3.0,
             ATOM_TEXT_TETHER_PX,
-            None,
+            &[prior],
             false,
         );
         let prior_h: Vec<_> = hard
@@ -4529,7 +4527,7 @@ mod tests {
                     clash_dist,
                     lagrangian,
                     ..
-                } if b.ends_with("/t10000") => Some((*clash_dist, *lagrangian)),
+                } if b.ends_with("_other0") => Some((*clash_dist, *lagrangian)),
                 _ => None,
             })
             .collect();
@@ -4563,12 +4561,12 @@ mod tests {
             &bonds,
             &atoms,
             &[],
-            &[(10_000, prior)],
+            &[],
             0,
             seed,
             3.0,
             ATOM_TEXT_TETHER_PX,
-            None,
+            &[prior],
             false,
         );
         let placed = seed.translated(dtx, dty);
