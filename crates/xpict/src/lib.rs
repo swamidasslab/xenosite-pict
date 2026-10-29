@@ -142,6 +142,12 @@ impl Rendered {
         scene_to_svg(&self.scene)
     }
 
+    /// Single-page vector PDF (journals that want PDF/EPS).
+    #[cfg(feature = "pdf")]
+    pub fn to_pdf(&self) -> Result<Vec<u8>, Error> {
+        xpict_core::scene_to_pdf(&self.scene).map_err(Error::Message)
+    }
+
     /// CoordGen pose frame JSON.
     pub fn frame(&self) -> &str {
         &self.frame_molblock

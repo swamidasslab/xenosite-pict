@@ -27,6 +27,8 @@ pub mod labels;
 pub mod markup;
 pub mod metrics;
 pub mod molfile;
+#[cfg(feature = "pdf")]
+pub mod pdf;
 pub mod plotdot;
 pub mod rings;
 pub mod scene;
@@ -122,6 +124,8 @@ pub use labels::{
 #[cfg(feature = "font")]
 pub use markup::parse_label_markup;
 pub use metrics::{BOND_PX, OFFSET_FRAC, OFFSET_PX, SCALE, SHADE_FRAC, STROKE_PX};
+#[cfg(feature = "pdf")]
+pub use pdf::{scene_to_pdf, svg_to_pdf};
 pub use plotdot::{PlotDot, ShadeDisk};
 pub use rings::{
     apply_ring_interiors, aromatic_ring_circles, bond_interior_normals,

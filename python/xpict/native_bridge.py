@@ -57,6 +57,11 @@ def scene_to_svg(scene: Scene | SceneDict | str) -> str:
     return _rust.scene_to_svg(payload)
 
 
+def svg_to_pdf(svg: str) -> bytes:
+    """SVG → single-page vector PDF (Rust ``svg2pdf``)."""
+    return bytes(_rust.svg_to_pdf(svg))
+
+
 def compose_scheme(
     spec: DepictSpecLike, paints: list[DocPaintDict] | str
 ) -> SceneDict:

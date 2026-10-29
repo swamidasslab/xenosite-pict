@@ -336,3 +336,59 @@ fn empty_source_errors() {
     let err = Mol::from_source("   ").unwrap_err();
     assert!(matches!(err, Error::EmptySource));
 }
+
+/// `svg_coords` are viewBox positions: each skeleton bond of propane starts and
+/// ends on an atom's `svg_coords`, under the mol group's translate, at any scale.
+#[test]
+fn svg_coords_land_on_painted_bonds() {
+    for scale in [1.0, 2.0] {
+        let mut m = mol("CCC").expect("parse");
+        let r = m
+            .render(MolRenderOptions {
+                scale: Some(scale),
+                ..Default::default()
+            })
+            .expect("render");
+        let svg = r.to_svg();
+        let nums = |s: &str| -> Vec<f64> {
+            s.split(|c: char| !(c.is_ascii_digit() || c == '.' || c == '-'))
+                .filter_map(|t| t.parse().ok())
+                .collect()
+        };
+        let mut origin = (0.0, 0.0);
+        let g = svg.split("transform=\"").nth(1).expect("mol transform");
+        for t in g[..g.find('"').unwrap()].split("translate").skip(1) {
+            let v = nums(t);
+            origin = (origin.0 + v[0], origin.1 + v[1]);
+        }
+        let mut ends = 0;
+        for chunk in svg.split("<path d=\"").skip(1) {
+            if !chunk.contains("bond-skeleton") {
+                continue;
+            }
+            let d = nums(&chunk[..chunk.find('"').unwrap()]);
+            for (x, y) in [(d[0], d[1]), (d[d.len() - 2], d[d.len() - 1])] {
+                let (x, y) = (x + origin.0, y + origin.1);
+                let hit = r.svg_coords.iter().any(|a| (a.x - x).hypot(a.y - y) < 0.5);
+                assert!(
+                    hit,
+                    "bond end ({x:.2},{y:.2}) at scale {scale} not on svg_coords {:?}",
+                    r.svg_coords
+                );
+                ends += 1;
+            }
+        }
+        assert!(ends >= 4, "expected skeleton bonds: {svg}");
+    }
+}
+
+#[test]
+fn rendered_writes_pdf() {
+    let mut m = mol("c1ccccc1O").expect("parse");
+    let pdf = m
+        .render(MolRenderOptions::default())
+        .expect("render")
+        .to_pdf()
+        .expect("pdf");
+    assert!(pdf.starts_with(b"%PDF-"));
+}

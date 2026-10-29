@@ -30,6 +30,14 @@ fn scene_to_svg(scene_json: &str) -> PyResult<String> {
     xpict_core::scene_to_svg_json(scene_json).map_err(PyRuntimeError::new_err)
 }
 
+/// SVG → single-page vector PDF bytes (journals that want PDF/EPS).
+#[pyfunction]
+fn svg_to_pdf(svg: &str) -> PyResult<std::borrow::Cow<'static, [u8]>> {
+    xpict_core::svg_to_pdf(svg)
+        .map(std::borrow::Cow::Owned)
+        .map_err(PyRuntimeError::new_err)
+}
+
 /// Resolve cascading mol chrome for every mol in document order (spec semantics).
 #[pyfunction]
 fn resolve_depict_chrome(spec_json: &str) -> PyResult<String> {
@@ -889,6 +897,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(multi_bond_offset, m)?)?;
     m.add_function(wrap_pyfunction!(centered_displacements, m)?)?;
     m.add_function(wrap_pyfunction!(scene_to_svg, m)?)?;
+    m.add_function(wrap_pyfunction!(svg_to_pdf, m)?)?;
     m.add_function(wrap_pyfunction!(resolve_depict_chrome, m)?)?;
     m.add_function(wrap_pyfunction!(compose_scheme, m)?)?;
     m.add_function(wrap_pyfunction!(depict_doc, m)?)?;

@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import html
 import json
+import os
 import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Sequence
 from urllib.parse import quote
 
@@ -15,6 +17,7 @@ from xpict.contracts.edge import MoleculeIn
 from xpict.contracts.scene import Scene
 from xpict.contracts.scene_dict import SceneDict
 from xpict.native_bridge import scene_to_svg as _native_scene_to_svg
+from xpict.native_bridge import svg_to_pdf
 
 if TYPE_CHECKING:
     from xpict.spec import Mol
@@ -115,6 +118,24 @@ def to_svg(scene: Scene | SceneDict) -> str:
     if isinstance(scene, dict):
         scene = Scene.model_validate(scene)
     return scene_to_svg(scene)
+
+
+def to_pdf(scene: Scene | SceneDict) -> bytes:
+    """Scene → single-page vector PDF bytes (same ink as :func:`to_svg`)."""
+    return svg_to_pdf(to_svg(scene))
+
+
+def save(scene: Scene | SceneDict, path: str | os.PathLike[str]) -> None:
+    """Write ``.svg`` or ``.pdf`` by extension. For EPS, convert the PDF
+    (e.g. ``pdftops -eps``); PDF keeps the vectors."""
+    out = Path(path)
+    suffix = out.suffix.lower()
+    if suffix == ".svg":
+        out.write_text(to_svg(scene), encoding="utf-8")
+    elif suffix == ".pdf":
+        out.write_bytes(to_pdf(scene))
+    else:
+        raise ValueError(f"save: expected .svg or .pdf, got {out.name!r}")
 
 
 @dataclass
@@ -234,6 +255,13 @@ class Rendered(PictBase):
 
     def to_svg(self) -> str:
         return scene_to_svg(self.scene)
+
+    def to_pdf(self) -> bytes:
+        return to_pdf(self.scene)
+
+    def save(self, path: str | os.PathLike[str]) -> None:
+        """Write ``.svg`` or ``.pdf`` by extension."""
+        save(self.scene, path)
 
     def frame(self) -> str:
         return self.frame_molblock
