@@ -588,6 +588,7 @@ pub fn refine_scheme_edges(
 
     // One solved centerline per coterminal group; lanes are a constant-width
     // offset so ParallelClear cannot fling a coincident reverse arrow.
+    let mut group_centers: Vec<Vec<(f64, f64)>> = Vec::with_capacity(groups.len());
     for group in &groups {
         let rep = group.members[0];
         let eid = format!("scheme/edges/e{rep}");
@@ -595,6 +596,7 @@ pub fn refine_scheme_edges(
             Some(Shape::Polyline(p)) if p.len() >= 2 => p,
             _ => centerlines[rep].clone(),
         };
+        group_centers.push(center.clone());
         let offs = lane_offsets(group.members.len());
         for (lane, &i) in group.members.iter().enumerate() {
             let mut pts = offset_polyline(&center, offs[lane]);
@@ -608,6 +610,25 @@ pub fn refine_scheme_edges(
         }
     }
 
+    // Pose labels against the shared centerline, not a reverse member's
+    // painted direction — otherwise above/below collapse into one corridor.
+    let mut pose_ids: Vec<String> = vec![String::new(); groups.len()];
+    for (gi, group) in groups.iter().enumerate() {
+        if group.members.len() <= 1 {
+            pose_ids[gi] = format!("scheme/edges/e{}", group.members[0]);
+            continue;
+        }
+        let cid = format!("scheme/edges/g{gi}/center");
+        world.insert(
+            &cid,
+            &edges_root,
+            ObjectType::Group,
+            Shape::Polyline(group_centers[gi].clone()),
+            true,
+        );
+        pose_ids[gi] = cid;
+    }
+
     let mut label_cs = Vec::new();
     let mut label_hard = Vec::new();
     let mut label_ids = Vec::new();
@@ -617,7 +638,14 @@ pub fn refine_scheme_edges(
             Some(Shape::Polyline(p)) if p.len() >= 2 => p,
             _ => seed_pts[i].clone(),
         };
-        let Some((px, py)) = edge_label_seed(spec, edge, &live) else {
+        let gi = group_of[i];
+        let bundle = groups.get(gi).map(|g| g.members.len()).unwrap_or(1);
+        let seed_path = group_centers
+            .get(gi)
+            .filter(|p| p.len() >= 2)
+            .unwrap_or(&live);
+        let Some((px, py)) = edge_label_seed(spec, edge, seed_path, group_half_width(bundle))
+        else {
             continue;
         };
         // Circle at the glyph center, not the unrotated text AABB: a long
@@ -634,24 +662,29 @@ pub fn refine_scheme_edges(
             },
             false,
         );
-        world.set_rot(&lid, readable_deg(tangent_at(&live, px, py)));
-        label_ids.push((i, lid, eid, edge.stroke_width));
+        world.set_rot(&lid, readable_deg(tangent_at(seed_path, px, py)));
+        let pose = pose_ids
+            .get(gi)
+            .cloned()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| eid.clone());
+        label_ids.push((i, lid, pose, edge.stroke_width, group_half_width(bundle)));
     }
-    for (i, lid, eid, self_stroke) in &label_ids {
+    for (i, lid, pose, self_stroke, bundle_half) in &label_ids {
         label_cs.push(Constraint::Midpoint {
             a: lid.clone(),
-            b: eid.clone(),
+            b: pose.clone(),
             strength: POSE_STRENGTH,
         });
         label_cs.push(Constraint::Parallel {
             a: lid.clone(),
-            b: eid.clone(),
+            b: pose.clone(),
             strength: 0.8,
         });
         label_hard.push(HardConstraint::MaxDist {
             a: lid.clone(),
-            b: eid.clone(),
-            dist: label_shaft_tether(*self_stroke),
+            b: pose.clone(),
+            dist: label_shaft_tether(*self_stroke) + bundle_half,
             lagrangian: LAGRANGIAN_TETHER,
         });
         for j in 0..n_edges {
@@ -995,6 +1028,7 @@ fn edge_label_seed(
     spec: &DepictSpec,
     edge: &super::EdgeNode,
     pts: &[(f64, f64)],
+    bundle_half: f64,
 ) -> Option<(f64, f64)> {
     let lab = edge.label.as_ref()?;
     let placements = lab.placements();
@@ -1007,16 +1041,50 @@ fn edge_label_seed(
         return None;
     }
     let painted = crate::catmull::sample_open_catmull(pts, 8);
-    let (mx, my, mut px, mut py) = label_point(&painted);
-    match pos {
-        super::LabelPos::Below | super::LabelPos::Right => {
-            px = -px;
-            py = -py;
-        }
-        _ => {}
-    }
-    let off = label_shaft_clash(edge.stroke_width);
+    let (mx, my, _, _) = label_point(&painted);
+    let (px, py) = label_offset_dir(&painted, *pos);
+    let off = label_shaft_clash(edge.stroke_width) + bundle_half;
     Some((mx + px * off, my + py * off))
+}
+
+/// Unit perpendicular for `pos`. Above/below follow the page (screen-up), not
+/// the painted direction, so a reverse B→A "below" is opposite A→B "above".
+fn label_offset_dir(pts: &[(f64, f64)], pos: super::LabelPos) -> (f64, f64) {
+    let (_, _, px, py) = label_point(pts);
+    let p1 = (px, py);
+    let p2 = (-px, -py);
+    let up = |p: (f64, f64)| -p.1;
+    let left = |p: (f64, f64)| -p.0;
+    match pos {
+        super::LabelPos::Above => {
+            if up(p1) >= up(p2) {
+                p1
+            } else {
+                p2
+            }
+        }
+        super::LabelPos::Below => {
+            if up(p1) >= up(p2) {
+                p2
+            } else {
+                p1
+            }
+        }
+        super::LabelPos::Left => {
+            if left(p1) >= left(p2) {
+                p1
+            } else {
+                p2
+            }
+        }
+        super::LabelPos::Right => {
+            if left(p1) >= left(p2) {
+                p2
+            } else {
+                p1
+            }
+        }
+    }
 }
 
 fn label_point(pts: &[(f64, f64)]) -> (f64, f64, f64, f64) {
@@ -1585,6 +1653,35 @@ mod tests {
             sources: crate::doc::MolIds::One(src.into()),
             targets: crate::doc::MolIds::One(tgt.into()),
             label: label.map(|id| crate::doc::Label::Id(id.into())),
+            edge_routing: None,
+            role: None,
+            arrow: crate::doc::EdgeArrow::Forward,
+            color: None,
+            stroke_width: None,
+            dashed: false,
+        })
+    }
+
+    fn text_node(id: &str, text: &str) -> crate::doc::Node {
+        crate::doc::Node::Text(crate::doc::TextNode {
+            type_: crate::doc::TextNodeKind::Text,
+            id: Some(id.into()),
+            text: text.into(),
+            color: None,
+            scale: None,
+            opts: None,
+        })
+    }
+
+    fn edge_labeled(src: &str, tgt: &str, id: &str, pos: crate::doc::LabelPos) -> crate::doc::Node {
+        crate::doc::Node::Edge(crate::doc::EdgeNode {
+            type_: crate::doc::EdgeNodeKind::Edge,
+            sources: crate::doc::MolIds::One(src.into()),
+            targets: crate::doc::MolIds::One(tgt.into()),
+            label: Some(crate::doc::Label::Placed(crate::doc::LabelPlacement {
+                id: id.into(),
+                pos: Some(pos),
+            })),
             edge_routing: None,
             role: None,
             arrow: crate::doc::EdgeArrow::Forward,
@@ -2321,5 +2418,73 @@ mod tests {
                 "label pass moved a shaft vertex by {d}: {a:?} vs {b:?}"
             );
         }
+    }
+
+    #[test]
+    fn label_offset_dir_above_is_screen_up() {
+        let horiz = vec![(0.0, 40.0), (80.0, 40.0)];
+        let above = label_offset_dir(&horiz, crate::doc::LabelPos::Above);
+        let below = label_offset_dir(&horiz, crate::doc::LabelPos::Below);
+        assert!(above.1 < 0.0, "above should be screen-up: {above:?}");
+        assert!(below.1 > 0.0, "below should be screen-down: {below:?}");
+        let rev = vec![(80.0, 40.0), (0.0, 40.0)];
+        let above_rev = label_offset_dir(&rev, crate::doc::LabelPos::Above);
+        assert!(
+            above_rev.1 < 0.0,
+            "reverse path above is still screen-up: {above_rev:?}"
+        );
+    }
+
+    #[test]
+    fn coterminal_labels_sit_outside_opposite_sides() {
+        let unlabeled = scheme(vec![
+            mol_node("A"),
+            mol_node("B"),
+            edge_node("A", "B", None),
+            edge_node("B", "A", None),
+        ]);
+        let labeled = scheme(vec![
+            mol_node("A"),
+            mol_node("B"),
+            text_node("ox", "ox"),
+            text_node("red", "red"),
+            edge_labeled("A", "B", "ox", crate::doc::LabelPos::Above),
+            edge_labeled("B", "A", "red", crate::doc::LabelPos::Below),
+        ]);
+        let layout = LayoutOpts::default();
+        let positions = HashMap::from([("A".into(), (0.0, 0.0)), ("B".into(), (240.0, 0.0))]);
+        let sizes = vec![("A".into(), 80.0, 80.0), ("B".into(), 80.0, 80.0)];
+        let paints = vec![
+            chem_paint("A", 80.0, 80.0, 40.0, 40.0),
+            chem_paint("B", 80.0, 80.0, 40.0, 40.0),
+        ];
+        let fwd = vec![(80.0, 40.0), (240.0, 40.0)];
+        let rev = vec![(240.0, 40.0), (80.0, 40.0)];
+        let seeds = [Some(fwd.clone()), Some(rev.clone())];
+        let plain = refine_scheme_edges(&unlabeled, &layout, &positions, &seeds, &paints, &sizes);
+        let with_lab = refine_scheme_edges(&labeled, &layout, &positions, &seeds, &paints, &sizes);
+        let a = plain.edge_paths[0].clone().expect("plain a");
+        let b = with_lab.edge_paths[0].clone().expect("lab a");
+        for (p, q) in a.iter().zip(&b) {
+            let d = (p.0 - q.0).hypot(p.1 - q.1);
+            assert!(
+                d < 1.0,
+                "labels must not tilt coterminal shafts: {a:?} vs {b:?}"
+            );
+        }
+        let (ox, oy, _) = with_lab.edge_labels[0].expect("ox");
+        let (rx, ry, _) = with_lab.edge_labels[1].expect("red");
+        assert!(
+            oy + 4.0 < 40.0,
+            "ox above should sit above the bundle: oy={oy}"
+        );
+        assert!(
+            ry > 40.0 + 4.0,
+            "red below should sit below the bundle: ry={ry}"
+        );
+        assert!(
+            (ry - oy).abs() > 16.0,
+            "labels should not share one side of the pair: ox=({ox},{oy}) red=({rx},{ry})"
+        );
     }
 }

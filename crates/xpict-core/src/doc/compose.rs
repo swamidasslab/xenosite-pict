@@ -370,6 +370,7 @@ fn build_elk_graph(spec: &DepictSpec, layout: &LayoutOpts, sizes: &[(String, f64
         })
         .collect();
 
+    let coterminal = coterminal_pair_counts(spec);
     let mut edges = Vec::new();
     for (i, e) in spec.edges().iter().enumerate() {
         let eid = format!("e{i}");
@@ -378,8 +379,13 @@ fn build_elk_graph(spec: &DepictSpec, layout: &LayoutOpts, sizes: &[(String, f64
             "sources": e.sources.as_slice(),
             "targets": e.targets.as_slice(),
         });
-        if let Some(labels) = elk_edge_labels(spec, e, &format!("e{i}")) {
-            entry["labels"] = labels;
+        // Coterminal A→B / B→A labels belong to the refine pass. Feeding both
+        // to ELK widens the pack and bends the shared corridor into a mess.
+        let share = coterminal.get(&unordered_mol_pair(e)).copied().unwrap_or(0);
+        if share <= 1 {
+            if let Some(labels) = elk_edge_labels(spec, e, &format!("e{i}")) {
+                entry["labels"] = labels;
+            }
         }
         if let Some(r) = e.edge_routing {
             entry["layoutOptions"] = json!({
@@ -395,6 +401,24 @@ fn build_elk_graph(spec: &DepictSpec, layout: &LayoutOpts, sizes: &[(String, f64
         "children": children,
         "edges": edges,
     })
+}
+
+fn unordered_mol_pair(e: &EdgeNode) -> (String, String) {
+    let s = e.sources.as_slice().first().cloned().unwrap_or_default();
+    let t = e.targets.as_slice().first().cloned().unwrap_or_default();
+    if s <= t {
+        (s, t)
+    } else {
+        (t, s)
+    }
+}
+
+fn coterminal_pair_counts(spec: &DepictSpec) -> HashMap<(String, String), usize> {
+    let mut m = HashMap::new();
+    for e in spec.edges() {
+        *m.entry(unordered_mol_pair(e)).or_insert(0) += 1;
+    }
+    m
 }
 
 fn routing_name(r: EdgeRouting) -> &'static str {
@@ -1680,5 +1704,163 @@ mod tests {
                 vp.y
             );
         }
+    }
+
+    fn pair_spec(labeled: bool) -> DepictSpec {
+        let mut children = vec![
+            Node::Mol(MolNode {
+                id: Some("A".into()),
+                smiles: Some("CCO".into()),
+                ..Default::default()
+            }),
+            Node::Mol(MolNode {
+                id: Some("B".into()),
+                smiles: Some("CC=O".into()),
+                ..Default::default()
+            }),
+        ];
+        if labeled {
+            children.push(Node::Text(TextNode {
+                type_: TextNodeKind::Text,
+                id: Some("ox".into()),
+                text: "ox".into(),
+                color: None,
+                scale: None,
+                opts: None,
+            }));
+            children.push(Node::Text(TextNode {
+                type_: TextNodeKind::Text,
+                id: Some("red".into()),
+                text: "red".into(),
+                color: None,
+                scale: None,
+                opts: None,
+            }));
+        }
+        children.push(Node::Edge(EdgeNode {
+            type_: EdgeNodeKind::Edge,
+            sources: MolIds::One("A".into()),
+            targets: MolIds::One("B".into()),
+            label: labeled.then_some(crate::doc::Label::Placed(crate::doc::LabelPlacement {
+                id: "ox".into(),
+                pos: Some(LabelPos::Above),
+            })),
+            edge_routing: None,
+            role: None,
+            arrow: EdgeArrow::Forward,
+            color: None,
+            stroke_width: None,
+            dashed: false,
+        }));
+        children.push(Node::Edge(EdgeNode {
+            type_: EdgeNodeKind::Edge,
+            sources: MolIds::One("B".into()),
+            targets: MolIds::One("A".into()),
+            label: labeled.then_some(crate::doc::Label::Placed(crate::doc::LabelPlacement {
+                id: "red".into(),
+                pos: Some(LabelPos::Below),
+            })),
+            edge_routing: None,
+            role: None,
+            arrow: EdgeArrow::Forward,
+            color: None,
+            stroke_width: None,
+            dashed: false,
+        }));
+        DepictSpec::ReactionScheme {
+            id: None,
+            children,
+            layout: None,
+            opts: None,
+            color: None,
+            scale: None,
+            aromatic: None,
+            debug_box: None,
+            debug_align: None,
+            pad: None,
+        }
+    }
+
+    #[test]
+    fn coterminal_pair_skips_elk_edge_labels() {
+        let spec = pair_spec(true);
+        let paints = vec![paint("A", 80.0, 60.0), paint("B", 80.0, 60.0)];
+        let sizes: Vec<(String, f64, f64)> = paints
+            .iter()
+            .map(|p| (p.id.clone(), p.scene.width, p.scene.height))
+            .collect();
+        let graph = build_elk_graph(&spec, &LayoutOpts::default(), &sizes);
+        for e in graph["edges"].as_array().expect("edges") {
+            assert!(
+                e.get("labels").is_none(),
+                "coterminal labels must not go to ELK: {e}"
+            );
+        }
+    }
+
+    fn overlay_shafts(scene: &Scene) -> Vec<Vec<(f64, f64)>> {
+        scene
+            .overlays
+            .iter()
+            .filter_map(|p| match p {
+                Primitive::Path {
+                    d, class: Some(c), ..
+                } if c.contains("edge") && !c.contains("head") => Some(path_coords(d)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn labeled_coterminal_pair_stays_parallel() {
+        let paints = vec![paint("A", 80.0, 60.0), paint("B", 80.0, 60.0)];
+        let plain = compose_scheme(&pair_spec(false), &paints).expect("plain");
+        let labeled = compose_scheme(&pair_spec(true), &paints).expect("labeled");
+        let a = overlay_shafts(&plain);
+        let b = overlay_shafts(&labeled);
+        assert_eq!(a.len(), 2, "unlabeled pair shafts");
+        assert_eq!(b.len(), 2, "labeled pair shafts");
+        for (name, shafts) in [("plain", &a), ("labeled", &b)] {
+            for pts in shafts.iter() {
+                let ys: Vec<f64> = pts.iter().map(|p| p.1).collect();
+                let span = ys.iter().cloned().fold(f64::NEG_INFINITY, f64::max)
+                    - ys.iter().cloned().fold(f64::INFINITY, f64::min);
+                assert!(
+                    span < 8.0,
+                    "{name} shaft is not a level lane (y-span {span}): {pts:?}"
+                );
+            }
+            let mean_y =
+                |pts: &[(f64, f64)]| pts.iter().map(|p| p.1).sum::<f64>() / pts.len().max(1) as f64;
+            let gap = (mean_y(&shafts[0]) - mean_y(&shafts[1])).abs();
+            assert!(
+                (gap - 8.0).abs() < 3.0,
+                "{name} lane gap {gap} should stay near 8px"
+            );
+        }
+        let mut ox = None;
+        let mut red = None;
+        for p in &labeled.overlays {
+            if let Primitive::Text { text, x, y, .. } = p {
+                if text == "ox" {
+                    ox = Some((*x, *y));
+                }
+                if text == "red" {
+                    red = Some((*x, *y));
+                }
+            }
+        }
+        let (_, oy) = ox.expect("ox");
+        let (_, ry) = red.expect("red");
+        assert!(
+            oy + 6.0 < ry,
+            "ox should sit above red, got oy={oy} ry={ry}"
+        );
+        assert!(
+            (labeled.width - plain.width).abs() < 24.0,
+            "labels must not widen the ELK pack: plain={} labeled={}",
+            plain.width,
+            labeled.width
+        );
     }
 }
