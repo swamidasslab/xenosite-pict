@@ -2004,6 +2004,110 @@ mod tests {
         );
     }
 
+    /// Notebook example 5: down-flow phenol ⇄ benzaldehyde.
+    fn example5_spec() -> DepictSpec {
+        serde_json::from_str(
+            r#"{
+              "type": "reaction_scheme",
+              "layout": {"direction": "down", "edge_routing": "polyline"},
+              "children": [
+                {"type": "mol", "id": "A", "smiles": "c1ccccc1O", "name": "phenol"},
+                {"type": "mol", "id": "B", "smiles": "c1ccccc1C=O", "name": "benzaldehyde"},
+                {"type": "edge", "sources": "A", "targets": "B", "arrow": "forward"},
+                {"type": "edge", "sources": "B", "targets": "A", "arrow": "forward"}
+              ]
+            }"#,
+        )
+        .unwrap()
+    }
+
+    fn example5_scene() -> Scene {
+        crate::doc::render(&example5_spec())
+            .expect("render")
+            .remove(0)
+            .scene
+    }
+
+    fn overlay_shaft_ds(scene: &Scene) -> Vec<(String, Vec<(f64, f64)>)> {
+        let mut out = Vec::new();
+        for p in &scene.overlays {
+            let Primitive::Path {
+                d, class: Some(c), ..
+            } = p
+            else {
+                continue;
+            };
+            if !c.contains("edge") || c.contains("head") {
+                continue;
+            }
+            out.push((d.clone(), on_curve_verts(d)));
+        }
+        out
+    }
+
+    fn overlay_heads(scene: &Scene) -> Vec<String> {
+        let mut out = Vec::new();
+        for p in &scene.overlays {
+            let Primitive::Path {
+                d, class: Some(c), ..
+            } = p
+            else {
+                continue;
+            };
+            if c.contains("head") {
+                out.push(d.clone());
+            }
+        }
+        out
+    }
+
+    /// Three consecutive interpolating verts inside this span is the Catmull
+    /// loop that painted as a ladder rung.
+    fn has_ladder_rung(verts: &[(f64, f64)]) -> bool {
+        verts.windows(3).any(|w| {
+            let d01 = (w[0].0 - w[1].0).hypot(w[0].1 - w[1].1);
+            let d12 = (w[1].0 - w[2].0).hypot(w[1].1 - w[2].1);
+            let d02 = (w[0].0 - w[2].0).hypot(w[0].1 - w[2].1);
+            d01.max(d12).max(d02) < 8.0
+        })
+    }
+
+    fn viewport_bond_centroid(scene: &Scene, id: &str) -> (f64, f64) {
+        let vp = scene
+            .viewports
+            .iter()
+            .find(|v| v.id.as_deref() == Some(id))
+            .unwrap_or_else(|| panic!("viewport {id}"));
+        let (ox, oy) = vp.local_origin();
+        let mut sx = 0.0;
+        let mut sy = 0.0;
+        let mut n = 0.0;
+        for layer in &vp.layers {
+            if layer.name != LayerName::Bonds {
+                continue;
+            }
+            for prim in &layer.primitives {
+                if let Primitive::Path { d, .. } = prim {
+                    for (x, y) in path_coords(d) {
+                        sx += x + ox;
+                        sy += y + oy;
+                        n += 1.0;
+                    }
+                }
+            }
+        }
+        assert!(n > 0.0, "mol {id} has no bond ink");
+        (sx / n, sy / n)
+    }
+
+    fn head_aims_at(tip: (f64, f64), tan: (f64, f64), tgt: (f64, f64)) -> (f64, f64) {
+        let to_c = (tgt.0 - tip.0, tgt.1 - tip.1);
+        let clen = to_c.0.hypot(to_c.1).max(1e-9);
+        let aim = (tan.0 * to_c.0 + tan.1 * to_c.1) / clen;
+        let perp = (to_c.0 * tan.1 - to_c.1 * tan.0).abs() / clen;
+        (aim, perp)
+    }
+
     fn on_curve_verts(d: &str) -> Vec<(f64, f64)> {
         let pts = path_coords(d);
         if d.contains('C') && pts.len() >= 4 {
@@ -2059,68 +2163,175 @@ mod tests {
         best
     }
 
+    /// Notebook example 5: the centroid chord used to cut CHO / the rings.
     #[test]
-    fn down_coterminal_pair_shafts_clear_chem() {
-        let spec: DepictSpec = serde_json::from_str(
-            r#"{
-              "type": "reaction_scheme",
-              "layout": {"direction": "down", "edge_routing": "polyline"},
-              "children": [
-                {"type": "mol", "id": "A", "smiles": "c1ccccc1O", "name": "phenol"},
-                {"type": "mol", "id": "B", "smiles": "c1ccccc1C=O", "name": "benzaldehyde"},
-                {"type": "edge", "sources": "A", "targets": "B", "arrow": "forward"},
-                {"type": "edge", "sources": "B", "targets": "A", "arrow": "forward"}
-              ]
-            }"#,
-        )
-        .unwrap();
-        let out = crate::doc::render(&spec).expect("render");
-        let scene = &out[0].scene;
-        let mut n = 0usize;
-        for p in &scene.overlays {
-            let Primitive::Path {
-                d, class: Some(c), ..
-            } = p
-            else {
-                continue;
-            };
-            if !c.contains("edge") || c.contains("head") {
-                continue;
-            }
-            n += 1;
-            let verts = on_curve_verts(d);
+    fn example5_shafts_clear_chem() {
+        let scene = example5_scene();
+        let shafts = overlay_shaft_ds(&scene);
+        assert_eq!(shafts.len(), 2, "expected the reverse pair");
+        for (i, (d, verts)) in shafts.iter().enumerate() {
             assert!(
                 verts.len() >= 3 && d.contains('C'),
-                "down-pair chord through chem must bow (Catmull), got {d}"
+                "cutting chord must bow (Catmull), got {d}"
             );
-            let mut clustered = 0usize;
-            for w in verts.windows(2) {
-                if (w[0].0 - w[1].0).hypot(w[0].1 - w[1].1) < 4.0 {
-                    clustered += 1;
-                }
-            }
-            assert!(
-                clustered < 2,
-                "controls collapsed into a ladder rung: verts={verts:?} d={d}"
-            );
-            let samples = crate::catmull::sample_open_catmull(&verts, 8);
-            for p in samples {
-                let dist = composed_mol_ink(scene, p);
+            for p in crate::catmull::sample_open_catmull(verts, 8) {
+                let dist = composed_mol_ink(&scene, p);
                 assert!(
                     dist > 2.0,
-                    "edge {n} sample ({:.1},{:.1}) hits mol ink: d={dist:.1} verts={verts:?} d={d}",
+                    "edge {i} sample ({:.1},{:.1}) hits mol ink: d={dist:.1} verts={verts:?} d={d}",
                     p.0,
                     p.1
                 );
             }
-            if n == 1 {
-                let (tip, tan) = crate::catmull::open_catmull_end_frame(&verts);
-                assert!(
-                    tan.1 > 0.5,
-                    "A→B head must point down at B: tip={tip:?} tan={tan:?} verts={verts:?}"
-                );
+        }
+    }
+
+    /// Collapsed stubs at the bow painted a tiny Catmull loop (a ladder rung)
+    /// and the two lanes met at one point.
+    #[test]
+    fn example5_is_not_a_ladder_rung() {
+        let scene = example5_scene();
+        let shafts = overlay_shaft_ds(&scene);
+        assert_eq!(shafts.len(), 2);
+        for (d, verts) in &shafts {
+            assert!(
+                !has_ladder_rung(verts),
+                "three controls collapsed into a Catmull loop: verts={verts:?} d={d}"
+            );
+        }
+        let sa = crate::catmull::sample_open_catmull(&shafts[0].1, 8);
+        let sb = crate::catmull::sample_open_catmull(&shafts[1].1, 8);
+        let mut best = f64::INFINITY;
+        for a in &sa {
+            for b in &sb {
+                best = best.min((a.0 - b.0).hypot(a.1 - b.1));
             }
         }
-        assert_eq!(n, 2, "expected the reverse pair");
+        assert!(
+            best > 4.0,
+            "lanes met at a rung: min_sep={best} a={:?} b={:?}",
+            shafts[0].1,
+            shafts[1].1
+        );
+    }
+
+    fn path_backtracks(verts: &[(f64, f64)]) -> bool {
+        verts.windows(3).any(|w| {
+            let ax = w[1].0 - w[0].0;
+            let ay = w[1].1 - w[0].1;
+            let bx = w[2].0 - w[1].0;
+            let by = w[2].1 - w[1].1;
+            ax * bx + ay * by < 0.0
+        })
+    }
+
+    fn samples_backtrack_along_chord(verts: &[(f64, f64)]) -> bool {
+        if verts.len() < 2 {
+            return false;
+        }
+        let a = verts[0];
+        let b = *verts.last().unwrap();
+        let vx = b.0 - a.0;
+        let vy = b.1 - a.1;
+        let l2 = (vx * vx + vy * vy).max(1e-9);
+        let mut prev = f64::NEG_INFINITY;
+        for p in crate::catmull::sample_open_catmull(verts, 8) {
+            let t = ((p.0 - a.0) * vx + (p.1 - a.1) * vy) / l2;
+            if t + 0.08 < prev {
+                return true;
+            }
+            prev = prev.max(t);
+        }
+        false
+    }
+
+    /// Five close Catmull controls on the short down-flow corridor painted an
+    /// S-squiggle (y even went backwards on A→B).
+    #[test]
+    fn example5_shafts_do_not_squiggle() {
+        let scene = example5_scene();
+        let shafts = overlay_shaft_ds(&scene);
+        assert_eq!(shafts.len(), 2);
+        for (d, verts) in &shafts {
+            assert!(
+                verts.len() <= 5,
+                "clustered extras must be dropped: verts={verts:?} d={d}"
+            );
+            assert!(
+                !path_backtracks(verts),
+                "interpolating verts reverse: verts={verts:?} d={d}"
+            );
+            assert!(
+                !samples_backtrack_along_chord(verts),
+                "painted cubic backtracks along the corridor: verts={verts:?} d={d}"
+            );
+        }
+    }
+
+    /// A 0.5px last chord aimed the head off the incoming shaft.
+    #[test]
+    fn example5_head_follows_end_shaft() {
+        let scene = example5_scene();
+        let shafts = overlay_shaft_ds(&scene);
+        let heads = overlay_heads(&scene);
+        assert_eq!(shafts.len(), 2);
+        assert_eq!(heads.len(), 2);
+        for (i, (_, verts)) in shafts.iter().enumerate() {
+            let (tip, tan) = crate::catmull::open_catmull_end_frame(verts);
+            let h = path_coords(&heads[i]);
+            assert!(h.len() >= 3, "edge {i} missing filled head: {}", heads[i]);
+            let htip = h[1];
+            let hbase = ((h[0].0 + h[2].0) * 0.5, (h[0].1 + h[2].1) * 0.5);
+            let hx = htip.0 - hbase.0;
+            let hy = htip.1 - hbase.1;
+            let hl = hx.hypot(hy).max(1e-9);
+            let aligned = tan.0 * (hx / hl) + tan.1 * (hy / hl);
+            assert!(
+                aligned > 0.95,
+                "edge {i} head must follow the end shaft: aligned={aligned} tan={tan:?} tip={tip:?} verts={verts:?} head={}",
+                heads[i]
+            );
+        }
+    }
+
+    /// Re-aiming hugs at the bow pointed A→B at the left of benzaldehyde
+    /// instead of down at the ring centroid.
+    #[test]
+    fn example5_heads_aim_at_target_centroids() {
+        let scene = example5_scene();
+        let shafts = overlay_shaft_ds(&scene);
+        let heads = overlay_heads(&scene);
+        assert_eq!(shafts.len(), 2);
+        assert_eq!(heads.len(), 2);
+        let ca = viewport_bond_centroid(&scene, "A");
+        let cb = viewport_bond_centroid(&scene, "B");
+        for (i, tgt) in [(0usize, cb), (1, ca)] {
+            let (d, verts) = &shafts[i];
+            let (tip, tan) = crate::catmull::open_catmull_end_frame(verts);
+            let (aim, perp) = head_aims_at(tip, tan, tgt);
+            assert!(
+                aim > 0.0 && perp < 0.35,
+                "edge {i} last chord must aim at the target centroid: perp={perp} tip={tip:?} tan={tan:?} tgt={tgt:?} verts={verts:?} d={d}"
+            );
+            let h = path_coords(&heads[i]);
+            assert!(h.len() >= 3, "edge {i} missing filled head: {}", heads[i]);
+            let htip = h[1];
+            let hbase = ((h[0].0 + h[2].0) * 0.5, (h[0].1 + h[2].1) * 0.5);
+            let hx = htip.0 - hbase.0;
+            let hy = htip.1 - hbase.1;
+            let hl = hx.hypot(hy).max(1e-9);
+            let (haim, hperp) = head_aims_at(htip, (hx / hl, hy / hl), tgt);
+            assert!(
+                haim > 0.0 && hperp < 0.45,
+                "edge {i} painted head must aim at the target centroid: perp={hperp} tip={htip:?} tgt={tgt:?} d={}",
+                heads[i]
+            );
+        }
+        let (_, a_verts) = &shafts[0];
+        let (_, tan) = crate::catmull::open_catmull_end_frame(a_verts);
+        assert!(
+            tan.1 > 0.5,
+            "A→B must point down at benzaldehyde: tan={tan:?} verts={a_verts:?}"
+        );
     }
 }

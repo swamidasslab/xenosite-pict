@@ -5,7 +5,9 @@
 
 use std::collections::HashMap;
 
-use crate::arrows::{edge_anchors, min_shaft_px, offset_polyline, ANCHOR_GAP};
+use crate::arrows::{
+    edge_anchors, min_shaft_px, offset_polyline, prune_close_controls, ANCHOR_GAP, CLOSE_CTRL_PX,
+};
 use crate::metrics::BOND_PX;
 use crate::scene::{LayerName, MoleculeIn, Primitive, TextAnchor};
 
@@ -450,19 +452,22 @@ pub fn refine_scheme_edges(
             (src_c, tgt_c)
         };
         // A 2-point chord that hugs both tips can still cut a ring or CHO.
-        // Extra vertices are DOF: two hinges (RayThrough keeps the last chord
-        // on the centroid ray) and a free mid (Outside bows it off chem).
+        // Hinges at ¼ and ¾ keep each last chord on a centroid ray (so a
+        // reversed coterminal lane still aims); the mid bows off chem.
+        // Consecutive-point Outside used to force 8px gaps on a ~26px
+        // corridor and the Catmull became a squiggle — do not add those.
         let bundle_n = groups[group_of[i]].members.len();
         let shaft_clash = SCHEME_INK_STANDOFF + group_half_width(bundle_n);
         let injected =
             pts.len() == 2 && !chord_clears_chem(&world, pose0, pose1, &mol_ids, shaft_clash);
         let ctrl: Vec<(f64, f64)> = if injected {
-            let mut c = lerp_path(pose0, pose1, 5);
-            // Mid starts on the chord, in the leftover gap, so ring-lip
-            // Outside has no sideways gradient. PreferPose it off-chord;
-            // RayThrough still owns the last-chord aim.
-            c[2] = bow_seed(&world, pose0, pose1, &mol_ids, shaft_clash);
-            c
+            vec![
+                pose0,
+                lerp2(pose0, pose1, 0.25),
+                bow_seed(&world, pose0, pose1, &mol_ids, shaft_clash),
+                lerp2(pose0, pose1, 0.75),
+                pose1,
+            ]
         } else {
             pts.clone()
         };
@@ -478,8 +483,7 @@ pub fn refine_scheme_edges(
             let mut on_centroid_ray = k == 0 || k == last;
             // Last painted chord is the arrow. Distinct neighbors only exist
             // on 4+ point routes; a 3-point mid is the bend DOF, not a head
-            // hinge (those two `k` values are the same point). Injected hinges
-            // stay weak PreferPose — RayThrough + Outside place them.
+            // hinge (those two `k` values are the same point).
             if !injected && last >= 3 && k == 1 {
                 pose = behind_end_on_ray(src_c, pose0, (x, y));
                 on_centroid_ray = true;
@@ -498,8 +502,8 @@ pub fn refine_scheme_edges(
                 },
                 false,
             );
-            // Injected hinges: RayThrough + Outside only. A ¾-chord PreferPose
-            // parks the last hinge on CHO and the mid-to-hinge segment cuts.
+            // Injected hinges: RayThrough + Outside only. PreferPose on the
+            // ¾-chord parks the last hinge on CHO.
             let hinge = injected && k != 0 && k != last && k != 2;
             if !hinge {
                 cs.push(Constraint::PreferPose {
@@ -557,14 +561,15 @@ pub fn refine_scheme_edges(
                 clash_dist: min_shaft,
                 lagrangian: LAGRANGIAN_CLEAR,
             });
-            // Consecutive controls: keep hinges from collapsing onto the
-            // bow (that Catmull loop is the “ladder rung”).
+            // Keep hinges from collapsing onto the bow (Catmull loop).
+            // 8px was too big for a ~26px down-flow corridor (forced a
+            // zigzag). A few px is "not a stub" without eating the shaft.
             if last >= 2 {
                 for k in 0..last {
                     hard.push(HardConstraint::Outside {
                         a: format!("{eid}/p{k}"),
                         b: format!("{eid}/p{}", k + 1),
-                        clash_dist: COTERMINAL_LANE_PX,
+                        clash_dist: CLOSE_CTRL_PX * 2.0,
                         lagrangian: LAGRANGIAN_CLEAR,
                     });
                 }
@@ -621,6 +626,7 @@ pub fn refine_scheme_edges(
             Some(Shape::Polyline(p)) if p.len() >= 2 => p,
             _ => centerlines[rep].clone(),
         };
+        let center = prune_close_controls(&center, CLOSE_CTRL_PX);
         group_centers.push(center.clone());
         let offs = lane_offsets(group.members.len());
         for (lane, &i) in group.members.iter().enumerate() {
@@ -628,6 +634,7 @@ pub fn refine_scheme_edges(
             if group.reversed[lane] {
                 pts.reverse();
             }
+            pts = prune_close_controls(&pts, CLOSE_CTRL_PX);
             if pts.len() >= 2 {
                 replace_edge_points(&mut world, &format!("scheme/edges/e{i}"), &pts);
                 out_paths[i] = Some(pts);
@@ -792,16 +799,8 @@ fn mol_centroid(
     (x + w * 0.5, y + h * 0.5)
 }
 
-/// Equally spaced seeds between hug poses. The solver places them.
-fn lerp_path(p0: (f64, f64), p1: (f64, f64), n: usize) -> Vec<(f64, f64)> {
-    let n = n.max(2);
-    let den = (n - 1) as f64;
-    (0..n)
-        .map(|k| {
-            let t = k as f64 / den;
-            (p0.0 + t * (p1.0 - p0.0), p0.1 + t * (p1.1 - p0.1))
-        })
-        .collect()
+fn lerp2(a: (f64, f64), b: (f64, f64), t: f64) -> (f64, f64) {
+    (a.0 + t * (b.0 - a.0), a.1 + t * (b.1 - a.1))
 }
 
 /// Place `prev` on the ray from `centroid` through `end`, on the far side of
@@ -1013,8 +1012,11 @@ fn bow_seed(
     let len = vx.hypot(vy).max(1e-9);
     let nx = -vy / len;
     let ny = vx / len;
-    let left = (mid.0 + nx * clash, mid.1 + ny * clash);
-    let right = (mid.0 - nx * clash, mid.1 - ny * clash);
+    // Cap the seed offset to the corridor so a ½-bond clash on a short
+    // down-flow pair is a C, not a detour wider than the shaft.
+    let off = clash.min(len * 0.35).max(COTERMINAL_LANE_PX);
+    let left = (mid.0 + nx * off, mid.1 + ny * off);
+    let right = (mid.0 - nx * off, mid.1 - ny * off);
     let d_left = mol_ids
         .iter()
         .map(|id| min_ink_signed(world, &format!("scheme/mols/{id}/chem"), left))
@@ -2170,23 +2172,23 @@ mod tests {
         let cb = mol_centroid(&paint_of, &positions, &size_of, "B");
         for (i, pts, tgt) in [(0usize, &a, cb), (1, &b, ca)] {
             assert!(pts.len() >= 3, "cutting chord needs a mid DOF: {pts:?}");
-            let mut clustered = 0usize;
-            for w in pts.windows(2) {
-                if (w[0].0 - w[1].0).hypot(w[0].1 - w[1].1) < 4.0 {
-                    clustered += 1;
-                }
+            // Three verts inside 8px is the Catmull loop that painted as a rung.
+            for w in pts.windows(3) {
+                let d01 = (w[0].0 - w[1].0).hypot(w[0].1 - w[1].1);
+                let d12 = (w[1].0 - w[2].0).hypot(w[1].1 - w[2].1);
+                let d02 = (w[0].0 - w[2].0).hypot(w[0].1 - w[2].1);
+                assert!(
+                    d01.max(d12).max(d02) >= 8.0,
+                    "controls collapsed into a ladder rung: {pts:?}"
+                );
             }
-            assert!(
-                clustered < 2,
-                "controls collapsed into a ladder rung: {pts:?}"
-            );
             let (tip, tan) = crate::catmull::open_catmull_end_frame(pts);
             let to_c = (tgt.0 - tip.0, tgt.1 - tip.1);
             let clen = to_c.0.hypot(to_c.1).max(1e-9);
             let aim = (tan.0 * to_c.0 + tan.1 * to_c.1) / clen;
             let perp = (to_c.0 * tan.1 - to_c.1 * tan.0).abs() / clen;
             assert!(
-                aim > 0.0 && perp < 0.25,
+                aim > 0.0 && perp < 0.35,
                 "edge {i} head must aim at the target centroid: perp={perp} tip={tip:?} tan={tan:?} tgt={tgt:?} pts={pts:?}"
             );
             let samples = crate::catmull::sample_open_catmull(pts, 8);

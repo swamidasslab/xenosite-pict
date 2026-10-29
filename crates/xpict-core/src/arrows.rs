@@ -7,6 +7,10 @@ use crate::doc::{EdgeArrow, EdgeRouting};
 
 /// Flatten tiny orthogonal/polyline jogs under this length (px).
 pub const KINK_PX: f64 = 10.0;
+/// Drop Catmull controls closer than this. Orthogonal `KINK_PX` is too big:
+/// a short scheme corridor's last hinge can sit ~4px from the tip and is the
+/// end shaft — only true stubs (sub-2px) should go.
+pub const CLOSE_CTRL_PX: f64 = 2.0;
 /// Corner fillet radius for non-orthogonal (polyline) bends (px).
 pub const TURN_RADIUS: f64 = 36.0;
 
@@ -86,6 +90,112 @@ fn point_line_distance(px: f64, py: f64, ax: f64, ay: f64, bx: f64, by: f64) -> 
     let qx = ax + t * dx;
     let qy = ay + t * dy;
     hypot(px - qx, py - qy)
+}
+
+/// Drop interior vertices closer than `min_sep` to a kept neighbor.
+///
+/// Catmull–Rom through a cluster is a squiggle, and a near-zero last chord
+/// aims the head off the painted end shaft. Endpoints stay. If every interior
+/// point is too close, the furthest-from-chord vertex is kept so a bow does
+/// not collapse back into a cutting chord.
+pub fn prune_close_controls(pts: &[Pt], min_sep: f64) -> Vec<Pt> {
+    if pts.len() <= 2 {
+        return pts.to_vec();
+    }
+    let min_sep = min_sep.max(0.0);
+    let last_i = pts.len() - 1;
+    let end = pts[last_i];
+    let mut out = vec![pts[0]];
+    for &p in &pts[1..last_i] {
+        let prev = *out.last().unwrap();
+        let d_prev = hypot(p.0 - prev.0, p.1 - prev.1);
+        let d_end = hypot(p.0 - end.0, p.1 - end.1);
+        if d_prev >= min_sep && d_end >= min_sep {
+            out.push(p);
+        }
+    }
+    out.push(end);
+    loop {
+        if out.len() <= 2 {
+            break;
+        }
+        let n = out.len();
+        let d0 = hypot(out[1].0 - out[0].0, out[1].1 - out[0].1);
+        let d1 = hypot(out[n - 1].0 - out[n - 2].0, out[n - 1].1 - out[n - 2].1);
+        if d1 < min_sep {
+            out.remove(n - 2);
+            continue;
+        }
+        if d0 < min_sep {
+            out.remove(1);
+            continue;
+        }
+        break;
+    }
+    out = keep_bow_if_collapsed(pts, out);
+    // A vertex that walks backward along the shaft (example 5: y 150→146
+    // on a down-flow pair) is a folded Catmull loop. Drop it.
+    if out.len() > 2 {
+        let start = out[0];
+        let finish = *out.last().unwrap();
+        let dx = finish.0 - start.0;
+        let dy = finish.1 - start.1;
+        let mut kept = vec![start];
+        for &p in &out[1..out.len() - 1] {
+            let prev = *kept.last().unwrap();
+            let sx = p.0 - prev.0;
+            let sy = p.1 - prev.1;
+            let forward = if dy.abs() >= dx.abs() {
+                sy * dy >= 0.0
+            } else {
+                sx * dx >= 0.0
+            };
+            if forward {
+                kept.push(p);
+            }
+        }
+        kept.push(finish);
+        out = keep_bow_if_collapsed(pts, kept);
+    }
+    out
+}
+
+fn keep_bow_if_collapsed(pts: &[Pt], out: Vec<Pt>) -> Vec<Pt> {
+    if out.len() != 2 || pts.len() <= 2 {
+        return out;
+    }
+    let (ax, ay) = pts[0];
+    let (bx, by) = *pts.last().unwrap();
+    let mut best_i = 0usize;
+    let mut best_d = 0.0;
+    for (i, &(px, py)) in pts.iter().enumerate() {
+        if i == 0 || i + 1 == pts.len() {
+            continue;
+        }
+        let d = point_line_distance(px, py, ax, ay, bx, by);
+        if d > best_d {
+            best_d = d;
+            best_i = i;
+        }
+    }
+    if best_d >= 1.0 {
+        let bow = pts[best_i];
+        let dx = bx - ax;
+        let dy = by - ay;
+        let forward = |from: Pt, to: Pt| {
+            let sx = to.0 - from.0;
+            let sy = to.1 - from.1;
+            if dy.abs() >= dx.abs() {
+                sy * dy >= 0.0
+            } else {
+                sx * dx >= 0.0
+            }
+        };
+        if forward((ax, ay), bow) && forward(bow, (bx, by)) {
+            return vec![pts[0], bow, (bx, by)];
+        }
+    }
+    out
 }
 
 /// Drop near-duplicates and flatten kinks under ``kink_px``.
@@ -503,10 +613,13 @@ fn harpoon_poly(
 
 /// Build overlay primitives for one edge given a resolved route.
 pub fn edge_primitives(edge: &EdgePaintIn) -> Vec<EdgePrim> {
-    // Catmull / refine vertices are clearance DOF. Flattening “collinear”
-    // jogs under KINK_PX turns a chem-avoiding bow back into a cutting chord.
-    let kink = if edge.curve_catmull { 0.0 } else { KINK_PX };
-    let pts = simplify_route(&edge.pts, kink);
+    // Catmull: drop clustered controls (squiggle / head on a stub chord)
+    // but do not flatten a small bow as a collinear kink.
+    let pts = if edge.curve_catmull {
+        prune_close_controls(&edge.pts, CLOSE_CTRL_PX)
+    } else {
+        simplify_route(&edge.pts, KINK_PX)
+    };
     if polyline_length(&pts) < 4.0 {
         return Vec::new();
     }
@@ -654,6 +767,115 @@ mod tests {
     }
 
     #[test]
+    fn prune_close_controls_drops_corridor_backtrack() {
+        // Example 5 A→B after refine: y 150 → 146 on a down-flow pair.
+        let pts = vec![
+            (78.9, 136.27),
+            (77.44, 150.38),
+            (57.1, 145.99),
+            (58.7, 154.44),
+            (55.94, 162.64),
+        ];
+        let out = prune_close_controls(&pts, CLOSE_CTRL_PX);
+        for w in out.windows(2) {
+            assert!(
+                w[1].1 >= w[0].1,
+                "down-flow controls must not walk backward: {out:?}"
+            );
+        }
+        let last = *out.last().unwrap();
+        let prev = out[out.len() - 2];
+        let (ux, uy) = {
+            let l = (last.0 - prev.0).hypot(last.1 - prev.1).max(1e-9);
+            ((last.0 - prev.0) / l, (last.1 - prev.1) / l)
+        };
+        assert!(
+            uy > 0.5,
+            "end shaft must stay down after dropping the fold: tan=({ux},{uy}) {out:?}"
+        );
+    }
+
+    #[test]
+    fn prune_close_controls_drops_stub_last_chord() {
+        // Example 5 B→A: last two verts 0.5px apart aimed the head along a
+        // stub while the shaft arrived from the side.
+        let pts = vec![
+            (46.0, 168.0),
+            (50.0, 154.0),
+            (44.0, 133.0),
+            (70.4, 140.4),
+            (70.5, 139.9),
+        ];
+        let out = prune_close_controls(&pts, CLOSE_CTRL_PX);
+        let last = *out.last().unwrap();
+        let prev = out[out.len() - 2];
+        let chord = (last.0 - prev.0).hypot(last.1 - prev.1);
+        assert!(
+            chord >= CLOSE_CTRL_PX,
+            "head chord must be the end shaft, not a stub: {out:?}"
+        );
+    }
+
+    #[test]
+    fn catmull_head_follows_pruned_end_shaft() {
+        let pts = vec![(0.0, 0.0), (40.0, 12.0), (80.0, 0.4), (80.2, 0.0)];
+        let mut edge = paint(pts.clone(), EdgeArrow::Forward, None);
+        edge.curve_catmull = true;
+        edge.label = None;
+        let pruned = prune_close_controls(&pts, CLOSE_CTRL_PX);
+        let (tip, tan) = crate::catmull::open_catmull_end_frame(&pruned);
+        let prims = edge_primitives(&edge);
+        let (_, head) = painted_shaft_and_head(&prims);
+        let nums: Vec<f64> = head
+            .split(|c: char| !(c.is_ascii_digit() || c == '.' || c == '-'))
+            .filter(|s| !s.is_empty())
+            .filter_map(|s| s.parse().ok())
+            .collect();
+        assert!(nums.len() >= 6, "head triangle: {head}");
+        let htip = (nums[2], nums[3]);
+        let hbase = ((nums[0] + nums[4]) * 0.5, (nums[1] + nums[5]) * 0.5);
+        let hx = htip.0 - hbase.0;
+        let hy = htip.1 - hbase.1;
+        let hl = hx.hypot(hy).max(1e-9);
+        let hdir = (hx / hl, hy / hl);
+        let aligned = tan.0 * hdir.0 + tan.1 * hdir.1;
+        assert!(
+            aligned > 0.95,
+            "head must follow the pruned end shaft: aligned={aligned} tan={tan:?} hdir={hdir:?} tip={tip:?} pruned={pruned:?} head={head}"
+        );
+    }
+
+    #[test]
+    fn catmull_bow_under_kink_px_is_not_flattened() {
+        // 7.5 < KINK_PX: polyline simplify would drop the mid and paint an L
+        // through chem. Scheme refine bows live under that threshold.
+        let pts = vec![(0.0, 0.0), (40.0, 7.5), (80.0, 0.0)];
+        let mut edge = paint(pts, EdgeArrow::Forward, None);
+        edge.curve_catmull = true;
+        edge.label = None;
+        let prims = edge_primitives(&edge);
+        let shaft = prims.iter().find_map(|p| match p {
+            EdgePrim::Path { d, class, .. }
+                if class.contains("edge")
+                    && !class.contains("head")
+                    && !class.contains("harpoon") =>
+            {
+                Some(d.as_str())
+            }
+            _ => None,
+        });
+        let shaft = shaft.expect("catmull shaft");
+        assert!(
+            shaft.contains('C'),
+            "bow under KINK_PX must stay Catmull, got {shaft}"
+        );
+        assert!(
+            !shaft.contains('L'),
+            "flattening the bow back to an L is the CHO-cutting regression: {shaft}"
+        );
+    }
+
+    #[test]
     fn simplify_snaps_micro_kink() {
         let jog = vec![(0.0, 0.0), (100.0, 0.0), (100.0, 5.0), (200.0, 5.0)];
         let flat = simplify_route(&jog, KINK_PX);
@@ -759,7 +981,11 @@ mod tests {
         edge.curve_catmull = curve_catmull;
         edge.label = None;
         edge.stroke_width = Some(4.8);
-        let simplified = simplify_route(&pts, KINK_PX);
+        let simplified = if curve_catmull {
+            prune_close_controls(&pts, CLOSE_CTRL_PX)
+        } else {
+            simplify_route(&pts, KINK_PX)
+        };
         let tip = *simplified.last().expect("route");
         let prev = simplified[simplified.len() - 2];
         let head_size =
@@ -816,7 +1042,7 @@ mod tests {
         edge.curve_catmull = true;
         edge.label = None;
         edge.stroke_width = Some(4.8);
-        let simplified = simplify_route(&pts, KINK_PX);
+        let simplified = prune_close_controls(&pts, CLOSE_CTRL_PX);
         let tip = *simplified.last().unwrap();
         let prev = simplified[simplified.len() - 2];
         let head_size =
@@ -862,8 +1088,10 @@ mod tests {
             _ => None,
         });
         let d = d.expect("shaft path");
-        let expected =
-            crate::catmull::centripetal_catmull_rom_open_path(&simplify_route(&pts, KINK_PX));
+        let expected = crate::catmull::centripetal_catmull_rom_open_path(&prune_close_controls(
+            &pts,
+            CLOSE_CTRL_PX,
+        ));
         assert_eq!(d, expected);
         assert!(d.contains('C'), "{d}");
         assert!(!d.contains('Z'), "{d}");

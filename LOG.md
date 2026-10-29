@@ -2,6 +2,8 @@
 
 ## 2026-10-29
 
+- Example 5 shafts were Catmull squiggles: five controls on a ~26px corridor plus 8px consecutive-point Outside had to zigzag, and a 0.5px last chord aimed the head off the incoming shaft. Drop the consecutive-point Outside (that was the overshoot), prune controls closer than 4px after the solve, and paint the head along that last chord. Hinges at ¼ / ¾ stay so a reversed lane still aims at the centroid.
+
 - Example 5 ladder-rung + heads off the bottom centroid: hand-placed stubs/`stub_off_ink` collapsed onto the bow, and re-aiming hugs at the bow took the last chord off the centroid. Refine now only adds DOF (5 equally spaced controls, mid PreferPose off-chord) and lets the solver place them: `RayThrough` aims the last chord at the centroid, `Outside` vs chem + consecutive-point `Outside` keep the bow and stop a Catmull loop. Hug walks the dominant centroid axis (not the diagonal through CHO). Paint still uses Catmull kink 0.
 
 - Coterminal connections (two A→B, or A→B plus B→A) are grouped before ELK: one representative edge is routed, then the path is copied (reversed for the back arrow) onto the other members. Refine still offset-lanes the group. Sending both paths had ELK packing two corridors.
