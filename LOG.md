@@ -2,6 +2,8 @@
 
 ## 2026-10-29
 
+- Product 0.8.0: in-core SMILES/molfile (no Chematic), SMILES radicals, and chrome that keeps off radical dots / aromatic strokes / bond shade via the chem tree.
+
 - Chem tree was missing two painted strokes that occupancy already knew about: aromatic ring circles (greedy segs + post-nudge only) and bond-midpoint PlotDots (shade_disks was atom-only). Both are now leaves — aromatic strokes under `mol/chem/aromatic` (line segments so the hole stays air), bond wash under `mol/chem/shades`. Kits that already `push_clear_bonds` / `push_clear_shades` pick them up. Stereo wedges and Kekulé offset strokes still use the bond centerline.
 
 - Radical dots now treat placed label glyph ink as occupancy (the same full-label ink `place_backbone` already uses so bonds miss traveling H and charges). Open-wedge placement still prefers a bond-clear direction, but a candidate that lands on H / charge is rejected. Fixes `[CH3][CH]CC` parking the CH• on the hydrogen without a CH-specific rule.
