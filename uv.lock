@@ -1300,7 +1300,7 @@ wheels = [
 
 [[package]]
 name = "xpict"
-version = "0.8.0"
+version = "0.8.2"
 source = { editable = "." }
 dependencies = [
     { name = "pydantic" },

@@ -2,6 +2,8 @@
 
 ## 2026-10-30
 
+- Product 0.8.2: network U-routes keep ELK corridors (no NM/Catmull) and hug tips toward the adjacent elbow so end chords stay on the centroid ray.
+
 - Network schemes skip the shaft NM and do not Catmull-paint ELK corridors. Catmull clash vs every mol was shoving U-routes to the page edge (Lidocaine raw net loops). Reactions still Catmull a few elbows. Tips hug toward the adjacent ELK elbow so both end chords stay on the centroid ray (a U-route no longer leaves the wrong face).
 
 - Product 0.8.1: scheme arrows hug mol names as kit-tree ink; FREE ports; no ELK dummy-port terminals.

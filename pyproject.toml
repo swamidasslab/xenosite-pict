@@ -1,6 +1,6 @@
 [project]
 name = "xpict"
-version = "0.8.1"
+version = "0.8.2"
 description = "Declarative molecule depiction for publication-quality vector graphics (Python; also Rust and JS)"
 readme = "README.md"
 license = { text = "MIT" }
