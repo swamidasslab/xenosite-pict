@@ -30,6 +30,7 @@ pub mod plotdot;
 pub mod rings;
 pub mod scene;
 pub(crate) mod smiles;
+pub(crate) mod smiles_syntax;
 pub mod spokes;
 pub(crate) mod structure;
 pub mod svg;

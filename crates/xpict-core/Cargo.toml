@@ -29,10 +29,11 @@ font = ["dep:ttf-parser", "geom"]
 codegen = ["dep:schemars", "dep:ts-rs"]
 
 [dependencies]
-# CoordGen + ELK are always on (native, Python, and wasm). SMILES / molfile
-# parse lives in this crate (aromaticity as written; no Chematic).
+# CoordGen + ELK are always on (native, Python, and wasm). SMILES is the
+# xenosmarts-syntax snapshot in `smiles_syntax/`; molfile is a tiny CTAB reader.
 coordgen-sys = { path = "../coordgen-sys", version = "0.3.0" }
 elkrs = { version = "0.1.1" }
+winnow = "=0.7.15"
 i_overlay = { version = "9.0.0", optional = true }
 ttf-parser = { version = "0.25", optional = true }
 serde = { version = "1", features = ["derive"] }
@@ -42,6 +43,7 @@ ts-rs = { version = "10", optional = true, features = ["serde-compat"] }
 canonaut = "1.0.0"
 
 [dev-dependencies]
+regex = "1"
 
 [[example]]
 name = "export_live_schema"
