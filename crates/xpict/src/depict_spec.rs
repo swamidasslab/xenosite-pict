@@ -32,6 +32,7 @@ pub fn depict(spec: &DepictSpec) -> Result<Vec<Rendered>, Error> {
                     y: a.y,
                     label: a.label,
                     charge: a.charge,
+                    radical: a.radical,
                     mapno: None,
                 })
                 .collect(),
@@ -45,6 +46,7 @@ pub fn depict(spec: &DepictSpec) -> Result<Vec<Rendered>, Error> {
                     y: a.y,
                     label: a.label,
                     charge: a.charge,
+                    radical: a.radical,
                     mapno: None,
                 })
                 .collect(),

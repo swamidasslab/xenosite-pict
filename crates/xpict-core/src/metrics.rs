@@ -61,6 +61,13 @@ pub const SCRIPT_SCALE: f64 = SUBSCRIPT_SCALE;
 /// attachment points read clearly next to heteroatom labels.
 pub const STAR_FRAC: f64 = 2.0;
 
+/// Filled radical-dot radius as a fraction of bond length (ACS / RDKit).
+pub const RADICAL_DOT_FRAC: f64 = 0.07;
+/// Atom-center → radical-dot-center distance, fraction of bond length.
+pub const RADICAL_OFFSET_FRAC: f64 = 0.28;
+/// Spacing between a pair of unpaired-electron dots (carbene).
+pub const RADICAL_PAIR_FRAC: f64 = 0.20;
+
 pub const STROKE_PX: f64 = STROKE_FRAC * BOND_PX;
 pub const OFFSET_PX: f64 = OFFSET_FRAC * BOND_PX;
 pub const WEDGE_HALF_PX: f64 = WEDGE_WIDTH_FRAC * BOND_PX * 0.5;
@@ -73,6 +80,9 @@ pub const LABEL_GAP_PX: f64 = LABEL_GAP_FRAC * BOND_PX;
 /// Halo outline grow (half the label-gap air) + soft white fill.
 pub const HALO_GAP_PX: f64 = 0.5 * LABEL_GAP_PX;
 pub const HALO_OPACITY: f64 = 0.5;
+pub const RADICAL_DOT_PX: f64 = RADICAL_DOT_FRAC * BOND_PX;
+pub const RADICAL_OFFSET_PX: f64 = RADICAL_OFFSET_FRAC * BOND_PX;
+pub const RADICAL_PAIR_PX: f64 = RADICAL_PAIR_FRAC * BOND_PX;
 
 /// Absolute ink multiplier at user-facing ``weight = 1`` (house look).
 ///

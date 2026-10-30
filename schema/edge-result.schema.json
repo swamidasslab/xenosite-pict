@@ -114,6 +114,13 @@
           "format": "uint32",
           "minimum": 0.0
         },
+        "radical": {
+          "description": "Unpaired electrons. SMILES brackets encode this as a hydrogen deficit vs organic valence: `[CH3]` → 1, `C[CH2]` → 1, `[CH2]` → 2.",
+          "default": 0,
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0.0
+        },
         "x": {
           "type": "number",
           "format": "double"

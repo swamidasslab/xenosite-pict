@@ -2033,6 +2033,7 @@ mod tests {
                     y: ay,
                     label: None,
                     charge: 0,
+                    radical: 0,
                     mapno: None,
                 }],
                 bonds: vec![],

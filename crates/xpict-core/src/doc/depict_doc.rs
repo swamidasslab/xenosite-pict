@@ -36,6 +36,9 @@ pub struct SvgAtom {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
     pub charge: i32,
+    /// Unpaired electrons (`[CH3]` / `C[CH2]`). 0 when none.
+    #[serde(default)]
+    pub radical: u8,
 }
 
 /// Bond endpoints in layout order.
@@ -65,6 +68,7 @@ fn pack_rendered(row: DocPaint, source: String) -> Rendered {
             y: a.y,
             label: a.label.clone(),
             charge: a.charge,
+            radical: a.radical,
         })
         .collect();
     let bonds: Vec<SvgBond> = row
@@ -347,6 +351,73 @@ mod tests {
                 !texts.iter().any(|t| *t == "O" || *t == "N"),
                 "{smiles}: bare O/N without H, got {texts:?}"
             );
+        }
+    }
+
+    #[test]
+    fn depict_radicals_paint_dots_and_ch2() {
+        for smiles in ["[CH3]", "C[CH2]", "[OH]"] {
+            let spec = DepictSpec::Mol(MolNode {
+                smiles: Some(smiles.into()),
+                ..Default::default()
+            });
+            let painted = depict(&spec).unwrap();
+            assert_eq!(painted.len(), 1, "{smiles}");
+            let mol = &painted[0].molecule;
+            assert!(
+                mol.atoms.iter().any(|a| a.radical > 0),
+                "{smiles}: parser must set radical, got {:?}",
+                mol.atoms
+                    .iter()
+                    .map(|a| (a.label.clone(), a.radical))
+                    .collect::<Vec<_>>()
+            );
+            let dots: Vec<_> = painted[0]
+                .scene
+                .viewports
+                .iter()
+                .flat_map(|v| v.layers.iter())
+                .filter(|l| l.name == crate::scene::LayerName::Marks)
+                .flat_map(|l| l.primitives.iter())
+                .filter(|p| match p {
+                    crate::scene::Primitive::Circle {
+                        class: Some(c), r, ..
+                    } => c.contains("radical") && *r > 0.5,
+                    _ => false,
+                })
+                .collect();
+            assert!(
+                !dots.is_empty(),
+                "{smiles}: expected a painted radical dot, scene layers {:?}",
+                painted[0]
+                    .scene
+                    .viewports
+                    .iter()
+                    .flat_map(|v| v.layers.iter())
+                    .map(|l| (l.name, l.primitives.len()))
+                    .collect::<Vec<_>>()
+            );
+            if smiles == "C[CH2]" {
+                let texts: Vec<&str> = painted[0]
+                    .scene
+                    .viewports
+                    .iter()
+                    .flat_map(|v| v.layers.iter())
+                    .flat_map(|l| l.primitives.iter())
+                    .filter_map(|p| match p {
+                        crate::scene::Primitive::Path {
+                            data_text: Some(t), ..
+                        } => Some(t.as_str()),
+                        _ => None,
+                    })
+                    .collect();
+                assert!(
+                    texts
+                        .iter()
+                        .any(|t| t.contains("CH₂") || t.contains("CH2") || t.contains("H₂C")),
+                    "C[CH2] must paint a CH2 label plus the dot, got {texts:?}"
+                );
+            }
         }
     }
 

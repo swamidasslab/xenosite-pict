@@ -12,6 +12,11 @@ export type AtomIn = { index: number, element?: string,
  */
 z?: number, x: number, y: number, label?: string, charge: number, 
 /**
+ * Unpaired electrons. SMILES brackets encode this as a hydrogen deficit
+ * vs organic valence: `[CH3]` → 1, `C[CH2]` → 1, `[CH2]` → 2.
+ */
+radical: number, 
+/**
  * Reaction / SMILES atom-map number (`:n` in brackets), when known.
  */
 mapno?: number, };

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from xpict import Pict, render
 
 
@@ -23,13 +21,29 @@ def test_heteroatom_implicit_h_in_svg():
     assert "NH" in aniline or "H₂N" in aniline or "NH₂" in aniline
 
 
-@pytest.mark.xfail(
-    reason="native Chematic/CoordGen paint path does not yet emit radical dots",
-    strict=True,
-)
 def test_radical_dot_in_svg():
     svg = render({"molecules": [{"smiles": "[CH3]"}]})
     assert "radical" in svg
+    assert "<circle" in svg
+
+
+def test_ethyl_radical_depicts_ch2_and_dot():
+    spec = {"molecules": [{"smiles": "C[CH2]"}]}
+    lay = Pict().layout(spec)[0]
+    rads = [a for a in lay.atoms if a.radical]
+    assert len(rads) == 1
+    assert rads[0].radical == 1
+    assert rads[0].label in ("CH2", "H2C")
+    svg = render(spec)
+    assert "radical" in svg
+    assert "<circle" in svg
+    assert "CH₂" in svg or "CH2" in svg or "H₂C" in svg or "H2C" in svg
+
+
+def test_hydroxy_radical_depicts_oh_and_dot():
+    svg = render({"molecules": [{"smiles": "[OH]"}]})
+    assert "radical" in svg
+    assert "OH" in svg or "HO" in svg
 
 
 def test_star_label():

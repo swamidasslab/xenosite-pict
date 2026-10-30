@@ -291,6 +291,10 @@ pub struct AtomIn {
     pub label: Option<String>,
     #[serde(default)]
     pub charge: i32,
+    /// Unpaired electrons. SMILES brackets encode this as a hydrogen deficit
+    /// vs organic valence: `[CH3]` → 1, `C[CH2]` → 1, `[CH2]` → 2.
+    #[serde(default)]
+    pub radical: u8,
     /// Reaction / SMILES atom-map number (`:n` in brackets), when known.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
@@ -837,6 +841,7 @@ mod tests {
             y: 0.0,
             label: None,
             charge: 0,
+            radical: 0,
             mapno: None,
         };
         assert_eq!(with_el.symbol(), "N");
@@ -849,6 +854,7 @@ mod tests {
             y: 0.0,
             label: None,
             charge: 0,
+            radical: 0,
             mapno: None,
         };
         assert_eq!(empty_el.symbol(), "O");
@@ -861,6 +867,7 @@ mod tests {
             y: 0.0,
             label: None,
             charge: 0,
+            radical: 0,
             mapno: None,
         };
         assert_eq!(z_only.symbol(), "N");
@@ -873,6 +880,7 @@ mod tests {
             y: 0.0,
             label: None,
             charge: 0,
+            radical: 0,
             mapno: None,
         };
         assert_eq!(bare.symbol(), "C");

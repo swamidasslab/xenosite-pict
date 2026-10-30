@@ -2683,6 +2683,7 @@ mod tests {
             y,
             label: label.map(str::to_string),
             charge: 0,
+            radical: 0,
             mapno: None,
         }
     }
@@ -3793,6 +3794,7 @@ mod tests {
                 y: 50.0 + 30.0 * t.sin(),
                 label: None,
                 charge: 0,
+                radical: 0,
                 mapno: None,
             });
         }
@@ -3804,6 +3806,7 @@ mod tests {
             y: 50.0 - 30.0 - 20.0,
             label: Some("OH".into()),
             charge: 0,
+            radical: 0,
             mapno: None,
         });
         let mut bonds = Vec::new();

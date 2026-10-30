@@ -156,6 +156,7 @@ pub struct SvgAtom {
     pub y: f64,
     pub label: Option<String>,
     pub charge: i32,
+    pub radical: u8,
     pub mapno: Option<i32>,
 }
 
@@ -305,6 +306,7 @@ fn to_coord_list(atoms: &[CoreAtom]) -> Vec<SvgAtom> {
             y: a.y,
             label: a.label.clone(),
             charge: a.charge,
+            radical: a.radical,
             mapno: None,
         })
         .collect()

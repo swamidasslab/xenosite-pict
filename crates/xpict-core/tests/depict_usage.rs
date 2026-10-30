@@ -26,6 +26,7 @@ fn atom_charged(
         y,
         label: label.map(str::to_string),
         charge,
+        radical: 0,
         mapno: None,
     }
 }

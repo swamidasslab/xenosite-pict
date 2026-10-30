@@ -850,6 +850,7 @@ mod tests {
                     y: 10.0,
                     label: None,
                     charge: 0,
+                    radical: 0,
                     mapno: None,
                 }],
                 bonds: vec![],

@@ -123,6 +123,7 @@ class SvgAtom:
     y: float
     label: str | None = None
     charge: int = 0
+    radical: int = 0
 
 
 @dataclass

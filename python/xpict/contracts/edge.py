@@ -79,6 +79,7 @@ class AtomIn(StrictModel):
     element: str | None = None
     label: str | None = None
     mapno: Annotated[int | None, Field(description='Reaction / SMILES atom-map number (`:n` in brackets), when known.')] = None
+    radical: int = Field(default=0, description='Unpaired electrons. SMILES brackets encode this as a hydrogen deficit vs organic valence: `[CH3]` → 1, `C[CH2]` → 1, `[CH2]` → 2.')
     z: Annotated[int | None, Field(description='Atomic number (`0` = ``*``). Used when ``element`` is omitted.')] = None
 
 

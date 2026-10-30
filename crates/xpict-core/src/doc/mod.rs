@@ -486,6 +486,7 @@ mod tests {
                     y: 0.0,
                     label: None,
                     charge: 0,
+                    radical: 0,
                     mapno: None,
                 },
                 AtomIn {
@@ -496,6 +497,7 @@ mod tests {
                     y: 0.0,
                     label: None,
                     charge: 0,
+                    radical: 0,
                     mapno: None,
                 },
                 AtomIn {
@@ -506,6 +508,7 @@ mod tests {
                     y: 1.0,
                     label: Some("OH".into()),
                     charge: 0,
+                    radical: 0,
                     mapno: None,
                 },
             ],
@@ -717,6 +720,7 @@ mod tests {
                     y: 0.0,
                     label: Some("*".into()),
                     charge: 0,
+                    radical: 0,
                     mapno: None,
                 },
                 AtomIn {
@@ -727,6 +731,7 @@ mod tests {
                     y: 0.0,
                     label: None,
                     charge: 0,
+                    radical: 0,
                     mapno: None,
                 },
             ],
@@ -940,6 +945,7 @@ mod tests {
                     y: 0.0,
                     label: Some("*".into()),
                     charge: 0,
+                    radical: 0,
                     mapno: None,
                 },
                 AtomIn {
@@ -950,6 +956,7 @@ mod tests {
                     y: 0.0,
                     label: None,
                     charge: 0,
+                    radical: 0,
                     mapno: None,
                 },
                 AtomIn {
@@ -960,6 +967,7 @@ mod tests {
                     y: 0.0,
                     label: Some("*".into()),
                     charge: 0,
+                    radical: 0,
                     mapno: None,
                 },
             ],

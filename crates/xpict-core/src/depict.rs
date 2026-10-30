@@ -14,7 +14,8 @@ use crate::font::FaceStyle;
 use crate::labels::{self, place_backbone};
 use crate::metrics::{
     halo_gap_for_weight, halo_stroke_for_weight, label_weight_grow_px, stroke_px_for_weight,
-    BOND_PX, FONT_PX, HALO_OPACITY, PAD_PX, SHADE_BOTH_FRAC, SHADE_FRAC,
+    BOND_PX, FONT_PX, HALO_OPACITY, PAD_PX, RADICAL_DOT_PX, RADICAL_OFFSET_PX, RADICAL_PAIR_PX,
+    SHADE_BOTH_FRAC, SHADE_FRAC,
 };
 use crate::plotdot::PlotDot;
 use crate::rings::{aromatic_ring_circles, bond_interior_normals, find_sssr, kekule_paint_orders};
@@ -47,12 +48,19 @@ pub fn frame_offset(mol: &MoleculeIn) -> (f64, f64) {
     }
     let degree = atom_bond_degree(mol);
     let label_pad = FONT_PX * 0.85;
+    let radical_pad = RADICAL_OFFSET_PX + RADICAL_DOT_PX;
     for a in &mol.atoms {
         if display_label(a, *degree.get(&a.index).unwrap_or(&0)).is_some() {
             min_x = min_x.min(a.x - label_pad);
             max_x = max_x.max(a.x + label_pad * 1.6);
             min_y = min_y.min(a.y - label_pad);
             max_y = max_y.max(a.y + label_pad);
+        }
+        if a.radical > 0 {
+            min_x = min_x.min(a.x - radical_pad);
+            max_x = max_x.max(a.x + radical_pad);
+            min_y = min_y.min(a.y - radical_pad);
+            max_y = max_y.max(a.y + radical_pad);
         }
     }
     let pad = PAD_PX;
@@ -100,12 +108,19 @@ pub(crate) fn depict_chem(mol: &MoleculeIn) -> Scene {
     }
     let degree = atom_bond_degree(mol);
     let label_pad = FONT_PX * 0.85;
+    let radical_pad = RADICAL_OFFSET_PX + RADICAL_DOT_PX;
     for a in &mol.atoms {
         if display_label(a, *degree.get(&a.index).unwrap_or(&0)).is_some() {
             min_x = min_x.min(a.x - label_pad);
             max_x = max_x.max(a.x + label_pad * 1.6);
             min_y = min_y.min(a.y - label_pad);
             max_y = max_y.max(a.y + label_pad);
+        }
+        if a.radical > 0 {
+            min_x = min_x.min(a.x - radical_pad);
+            max_x = max_x.max(a.x + radical_pad);
+            min_y = min_y.min(a.y - radical_pad);
+            max_y = max_y.max(a.y + radical_pad);
         }
     }
     let pad = PAD_PX;
@@ -252,6 +267,16 @@ pub(crate) fn depict_chem(mol: &MoleculeIn) -> Scene {
         });
     }
 
+    let radical_dots = radical_dot_prims(mol, &by_index, dx, dy, color);
+    #[cfg(feature = "geom")]
+    {
+        for p in &radical_dots {
+            if let Primitive::Circle { cx, cy, r, .. } = p {
+                label_ink_for_halo.push(crate::geom::Shape::disk(*cx, *cy, *r, 12));
+            }
+        }
+    }
+
     let shade_prims = paint_shade(mol, &by_index, dx, dy);
     let halo_prims = paint_halo(
         &bond_strokes_for_halo,
@@ -311,6 +336,12 @@ pub(crate) fn depict_chem(mol: &MoleculeIn) -> Scene {
             primitives: label_prims,
         });
     }
+    if !radical_dots.is_empty() {
+        layers.push(Layer {
+            name: LayerName::Marks,
+            primitives: radical_dots,
+        });
+    }
     if !debug_prims.is_empty() {
         layers.push(Layer {
             name: LayerName::Overlay,
@@ -356,6 +387,135 @@ fn atom_bond_degree(mol: &MoleculeIn) -> HashMap<i32, usize> {
         *d.entry(b.end).or_insert(0) += 1;
     }
     d
+}
+
+/// Unit vector from the atom into the largest open wedge (away from bonds).
+///
+/// One neighbor: perpendicular to the bond, preferring SVG-up (−Y) so a
+/// terminal `CH2•` sits above the carbon rather than on the traveling H.
+/// Isolated atoms: north-east.
+fn radical_open_dir(ax: f64, ay: f64, nbrs: &[(f64, f64)]) -> (f64, f64) {
+    const TAU: f64 = std::f64::consts::TAU;
+    if nbrs.is_empty() {
+        let s = std::f64::consts::FRAC_1_SQRT_2;
+        return (s, -s);
+    }
+    if nbrs.len() == 1 {
+        let (nx, ny) = nbrs[0];
+        let bx = nx - ax;
+        let by = ny - ay;
+        let len = bx.hypot(by).max(1e-9);
+        let px = -by / len;
+        let py = bx / len;
+        // Prefer SVG-up so the dot does not sit on traveling H.
+        if py > 0.0 {
+            return (-px, -py);
+        }
+        return (px, py);
+    }
+    let mut angs: Vec<f64> = nbrs
+        .iter()
+        .map(|&(nx, ny)| (ny - ay).atan2(nx - ax))
+        .collect();
+    angs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let n = angs.len();
+    let mut best_gap = -1.0;
+    let mut best_bisect = 0.0;
+    for i in 0..n {
+        let a0 = angs[i];
+        let a1 = if i + 1 == n {
+            angs[0] + TAU
+        } else {
+            angs[i + 1]
+        };
+        let gap = a1 - a0;
+        if gap > best_gap {
+            best_gap = gap;
+            best_bisect = a0 + 0.5 * gap;
+        }
+    }
+    (best_bisect.cos(), best_bisect.sin())
+}
+
+fn radical_dot_centers(ax: f64, ay: f64, dir: (f64, f64), n: u8) -> Vec<(f64, f64)> {
+    let (dx, dy) = dir;
+    let (px, py) = (-dy, dx);
+    let offset = RADICAL_OFFSET_PX;
+    match n {
+        0 => Vec::new(),
+        1 => vec![(ax + dx * offset, ay + dy * offset)],
+        2 => {
+            let h = 0.5 * RADICAL_PAIR_PX;
+            vec![
+                (ax + dx * offset + px * h, ay + dy * offset + py * h),
+                (ax + dx * offset - px * h, ay + dy * offset - py * h),
+            ]
+        }
+        n => {
+            let n_i = i32::from(n);
+            let span = std::f64::consts::FRAC_PI_2;
+            (0..n_i)
+                .map(|i| {
+                    let t = if n_i == 1 {
+                        0.0
+                    } else {
+                        (i as f64 / (n_i - 1) as f64) - 0.5
+                    };
+                    let ang = t * span;
+                    let (c, s) = (ang.cos(), ang.sin());
+                    let rx = dx * c - dy * s;
+                    let ry = dx * s + dy * c;
+                    (ax + rx * offset, ay + ry * offset)
+                })
+                .collect()
+        }
+    }
+}
+
+fn radical_dot_prims(
+    mol: &MoleculeIn,
+    by_index: &HashMap<i32, usize>,
+    dx: f64,
+    dy: f64,
+    color: &str,
+) -> Vec<Primitive> {
+    let n = mol.atoms.len();
+    let mut nbrs: Vec<Vec<(f64, f64)>> = vec![Vec::new(); n];
+    for b in &mol.bonds {
+        let Some(&i) = by_index.get(&b.begin) else {
+            continue;
+        };
+        let Some(&j) = by_index.get(&b.end) else {
+            continue;
+        };
+        if i >= n || j >= n {
+            continue;
+        }
+        nbrs[i].push((mol.atoms[j].x + dx, mol.atoms[j].y + dy));
+        nbrs[j].push((mol.atoms[i].x + dx, mol.atoms[i].y + dy));
+    }
+    let mut out = Vec::new();
+    for (i, a) in mol.atoms.iter().enumerate() {
+        if a.radical == 0 {
+            continue;
+        }
+        let ax = a.x + dx;
+        let ay = a.y + dy;
+        let dir = radical_open_dir(ax, ay, &nbrs[i]);
+        for (cx, cy) in radical_dot_centers(ax, ay, dir, a.radical) {
+            out.push(Primitive::Circle {
+                cx,
+                cy,
+                r: RADICAL_DOT_PX,
+                fill: Some(color.to_string()),
+                stroke: None,
+                stroke_width: 0.0,
+                opacity: 1.0,
+                class: Some(format!("atom-{} radical", a.index)),
+            });
+        }
+    }
+    out
 }
 
 /// Explicit ``label``, else heteroatom / charged / isolated-carbon symbol.
@@ -619,6 +779,7 @@ mod tests {
             y,
             label: label.map(str::to_string),
             charge: 0,
+            radical: 0,
             mapno: None,
         }
     }
@@ -727,6 +888,7 @@ mod tests {
                     y: 0.0,
                     label: None,
                     charge: 0,
+                    radical: 0,
                     mapno: None,
                 },
                 AtomIn {
@@ -737,6 +899,7 @@ mod tests {
                     y: 0.0,
                     label: Some("O".into()),
                     charge: 0,
+                    radical: 0,
                     mapno: None,
                 },
             ],
@@ -946,6 +1109,7 @@ mod tests {
                 y: -20.0 * ang.sin(),
                 label: None,
                 charge: 0,
+                radical: 0,
                 mapno: None,
             });
         }
@@ -1008,6 +1172,7 @@ mod tests {
                 y: -20.0 * ang.sin(),
                 label: None,
                 charge: 0,
+                radical: 0,
                 mapno: None,
             });
         }
@@ -1575,6 +1740,7 @@ mod tests {
             y: 0.0,
             label: Some("  ".into()),
             charge: 0,
+            radical: 0,
             mapno: None,
         };
         let mol = MoleculeIn {
@@ -1631,6 +1797,70 @@ mod tests {
         assert!(texts
             .iter()
             .any(|t| t.contains('⁻') || t.contains('−') || t.contains('-')));
+    }
+
+    #[test]
+    fn radical_dots_paint_filled_circles_on_marks() {
+        let mut methyl = atom(0, "C", 0.0, 0.0, Some("CH3"));
+        methyl.radical = 1;
+        let mol = MoleculeIn {
+            id: None,
+            atoms: vec![methyl],
+            bonds: vec![],
+            ..Default::default()
+        };
+        let scene = depict_molecule(&mol);
+        let marks = scene.viewports[0]
+            .layers
+            .iter()
+            .find(|l| l.name == LayerName::Marks)
+            .expect("radical dots live on the marks layer");
+        let dots: Vec<_> = marks
+            .primitives
+            .iter()
+            .filter_map(|p| match p {
+                Primitive::Circle {
+                    r,
+                    class: Some(c),
+                    fill: Some(f),
+                    ..
+                } if c.contains("radical") => Some((*r, f.clone(), c.clone())),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(dots.len(), 1, "methyl radical paints one dot, got {dots:?}");
+        assert!(
+            dots[0].0 > 0.5,
+            "dot radius must be visible, got {}",
+            dots[0].0
+        );
+        assert_eq!(dots[0].1, "#111");
+        assert!(dots[0].2.contains("atom-0"));
+
+        let mut carbene = atom(0, "C", 0.0, 0.0, Some("CH2"));
+        carbene.radical = 2;
+        let mol = MoleculeIn {
+            id: None,
+            atoms: vec![carbene],
+            bonds: vec![],
+            ..Default::default()
+        };
+        let scene = depict_molecule(&mol);
+        let n = scene.viewports[0]
+            .layers
+            .iter()
+            .find(|l| l.name == LayerName::Marks)
+            .map(|l| {
+                l.primitives
+                    .iter()
+                    .filter(|p| match p {
+                        Primitive::Circle { class: Some(c), .. } => c.contains("radical"),
+                        _ => false,
+                    })
+                    .count()
+            })
+            .unwrap_or(0);
+        assert_eq!(n, 2, "carbene paints two unpaired-electron dots");
     }
 
     #[test]

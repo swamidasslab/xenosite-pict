@@ -65,6 +65,7 @@ class AtomInDict(TypedDict, total=False):
     element: NotRequired[str]
     label: NotRequired[str]
     mapno: NotRequired[int]
+    radical: NotRequired[int]
     z: NotRequired[int]
 
 

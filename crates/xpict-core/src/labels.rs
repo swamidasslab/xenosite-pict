@@ -66,11 +66,22 @@ pub struct PlacedLabel {
 ///
 /// Silent carbons (`C` with charge 0 **and** at least one bond) return `None`.
 /// Isolated carbon (methane, `[C]`) keeps a label so the mol is not blank.
+/// A radical carbon with implicit H (`C[CH2]`) keeps ``CH2``; a radical
+/// vertex with no H (phenyl radical) stays silent — the dot is paint.
 /// Hydrogens become ``OH`` / ``NH2`` / ``CH4``; charge is left for
 /// [`crate::depict`] / callers that append via `AtomIn.charge`, or pass
 /// `charge` here to bake it in (RDKit host path).
-pub fn atom_display_label(element: &str, imp_hs: u32, charge: i32, n_bonds: u32) -> Option<String> {
-    if element == "C" && charge == 0 && n_bonds > 0 {
+pub fn atom_display_label(
+    element: &str,
+    imp_hs: u32,
+    charge: i32,
+    n_bonds: u32,
+    radical: u8,
+) -> Option<String> {
+    let silent_skeletal = element == "C" && charge == 0 && n_bonds > 0 && radical == 0;
+    let silent_radical_vertex =
+        element == "C" && charge == 0 && n_bonds > 0 && radical > 0 && imp_hs == 0;
+    if silent_skeletal || silent_radical_vertex {
         return None;
     }
     if element == "*" {
@@ -890,18 +901,22 @@ mod tests {
 
     #[test]
     fn atom_display_label_appends_implicit_h() {
-        assert_eq!(atom_display_label("O", 1, 0, 1).as_deref(), Some("OH"));
-        assert_eq!(atom_display_label("N", 2, 0, 1).as_deref(), Some("NH2"));
-        assert_eq!(atom_display_label("N", 4, 1, 0).as_deref(), Some("NH4+"));
-        assert_eq!(atom_display_label("O", 0, -1, 0).as_deref(), Some("O−"));
+        assert_eq!(atom_display_label("O", 1, 0, 1, 0).as_deref(), Some("OH"));
+        assert_eq!(atom_display_label("N", 2, 0, 1, 0).as_deref(), Some("NH2"));
+        assert_eq!(atom_display_label("N", 4, 1, 0, 0).as_deref(), Some("NH4+"));
+        assert_eq!(atom_display_label("O", 0, -1, 0, 0).as_deref(), Some("O−"));
         // Bonded carbon stays a skeletal vertex.
-        assert_eq!(atom_display_label("C", 3, 0, 1), None);
+        assert_eq!(atom_display_label("C", 3, 0, 1, 0), None);
         // Isolated carbon must paint (methane / bare C).
-        assert_eq!(atom_display_label("C", 4, 0, 0).as_deref(), Some("CH4"));
-        assert_eq!(atom_display_label("C", 0, 0, 0).as_deref(), Some("C"));
+        assert_eq!(atom_display_label("C", 4, 0, 0, 0).as_deref(), Some("CH4"));
+        assert_eq!(atom_display_label("C", 0, 0, 0, 0).as_deref(), Some("C"));
         // Charged carbon keeps H (RDKit): [CH3+] → CH3+.
-        assert_eq!(atom_display_label("C", 3, 1, 0).as_deref(), Some("CH3+"));
-        assert_eq!(atom_display_label("*", 0, 0, 0).as_deref(), Some("*"));
+        assert_eq!(atom_display_label("C", 3, 1, 0, 0).as_deref(), Some("CH3+"));
+        assert_eq!(atom_display_label("*", 0, 0, 0, 0).as_deref(), Some("*"));
+        // Ethyl radical CH2 keeps H; phenyl-radical vertex does not.
+        assert_eq!(atom_display_label("C", 2, 0, 1, 1).as_deref(), Some("CH2"));
+        assert_eq!(atom_display_label("C", 0, 0, 2, 1), None);
+        assert_eq!(atom_display_label("O", 1, 0, 0, 1).as_deref(), Some("OH"));
     }
 
     #[test]

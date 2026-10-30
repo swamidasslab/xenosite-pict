@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 
-use chematic::core::{implicit_hcount, AtomIdx, BondOrder, Molecule};
+use chematic::core::{implicit_hcount, valence_inferred_hcount, AtomIdx, BondOrder, Molecule};
 use chematic::mol::{parse_mol, parse_mol_v3000};
 use chematic::smiles::{self, parse_cxsmiles};
 
@@ -28,8 +28,19 @@ struct Parsed {
     paint_orders: Vec<f64>,
     /// Chematic implicit (or bracket-stored) H counts per atom.
     implicit_hs: Vec<u32>,
+    /// Unpaired electrons (bracket H deficit vs organic valence).
+    radicals: Vec<u8>,
     /// Chematic atom-map numbers (`:n` in reaction SMILES), parallel to atoms.
     atom_mapnos: Vec<Option<u32>>,
+}
+
+/// Unpaired electrons: valence-inferred H minus stored/implicit H.
+///
+/// Bracket SMILES encodes radicals as a hydrogen deficit (`[CH3]` → 1,
+/// `C[CH2]` → 1, `[CH2]` → 2). Organic-subset atoms always match inferred
+/// H, so they contribute 0.
+fn unpaired_electrons(mol: &Molecule, idx: AtomIdx) -> u8 {
+    valence_inferred_hcount(mol, idx).saturating_sub(implicit_hcount(mol, idx))
 }
 
 fn ctab_bond_order(order: BondOrder, a_arom: bool, b_arom: bool) -> i32 {
@@ -56,6 +67,7 @@ fn molecule_to_layout(mol: &Molecule) -> Result<Parsed, String> {
     let mut atomic_numbers = Vec::with_capacity(n);
     let mut formal_charges = Vec::with_capacity(n);
     let mut implicit_hs = Vec::with_capacity(n);
+    let mut radicals = Vec::with_capacity(n);
     let mut atom_mapnos = Vec::with_capacity(n);
     let mut arom = Vec::with_capacity(n);
     for i in 0..n {
@@ -69,6 +81,7 @@ fn molecule_to_layout(mol: &Molecule) -> Result<Parsed, String> {
         atomic_numbers.push(z);
         formal_charges.push(i32::from(atom.charge));
         implicit_hs.push(u32::from(implicit_hcount(mol, idx)));
+        radicals.push(unpaired_electrons(mol, idx));
         atom_mapnos.push(atom.atom_map.map(u32::from));
         arom.push(atom.aromatic);
     }
@@ -103,6 +116,7 @@ fn molecule_to_layout(mol: &Molecule) -> Result<Parsed, String> {
         atom_indices: (0..n as i32).collect(),
         paint_orders,
         implicit_hs,
+        radicals,
         atom_mapnos,
     })
 }
@@ -184,9 +198,10 @@ fn to_molecule_in(id: &str, parsed: &Parsed, coords: &LayoutResult, source: &str
             let charge = parsed.layout.formal_charges[i];
             let element = element_symbol(z).to_string();
             let hs = parsed.implicit_hs.get(i).copied().unwrap_or(0);
+            let radical = parsed.radicals.get(i).copied().unwrap_or(0);
             // Charge stays on `AtomIn.charge`; `display_label` appends the
             // suffix so we do not bake it into the string twice.
-            let label = atom_display_label(&element, hs, 0, degree[i]);
+            let label = atom_display_label(&element, hs, 0, degree[i], radical);
             AtomIn {
                 index: parsed.atom_indices.get(i).copied().unwrap_or(i as i32),
                 element: Some(element),
@@ -195,6 +210,7 @@ fn to_molecule_in(id: &str, parsed: &Parsed, coords: &LayoutResult, source: &str
                 y: ys.get(i).copied().unwrap_or(0.0),
                 label,
                 charge,
+                radical,
                 mapno: parsed.atom_mapnos.get(i).copied().flatten(),
             }
         })
@@ -719,6 +735,51 @@ mod tests {
                 .iter()
                 .map(|a| a.label.clone())
                 .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn smiles_bracket_radicals_set_unpaired_and_ch2_label() {
+        let methyl = free_layout("[CH3]", "m").unwrap().molecule;
+        assert_eq!(methyl.atoms.len(), 1);
+        assert_eq!(methyl.atoms[0].radical, 1);
+        assert_eq!(methyl.atoms[0].label.as_deref(), Some("CH3"));
+
+        let ethyl = free_layout("C[CH2]", "m").unwrap().molecule;
+        assert_eq!(ethyl.atoms.len(), 2);
+        let rad = ethyl
+            .atoms
+            .iter()
+            .find(|a| a.radical > 0)
+            .expect("C[CH2] must mark the methylene as a radical");
+        assert_eq!(rad.radical, 1);
+        assert_eq!(rad.label.as_deref(), Some("CH2"));
+        assert!(
+            ethyl
+                .atoms
+                .iter()
+                .any(|a| a.radical == 0 && a.label.is_none()),
+            "the methyl carbon stays a silent skeletal vertex, got {:?}",
+            ethyl
+                .atoms
+                .iter()
+                .map(|a| (a.label.clone(), a.radical))
+                .collect::<Vec<_>>()
+        );
+
+        let carbene = free_layout("[CH2]", "m").unwrap().molecule;
+        assert_eq!(carbene.atoms[0].radical, 2);
+        assert_eq!(carbene.atoms[0].label.as_deref(), Some("CH2"));
+
+        let hydroxy = free_layout("[OH]", "m").unwrap().molecule;
+        assert_eq!(hydroxy.atoms[0].radical, 1);
+        assert_eq!(hydroxy.atoms[0].label.as_deref(), Some("OH"));
+
+        let ethane = free_layout("CC", "m").unwrap().molecule;
+        assert!(
+            ethane.atoms.iter().all(|a| a.radical == 0),
+            "organic-subset ethane is not a radical, got {:?}",
+            ethane.atoms.iter().map(|a| a.radical).collect::<Vec<_>>()
         );
     }
 

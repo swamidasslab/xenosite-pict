@@ -15,6 +15,7 @@ class SvgAtomDict(TypedDict, total=False):
     y: Required[float]
     label: NotRequired[str | None]
     charge: NotRequired[int]
+    radical: NotRequired[int]
 
 
 class SvgBondDict(TypedDict, total=False):
