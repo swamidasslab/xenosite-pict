@@ -51,6 +51,7 @@ jobs:
       - name: llvm-cov (line floor)
         # Floor is current crate coverage after align/chrome/spokes landed.
         # Biggest remaining holes: caption, chrome_paint, layout_constraints.
+        # Vendored smiles_syntax/ is ignored (see scripts/rust_coverage.sh).
         run: make cov-lcov
         env:
           RUST_COV_MIN: "93"

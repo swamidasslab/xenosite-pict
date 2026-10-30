@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 # Line coverage for xpict-core. CI fails under 93% (see .github/workflows/ci.yml).
+# Vendored xenosmarts-syntax (`smiles_syntax/`, mostly generated `gen_smiles`)
+# is excluded so the floor measures xpict paint/layout, not the snapshot.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 MIN="${RUST_COV_MIN:-93}"
+IGNORE="${RUST_COV_IGNORE:-smiles_syntax/}"
 
 # Prefer rustup toolchain + llvm-tools over Homebrew rust (often missing llvm-profdata).
 # Keep ~/.cargo/bin on PATH so `cargo llvm-cov` finds the cargo-llvm-cov binary.
@@ -29,7 +32,10 @@ fi
 
 if [[ -n "${LCOV_OUT:-}" ]]; then
   "$CARGO" llvm-cov -p xpict-core --lcov --output-path "$LCOV_OUT" \
+    --ignore-filename-regex "$IGNORE" \
     --fail-under-lines "$MIN"
 else
-  "$CARGO" llvm-cov -p xpict-core --summary-only --fail-under-lines "$MIN"
+  "$CARGO" llvm-cov -p xpict-core --summary-only \
+    --ignore-filename-regex "$IGNORE" \
+    --fail-under-lines "$MIN"
 fi

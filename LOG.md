@@ -2,6 +2,8 @@
 
 ## 2026-10-29
 
+- `release/v0.8.0` failed llvm-cov at 92.06% (floor 93). The drop is the vendored xenosmarts-syntax snapshot (`smiles_syntax/gen_smiles.rs` ~70% on generated matchers). Coverage now ignores `smiles_syntax/` so the floor still tracks xpict paint/layout (~93.9% on the 0.8.0 lcov).
+
 - Product 0.8.0: in-core SMILES/molfile (no Chematic), SMILES radicals, and chrome that keeps off radical dots / aromatic strokes / bond shade via the chem tree.
 
 - Chem tree was missing two painted strokes that occupancy already knew about: aromatic ring circles (greedy segs + post-nudge only) and bond-midpoint PlotDots (shade_disks was atom-only). Both are now leaves — aromatic strokes under `mol/chem/aromatic` (line segments so the hole stays air), bond wash under `mol/chem/shades`. Kits that already `push_clear_bonds` / `push_clear_shades` pick them up. Stereo wedges and Kekulé offset strokes still use the bond centerline.
