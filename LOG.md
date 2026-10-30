@@ -2,6 +2,8 @@
 
 ## 2026-10-30
 
+- Product 0.8.1: scheme arrows hug mol names as kit-tree ink; FREE ports; no ELK dummy-port terminals.
+
 - Mol names live at `mol/annotations/captions`, sibling of `mol/chem` — same kit tree. Scheme hug/clear walks the mol node, so captions are occupancy with no `mol-caption` class scrape. Overlay `fill:none` metrics are caption boxes; chem still skips stroke-only bond paths.
 
 - Scheme shafts do not use ELK dummy-port terminals. Tips are the centroid→centroid ink hug; only ELK *interior* bends are controls. Port stubs (~edgeNode outside the box) are peeled so Catmull cannot yank a fan back onto one box side.

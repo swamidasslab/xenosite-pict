@@ -627,7 +627,7 @@ checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 
 [[package]]
 name = "xpict"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "serde_json",
  "thiserror 1.0.69",
@@ -636,7 +636,7 @@ dependencies = [
 
 [[package]]
 name = "xpict-core"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "canonaut",
  "coordgen-sys",
@@ -653,7 +653,7 @@ dependencies = [
 
 [[package]]
 name = "xpict-py"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "pyo3",
  "serde",
@@ -663,7 +663,7 @@ dependencies = [
 
 [[package]]
 name = "xpict-wasm"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "serde_json",
  "xpict-core",
