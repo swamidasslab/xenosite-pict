@@ -1,7 +1,7 @@
 //! ChemAxon CXSMILES atom-label and multicenter (`m:`) helpers.
 //!
 //! Shared by paint chrome ([`crate::doc`]) and language edges. No RDKit.
-//! Chematic's CX reader ignores ``m:``; we keep it here.
+//! The SMILES reader skips the trailer; ``m:`` / ``$…$`` are applied here.
 
 use crate::scene::MoleculeIn;
 

@@ -3,7 +3,7 @@
 | Crate | Role |
 | --- | --- |
 | [`xpict`](https://crates.io/crates/xpict) | Public API (`mol` / `render` / `depict`) |
-| [`xpict-core`](https://crates.io/crates/xpict-core) | Shared layout + paint (Chematic + CoordGen) — used by WASM / PyO3 |
+| [`xpict-core`](https://crates.io/crates/xpict-core) | Shared layout + paint (SMILES/molfile + CoordGen) — used by WASM / PyO3 |
 
 ```toml
 xpict = "0.1"

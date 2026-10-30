@@ -1,14 +1,10 @@
-//! In-core EdgePlan processor: Chematic parse + CoordGen layout/align.
+//! In-core EdgePlan processor: SMILES/molfile parse + CoordGen layout/align.
 //!
 //! Same role as the JS / `xpict` host processors, but never leaves Rust.
 
 use std::collections::HashMap;
 
-use chematic::core::{implicit_hcount, valence_inferred_hcount, AtomIdx, BondOrder, Molecule};
-use chematic::mol::{parse_mol, parse_mol_v3000};
-use chematic::smiles::{self, parse_cxsmiles};
-
-use crate::cxsmiles::{cx_multicenters, smiles_base};
+use crate::cxsmiles::cx_multicenters;
 use crate::edge::{
     AlignMode, AlignOpts, CoordGenMoleculeResult, CoordMethod, EdgePlan, EdgeResult, EdgeTask,
     EdgeTaskResult, MolTemplate, MIN_MCS_ATOMS,
@@ -20,133 +16,7 @@ use crate::layout_spoke::layout_or_align_with_spokes;
 use crate::metrics::SCALE;
 use crate::scene::{AtomIn, Attach, BondIn, MoleculeIn, SpokeIn};
 use crate::spokes::detect_ring_spokes;
-
-#[derive(Clone)]
-struct Parsed {
-    layout: LayoutMolecule,
-    atom_indices: Vec<i32>,
-    paint_orders: Vec<f64>,
-    /// Chematic implicit (or bracket-stored) H counts per atom.
-    implicit_hs: Vec<u32>,
-    /// Unpaired electrons (bracket H deficit vs organic valence).
-    radicals: Vec<u8>,
-    /// Chematic atom-map numbers (`:n` in reaction SMILES), parallel to atoms.
-    atom_mapnos: Vec<Option<u32>>,
-}
-
-/// Unpaired electrons: valence-inferred H minus stored/implicit H.
-///
-/// Bracket SMILES encodes radicals as a hydrogen deficit (`[CH3]` → 1,
-/// `C[CH2]` → 1, `[CH2]` → 2). Organic-subset atoms always match inferred
-/// H, so they contribute 0.
-fn unpaired_electrons(mol: &Molecule, idx: AtomIdx) -> u8 {
-    valence_inferred_hcount(mol, idx).saturating_sub(implicit_hcount(mol, idx))
-}
-
-fn ctab_bond_order(order: BondOrder, a_arom: bool, b_arom: bool) -> i32 {
-    match order {
-        BondOrder::Aromatic => 4,
-        BondOrder::Double => 2,
-        BondOrder::Triple => 3,
-        BondOrder::Quadruple => 4,
-        BondOrder::Zero => 0,
-        BondOrder::Single | BondOrder::Up | BondOrder::Down | BondOrder::Dative
-            if a_arom && b_arom =>
-        {
-            4
-        }
-        _ => 1,
-    }
-}
-
-fn molecule_to_layout(mol: &Molecule) -> Result<Parsed, String> {
-    let n = mol.atom_count();
-    if n == 0 {
-        return Err("empty molecule".into());
-    }
-    let mut atomic_numbers = Vec::with_capacity(n);
-    let mut formal_charges = Vec::with_capacity(n);
-    let mut implicit_hs = Vec::with_capacity(n);
-    let mut radicals = Vec::with_capacity(n);
-    let mut atom_mapnos = Vec::with_capacity(n);
-    let mut arom = Vec::with_capacity(n);
-    for i in 0..n {
-        let idx = AtomIdx(i as u32);
-        let atom = mol.atom(idx);
-        let z = if atom.wildcard {
-            0
-        } else {
-            i32::from(atom.element.atomic_number())
-        };
-        atomic_numbers.push(z);
-        formal_charges.push(i32::from(atom.charge));
-        implicit_hs.push(u32::from(implicit_hcount(mol, idx)));
-        radicals.push(unpaired_electrons(mol, idx));
-        atom_mapnos.push(atom.atom_map.map(u32::from));
-        arom.push(atom.aromatic);
-    }
-    let mut bond_from = Vec::new();
-    let mut bond_to = Vec::new();
-    let mut bond_orders = Vec::new();
-    let mut paint_orders = Vec::new();
-    for (_bidx, bond) in mol.bonds() {
-        let a = bond.atom1.0 as usize;
-        let b = bond.atom2.0 as usize;
-        let order = ctab_bond_order(
-            bond.order,
-            arom.get(a).copied().unwrap_or(false),
-            arom.get(b).copied().unwrap_or(false),
-        );
-        bond_from.push(a as i32);
-        bond_to.push(b as i32);
-        bond_orders.push(order);
-        paint_orders.push(order as f64);
-    }
-    let nb = bond_from.len();
-    Ok(Parsed {
-        layout: LayoutMolecule {
-            atomic_numbers,
-            formal_charges,
-            bond_from,
-            bond_to,
-            bond_orders,
-            bond_stereos: vec![0; nb],
-            ..Default::default()
-        },
-        atom_indices: (0..n as i32).collect(),
-        paint_orders,
-        implicit_hs,
-        radicals,
-        atom_mapnos,
-    })
-}
-
-fn parse_source(source: &str) -> Result<Parsed, String> {
-    let text = source.trim();
-    if text.is_empty() {
-        return Err("empty structure".into());
-    }
-    if text.contains("V2000") || text.contains("V3000") || text.lines().count() >= 4 {
-        let mol = if text.contains("V3000") {
-            parse_mol_v3000(text)
-                .map(|(m, _)| m)
-                .map_err(|e| format!("molfile V3000: {e}"))?
-        } else {
-            parse_mol(text)
-                .map(|(m, _)| m)
-                .map_err(|e| format!("molfile: {e}"))?
-        };
-        return molecule_to_layout(&mol);
-    }
-    let mol = if text.contains('|') {
-        parse_cxsmiles(text)
-            .map(|cx| cx.mol)
-            .map_err(|e| format!("cxsmiles: {e}"))?
-    } else {
-        smiles::parse(&smiles_base(text)).map_err(|e| format!("smiles: {e}"))?
-    };
-    molecule_to_layout(&mol)
-}
+use crate::structure::{parse_source, Parsed};
 
 fn scale_to_paint(coords: &LayoutResult, bonds: &[(i32, i32)]) -> (Vec<f64>, Vec<f64>) {
     let mut lens = Vec::new();
@@ -203,7 +73,7 @@ fn to_molecule_in(id: &str, parsed: &Parsed, coords: &LayoutResult, source: &str
             // suffix so we do not bake it into the string twice.
             let label = atom_display_label(&element, hs, 0, degree[i], radical);
             AtomIn {
-                index: parsed.atom_indices.get(i).copied().unwrap_or(i as i32),
+                index: i as i32,
                 element: Some(element),
                 z: Some(z),
                 x: xs.get(i).copied().unwrap_or(0.0),
@@ -385,7 +255,7 @@ fn align_layout(
     ))
 }
 
-/// Process [`EdgePlan`] with Chematic + CoordGen (parity with JS host).
+/// Process [`EdgePlan`] with SMILES/molfile parse + CoordGen (parity with JS host).
 pub fn process_edge_plan(plan: &EdgePlan) -> Result<EdgeResult, String> {
     Ok(process_edge_plan_with_frames(plan)?.0)
 }
@@ -783,10 +653,10 @@ mod tests {
         );
     }
 
-    /// Chematic→paint must append implicit H on heteroatoms (OH / NH2), not
-    /// bare element symbols — matches RDKit host `atom_label`.
+    /// Paint must append implicit H on heteroatoms (OH / NH2), not bare
+    /// element symbols — matches RDKit host `atom_label`.
     #[test]
-    fn chematic_labels_include_implicit_h_on_n_and_o() {
+    fn labels_include_implicit_h_on_n_and_o() {
         let cases: &[(&str, &[&str])] = &[
             ("CCO", &["OH"]),
             ("CCN", &["NH2"]),
@@ -812,6 +682,28 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn molfile_v2000_ethanol_gets_oh_label() {
+        let src = "\
+ethanol
+
+  3  2  0  0  0  0  0  0  0  0999 V2000
+    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    1.5000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    2.2500    1.2990    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0
+  1  2  1  0  0  0  0
+  2  3  1  0  0  0  0
+M  END
+";
+        let mol = free_layout(src, "m").unwrap().molecule;
+        let got: Vec<String> = mol.atoms.iter().filter_map(|a| a.label.clone()).collect();
+        assert!(
+            got.iter().any(|g| g == "OH"),
+            "molfile ethanol must paint OH, got {got:?}"
+        );
+        assert_eq!(mol.atoms.len(), 3);
     }
 
     fn tmpl(

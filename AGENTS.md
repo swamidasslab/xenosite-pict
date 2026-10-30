@@ -22,8 +22,8 @@ Language wrappers share one Rust core — see [`CONTRIBUTING.md`](CONTRIBUTING.m
 
 **No expected behavioral drift between JS / Python / Rust wrappers:** they
 must call the same `xpict-core` implementation. Hosts are types +
-language-specific adapters only (bindings, IPython/DOM display, Chematic
-I/O, packaging). Product semantics live exclusively in Rust.
+language-specific adapters only (bindings, IPython/DOM display, host I/O,
+packaging). Product semantics live exclusively in Rust.
 
 If a host reimplements cascade, paint, layout, align, compose, or DepictSpec
 rules, that is a bug — move it into Rust, do not “align” a second copy.

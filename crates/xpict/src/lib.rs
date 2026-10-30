@@ -1,6 +1,6 @@
 //! Public Rust molecule depiction API — mirrors JS ``xpict`` / Python.
 //!
-//! Layout and paint both live in [`xpict_core`] (Chematic + CoordGen). This
+//! Layout and paint both live in [`xpict_core`] (SMILES/molfile + CoordGen). This
 //! crate is the native `mol` / `render` / `depict` adapter.
 //!
 //! **Single molecule** — `mol` / `render` / `to_svg`; `align_to` is a template

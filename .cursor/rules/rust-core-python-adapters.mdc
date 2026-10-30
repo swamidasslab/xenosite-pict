@@ -16,7 +16,7 @@ fix that by moving the logic into Rust.
 logic goes in Rust.
 
 Allowed: generated contracts (`make types`), thin `_native` / wasm calls,
-IPython/`_repr_*_` / DOM presentation, Chematic or other host-only I/O,
+IPython/`_repr_*_` / DOM presentation, host-only I/O,
 packaging.
 
 Forbidden: cascade, paint, layout, align, compose, edge plan, DepictSpec

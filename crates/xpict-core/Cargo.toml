@@ -29,9 +29,9 @@ font = ["dep:ttf-parser", "geom"]
 codegen = ["dep:schemars", "dep:ts-rs"]
 
 [dependencies]
-# CoordGen + Chematic + ELK are always on (native, Python, and wasm).
+# CoordGen + ELK are always on (native, Python, and wasm). SMILES / molfile
+# parse lives in this crate (aromaticity as written; no Chematic).
 coordgen-sys = { path = "../coordgen-sys", version = "0.3.0" }
-chematic = { version = "1.0.42", default-features = false, features = ["smiles", "mol"] }
 elkrs = { version = "0.1.1" }
 i_overlay = { version = "9.0.0", optional = true }
 ttf-parser = { version = "0.25", optional = true }

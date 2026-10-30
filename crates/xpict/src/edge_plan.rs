@@ -1,4 +1,4 @@
-//! Align-plan helper + core [`EdgePlan`] processor (Chematic + CoordGen).
+//! Align-plan helper + core [`EdgePlan`] processor (SMILES/molfile + CoordGen).
 
 use std::collections::HashMap;
 

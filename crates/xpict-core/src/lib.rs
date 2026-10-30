@@ -25,11 +25,15 @@ pub mod labels;
 #[cfg(feature = "font")]
 pub mod markup;
 pub mod metrics;
+pub(crate) mod molfile;
 pub mod plotdot;
 pub mod rings;
 pub mod scene;
+pub(crate) mod smiles;
 pub mod spokes;
+pub(crate) mod structure;
 pub mod svg;
+pub(crate) mod valence;
 
 pub mod align_layout;
 pub mod layout_coordgen;

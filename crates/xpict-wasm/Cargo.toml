@@ -18,7 +18,7 @@ path = "src/main.rs"
 
 [dependencies]
 serde_json = "1"
-# CoordGen, Chematic, ELK, and font are always linked (same engine as Python).
+# CoordGen, ELK, and font are always linked (same engine as Python).
 xpict-core = { path = "../xpict-core", features = ["font"] }
 
 [lints.rust]

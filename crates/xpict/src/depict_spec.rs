@@ -10,7 +10,7 @@ pub use xpict_core::{
 /// Alias of [`MolNode`].
 pub type MolSpec = MolNode;
 
-/// Declarative document → [`Rendered`] list via core (Chematic + CoordGen).
+/// Declarative document → [`Rendered`] list via core (SMILES/molfile + CoordGen).
 pub fn depict(spec: &DepictSpec) -> Result<Vec<Rendered>, Error> {
     let painted = xpict_core::doc::depict(spec).map_err(Error::Message)?;
     Ok(painted

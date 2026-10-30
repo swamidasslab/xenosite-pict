@@ -1,4 +1,4 @@
-//! EdgePlan processor tests (Chematic + CoordGen via core).
+//! EdgePlan processor tests (SMILES/molfile + CoordGen via core).
 //!
 //! Plan validation / forest shape / CX chrome: ``xpict-core``.
 

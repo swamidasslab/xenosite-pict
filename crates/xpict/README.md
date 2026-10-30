@@ -7,7 +7,7 @@
 `group` / `reaction_scheme` / `grid`).
 
 **Layout + paint:** [`xpict-core`](https://crates.io/crates/xpict-core)
-(Chematic + CoordGen). No system RDKit.  
+(SMILES/molfile + CoordGen). No system RDKit.  
 **Docs:** [GitHub Pages](https://swamidasslab.github.io/xenosite-pict/) ·
 [label markup](https://github.com/swamidasslab/xenosite-pict/blob/main/docs/label-markup.md)
 

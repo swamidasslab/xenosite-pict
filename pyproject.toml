@@ -32,11 +32,6 @@ classifiers = [
   "Topic :: Scientific/Engineering :: Visualization",
 ]
 
-[project.optional-dependencies]
-# SMILES parse for Python mol()/render() until the native bridge lands.
-chematic = ["chematic>=1.0"]
-all = ["xpict[chematic]"]
-
 [project.urls]
 Homepage = "https://swamidasslab.github.io/xenosite-pict/"
 Documentation = "https://swamidasslab.github.io/xenosite-pict/"

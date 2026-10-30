@@ -2,6 +2,8 @@
 
 ## 2026-10-29
 
+- Dropped Chematic. SMILES/CXSMILES and a tiny V2000/V3000 CTAB reader live in `xpict-core` (`smiles`, `molfile`, `valence`). Aromaticity is as written (lowercase / bond type 4); unwritten aromatic–aromatic bonds are aromatic. OpenSMILES organic H + unpaired electrons stay in-core. Did not vendor `../xenosmarts` `xenosmarts-syntax`: that crate is Academic Non-Commercial and would taint MIT wheels/wasm; conventions match its `ToChematic` adapter. Size win is dropping chematic-smiles + chematic-mol kitchen-sink formats.
+
 - SMILES radicals: Chematic already stores bracket H (`C[CH2]` → methylene H=2). We were dropping the valence deficit, so paint treated the carbon as a silent vertex. Unpaired electrons are now `valence_inferred_hcount − implicit_hcount` on `AtomIn.radical`; `CH2`/`CH3`/`OH` labels stay, and ACS filled dots paint on the marks layer (`class="… radical"`). Organic-subset atoms stay 0.
 
 - Chrome kits (not the solver) own product rules: tether length, `avoid_shade`, skip the destination mark on a callout shaft, MinGap vs chrome outside a region hull. Dropped unused `halo_pad`, Occupancy `clearance`/`clutter`/`aabb_gap_sum`, and the `t10000` fake atom-text slot for prior labels (`other_labels` on the atom kit, same as callout/region). Region text hard-clears shade; dead Inside rows on frozen chem vs a frozen hull are gone.

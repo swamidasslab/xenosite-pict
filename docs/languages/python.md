@@ -1,7 +1,7 @@
 # Python
 
 Package **`xpict`** on PyPI — source under `python/xpict/`. Paint and layout
-go through the Rust extension `xpict._native` (Chematic + CoordGen).
+go through the Rust extension `xpict._native` (SMILES/molfile + CoordGen).
 
 ```bash
 pip install xpict

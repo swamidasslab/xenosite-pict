@@ -14,7 +14,7 @@ Interactive align demo: [js/demo/](../js/demo/).
 pip install xpict
 ```
 
-Layout is native (Chematic + CoordGen in `xpict-core`). No RDKit extra.
+Layout is native (SMILES/molfile parse + CoordGen in `xpict-core`). No RDKit extra.
 
 ## Rust
 

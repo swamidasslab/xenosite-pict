@@ -16,7 +16,7 @@ license = "MIT"
 authors = ["S. Joshua Swamidass <swamidass@gmail.com>"]
 repository = "https://github.com/swamidasslab/xenosite-pict"
 homepage = "https://swamidasslab.github.io/xenosite-pict/"
-# Chematic + current stable toolchain.
+# Current stable toolchain (CoordGen FFI + edition 2024 crates).
 rust-version = "1.98"
 
 [workspace.lints.rust]
