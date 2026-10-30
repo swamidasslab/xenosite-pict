@@ -6,9 +6,7 @@ use crate::doc::layout_items::{
     padded_label_ink, place_region_auto, place_region_edge, Aabb, InkAtOrigin, Occupancy, Side,
     CLASH_MARGIN_PX, LABEL_PAD_X_PX,
 };
-use crate::doc::spec::{
-    DepictSpec, Label, LabelItem, LabelPos, LayoutDirection, MolNode, Node, TextNode,
-};
+use crate::doc::spec::{DepictSpec, Label, LabelItem, LabelPos, MolNode, Node, TextNode};
 use crate::doc::text_paint::{markup_ascent_descent_px, markup_bounds_at_origin, outline_markup};
 use crate::metrics::{BOND_PX, FONT_PX};
 use crate::scene::{LayerName, Primitive, Scene};
@@ -201,20 +199,9 @@ fn path_xy(d: &str) -> Vec<(f64, f64)> {
     out
 }
 
-/// Omitted caption `pos`: below the mol, except vertical schemes put the name
-/// beside the structure so it does not sit in the arrow corridor.
-fn scheme_caption_pos(spec: &DepictSpec) -> LabelPos {
-    match spec {
-        DepictSpec::ReactionScheme { layout, .. } => match layout
-            .as_ref()
-            .map(|l| l.direction_or_default())
-            .unwrap_or_default()
-        {
-            LayoutDirection::Down | LayoutDirection::Up => LabelPos::Right,
-            _ => LabelPos::Below,
-        },
-        _ => LabelPos::Below,
-    }
+/// Omitted caption `pos`: below the mol (schemes included).
+fn scheme_caption_pos(_spec: &DepictSpec) -> LabelPos {
+    LabelPos::Below
 }
 
 /// Bare id / omitted `pos` on mol captions → [`scheme_caption_pos`] (edges keep
@@ -816,7 +803,7 @@ mod tests {
     }
 
     #[test]
-    fn vertical_scheme_default_name_sits_beside_not_in_corridor() {
+    fn vertical_scheme_default_name_sits_below() {
         let spec: DepictSpec = serde_json::from_str(
             r#"{
               "type": "reaction_scheme",
@@ -829,37 +816,28 @@ mod tests {
             }"#,
         )
         .unwrap();
-        assert_eq!(scheme_caption_pos(&spec), LabelPos::Right);
+        assert_eq!(scheme_caption_pos(&spec), LabelPos::Below);
         let node = spec.mols()[0].clone();
         let base = crate::depict::depict_molecule(&ethanol());
-        let (_sx0, sy0, sx1, sy1) = structure_aabb(&base).expect("structure");
+        let (_sx0, _sy0, _sx1, sy1) = structure_aabb(&base).expect("structure");
         let out = apply_mol_captions(&spec, &node, base);
-        let mut cap_x0 = f64::INFINITY;
         let mut cap_y0 = f64::INFINITY;
-        let mut cap_y1 = f64::NEG_INFINITY;
         for p in overlay_prims(&out) {
             if let Primitive::Path {
                 d, class: Some(c), ..
             } = p
             {
                 if c.contains("mol-caption-metrics") {
-                    for (x, y) in path_xy(d) {
-                        cap_x0 = cap_x0.min(x);
+                    for (_x, y) in path_xy(d) {
                         cap_y0 = cap_y0.min(y);
-                        cap_y1 = cap_y1.max(y);
                     }
                 }
             }
         }
-        assert!(cap_x0.is_finite(), "expected caption metrics");
+        assert!(cap_y0.is_finite(), "expected caption metrics");
         assert!(
-            cap_x0 + 1.0 >= sx1,
-            "down-flow name should sit to the right of the structure, not below: cap_x0={cap_x0} struct_right={sx1}"
-        );
-        let cy = (cap_y0 + cap_y1) * 0.5;
-        assert!(
-            cy > sy0 && cy < sy1 + (sy1 - sy0),
-            "side caption should sit next to the mol, not under it: cy={cy} struct y={sy0}..{sy1}"
+            cap_y0 + 1.0 >= sy1,
+            "default name should sit below the structure: cap_y0={cap_y0} struct_bottom={sy1}"
         );
     }
 

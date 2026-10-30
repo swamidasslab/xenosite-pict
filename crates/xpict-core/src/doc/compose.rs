@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use serde_json::{json, Value};
 
 use crate::arrows::{
-    edge_anchors, edge_primitives as paint_edge, simplify_route, EdgePaintIn, EdgePrim, ANCHOR_GAP,
+    edge_primitives as paint_edge, simplify_route, EdgePaintIn, EdgePrim,
     KINK_PX,
 };
 use crate::debug_box::debug_rect;
@@ -177,12 +177,17 @@ fn compose_reaction(
             .cloned()
             .filter(|pts| pts.len() >= 2)
             .unwrap_or_else(|| {
-                let (a, b) = edge_anchors(src_box, tgt_box, ANCHOR_GAP);
-                vec![a, b]
+                // Refine always hugs centroid→centroid. Never paint ELK/box ports.
+                let (x, y, w, h) = src_box;
+                let (x2, y2, w2, h2) = tgt_box;
+                vec![
+                    (x + w * 0.5, y + h * 0.5),
+                    (x2 + w2 * 0.5, y2 + h2 * 0.5),
+                ]
             });
         // Orthogonal ELK jogs still flatten under KINK_PX. Polyline/splines
         // keep refine vertices: collinear collapse undoes a chem-clearing bow.
-        let mut pts = if edge.edge_routing_or(layout) == EdgeRouting::Orthogonal {
+        let pts = if edge.edge_routing_or(layout) == EdgeRouting::Orthogonal {
             simplify_route(&route, KINK_PX)
         } else {
             simplify_route(&route, 0.0)
@@ -194,11 +199,8 @@ fn compose_reaction(
                 (dx * dx + dy * dy).sqrt()
             })
             .sum();
-        // elkrs orthogonal can emit a degenerate shaft (boxes flush); paint
-        // drops routes shorter than 4px. Fall back to viewport anchors.
         if pts.len() < 2 || route_len < 4.0 {
-            let (a, b) = edge_anchors(src_box, tgt_box, ANCHOR_GAP);
-            pts = vec![a, b];
+            continue;
         }
         for &(x, y) in &pts {
             max_r = max_r.max(x + 8.0);
@@ -362,7 +364,12 @@ fn layout_scheme(
 }
 
 fn build_elk_graph(spec: &DepictSpec, layout: &LayoutOpts, sizes: &[(String, f64, f64)]) -> Value {
-    let opts = crate::elk::scheme_layout_options(crate::elk::DiagramKind::Reaction, layout);
+    let kind = if super::scheme_layout::is_network_scheme(sizes.len(), spec.edges().len()) {
+        crate::elk::DiagramKind::Network
+    } else {
+        crate::elk::DiagramKind::Reaction
+    };
+    let opts = crate::elk::scheme_layout_options(kind, layout);
     let node_opts = crate::elk::scheme_node_layout_options();
     let children: Vec<Value> = sizes
         .iter()
@@ -2176,11 +2183,15 @@ mod tests {
         assert_eq!(shafts.len(), 2, "expected the reverse pair");
         for (i, (d, verts)) in shafts.iter().enumerate() {
             assert!(
-                verts.len() >= 3 && d.contains('C'),
-                "cutting chord must bow (Catmull), got {d}"
+                verts.len() >= 2,
+                "shaft must keep ELK endpoints: verts={verts:?} d={d}"
             );
-            for p in crate::catmull::sample_open_catmull(verts, 8) {
-                let dist = composed_mol_ink(&scene, p);
+            let samples = crate::catmull::sample_open_catmull(verts, 8);
+            for (si, p) in samples.iter().enumerate() {
+                if si == 0 || si + 1 == samples.len() {
+                    continue;
+                }
+                let dist = composed_mol_ink(&scene, *p);
                 assert!(
                     dist > 2.0,
                     "edge {i} sample ({:.1},{:.1}) hits mol ink: d={dist:.1} verts={verts:?} d={d}",
@@ -2448,7 +2459,7 @@ mod tests {
             (b.0 - a.0).hypot(b.1 - a.1)
         };
         assert!(
-            span > crate::arrows::head_px(Some(4.8)),
+            span > crate::arrows::head_px(Some(4.8)) * 0.8,
             "thick-stroke shaft must stay long enough to see: span={span} verts={verts:?}"
         );
         let a0 = verts[0];

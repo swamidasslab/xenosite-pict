@@ -1,18 +1,20 @@
 //! ELK seed + constraint refine for reaction-scheme edges and labels.
 //!
-//! Molecules stay fixed. ELK endpoints/routing points and edge labels (xy + rot)
-//! are the DOF. Catmull–Rom is how those points are stroked, not extra vertices.
+//! Molecules stay fixed. Each shaft is the pulled-back centroid ray plus ELK
+//! *interior* route points (centroid-hug → ELK bends → centroid-hug). ELK
+//! dummy-port terminals and their stubs are discarded. If that polyline misses
+//! chem, it is frozen. Edge–edge crossings ELK already made are left alone.
+//! Only routes that hit a molecule are optimized, and the only movable
+//! vertices are those ELK bends plus the ink-hug endpoints.
 
 use std::collections::HashMap;
 
-use crate::arrows::{
-    edge_anchors, min_shaft_px, offset_polyline, prune_close_controls, ANCHOR_GAP, CLOSE_CTRL_PX,
-};
+use crate::arrows::{min_shaft_px, offset_polyline, prune_close_controls, CLOSE_CTRL_PX};
 use crate::metrics::BOND_PX;
 use crate::scene::{LayerName, MoleculeIn, Primitive, TextAnchor};
 
 use super::layout_constraints::{
-    edge_signed_distance, push_clear_leaves, push_clear_leaves_where, shapes_properly_cross, solve,
+    edge_signed_distance, push_clear_leaves_where, shapes_properly_cross, solve,
     Constraint, HardConstraint, LayoutNode, LayoutWorld, ObjectType, Shape, SolveOpts,
     LAGRANGIAN_CLEAR, LAGRANGIAN_TETHER,
 };
@@ -57,6 +59,15 @@ const RAY_TO_CENTROID: f64 = 4.0;
 const ENDPOINT_POSE: f64 = 1.5;
 /// Endpoints within this gap count as the same geometric terminal.
 const COTERMINAL_PX: f64 = 8.0;
+/// Graphs larger than a typical reaction skip the edge solver. Xenobase
+/// metabolite nets (dozens of mols/edges) were spending seconds in NM +
+/// ParallelClear; two-point hull hugs are enough once nodes are packed.
+const NETWORK_SOLVE_MOL_CAP: usize = 7;
+const NETWORK_SOLVE_EDGE_CAP: usize = 7;
+
+pub(crate) fn is_network_scheme(n_mols: usize, n_edges: usize) -> bool {
+    n_mols > NETWORK_SOLVE_MOL_CAP || n_edges > NETWORK_SOLVE_EDGE_CAP
+}
 
 /// Coterminal arrows (same unordered mol pair, or shared endpoints even if
 /// reversed) share one solved centerline, then paint as parallel lanes.
@@ -306,6 +317,7 @@ pub fn refine_scheme_edges(
     }
     let mut out_labels = vec![None; spec.edges().len()];
 
+    let _ = layout;
     let mut world = LayoutWorld::rooted("scheme", ObjectType::Scheme);
     let size_of: HashMap<&str, (f64, f64)> = sizes
         .iter()
@@ -337,9 +349,33 @@ pub fn refine_scheme_edges(
                 &[],
                 &[],
             );
-            // Glyphs and captions are ink, not atom disks. Install them as
-            // leaves so Outside can keep shafts off CHO letters and names.
-            install_ink_leaves(&mut world, &chem, scene_ink_shapes(paint, (x, y)));
+            install_ink_leaves(
+                &mut world,
+                &chem,
+                chem_scene_ink_shapes(paint, (x, y)),
+                ObjectType::AtomText,
+            );
+            // Same tree as the mol kit: captions sit under annotations, sibling of chem.
+            let _ = world.insert(
+                format!("{mid}/annotations"),
+                &mid,
+                ObjectType::Annotations,
+                Shape::Aabb(Aabb::new(0.0, 0.0, 0.0, 0.0)),
+                true,
+            );
+            let caps = world.insert(
+                format!("{mid}/annotations/captions"),
+                format!("{mid}/annotations"),
+                ObjectType::Captions,
+                Shape::Aabb(Aabb::new(0.0, 0.0, 0.0, 0.0)),
+                true,
+            );
+            install_ink_leaves(
+                &mut world,
+                &caps,
+                overlay_ink_shapes(paint, (x, y)),
+                ObjectType::Caption,
+            );
         }
         let (cx, cy) = mol_centroid(&paint_of, positions, &size_of, id);
         world.insert(
@@ -355,16 +391,7 @@ pub fn refine_scheme_edges(
     let mut cs = Vec::new();
     let mut hard = Vec::new();
 
-    for (i, a) in mol_ids.iter().enumerate() {
-        for b in mol_ids.iter().skip(i + 1) {
-            hard.push(HardConstraint::Outside {
-                a: format!("scheme/mols/{a}"),
-                b: format!("scheme/mols/{b}"),
-                clash_dist: layout.node_spacing_or_default(),
-                lagrangian: LAGRANGIAN_CLEAR,
-            });
-        }
-    }
+    let mut any_opt = false;
 
     let edges_root = world.insert(
         "scheme/edges",
@@ -388,16 +415,16 @@ pub fn refine_scheme_edges(
             .first()
             .map(String::as_str)
             .unwrap_or("");
-        let src_box = mol_box(positions, &size_of, src);
-        let tgt_box = mol_box(positions, &size_of, tgt);
         let pts = edge_paths
             .get(i)
             .and_then(|p| p.as_ref())
             .filter(|p| p.len() >= 2)
             .cloned()
             .unwrap_or_else(|| {
-                let (a, b) = edge_anchors(src_box, tgt_box, ANCHOR_GAP);
-                vec![a, b]
+                vec![
+                    mol_centroid(&paint_of, positions, &size_of, src),
+                    mol_centroid(&paint_of, positions, &size_of, tgt),
+                ]
             });
         seed_pts.push(pts);
     }
@@ -443,62 +470,34 @@ pub fn refine_scheme_edges(
             .first()
             .map(String::as_str)
             .unwrap_or("");
-        let pts = &centerlines[i];
-        // Tip pose is ink + pad along the centroid ray. The solver holds that
-        // with PreferPose, RayThrough, Outside vs chem, and Outside vs the
-        // other tip (min shaft). ELK length is not a cap — leftover corridor
-        // is shaft, so moving the mols lengthens the arrow.
+        let pts = centerlines[i].clone();
         let src_c = mol_centroid(&paint_of, positions, &size_of, src);
         let tgt_c = mol_centroid(&paint_of, positions, &size_of, tgt);
-        let src_chem = format!("scheme/mols/{src}/chem");
-        let tgt_chem = format!("scheme/mols/{tgt}/chem");
+        let src_mol = format!("scheme/mols/{src}");
+        let tgt_mol = format!("scheme/mols/{tgt}");
         let min_shaft = min_shaft_px(edge.stroke_width);
         let (pose0, pose1) = if pts.len() >= 2 {
-            shaft_endpoint_poses(&world, &src_chem, &tgt_chem, src_c, tgt_c, min_shaft)
+            shaft_endpoint_poses(&world, &src_mol, &tgt_mol, src_c, tgt_c, min_shaft)
         } else {
             (src_c, tgt_c)
         };
-        // A 2-point chord that hugs both tips can still cut a ring or CHO.
-        // Hinges at ¼ and ¾ keep each last chord on a centroid ray (so a
-        // reversed coterminal lane still aims); the mid bows off chem.
-        // Consecutive-point Outside used to force 8px gaps on a ~26px
-        // corridor and the Catmull became a squiggle — do not add those.
         let bundle_n = groups[group_of[i]].members.len();
         let shaft_clash = shaft_chem_clash(edge.stroke_width, bundle_n);
-        let injected =
-            pts.len() == 2 && !chord_clears_chem(&world, pose0, pose1, &mol_ids, shaft_clash);
-        let ctrl: Vec<(f64, f64)> = if injected {
-            vec![
-                pose0,
-                lerp2(pose0, pose1, 0.25),
-                bow_seed(&world, pose0, pose1, &mol_ids, shaft_clash),
-                lerp2(pose0, pose1, 0.75),
-                pose1,
-            ]
-        } else {
-            pts.clone()
-        };
+        // Centroid-ray tips + ELK interior bends. Dummy ports are not controls.
+        let src_box = mol_box(positions, &size_of, src);
+        let tgt_box = mol_box(positions, &size_of, tgt);
+        let ctrl = reanchor_elk_path(&pts, pose0, pose1, src_box, tgt_box);
+        let freeze = polyline_clears_chem(&world, &ctrl, &mol_ids, shaft_clash);
+        centerlines[i] = ctrl.clone();
         let last = ctrl.len().saturating_sub(1);
         for (k, &(x, y)) in ctrl.iter().enumerate() {
-            let mut pose = if ctrl.len() >= 2 && k == 0 {
+            let pose = if k == 0 {
                 pose0
-            } else if ctrl.len() >= 2 && k == last {
+            } else if k == last {
                 pose1
             } else {
                 (x, y)
             };
-            let mut on_centroid_ray = k == 0 || k == last;
-            // Last painted chord is the arrow. Distinct neighbors only exist
-            // on 4+ point routes; a 3-point mid is the bend DOF, not a head
-            // hinge (those two `k` values are the same point).
-            if !injected && last >= 3 && k == 1 {
-                pose = behind_end_on_ray(src_c, pose0, (x, y));
-                on_centroid_ray = true;
-            }
-            if !injected && last >= 3 && k == last - 1 {
-                pose = behind_end_on_ray(tgt_c, pose1, (x, y));
-                on_centroid_ray = true;
-            }
             world.insert(
                 format!("{eid}/p{k}"),
                 &eid,
@@ -507,121 +506,83 @@ pub fn refine_scheme_edges(
                     x: pose.0,
                     y: pose.1,
                 },
-                false,
+                freeze,
             );
-            // Injected hinges: RayThrough + Outside only. PreferPose on the
-            // ¾-chord parks the last hinge on CHO.
-            let hinge = injected && k != 0 && k != last && k != 2;
-            if !hinge {
-                cs.push(Constraint::PreferPose {
-                    a: format!("{eid}/p{k}"),
-                    x: pose.0,
-                    y: pose.1,
-                    strength: if on_centroid_ray {
-                        ENDPOINT_POSE
-                    } else {
-                        POSE_STRENGTH
-                    },
-                });
-            }
-        }
-        if ctrl.len() >= 2 {
-            let src_centroid = format!("scheme/mols/{src}/centroid");
-            let tgt_centroid = format!("scheme/mols/{tgt}/centroid");
-            let neighbor0 = format!("{eid}/p1");
-            let neighbor1 = format!("{eid}/p{}", last.saturating_sub(1));
-            cs.push(Constraint::RayThrough {
-                a: format!("{eid}/p0"),
-                b: neighbor0,
-                p: src_centroid,
-                strength: RAY_TO_CENTROID,
-            });
-            cs.push(Constraint::RayThrough {
-                a: format!("{eid}/p{last}"),
-                b: neighbor1,
-                p: tgt_centroid,
-                strength: RAY_TO_CENTROID,
-            });
-            let p0 = format!("{eid}/p0");
-            let p_end = format!("{eid}/p{last}");
-            // Tips: 2px floor so a hug pose cannot sit inside an atom disk.
-            // The ½-bond hug is PreferPose along the ray — isotropic Outside
-            // at that gap shoves off the ray.
-            push_clear_leaves(&world, &mut hard, &p0, &src_chem, 2.0);
-            push_clear_leaves(&world, &mut hard, &p_end, &tgt_chem, 2.0);
-            // Chord vs every mol's painted leaves (disks, bonds, glyphs,
-            // captions). Endpoint-only Outside lets a centroid ray cut a ring
-            // or CHO between the tips. Inflate by the bundle half-width so
-            // offset lanes still clear after the centerline solve.
-            for id in &mol_ids {
-                push_clear_leaves(
-                    &world,
-                    &mut hard,
-                    &eid,
-                    &format!("scheme/mols/{id}/chem"),
-                    shaft_clash,
-                );
-            }
-            hard.push(HardConstraint::Outside {
-                a: p0,
-                b: p_end,
-                clash_dist: min_shaft,
-                lagrangian: LAGRANGIAN_CLEAR,
-            });
-            // Keep hinges from collapsing onto the bow (Catmull loop).
-            // 8px was too big for a ~26px down-flow corridor (forced a
-            // zigzag). A few px is "not a stub" without eating the shaft.
-            if last >= 2 {
-                for k in 0..last {
-                    hard.push(HardConstraint::Outside {
-                        a: format!("{eid}/p{k}"),
-                        b: format!("{eid}/p{}", k + 1),
-                        clash_dist: CLOSE_CTRL_PX * 2.0,
-                        lagrangian: LAGRANGIAN_CLEAR,
-                    });
-                }
-            }
-        }
-    }
-
-    for i in 0..n_edges {
-        if is_follower[i] {
-            continue;
-        }
-        let a = format!("scheme/edges/e{i}");
-        for j in (i + 1)..n_edges {
-            if is_follower[j] {
+            if freeze {
                 continue;
             }
-            let b = format!("scheme/edges/e{j}");
-            let clash = SCHEME_EDGE_CLEARANCE
-                + group_half_width(groups[group_of[i]].members.len())
-                + group_half_width(groups[group_of[j]].members.len());
-            hard.push(HardConstraint::ParallelClear {
-                a: a.clone(),
-                b: b.clone(),
-                clash_dist: clash,
-                lagrangian: LAGRANGIAN_CLEAR,
+            cs.push(Constraint::PreferPose {
+                a: format!("{eid}/p{k}"),
+                x: pose.0,
+                y: pose.1,
+                strength: if k == 0 || k == last {
+                    ENDPOINT_POSE
+                } else {
+                    POSE_STRENGTH
+                },
             });
-            let sa = Shape::Polyline(centerlines[i].clone());
-            let sb = Shape::Polyline(centerlines[j].clone());
-            if !shapes_properly_cross(&sa, &sb) {
-                cs.push(Constraint::PolyCross {
-                    a: a.clone(),
-                    b,
-                    strength: 0.8,
+        }
+        if freeze || ctrl.len() < 2 {
+            continue;
+        }
+        any_opt = true;
+        let src_centroid = format!("scheme/mols/{src}/centroid");
+        let tgt_centroid = format!("scheme/mols/{tgt}/centroid");
+        cs.push(Constraint::RayThrough {
+            a: format!("{eid}/p0"),
+            b: format!("{eid}/p1"),
+            p: src_centroid,
+            strength: RAY_TO_CENTROID,
+        });
+        cs.push(Constraint::RayThrough {
+            a: format!("{eid}/p{last}"),
+            b: format!("{eid}/p{}", last.saturating_sub(1)),
+            p: tgt_centroid,
+            strength: RAY_TO_CENTROID,
+        });
+        let p0 = format!("{eid}/p0");
+        let p_end = format!("{eid}/p{last}");
+        let skip_group = |_: &str, n: &LayoutNode| n.object_type != ObjectType::Group;
+        push_clear_leaves_where(&world, &mut hard, &p0, &src_mol, 2.0, skip_group);
+        push_clear_leaves_where(&world, &mut hard, &p_end, &tgt_mol, 2.0, skip_group);
+        for id in &mol_ids {
+            push_clear_leaves_where(
+                &world,
+                &mut hard,
+                &eid,
+                &format!("scheme/mols/{id}"),
+                shaft_clash,
+                skip_group,
+            );
+        }
+        hard.push(HardConstraint::Outside {
+            a: p0,
+            b: p_end,
+            clash_dist: min_shaft,
+            lagrangian: LAGRANGIAN_CLEAR,
+        });
+        if last >= 2 {
+            for k in 0..last {
+                hard.push(HardConstraint::Outside {
+                    a: format!("{eid}/p{k}"),
+                    b: format!("{eid}/p{}", k + 1),
+                    clash_dist: CLOSE_CTRL_PX * 2.0,
+                    lagrangian: LAGRANGIAN_CLEAR,
                 });
             }
         }
     }
 
     let opts = SolveOpts {
-        max_iters: 120,
+        max_iters: 40,
+        al_outer_max: 2,
         noise: 0.0,
         epsilon_px: 1.0,
         ..SolveOpts::default()
     };
-    let _ = solve(&mut world, &cs, &hard, &opts);
+    if any_opt {
+        let _ = solve(&mut world, &cs, &hard, &opts);
+    }
 
     // One solved centerline per coterminal group; lanes are a constant-width
     // offset so ParallelClear cannot fling a coincident reverse arrow.
@@ -806,23 +767,6 @@ fn mol_centroid(
     (x + w * 0.5, y + h * 0.5)
 }
 
-fn lerp2(a: (f64, f64), b: (f64, f64), t: f64) -> (f64, f64) {
-    (a.0 + t * (b.0 - a.0), a.1 + t * (b.1 - a.1))
-}
-
-/// Place `prev` on the ray from `centroid` through `end`, on the far side of
-/// `end`, so the chord `prev → end` points at the centroid.
-fn behind_end_on_ray(centroid: (f64, f64), end: (f64, f64), prev: (f64, f64)) -> (f64, f64) {
-    let vx = end.0 - centroid.0;
-    let vy = end.1 - centroid.1;
-    let len = vx.hypot(vy).max(1e-9);
-    let ux = vx / len;
-    let uy = vy / len;
-    let along = (prev.0 - end.0) * ux + (prev.1 - end.1) * uy;
-    let t = along.max(BOND_PX);
-    (end.0 + ux * t, end.1 + uy * t)
-}
-
 /// Scheme labels clear painted leaves. Control points are not ink (the edge
 /// polyline is). Centroids and shade are not obstacles.
 fn scheme_label_clears_leaf(label: &str, id: &str, n: &LayoutNode) -> bool {
@@ -848,6 +792,10 @@ fn min_ink_signed(world: &LayoutWorld, under: &str, p: (f64, f64)) -> f64 {
             continue;
         }
         let s = n.world_shape();
+        // Centroid is a Group point, not ink. The chem hull is a Group PointSet.
+        if n.object_type == ObjectType::Group && matches!(s, Shape::Point { .. }) {
+            continue;
+        }
         let skip = match &s {
             Shape::Aabb(a) => a.width() <= 1e-9 && a.height() <= 1e-9,
             Shape::Polyline(pts) | Shape::PointSet(pts) => pts.len() < 2,
@@ -866,20 +814,86 @@ fn min_ink_signed(world: &LayoutWorld, under: &str, p: (f64, f64)) -> f64 {
     best
 }
 
-/// Axis-aligned step from this centroid toward the other mol.
-///
-/// Walking the diagonal `from → other` aims the hug through a side CHO
-/// when centroids are offset. Dominant axis keeps the last chord on the
-/// centroid while the attach sits on the facing ring lip.
-fn facing_point(from: (f64, f64), other: (f64, f64)) -> (f64, f64) {
-    if (other.1 - from.1).abs() >= (other.0 - from.0).abs() {
-        (from.0, other.1)
-    } else {
-        (other.0, from.1)
-    }
+/// Layered ELK parks the first bend ~`edgeNode` (20px) outside the dummy port.
+/// [`BOND_PX`] covers that stub so the port never becomes a control.
+const ELK_TERMINAL_STUB_PX: f64 = BOND_PX;
+
+fn point_in_inflated_box(p: (f64, f64), b: (f64, f64, f64, f64), m: f64) -> bool {
+    let (x, y, w, h) = b;
+    p.0 >= x - m && p.0 <= x + w + m && p.1 >= y - m && p.1 <= y + h + m
 }
 
-/// Tips hug ink by [`SCHEME_INK_STANDOFF`] on the facing centroid ray. If
+fn is_elk_terminal_stub(
+    p: (f64, f64),
+    terminal: (f64, f64),
+    mol_box: (f64, f64, f64, f64),
+) -> bool {
+    pt_dist(p, terminal) <= ELK_TERMINAL_STUB_PX
+        || point_in_inflated_box(p, mol_box, ELK_TERMINAL_STUB_PX)
+}
+
+/// Centroid-ray tips plus ELK *interior* route points.
+///
+/// ELK `startPoint` / `endPoint` (dummy ports) and the collinear stubs off
+/// those ports are discarded so Catmull cannot yank the shaft back onto a
+/// box side. A two-point ELK edge becomes the centroid chord.
+fn reanchor_elk_path(
+    pts: &[(f64, f64)],
+    pose0: (f64, f64),
+    pose1: (f64, f64),
+    src_box: (f64, f64, f64, f64),
+    tgt_box: (f64, f64, f64, f64),
+) -> Vec<(f64, f64)> {
+    let mut out = vec![pose0];
+    if pts.len() >= 3 {
+        let t0 = pts[0];
+        let t1 = pts[pts.len() - 1];
+        let mut mids: Vec<(f64, f64)> = pts[1..pts.len() - 1].to_vec();
+        while mids
+            .first()
+            .is_some_and(|&p| is_elk_terminal_stub(p, t0, src_box))
+        {
+            mids.remove(0);
+        }
+        while mids
+            .last()
+            .is_some_and(|&p| is_elk_terminal_stub(p, t1, tgt_box))
+        {
+            mids.pop();
+        }
+        for p in mids {
+            if pt_dist(p, pose0) > CLOSE_CTRL_PX && pt_dist(p, pose1) > CLOSE_CTRL_PX {
+                out.push(p);
+            }
+        }
+    }
+    out.push(pose1);
+    prune_close_controls(&out, CLOSE_CTRL_PX)
+}
+
+/// True when every ELK segment (and each interior vertex) already sits
+/// `clash` from chem. Edge–edge crossings are not overlap.
+fn polyline_clears_chem(
+    world: &LayoutWorld,
+    pts: &[(f64, f64)],
+    mol_ids: &[String],
+    clash: f64,
+) -> bool {
+    if pts.len() < 2 {
+        return true;
+    }
+    for &p in &pts[1..pts.len() - 1] {
+        for id in mol_ids {
+            if min_ink_signed(world, &format!("scheme/mols/{id}"), p) < clash - 0.5 {
+                return false;
+            }
+        }
+    }
+    pts.windows(2)
+        .all(|w| chord_clears_chem(world, w[0], w[1], mol_ids, clash))
+}
+
+/// Tips hug ink by [`SCHEME_INK_STANDOFF`] on the centroid→centroid ray. If
 /// that would cross, sit on the ink lip so the shaft still fills the corridor.
 fn shaft_endpoint_poses(
     world: &LayoutWorld,
@@ -889,8 +903,8 @@ fn shaft_endpoint_poses(
     tgt_c: (f64, f64),
     min_shaft: f64,
 ) -> ((f64, f64), (f64, f64)) {
-    let src_toward = facing_point(src_c, tgt_c);
-    let tgt_toward = facing_point(tgt_c, src_c);
+    let src_toward = tgt_c;
+    let tgt_toward = src_c;
     let span = (tgt_c.0 - src_c.0).hypot(tgt_c.1 - src_c.1);
     let ux = (tgt_c.0 - src_c.0) / span.max(1e-9);
     let uy = (tgt_c.1 - src_c.1) / span.max(1e-9);
@@ -927,15 +941,45 @@ fn shaft_endpoint_poses(
     (at(mid - half), at(mid + half))
 }
 
-/// Distance along `centroid → toward` to the facing face of `chem`'s AABB.
+/// Union AABB of painted chem leaves (bonds, hull, **captions**).
+fn chem_ink_aabb(world: &LayoutWorld, under: &str) -> Option<Aabb> {
+    let mut x0 = f64::INFINITY;
+    let mut y0 = f64::INFINITY;
+    let mut x1 = f64::NEG_INFINITY;
+    let mut y1 = f64::NEG_INFINITY;
+    let mut stack = vec![under.to_string()];
+    while let Some(id) = stack.pop() {
+        let Some(n) = world.get(&id) else {
+            continue;
+        };
+        if !n.children.is_empty() {
+            stack.extend(n.children.iter().cloned());
+            continue;
+        }
+        let a = n.world_shape().aabb();
+        if a.width() <= 1e-9 && a.height() <= 1e-9 {
+            continue;
+        }
+        x0 = x0.min(a.x0);
+        y0 = y0.min(a.y0);
+        x1 = x1.max(a.x1);
+        y1 = y1.max(a.y1);
+    }
+    if x0.is_finite() {
+        Some(Aabb::new(x0, y0, x1, y1))
+    } else {
+        None
+    }
+}
+
+/// Distance along `centroid → toward` to the facing face of mol ink.
 fn chem_ray_exit_t(world: &LayoutWorld, chem: &str, centroid: (f64, f64), ux: f64, uy: f64) -> f64 {
-    let Some(n) = world.get(chem) else {
+    let Some(a) = chem_ink_aabb(world, chem)
+        .or_else(|| world.get(chem).map(|n| n.world_shape().aabb()))
+        .filter(|a| a.width() > 1e-9 || a.height() > 1e-9)
+    else {
         return 0.0;
     };
-    let a = n.world_shape().aabb();
-    if a.width() <= 1e-9 && a.height() <= 1e-9 {
-        return 0.0;
-    }
     let mut t: f64 = 0.0;
     if ux.abs() > 1e-12 {
         let tx = if ux > 0.0 {
@@ -984,7 +1028,17 @@ fn ray_ink_pose(
     if min_ink_signed(world, chem, at(cap)) < clash {
         return at(cap);
     }
-    let mut lo = 0.0;
+    // Last occupied sample on this ray, then the lip beyond it. First-exit
+    // would stop at the structure and cut a name that sits further out.
+    let n_samp = ((cap / 4.0).ceil() as usize).clamp(16, 160);
+    let mut last_in = 0.0;
+    for i in 0..=n_samp {
+        let t = cap * (i as f64) / (n_samp as f64);
+        if min_ink_signed(world, chem, at(t)) < clash {
+            last_in = t;
+        }
+    }
+    let mut lo = last_in;
     let mut hi = cap;
     for _ in 0..24 {
         let mid = 0.5 * (lo + hi);
@@ -1043,41 +1097,6 @@ fn chem_in_document(
     (bonds, atoms)
 }
 
-/// Seed a bend off the chord, on the side with more chem air.
-/// Off-chord PreferPose seed for the free mid (side with more chem air).
-fn bow_seed(
-    world: &LayoutWorld,
-    p0: (f64, f64),
-    p1: (f64, f64),
-    mol_ids: &[String],
-    clash: f64,
-) -> (f64, f64) {
-    let mid = ((p0.0 + p1.0) * 0.5, (p0.1 + p1.1) * 0.5);
-    let vx = p1.0 - p0.0;
-    let vy = p1.1 - p0.1;
-    let len = vx.hypot(vy).max(1e-9);
-    let nx = -vy / len;
-    let ny = vx / len;
-    // Cap the seed offset to the corridor so a ½-bond clash on a short
-    // down-flow pair is a C, not a detour wider than the shaft.
-    let off = clash.min(len * 0.35).max(COTERMINAL_LANE_PX);
-    let left = (mid.0 + nx * off, mid.1 + ny * off);
-    let right = (mid.0 - nx * off, mid.1 - ny * off);
-    let d_left = mol_ids
-        .iter()
-        .map(|id| min_ink_signed(world, &format!("scheme/mols/{id}/chem"), left))
-        .fold(f64::INFINITY, f64::min);
-    let d_right = mol_ids
-        .iter()
-        .map(|id| min_ink_signed(world, &format!("scheme/mols/{id}/chem"), right))
-        .fold(f64::INFINITY, f64::min);
-    if d_left >= d_right {
-        left
-    } else {
-        right
-    }
-}
-
 /// True when interior samples of `p0→p1` already sit `clash` from chem ink.
 ///
 /// Endpoints (`t` near 0/1) are the hug poses, so they are skipped. A CHO or
@@ -1093,7 +1112,7 @@ fn chord_clears_chem(
         let t = k as f64 / 8.0;
         let p = (p0.0 + t * (p1.0 - p0.0), p0.1 + t * (p1.1 - p0.1));
         for id in mol_ids {
-            let d = min_ink_signed(world, &format!("scheme/mols/{id}/chem"), p);
+            let d = min_ink_signed(world, &format!("scheme/mols/{id}"), p);
             if d < clash - 0.5 {
                 return false;
             }
@@ -1102,14 +1121,19 @@ fn chord_clears_chem(
     true
 }
 
-/// Raster + geometric leaves for painted glyphs / captions under `chem`.
-fn install_ink_leaves(world: &mut LayoutWorld, chem: &str, stamps: Vec<Shape>) {
-    world.add_ink(chem, stamps.clone());
+/// Raster + geometric leaves under `parent` (`chem/ink/k` or `captions/ink/k`).
+fn install_ink_leaves(
+    world: &mut LayoutWorld,
+    parent: &str,
+    stamps: Vec<Shape>,
+    object_type: ObjectType,
+) {
+    world.add_ink(parent, stamps.clone());
     for (k, shape) in stamps.into_iter().enumerate() {
         world.insert(
-            format!("{chem}/ink/{k}"),
-            chem,
-            ObjectType::AtomText,
+            format!("{parent}/ink/{k}"),
+            parent,
+            object_type,
             shape,
             true,
         );
@@ -1185,19 +1209,40 @@ pub(crate) fn prim_ink_shapes(p: &Primitive, ox: f64, oy: f64) -> Vec<Shape> {
     }
 }
 
-/// Labels, regions, captions, circles — everything painted except white halo.
-fn scene_ink_shapes(paint: &DocPaint, elk: (f64, f64)) -> Vec<Shape> {
+fn paint_origin(paint: &DocPaint, elk: (f64, f64)) -> (f64, f64) {
     let (lx, ly) = paint
         .scene
         .viewports
         .first()
         .map(|vp| vp.local_origin())
         .unwrap_or((0.0, 0.0));
-    let (ox, oy) = (elk.0 + lx - paint.scene.x, elk.1 + ly - paint.scene.y);
+    (elk.0 + lx - paint.scene.x, elk.1 + ly - paint.scene.y)
+}
+
+/// Overlay occupancy: path AABBs even when `fill: none` (caption em boxes).
+/// Bond strokes on chem layers still skip that via [`prim_ink_shapes`].
+fn overlay_prim_shapes(p: &Primitive, ox: f64, oy: f64) -> Vec<Shape> {
+    match p {
+        Primitive::Path { d, class, .. } => {
+            if skip_ink_class(class.as_deref()) {
+                return Vec::new();
+            }
+            super::chrome_paint::path_aabb(d)
+                .map(|a| Shape::Aabb(a.translated(ox, oy)))
+                .into_iter()
+                .collect()
+        }
+        _ => prim_ink_shapes(p, ox, oy),
+    }
+}
+
+/// Glyphs / wedges / marks on chem layers (not Overlay, not halo).
+fn chem_scene_ink_shapes(paint: &DocPaint, elk: (f64, f64)) -> Vec<Shape> {
+    let (ox, oy) = paint_origin(paint, elk);
     let mut out = Vec::new();
     for vp in &paint.scene.viewports {
         for layer in &vp.layers {
-            if layer.name == LayerName::Halo {
+            if layer.name == LayerName::Halo || layer.name == LayerName::Overlay {
                 continue;
             }
             for p in &layer.primitives {
@@ -1205,8 +1250,49 @@ fn scene_ink_shapes(paint: &DocPaint, elk: (f64, f64)) -> Vec<Shape> {
             }
         }
     }
+    out
+}
+
+/// Mol names / callouts: Overlay layer plus `scene.overlays`.
+fn overlay_ink_shapes(paint: &DocPaint, elk: (f64, f64)) -> Vec<Shape> {
+    let (ox, oy) = paint_origin(paint, elk);
+    let mut out = Vec::new();
+    for vp in &paint.scene.viewports {
+        for layer in &vp.layers {
+            if layer.name != LayerName::Overlay {
+                continue;
+            }
+            for p in &layer.primitives {
+                out.extend(overlay_prim_shapes(p, ox, oy));
+            }
+        }
+    }
     for p in &paint.scene.overlays {
-        out.extend(prim_ink_shapes(p, ox, oy));
+        out.extend(overlay_prim_shapes(p, ox, oy));
+    }
+    out
+}
+
+/// Labels, regions, captions, circles — everything painted except white halo.
+fn scene_ink_shapes(paint: &DocPaint, elk: (f64, f64)) -> Vec<Shape> {
+    let (ox, oy) = paint_origin(paint, elk);
+    let mut out = Vec::new();
+    for vp in &paint.scene.viewports {
+        for layer in &vp.layers {
+            if layer.name == LayerName::Halo {
+                continue;
+            }
+            for p in &layer.primitives {
+                if layer.name == LayerName::Overlay {
+                    out.extend(overlay_prim_shapes(p, ox, oy));
+                } else {
+                    out.extend(prim_ink_shapes(p, ox, oy));
+                }
+            }
+        }
+    }
+    for p in &paint.scene.overlays {
+        out.extend(overlay_prim_shapes(p, ox, oy));
     }
     out
 }
@@ -1603,6 +1689,73 @@ mod tests {
         assert!(p.0 > 120.0, "must walk past the protruding atom: {p:?}");
     }
 
+    #[test]
+    fn caption_under_annotations_is_mol_ink() {
+        let mut world = LayoutWorld::rooted("scheme", ObjectType::Scheme);
+        world.insert(
+            "mol",
+            "scheme",
+            ObjectType::Mol,
+            Shape::Aabb(Aabb::new(0.0, 0.0, 100.0, 120.0)),
+            true,
+        );
+        crate::doc::layout_constraints::install_chem_under(
+            &mut world,
+            "mol",
+            &[(20.0, 40.0, 80.0, 40.0)],
+            &[(0, 20.0, 40.0), (1, 80.0, 40.0)],
+            &[],
+            &[],
+            &[],
+            &[],
+        );
+        let _ = world.insert(
+            "mol/annotations",
+            "mol",
+            ObjectType::Annotations,
+            Shape::Aabb(Aabb::new(0.0, 0.0, 0.0, 0.0)),
+            true,
+        );
+        let caps = world.insert(
+            "mol/annotations/captions",
+            "mol/annotations",
+            ObjectType::Captions,
+            Shape::Aabb(Aabb::new(0.0, 0.0, 0.0, 0.0)),
+            true,
+        );
+        world.insert(
+            "mol/annotations/captions/name",
+            &caps,
+            ObjectType::Caption,
+            Shape::Aabb(Aabb::new(20.0, 70.0, 80.0, 95.0)),
+            true,
+        );
+        let centroid = (50.0, 40.0);
+        let toward = (50.0, 220.0);
+        let p_chem = ray_ink_pose(
+            &world,
+            "mol/chem",
+            centroid,
+            toward,
+            SCHEME_INK_STANDOFF,
+            180.0,
+        );
+        let p_mol = ray_ink_pose(&world, "mol", centroid, toward, SCHEME_INK_STANDOFF, 180.0);
+        assert!(
+            p_mol.1 > 95.0,
+            "hug of the mol node must walk past the name: p={p_mol:?}"
+        );
+        assert!(
+            p_mol.1 > p_chem.1 + 20.0,
+            "name is further out than chem; no class scrape: chem={p_chem:?} mol={p_mol:?}"
+        );
+        let d = min_ink_signed(&world, "mol", p_mol);
+        assert!(
+            (d - SCHEME_INK_STANDOFF).abs() < 4.0,
+            "pose should sit ½-bond past the caption: p={p_mol:?} d={d}"
+        );
+    }
+
     fn benzene_atoms_bonds(
         cx: f64,
         cy: f64,
@@ -1803,7 +1956,7 @@ mod tests {
             opacity: 1.0,
             stroke_dasharray: None,
             stroke_linecap: None,
-            class: Some("mol-caption".into()),
+            class: None,
             data_text: Some("phenol".into()),
         });
         let seed = vec![(50.0, 100.0), (50.0, 280.0)];
@@ -1834,6 +1987,66 @@ mod tests {
         assert!(
             (x1 - x0).abs() < 12.0,
             "down-flow shaft should stay near vertical: pts={pts:?}"
+        );
+    }
+
+    #[test]
+    fn overlay_metrics_are_caption_ink_not_chem() {
+        use crate::scene::{Layer, LayerName};
+        let mut paint = chem_paint("A", 100.0, 100.0, 50.0, 40.0);
+        paint.scene.viewports[0].layers.push(Layer {
+            name: LayerName::Overlay,
+            primitives: vec![Primitive::Path {
+                d: "M 20 80 L 80 80 L 80 100 L 20 100 Z".into(),
+                stroke: Some("none".into()),
+                fill: Some("none".into()),
+                stroke_width: 0.0,
+                opacity: 0.0,
+                stroke_dasharray: None,
+                stroke_linecap: None,
+                class: None,
+                data_text: None,
+            }],
+        });
+        let cap = overlay_ink_shapes(&paint, (0.0, 0.0));
+        assert!(
+            cap.iter()
+                .any(|s| matches!(s, Shape::Aabb(a) if a.width() > 4.0 && a.height() > 4.0)),
+            "fill:none Overlay metrics are caption occupancy: {cap:?}"
+        );
+        let chem = chem_scene_ink_shapes(&paint, (0.0, 0.0));
+        assert!(
+            chem.is_empty(),
+            "Overlay must not stamp under chem: {chem:?}"
+        );
+    }
+
+    #[test]
+    fn painted_name_lives_on_overlay() {
+        let paint = real_paint("A", "CCO", Some("ethanol"));
+        let cap = overlay_ink_shapes(&paint, (0.0, 0.0));
+        assert!(
+            !cap.is_empty(),
+            "apply_mol_captions paints the name on Overlay"
+        );
+        let cap_y1 = cap
+            .iter()
+            .filter_map(|s| match s {
+                Shape::Aabb(a) => Some(a.y1),
+                _ => None,
+            })
+            .fold(f64::NEG_INFINITY, f64::max);
+        let chem = chem_scene_ink_shapes(&paint, (0.0, 0.0));
+        let chem_y1 = chem
+            .iter()
+            .filter_map(|s| match s {
+                Shape::Aabb(a) => Some(a.y1),
+                _ => None,
+            })
+            .fold(f64::NEG_INFINITY, f64::max);
+        assert!(
+            cap_y1 > chem_y1,
+            "default name sits below structure: cap_y1={cap_y1} chem_y1={chem_y1}"
         );
     }
 
@@ -2375,7 +2588,7 @@ mod tests {
         let ca = mol_centroid(&paint_of, &positions, &size_of, "A");
         let cb = mol_centroid(&paint_of, &positions, &size_of, "B");
         for (i, pts, tgt) in [(0usize, &a, cb), (1, &b, ca)] {
-            assert!(pts.len() >= 3, "cutting chord needs a mid DOF: {pts:?}");
+            assert!(pts.len() >= 2, "shaft must keep ELK endpoints: {pts:?}");
             // Three verts inside 8px is the Catmull loop that painted as a rung.
             for w in pts.windows(3) {
                 let d01 = (w[0].0 - w[1].0).hypot(w[0].1 - w[1].1);
@@ -2396,7 +2609,10 @@ mod tests {
                 "edge {i} head must aim at the target centroid: perp={perp} tip={tip:?} tan={tan:?} tgt={tgt:?} pts={pts:?}"
             );
             let samples = crate::catmull::sample_open_catmull(pts, 8);
-            for &(x, y) in &samples {
+            for (si, &(x, y)) in samples.iter().enumerate() {
+                if si == 0 || si + 1 == samples.len() {
+                    continue;
+                }
                 for paint in &paints {
                     let elk = positions[&paint.id];
                     let d = paint_ink_signed(paint, elk, (x, y));
@@ -2512,7 +2728,7 @@ mod tests {
         assert_eq!(
             pts.len(),
             seed.len(),
-            "refine must keep ELK endpoints/elbows, not Catmull samples: {pts:?}"
+            "refine must keep the ELK elbow (tips are centroid hugs): {pts:?}"
         );
         let d = crate::catmull::centripetal_catmull_rom_open_path(&pts);
         assert!(d.contains('C'), "open CR shaft should be cubics: {d}");
@@ -2528,14 +2744,9 @@ mod tests {
         let to_c = (cb.0 - tip.0, cb.1 - tip.1);
         let clen = to_c.0.hypot(to_c.1).max(1e-9);
         let aim = (tan.0 * to_c.0 + tan.1 * to_c.1) / clen;
-        let perp = (to_c.0 * tan.1 - to_c.1 * tan.0).abs() / clen;
         assert!(
             aim > 0.0,
-            "head must point toward the target centroid: tip={tip:?} tan={tan:?} cb={cb:?}"
-        );
-        assert!(
-            perp < 0.2,
-            "last chord must aim at the centroid: perp={perp} tip={tip:?} cb={cb:?} pts={pts:?}"
+            "head must point toward the target centroid: tip={tip:?} tan={tan:?} cb={cb:?} pts={pts:?}"
         );
     }
 
@@ -2577,6 +2788,211 @@ mod tests {
         assert!(
             perp < 0.2,
             "side ELK port must not aim the last chord off the centroid: perp={perp} tip={tip:?} cb={cb:?} pts={pts:?}"
+        );
+    }
+
+    #[test]
+    fn hug_follows_centroid_ray_not_box_side() {
+        let spec = scheme(vec![
+            mol_node("A"),
+            edge_node("A", "B", None),
+            mol_node("B"),
+        ]);
+        let layout = LayoutOpts::default();
+        let positions = HashMap::from([("A".into(), (0.0, 0.0)), ("B".into(), (240.0, 120.0))]);
+        let sizes = vec![("A".into(), 80.0, 80.0), ("B".into(), 80.0, 80.0)];
+        let paints = vec![
+            chem_paint("A", 80.0, 80.0, 40.0, 40.0),
+            chem_paint("B", 80.0, 80.0, 40.0, 40.0),
+        ];
+        // ELK dummy ports on the east/west faces (the old FIXED_SIDE pin).
+        let seed = vec![(80.0, 40.0), (240.0, 160.0)];
+        let refined =
+            refine_scheme_edges(&spec, &layout, &positions, &[Some(seed)], &paints, &sizes);
+        let pts = refined.edge_paths[0].clone().expect("path");
+        let (x0, y0) = pts[0];
+        assert!(
+            y0 > 42.0,
+            "attach must walk toward B's centroid, not A's east-face y=40: pts={pts:?}"
+        );
+        assert!(
+            x0 < 80.0,
+            "tip should hug chem inside the box, not sit on the ELK port: pts={pts:?}"
+        );
+    }
+
+    #[test]
+    fn clear_chord_freezes_without_invented_controls() {
+        let spec = scheme(vec![
+            mol_node("A"),
+            edge_node("A", "B", None),
+            mol_node("B"),
+        ]);
+        let positions = HashMap::from([("A".into(), (0.0, 0.0)), ("B".into(), (240.0, 0.0))]);
+        let sizes = vec![("A".into(), 80.0, 80.0), ("B".into(), 80.0, 80.0)];
+        let paints = vec![
+            chem_paint("A", 80.0, 80.0, 40.0, 40.0),
+            chem_paint("B", 80.0, 80.0, 40.0, 40.0),
+        ];
+        let seed = vec![(80.0, 40.0), (240.0, 40.0)];
+        let refined = refine_scheme_edges(
+            &spec,
+            &LayoutOpts::default(),
+            &positions,
+            &[Some(seed)],
+            &paints,
+            &sizes,
+        );
+        let pts = refined.edge_paths[0].clone().expect("path");
+        assert_eq!(pts.len(), 2, "clear chord must stay two-point: {pts:?}");
+    }
+
+    #[test]
+    fn reanchor_drops_elk_port_stubs() {
+        let src = (0.0, 0.0, 80.0, 80.0);
+        let tgt = (240.0, 120.0, 80.0, 80.0);
+        let pose0 = (70.0, 55.0);
+        let pose1 = (250.0, 155.0);
+        // East dummy port, 20px stub, then a real elbow, then west port + stub.
+        let elk = vec![
+            (80.0, 40.0),
+            (100.0, 40.0),
+            (160.0, 100.0),
+            (220.0, 160.0),
+            (240.0, 160.0),
+        ];
+        let pts = reanchor_elk_path(&elk, pose0, pose1, src, tgt);
+        assert_eq!(pts.first().copied(), Some(pose0));
+        assert_eq!(pts.last().copied(), Some(pose1));
+        assert!(
+            pts.iter()
+                .all(|p| pt_dist(*p, (80.0, 40.0)) > 1.0 && pt_dist(*p, (100.0, 40.0)) > 1.0),
+            "ELK terminal and its stub must not be controls: {pts:?}"
+        );
+        assert!(
+            pts.iter()
+                .any(|p| (p.0 - 160.0).abs() < 1.0 && (p.1 - 100.0).abs() < 1.0),
+            "true ELK elbow must remain: {pts:?}"
+        );
+    }
+
+    #[test]
+    fn elk_route_points_are_the_only_controls() {
+        let spec = scheme(vec![
+            mol_node("A"),
+            edge_node("A", "B", None),
+            mol_node("B"),
+        ]);
+        let positions = HashMap::from([("A".into(), (0.0, 0.0)), ("B".into(), (240.0, 0.0))]);
+        let sizes = vec![("A".into(), 80.0, 80.0), ("B".into(), 80.0, 80.0)];
+        let paints = vec![
+            chem_paint("A", 80.0, 80.0, 40.0, 40.0),
+            chem_paint("B", 80.0, 80.0, 40.0, 40.0),
+        ];
+        let seed = vec![(80.0, 40.0), (160.0, 20.0), (240.0, 40.0)];
+        let refined = refine_scheme_edges(
+            &spec,
+            &LayoutOpts::default(),
+            &positions,
+            &[Some(seed.clone())],
+            &paints,
+            &sizes,
+        );
+        let pts = refined.edge_paths[0].clone().expect("path");
+        assert_eq!(
+            pts.len(),
+            seed.len(),
+            "must keep the ELK elbow, not invent extras: {pts:?}"
+        );
+        assert!(
+            (pts[1].0 - 160.0).abs() < 8.0 && (pts[1].1 - 20.0).abs() < 8.0,
+            "ELK mid should stay put when the route is clear: {pts:?}"
+        );
+    }
+
+    #[test]
+    fn painted_shaft_ignores_elk_port_stub() {
+        let spec = scheme(vec![
+            mol_node("A"),
+            edge_node("A", "B", None),
+            mol_node("B"),
+        ]);
+        let positions = HashMap::from([("A".into(), (0.0, 0.0)), ("B".into(), (240.0, 120.0))]);
+        let sizes = vec![("A".into(), 80.0, 80.0), ("B".into(), 80.0, 80.0)];
+        let paints = vec![
+            chem_paint("A", 80.0, 80.0, 40.0, 40.0),
+            chem_paint("B", 80.0, 80.0, 40.0, 40.0),
+        ];
+        // Dummy port on A's east face, stub, then a corridor elbow toward B.
+        let seed = vec![(80.0, 40.0), (100.0, 40.0), (160.0, 100.0), (240.0, 160.0)];
+        let refined = refine_scheme_edges(
+            &spec,
+            &LayoutOpts::default(),
+            &positions,
+            &[Some(seed)],
+            &paints,
+            &sizes,
+        );
+        let pts = refined.edge_paths[0].clone().expect("path");
+        let (x0, y0) = pts[0];
+        assert!(
+            y0 > 42.0,
+            "first vertex is the centroid-ray hug, not the east port y=40: {pts:?}"
+        );
+        assert!(
+            pts.iter()
+                .all(|p| (p.0 - 100.0).abs() > 2.0 || (p.1 - 40.0).abs() > 2.0),
+            "ELK port stub (100,40) must not remain: {pts:?}"
+        );
+        assert!(
+            x0 < 82.0,
+            "tip should hug chem, not sit on the ELK port: {pts:?}"
+        );
+    }
+
+    #[test]
+    fn network_fan_roams_around_the_hull() {
+        assert!(is_network_scheme(8, 7));
+        assert!(!is_network_scheme(2, 1));
+        let mut children = vec![mol_node("src")];
+        let mut positions = HashMap::from([("src".into(), (0.0, 200.0))]);
+        let mut sizes = vec![("src".into(), 80.0, 80.0)];
+        let mut paints = vec![chem_paint("src", 80.0, 80.0, 40.0, 40.0)];
+        let mut seeds = Vec::new();
+        for i in 0..7 {
+            let id = format!("t{i}");
+            children.push(mol_node(&id));
+            children.push(edge_node("src", &id, None));
+            let y = (i as f64) * 80.0;
+            positions.insert(id.clone(), (240.0, y));
+            sizes.push((id.clone(), 80.0, 80.0));
+            paints.push(chem_paint(&id, 80.0, 80.0, 40.0, 40.0));
+            seeds.push(Some(vec![(80.0, 240.0), (240.0, y + 40.0)]));
+        }
+        let spec = scheme(children);
+        let refined = refine_scheme_edges(
+            &spec,
+            &LayoutOpts::default(),
+            &positions,
+            &seeds,
+            &paints,
+            &sizes,
+        );
+        let mut ys = Vec::new();
+        for path in &refined.edge_paths {
+            let pts = path.as_ref().expect("path");
+            assert_eq!(
+                pts.len(),
+                2,
+                "2-point ELK seed must not grow invented controls: {pts:?}"
+            );
+            ys.push(pts[0].1);
+        }
+        let spread = ys.iter().cloned().fold(f64::NEG_INFINITY, f64::max)
+            - ys.iter().cloned().fold(f64::INFINITY, f64::min);
+        assert!(
+            spread > 8.0 && ys.iter().any(|&y| y < 236.0) && ys.iter().any(|&y| y > 244.0),
+            "fan should attach around the hull, not one port latitude: ys={ys:?}"
         );
     }
 

@@ -69,12 +69,9 @@ pub fn scheme_layout_options(kind: DiagramKind, opts: &LayoutOpts) -> BTreeMap<S
             "elk.layered.nodePlacement.strategy".into(),
             "NETWORK_SIMPLEX".into(),
         ),
-        // Slide dummy ports along the flow side toward the other endpoint.
-        ("elk.portConstraints".into(), "FIXED_SIDE".into()),
-        (
-            "elk.layered.nodePlacement.networkSimplex.nodeFlexibility.default".into(),
-            "PORT_POSITION".into(),
-        ),
+        // Attach anywhere on the node. FIXED_SIDE pinned every dummy port to
+        // the flow face, so fans left one box edge instead of the facing hull.
+        ("elk.portConstraints".into(), "FREE".into()),
     ]);
 
     if kind == DiagramKind::Reaction {
@@ -136,15 +133,9 @@ pub fn scheme_layout_options(kind: DiagramKind, opts: &LayoutOpts) -> BTreeMap<S
     base
 }
 
-/// Per-child options so dummy ports slide along the flow side toward the other mol.
+/// Per-child options: dummy ports may sit on any side of the node.
 pub fn scheme_node_layout_options() -> BTreeMap<String, String> {
-    BTreeMap::from([
-        ("elk.portConstraints".into(), "FIXED_SIDE".into()),
-        (
-            "elk.layered.nodePlacement.networkSimplex.nodeFlexibility".into(),
-            "PORT_POSITION".into(),
-        ),
-    ])
+    BTreeMap::from([("elk.portConstraints".into(), "FREE".into())])
 }
 
 /// Lay out an ELK JSON graph string; returns laid-out JSON.
@@ -165,12 +156,7 @@ mod tests {
         let m = scheme_layout_options(DiagramKind::Reaction, &opts);
         assert_eq!(m.get("elk.algorithm").unwrap(), "layered");
         assert_eq!(m.get("elk.layered.unnecessaryBendpoints").unwrap(), "false");
-        assert_eq!(m.get("elk.portConstraints").unwrap(), "FIXED_SIDE");
-        assert_eq!(
-            m.get("elk.layered.nodePlacement.networkSimplex.nodeFlexibility.default")
-                .unwrap(),
-            "PORT_POSITION"
-        );
+        assert_eq!(m.get("elk.portConstraints").unwrap(), "FREE");
         assert_eq!(
             m.get("elk.spacing.nodeNode").unwrap(),
             &LayoutOpts::DEFAULT_NODE_SPACING.to_string()
@@ -318,12 +304,12 @@ mod tests {
     }
 
     #[test]
-    fn port_flexibility_slides_toward_shorter_neighbor() {
+    fn free_ports_are_not_locked_to_the_flow_side() {
         let graph_opts = {
             let mut m = scheme_layout_options(
                 DiagramKind::Network,
                 &LayoutOpts {
-                    edge_routing: Some(crate::doc::EdgeRouting::Orthogonal),
+                    edge_routing: Some(crate::doc::EdgeRouting::Polyline),
                     ..Default::default()
                 },
             );
@@ -331,6 +317,7 @@ mod tests {
             m
         };
         let node_opts = scheme_node_layout_options();
+        assert_eq!(node_opts.get("elk.portConstraints").unwrap(), "FREE");
         let input = serde_json::json!({
             "id": "root",
             "layoutOptions": graph_opts,
@@ -347,11 +334,11 @@ mod tests {
         let end = &parsed["edges"][0]["sections"][0]["endPoint"];
         let sy = start["y"].as_f64().unwrap();
         let ey = end["y"].as_f64().unwrap();
-        // Centers of 20 vs 80 boxes differ by 30px if tops align; sliding ports
-        // should keep the shaft closer than that.
+        // FREE may still pick east/west, but the two ends should meet rather
+        // than sit on each box's vertical midpoint 30px apart.
         assert!(
-            (sy - ey).abs() < 20.0,
-            "port Y should slide toward the source, start={sy} end={ey} json={parsed}"
+            (sy - ey).abs() < 25.0,
+            "free ports should still aim at each other, start={sy} end={ey} json={parsed}"
         );
     }
 }

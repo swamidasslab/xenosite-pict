@@ -1,5 +1,15 @@
 # Lab log
 
+## 2026-10-30
+
+- Mol names live at `mol/annotations/captions`, sibling of `mol/chem` — same kit tree. Scheme hug/clear walks the mol node, so captions are occupancy with no `mol-caption` class scrape. Overlay `fill:none` metrics are caption boxes; chem still skips stroke-only bond paths.
+
+- Scheme shafts do not use ELK dummy-port terminals. Tips are the centroid→centroid ink hug; only ELK *interior* bends are controls. Port stubs (~edgeNode outside the box) are peeled so Catmull cannot yank a fan back onto one box side.
+
+- Scheme shafts: pulled-back ELK polyline (centroid hug + ELK route points only). If it misses chem, freeze it. Edge–edge crossings ELK already made are not overlap. Only the shafts that hit a molecule go into a cheap NM (endpoints + those ELK points; no invented bows, no ParallelClear). Default mol `name` is below, including vertical schemes.
+
+- Network arrows were slow (always-on Nelder–Mead + glyph ink raster + O(E²) ParallelClear) and looked port-pinned: ELK `FIXED_SIDE` plus an axis-aligned `facing_point` hug walked only the flow-side box face. Ports are now `FREE`; tips walk the true centroid→centroid chem ray (any hull side).
+
 ## 2026-10-29
 
 - `release/v0.8.0` failed llvm-cov at 92.06% (floor 93). The drop is the vendored xenosmarts-syntax snapshot (`smiles_syntax/gen_smiles.rs` ~70% on generated matchers). Coverage now ignores `smiles_syntax/` so the floor still tracks xpict paint/layout (~93.9% on the 0.8.0 lcov).
