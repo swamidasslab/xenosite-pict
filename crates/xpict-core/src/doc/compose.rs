@@ -8,8 +8,7 @@ use std::collections::HashMap;
 use serde_json::{json, Value};
 
 use crate::arrows::{
-    edge_primitives as paint_edge, simplify_route, EdgePaintIn, EdgePrim,
-    KINK_PX,
+    edge_primitives as paint_edge, simplify_route, EdgePaintIn, EdgePrim, KINK_PX,
 };
 use crate::debug_box::debug_rect;
 use crate::scene::{LayerName, Primitive, Scene, TextAnchor, Viewport};
@@ -117,6 +116,7 @@ fn compose_reaction(
             (p.id.clone(), w, h)
         })
         .collect();
+    let network = super::scheme_layout::is_network_scheme(sizes.len(), spec.edges().len());
 
     let placement = match layout_scheme(spec, layout, &sizes, paints) {
         Ok(p) => p,
@@ -180,10 +180,7 @@ fn compose_reaction(
                 // Refine always hugs centroid→centroid. Never paint ELK/box ports.
                 let (x, y, w, h) = src_box;
                 let (x2, y2, w2, h2) = tgt_box;
-                vec![
-                    (x + w * 0.5, y + h * 0.5),
-                    (x2 + w2 * 0.5, y2 + h2 * 0.5),
-                ]
+                vec![(x + w * 0.5, y + h * 0.5), (x2 + w2 * 0.5, y2 + h2 * 0.5)]
             });
         // Orthogonal ELK jogs still flatten under KINK_PX. Polyline/splines
         // keep refine vertices: collinear collapse undoes a chem-clearing bow.
@@ -219,7 +216,9 @@ fn compose_reaction(
             label: label_text,
             label_pos,
             index: i,
-            curve_catmull: true,
+            // Reactions: Catmull through a few elbows. Networks: ELK U-corridors
+            // become page-edge loops if those verts interpolate a spline.
+            curve_catmull: !network,
             label_xy: label_pose.map(|(x, y, _)| (x, y)),
             label_rotate: label_pose.map(|(_, _, r)| r),
         };
