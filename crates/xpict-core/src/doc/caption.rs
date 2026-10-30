@@ -24,6 +24,11 @@ fn is_structure_class(class: Option<&str>) -> bool {
     let Some(c) = class.map(|s| s.to_ascii_lowercase()) else {
         return true;
     };
+    // Radical dots live on the marks layer (`class="atom-N radical"`) but they
+    // are chem ink, same as heteroatom glyphs — not chrome.
+    if c.contains("radical") {
+        return true;
+    }
     !(c.contains("shade")
         || c.contains("region")
         || c.contains("callout")

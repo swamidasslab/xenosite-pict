@@ -945,9 +945,18 @@ fn primitive_leaf(shape: &Shape) -> bool {
     }
 }
 
-/// Mol-kit wrapper: hard Outside vs every bond line under `mol/chem/bonds`.
+/// Mol-kit wrapper: hard Outside vs chem marks (bonds, aromatic strokes,
+/// radical dots).
+///
+/// Coord disks stay snug-homes (not obstacles). Shade is opt-in via
+/// [`push_clear_shades`]. Aromatic ring strokes and radical marks are chem
+/// ink like bonds — every kit that already clears bonds also keeps off them.
 fn push_clear_bonds(world: &LayoutWorld, hard: &mut Vec<HardConstraint>, a: &str, clash_dist: f64) {
     push_clear_leaves(world, hard, a, "mol/chem/bonds", clash_dist);
+    push_clear_leaves(world, hard, a, "mol/chem/aromatic", clash_dist);
+    push_clear_leaves_where(world, hard, a, "mol/chem", clash_dist, |_, n| {
+        n.object_type == ObjectType::Radical
+    });
 }
 
 /// Hard Outside vs every shade disk under `mol/chem` (non-index labels).
@@ -972,6 +981,8 @@ pub enum ObjectType {
     Coord,
     AtomText,
     Shade,
+    /// Unpaired-electron dots (`[CH3]` / `C[CH2]`). Chem marks, always cleared.
+    Radical,
     Annotations,
     Captions,
     Caption,
@@ -2214,17 +2225,19 @@ fn pseudo_noise(seed: u64) -> f64 {
 // ─── Build helpers / kits ───────────────────────────────────────────────────
 
 /// Install fixed chem group: bonds as lines, atoms as **disks** (~0.3 CC-bond),
-/// optional shade circles.
+/// optional shade circles. Aromatic strokes and radicals go through
+/// [`install_chem_with_texts`].
 pub fn install_chem(
     world: &mut LayoutWorld,
     bonds: &[(f64, f64, f64, f64)],
     atoms: &[(usize, f64, f64)],
     shades: &[(usize, f64, f64, f64)],
 ) {
-    install_chem_with_texts(world, bonds, atoms, shades, &[]);
+    install_chem_with_texts(world, bonds, atoms, shades, &[], &[], &[]);
 }
 
-/// Like [`install_chem`], plus fixed chem atom-text AABBs (`ObjectType::AtomText`).
+/// Like [`install_chem`], plus fixed chem atom-text AABBs (`ObjectType::AtomText`),
+/// radical-dot circles (`ObjectType::Radical`), and aromatic ring strokes.
 ///
 /// Chem ink is immovable — annotations MinGap/Outside against these boxes.
 pub fn install_chem_with_texts(
@@ -2233,9 +2246,20 @@ pub fn install_chem_with_texts(
     atoms: &[(usize, f64, f64)],
     shades: &[(usize, f64, f64, f64)],
     atom_texts: &[(usize, Aabb)],
+    radicals: &[(usize, f64, f64, f64)],
+    aromatics: &[(f64, f64, f64, f64)],
 ) {
     let parent = world.root.clone();
-    install_chem_under(world, &parent, bonds, atoms, shades, atom_texts);
+    install_chem_under(
+        world,
+        &parent,
+        bonds,
+        atoms,
+        shades,
+        atom_texts,
+        radicals,
+        aromatics,
+    );
 }
 
 /// Install chem ink under `parent` (`{parent}/chem/…`).
@@ -2246,6 +2270,8 @@ pub fn install_chem_under(
     atoms: &[(usize, f64, f64)],
     shades: &[(usize, f64, f64, f64)],
     atom_texts: &[(usize, Aabb)],
+    radicals: &[(usize, f64, f64, f64)],
+    aromatics: &[(f64, f64, f64, f64)],
 ) -> NodeId {
     let chem = world.insert(
         format!("{parent}/chem"),
@@ -2310,18 +2336,68 @@ pub fn install_chem_under(
             true,
         );
     }
-    for &(idx, cx, cy, r) in shades {
+    for (k, &(idx, cx, cy, r)) in shades.iter().enumerate() {
+        let aid = format!("{parent}/chem/atoms/a{idx}");
+        if world.get(&aid).is_some() {
+            world.insert(
+                format!("{parent}/chem/atoms/a{idx}/shade"),
+                &aid,
+                ObjectType::Shade,
+                Shape::Circle { cx, cy, r },
+                true,
+            );
+            continue;
+        }
+        // Bond-midpoint PlotDots have no atom parent.
+        let folder = format!("{parent}/chem/shades");
+        if world.get(&folder).is_none() {
+            world.insert(
+                folder.clone(),
+                &chem,
+                ObjectType::Shade,
+                Shape::Aabb(Aabb::new(0.0, 0.0, 0.0, 0.0)),
+                true,
+            );
+        }
+        world.insert(
+            format!("{parent}/chem/shades/s{k}"),
+            &folder,
+            ObjectType::Shade,
+            Shape::Circle { cx, cy, r },
+            true,
+        );
+    }
+    for (k, &(idx, cx, cy, r)) in radicals.iter().enumerate() {
         let aid = format!("{parent}/chem/atoms/a{idx}");
         if world.get(&aid).is_none() {
             continue;
         }
         world.insert(
-            format!("{parent}/chem/atoms/a{idx}/shade"),
+            format!("{parent}/chem/atoms/a{idx}/radical{k}"),
             &aid,
-            ObjectType::Shade,
+            ObjectType::Radical,
             Shape::Circle { cx, cy, r },
             true,
         );
+    }
+    if !aromatics.is_empty() {
+        // Stroke segments, not a filled disk — the ring hole stays air.
+        let arom_id = world.insert(
+            format!("{parent}/chem/aromatic"),
+            &chem,
+            ObjectType::Bonds,
+            Shape::Aabb(Aabb::new(0.0, 0.0, 0.0, 0.0)),
+            true,
+        );
+        for (i, &(x0, y0, x1, y1)) in aromatics.iter().enumerate() {
+            world.insert(
+                format!("{parent}/chem/aromatic/s{i}"),
+                &arom_id,
+                ObjectType::Bonds,
+                Shape::Line { x0, y0, x1, y1 },
+                true,
+            );
+        }
     }
     if !atom_texts.is_empty() {
         let texts_id = world.insert(
@@ -3335,6 +3411,8 @@ pub fn refine_region_text(
     bonds: &[(f64, f64, f64, f64)],
     atoms: &[(usize, f64, f64)],
     shades: &[(usize, f64, f64, f64)],
+    radicals: &[(usize, f64, f64, f64)],
+    aromatics: &[(f64, f64, f64, f64)],
     hull: Shape,
     text_rest: Aabb,
     inside: bool,
@@ -3343,7 +3421,7 @@ pub fn refine_region_text(
     other_labels: &[Aabb],
 ) -> (f64, f64) {
     let mut world = LayoutWorld::new("mol");
-    install_chem(&mut world, bonds, atoms, shades);
+    install_chem_with_texts(&mut world, bonds, atoms, shades, &[], radicals, aromatics);
     let mut cs = Vec::new();
     let mut hard = Vec::new();
     let side_about = if atoms.is_empty() {
@@ -3386,6 +3464,8 @@ pub fn refine_callout(
     bonds: &[(f64, f64, f64, f64)],
     atoms: &[(usize, f64, f64)],
     shades: &[(usize, f64, f64, f64)],
+    radicals: &[(usize, f64, f64, f64)],
+    aromatics: &[(f64, f64, f64, f64)],
     label_rest: Aabb,
     tip_xy: (f64, f64),
     target: (f64, f64),
@@ -3396,7 +3476,7 @@ pub fn refine_callout(
     other_labels: &[Aabb],
 ) -> ((f64, f64), (f64, f64), Vec<(f64, f64)>) {
     let mut world = LayoutWorld::new("mol");
-    install_chem(&mut world, bonds, atoms, shades);
+    install_chem_with_texts(&mut world, bonds, atoms, shades, &[], radicals, aromatics);
     let mut cs = Vec::new();
     let mut hard = Vec::new();
     let (label_id, tip_id) = callout_kit(
@@ -3443,6 +3523,8 @@ pub fn refine_atom_number(
     atoms: &[(usize, f64, f64)],
     shades: &[(usize, f64, f64, f64)],
     atom_texts: &[(usize, Aabb)],
+    radicals: &[(usize, f64, f64, f64)],
+    aromatics: &[(f64, f64, f64, f64)],
     atom_idx: usize,
     rest: Aabb,
     clash_dist: f64,
@@ -3451,7 +3533,15 @@ pub fn refine_atom_number(
     avoid_shade: bool,
 ) -> (f64, f64) {
     let mut world = LayoutWorld::new("mol");
-    install_chem_with_texts(&mut world, bonds, atoms, shades, atom_texts);
+    install_chem_with_texts(
+        &mut world,
+        bonds,
+        atoms,
+        shades,
+        atom_texts,
+        radicals,
+        aromatics,
+    );
     let mut cs = Vec::new();
     let mut hard = Vec::new();
     let id = atom_number_kit(
@@ -4344,6 +4434,8 @@ mod tests {
             &[(0, 0.0, 0.0)],
             &[],
             &[(0, Aabb::new(4.0, -3.0, 14.0, 3.0))], // chem "OH" beside atom
+            &[],
+            &[],
         );
         let mut cs = Vec::new();
         let mut hard = Vec::new();
@@ -4372,7 +4464,123 @@ mod tests {
                 h,
                 HardConstraint::MaxDist { b, .. } if b.ends_with("/coord")
             )),
-            "chem text wins over atom point for tether"
+            "chem text present → do not tether to the coord disk"
+        );
+    }
+
+    #[test]
+    fn atom_number_kit_clears_radical_marks_like_bonds() {
+        let mut w = LayoutWorld::new("mol");
+        install_chem_with_texts(
+            &mut w,
+            &[(0.0, 0.0, 30.0, 0.0)],
+            &[(0, 0.0, 0.0), (1, 30.0, 0.0)],
+            &[],
+            &[(0, Aabb::new(-4.0, -4.0, 8.0, 4.0))],
+            &[(0, 0.0, -8.0, 2.1)],
+            &[],
+        );
+        assert!(
+            w.get("mol/chem/atoms/a0/radical0").is_some(),
+            "radical disks install under the atom like shade"
+        );
+        let mut cs = Vec::new();
+        let mut hard = Vec::new();
+        let ink = Aabb::new(-3.0, -11.0, 3.0, -5.0);
+        let _ = atom_number_kit(
+            &mut w,
+            &mut cs,
+            &mut hard,
+            0,
+            ink,
+            3.0,
+            ATOM_NUMBER_TETHER_PX,
+            &[],
+            false,
+        );
+        assert!(
+            hard.iter().any(|h| matches!(
+                h,
+                HardConstraint::Outside { b, .. } if b.contains("/radical")
+            )),
+            "clear-bonds kits must also Outside vs radical leaves: {hard:?}"
+        );
+    }
+
+    #[test]
+    fn atom_number_kit_clears_aromatic_strokes_like_bonds() {
+        let mut w = LayoutWorld::new("mol");
+        install_chem_with_texts(
+            &mut w,
+            &[(0.0, 0.0, 30.0, 0.0)],
+            &[(0, 0.0, 0.0), (1, 30.0, 0.0)],
+            &[],
+            &[],
+            &[],
+            &[(8.0, -10.0, 22.0, -10.0)],
+        );
+        assert!(
+            w.get("mol/chem/aromatic/s0").is_some(),
+            "aromatic ring strokes install as chem bond-like lines"
+        );
+        let mut cs = Vec::new();
+        let mut hard = Vec::new();
+        let ink = Aabb::new(12.0, -12.0, 18.0, -8.0);
+        let _ = atom_number_kit(
+            &mut w,
+            &mut cs,
+            &mut hard,
+            0,
+            ink,
+            3.0,
+            ATOM_NUMBER_TETHER_PX,
+            &[],
+            false,
+        );
+        assert!(
+            hard.iter().any(|h| matches!(
+                h,
+                HardConstraint::Outside { b, .. } if b.contains("/aromatic/")
+            )),
+            "clear-bonds kits must also Outside vs aromatic strokes: {hard:?}"
+        );
+    }
+
+    #[test]
+    fn atom_number_kit_clears_bond_shade_when_asked() {
+        let mut w = LayoutWorld::new("mol");
+        install_chem_with_texts(
+            &mut w,
+            &[(0.0, 0.0, 30.0, 0.0)],
+            &[(0, 0.0, 0.0), (1, 30.0, 0.0)],
+            &[(usize::MAX, 15.0, 0.0, 8.0)],
+            &[],
+            &[],
+            &[],
+        );
+        assert!(
+            w.get("mol/chem/shades/s0").is_some(),
+            "bond-midpoint PlotDots install as unparented shade disks"
+        );
+        let mut cs = Vec::new();
+        let mut hard = Vec::new();
+        let _ = atom_number_kit(
+            &mut w,
+            &mut cs,
+            &mut hard,
+            0,
+            Aabb::new(10.0, -4.0, 20.0, 4.0),
+            4.0,
+            ATOM_TEXT_TETHER_PX,
+            &[],
+            true,
+        );
+        assert!(
+            hard.iter().any(|h| matches!(
+                h,
+                HardConstraint::Outside { b, .. } if b.contains("/shades/")
+            )),
+            "avoid-shade kits must Outside vs bond wash: {hard:?}"
         );
     }
 
@@ -4562,6 +4770,8 @@ mod tests {
             &atoms,
             &[],
             &[],
+            &[],
+            &[],
             0,
             seed,
             3.0,
@@ -4596,6 +4806,8 @@ mod tests {
             &mol,
             &[(2.0, 10.0, 30.0, 10.0)],
             &[(0, 2.0, 10.0)],
+            &[],
+            &[],
             &[],
             &[],
         );
@@ -5049,7 +5261,7 @@ mod tests {
     #[test]
     fn push_clear_leaves_skips_empty_container() {
         let mut w = LayoutWorld::rooted("scheme", ObjectType::Scheme);
-        install_chem_under(&mut w, "scheme", &[], &[(0, 10.0, 10.0)], &[], &[]);
+        install_chem_under(&mut w, "scheme", &[], &[(0, 10.0, 10.0)], &[], &[], &[], &[]);
         let mut hard = Vec::new();
         push_clear_leaves(&w, &mut hard, "probe", "scheme/chem", 4.0);
         assert!(
@@ -5082,7 +5294,7 @@ mod tests {
             })
             .collect();
         let mut w = LayoutWorld::rooted("mol", ObjectType::Mol);
-        install_chem_under(&mut w, "mol", &bonds, &atoms, &[], &[]);
+        install_chem_under(&mut w, "mol", &bonds, &atoms, &[], &[], &[], &[]);
         assert!(
             w.get("mol/chem/hull").is_some(),
             "hexagon must install a filled hull leaf"

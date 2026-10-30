@@ -76,6 +76,15 @@ impl Aabb {
     pub fn translated(self, dx: f64, dy: f64) -> Self {
         Self::new(self.x0 + dx, self.y0 + dy, self.x1 + dx, self.y1 + dy)
     }
+
+    pub fn union(self, other: Aabb) -> Self {
+        Self::new(
+            self.x0.min(other.x0),
+            self.y0.min(other.y0),
+            self.x1.max(other.x1),
+            self.y1.max(other.y1),
+        )
+    }
 }
 
 /// Bond (or other) line-segment obstacle.
@@ -486,7 +495,8 @@ pub fn place_greedy(occ: &Occupancy, req: &PlaceRequest) -> Placement {
 ///
 /// Used for wide `atom_label` text so the seed does not start on a bond just
 /// because the chem-travel alternate pointed that way.
-pub fn least_clash_side(occ: &Occupancy, req: &PlaceRequest) -> Side {
+#[cfg(test)]
+fn least_clash_side(occ: &Occupancy, req: &PlaceRequest) -> Side {
     let mut best = req.preferred;
     let mut best_score = f64::INFINITY;
     for (si, side) in req.preferred.all_cw_from().into_iter().enumerate() {

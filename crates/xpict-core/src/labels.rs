@@ -754,6 +754,27 @@ pub fn label_ink_shape(pl: &PlacedLabel, font_px: f64, style: FaceStyle) -> Opti
     )
 }
 
+/// True when a disk overlaps the full label glyph ink (traveling H + charge
+/// included). Same occupancy [`place_backbone`] uses so bonds miss
+/// superscripts and H-counts.
+pub fn disk_hits_label_ink(
+    pl: &PlacedLabel,
+    font_px: f64,
+    style: FaceStyle,
+    cx: f64,
+    cy: f64,
+    r: f64,
+) -> bool {
+    let Some(ink) = label_ink_shape(pl, font_px, style) else {
+        return false;
+    };
+    if r > 1e-9 {
+        ink.buffer(r).contains(cx, cy)
+    } else {
+        ink.contains(cx, cy)
+    }
+}
+
 /// Shorten a bond segment by end insets (same as Python `bonds.shorten`).
 pub fn shorten_bond(
     x1: f64,
@@ -881,7 +902,7 @@ pub fn place_backbone(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::metrics::{FONT_PX, LABEL_GAP_PX};
+    use crate::metrics::{FONT_PX, LABEL_GAP_PX, RADICAL_DOT_PX, RADICAL_OFFSET_PX};
 
     #[test]
     fn split_oh_and_nh2() {
@@ -1194,6 +1215,23 @@ mod tests {
         assert!(
             (west_op - west_o).abs() < 0.5,
             "west clearance should stay near the element: O={west_o} O+={west_op}"
+        );
+    }
+
+    #[test]
+    fn traveling_h_ink_occupies_the_travel_side() {
+        // Full-label occupancy (same AABB/shape bonds use): an east CH's H
+        // is ink to the east of the atom, not north of the carbon.
+        let pl = place_label("CH", 0.0, 0.0, LabelSide::East, FONT_PX, FaceStyle::Regular);
+        let r = RADICAL_DOT_PX;
+        let off = RADICAL_OFFSET_PX;
+        assert!(
+            disk_hits_label_ink(&pl, FONT_PX, FaceStyle::Regular, off, 0.0, r),
+            "east disk at radical offset must hit traveling H"
+        );
+        assert!(
+            !disk_hits_label_ink(&pl, FONT_PX, FaceStyle::Regular, 0.0, -off, r),
+            "north disk at radical offset must miss traveling H"
         );
     }
 

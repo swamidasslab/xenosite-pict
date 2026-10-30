@@ -1,9 +1,9 @@
 //! Paint mol chrome annotations into the scene.
 //!
-//! Depict first freezes chem (bonds + chem labels + shade). Chrome annotations
-//! are then placed by the constraint solver against that fixed chem — never by
-//! mutating atom text. Shade clash uses each atom’s **actual** outer PlotDot
-//! radius, not the house-max disk.
+//! Depict first freezes chem (bonds + chem labels + radical marks + aromatic
+//! ring strokes + shade). Chrome annotations are then placed by the constraint
+//! solver against that fixed chem — never by mutating atom text. Shade clash
+//! uses each atom’s **actual** outer PlotDot radius, not the house-max disk.
 //!
 //! Numbers / text use parallel tracks (NE vs SE). Regions get an analytic pad
 //! hull (box / circle / bezier≈rounded hull). Callouts place text + optional
@@ -17,7 +17,7 @@ use crate::doc::chrome::{
 };
 use crate::doc::layout_constraints::{
     bezier_path_from_proxy, hull_proxy, refine_atom_number, refine_callout, refine_region_text,
-    Shape, ATOM_NUMBER_TETHER_PX, ATOM_TEXT_TETHER_PX, REGION_TEXT_TETHER_PX,
+    Shape, ATOM_NUMBER_TETHER_PX, ATOM_TEXT_TETHER_PX,
 };
 use crate::doc::layout_items::{
     callout_arrow, callout_arrow_clearing, padded_label_ink, place_auto, place_greedy,
@@ -303,19 +303,16 @@ fn strip_depict_aromatic_circles(scene: &mut Scene) {
     }
 }
 
-fn aromatic_circle_primitives(mol: &MoleculeIn, dx: f64, dy: f64) -> Vec<Primitive> {
+/// Painted aromatic-circle disks (same radius as the stroke in the scene).
+fn aromatic_circle_disks(mol: &MoleculeIn, dx: f64, dy: f64) -> Vec<(f64, f64, f64)> {
+    if mol.aromatic != AromaticStyle::Circle {
+        return Vec::new();
+    }
     let rings = find_sssr(mol, 8);
     let mut coords: HashMap<i32, (f64, f64)> = HashMap::new();
     for a in &mol.atoms {
         coords.insert(a.index, (a.x + dx, a.y + dy));
     }
-    let color = mol
-        .color
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .unwrap_or("#111")
-        .to_string();
     // Spoke stems run to the ring centroid by design; they must not shrink
     // the aromatic circle to zero.
     let bonds = aromatic_clear_bonds(mol, dx, dy);
@@ -323,19 +320,30 @@ fn aromatic_circle_primitives(mol: &MoleculeIn, dx: f64, dy: f64) -> Vec<Primiti
     aromatic_ring_circles(mol, &rings, &coords)
         .into_iter()
         .map(|(cx0, cy0, r0)| {
-            // Same bond-clear rule as atom circles (inside-ring aromatic).
-            let (cx, cy, r) =
-                circle_clear_bonds(cx0, cy0, r0, cx0, cy0, &bonds, floor_r, CLASH_MARGIN_PX);
-            Primitive::Circle {
-                cx,
-                cy,
-                r,
-                fill: None,
-                stroke: Some(color.clone()),
-                stroke_width: STROKE_PX,
-                opacity: 1.0,
-                class: Some("aromatic circle".into()),
-            }
+            circle_clear_bonds(cx0, cy0, r0, cx0, cy0, &bonds, floor_r, CLASH_MARGIN_PX)
+        })
+        .collect()
+}
+
+fn aromatic_circle_primitives(mol: &MoleculeIn, dx: f64, dy: f64) -> Vec<Primitive> {
+    let color = mol
+        .color
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("#111")
+        .to_string();
+    aromatic_circle_disks(mol, dx, dy)
+        .into_iter()
+        .map(|(cx, cy, r)| Primitive::Circle {
+            cx,
+            cy,
+            r,
+            fill: None,
+            stroke: Some(color.clone()),
+            stroke_width: STROKE_PX,
+            opacity: 1.0,
+            class: Some("aromatic circle".into()),
         })
         .collect()
 }
@@ -418,6 +426,7 @@ fn point_to_seg(px: f64, py: f64, x0: f64, y0: f64, x1: f64, y1: f64) -> f64 {
     (px - qx).hypot(py - qy)
 }
 
+#[cfg(test)]
 fn point_to_line(px: f64, py: f64, x0: f64, y0: f64, x1: f64, y1: f64) -> f64 {
     let dx = x1 - x0;
     let dy = y1 - y0;
@@ -670,6 +679,7 @@ fn atom_label_primitive(
         LabelRole::Text => Occupancy::from_molecule(mol, dx, dy, Some(ATOM_DISK_R_PX)),
         LabelRole::Number => Occupancy::from_bonds(mol, dx, dy, STROKE_PX.max(0.8)),
     };
+    add_radical_occupancy(&mut occ, mol, dx, dy);
     push_aromatic_circle_obstacles(&mut occ, mol, dx, dy);
     for &box_ in other_labels {
         occ.add_aabb(box_);
@@ -729,11 +739,15 @@ fn atom_label_primitive(
     let atom_idx = a.index.max(0) as usize;
     let avoid_shade = role == LabelRole::Text;
     let shade_obs: &[(usize, f64, f64, f64)] = if avoid_shade { shades } else { &[] };
+    let radicals = crate::depict::radical_disks(mol, dx, dy);
+    let aromatics = aromatic_circle_segs(mol, dx, dy);
     let (dtx, dty) = refine_atom_number(
         &bonds,
         &atoms,
         shade_obs,
         &atom_texts,
+        &radicals,
+        &aromatics,
         atom_idx,
         seed,
         CLASH_MARGIN_PX,
@@ -745,7 +759,7 @@ fn atom_label_primitive(
     // along bond normals was shoving numbers far off their atoms after a good
     // solve — do a tether-aware residual clear instead (home = chem text or atom).
     let mut clear_segs = bonds.clone();
-    clear_segs.extend(aromatic_circle_segs(mol, dx, dy));
+    clear_segs.extend_from_slice(&aromatics);
     let home = chem_text_boxes(mol, dx, dy)
         .get(&(a.index))
         .map(|b| b.center())
@@ -825,17 +839,9 @@ fn label_side_to_side(side: LabelSide) -> Side {
 
 /// Approximate aromatic ring strokes as segment obstacles (same clear rule as bonds).
 fn aromatic_circle_segs(mol: &MoleculeIn, dx: f64, dy: f64) -> Vec<(f64, f64, f64, f64)> {
-    if mol.aromatic != AromaticStyle::Circle {
-        return Vec::new();
-    }
-    let rings = find_sssr(mol, 8);
-    let mut coords: HashMap<i32, (f64, f64)> = HashMap::new();
-    for a in &mol.atoms {
-        coords.insert(a.index, (a.x + dx, a.y + dy));
-    }
     let n = 24usize;
     let mut out = Vec::new();
-    for (cx, cy, r) in aromatic_ring_circles(mol, &rings, &coords) {
+    for (cx, cy, r) in aromatic_circle_disks(mol, dx, dy) {
         for i in 0..n {
             let t0 = std::f64::consts::TAU * i as f64 / n as f64;
             let t1 = std::f64::consts::TAU * (i + 1) as f64 / n as f64;
@@ -1127,10 +1133,14 @@ fn region_primitives(
                     .copied()
                     .filter(|(i, _, _, _)| included.iter().any(|&a| a as usize == *i))
                     .collect();
+                let radicals = crate::depict::radical_disks(mol, dx, dy);
+                let aromatics = aromatic_circle_segs(mol, dx, dy);
                 let (dtx, dty) = refine_region_text(
                     &bonds,
                     &atoms,
                     &region_shades,
+                    &radicals,
+                    &aromatics,
                     solve_hull,
                     seed.bounds,
                     inside,
@@ -1139,7 +1149,7 @@ fn region_primitives(
                     other_labels,
                 );
                 let mut clear_segs = bonds.clone();
-                clear_segs.extend(aromatic_circle_segs(mol, dx, dy));
+                clear_segs.extend_from_slice(&aromatics);
                 let (nudge_x, nudge_y) = nudge_aabb_clear_bonds(
                     seed.bounds.translated(dtx, dty),
                     &clear_segs,
@@ -1441,6 +1451,7 @@ fn callout_primitives(
     }
     let base_tip = (FONT_PX * 0.55).max(4.0).max(mark_r + CLASH_MARGIN_PX);
     let mut occ = Occupancy::from_molecule(mol, dx, dy, Some(ATOM_DISK_R_PX.max(FONT_PX * 0.45)));
+    add_radical_occupancy(&mut occ, mol, dx, dy);
     for &(_, cx, cy, r) in shades {
         occ.add_aabb(Aabb::new(cx - r, cy - r, cx + r, cy + r));
     }
@@ -1513,10 +1524,14 @@ fn callout_primitives(
             (a.index.max(0) as usize, x, y)
         })
         .collect();
+    let radicals = crate::depict::radical_disks(mol, dx, dy);
+    let aromatics = aromatic_circle_segs(mol, dx, dy);
     let (label_dxy, _tip_dxy, _) = refine_callout(
         &bonds,
         &atoms,
         shades,
+        &radicals,
+        &aromatics,
         seed.bounds,
         tip0,
         (ax, ay),
@@ -1527,7 +1542,7 @@ fn callout_primitives(
         &other,
     );
     let mut clear_segs = bonds.clone();
-    clear_segs.extend(aromatic_circle_segs(mol, dx, dy));
+    clear_segs.extend_from_slice(&aromatics);
     let (nudge_x, nudge_y) = nudge_aabb_clear_bonds(
         seed.bounds.translated(label_dxy.0, label_dxy.1),
         &clear_segs,
@@ -1695,7 +1710,23 @@ fn chem_text_boxes(mol: &MoleculeIn, dx: f64, dy: f64) -> HashMap<i32, Aabb> {
         };
         out.insert(mol.atoms[slot].index, Aabb::new(x0, y0, x1, y1));
     }
+    for &(idx, cx, cy, r) in &crate::depict::radical_disks(mol, dx, dy) {
+        let disk = Aabb::new(cx - r, cy - r, cx + r, cy + r);
+        let key = idx as i32;
+        match out.get_mut(&key) {
+            Some(box_) => *box_ = box_.union(disk),
+            None => {
+                out.insert(key, disk);
+            }
+        }
+    }
     out
+}
+
+fn add_radical_occupancy(occ: &mut Occupancy, mol: &MoleculeIn, dx: f64, dy: f64) {
+    for &(_, cx, cy, r) in &crate::depict::radical_disks(mol, dx, dy) {
+        occ.add_aabb(Aabb::new(cx - r, cy - r, cx + r, cy + r));
+    }
 }
 
 fn boundary_atom(mol: &MoleculeIn, idx: i32, included: &std::collections::HashSet<i32>) -> bool {
@@ -1767,6 +1798,7 @@ fn region_label_occupancy(
     include_shade: bool,
 ) -> Occupancy {
     let mut occ = Occupancy::from_molecule(mol, dx, dy, Some(ATOM_DISK_R_PX));
+    add_radical_occupancy(&mut occ, mol, dx, dy);
     if include_shade {
         for &(_, cx, cy, r) in shades {
             occ.add_aabb(Aabb::new(cx - r, cy - r, cx + r, cy + r));
@@ -2302,37 +2334,56 @@ fn halo_for_markup(
     })
 }
 
-/// Shade clash disks: **actual** outer painted radius per atom (PlotDot), not
-/// the house-max `SHADE_FRAC` circle.
+/// Shade clash disks: **actual** outer painted radius (PlotDot), not the
+/// house-max `SHADE_FRAC` circle. Atom wash is parented by atom index; bond
+/// midpoints use `usize::MAX` so they install as unparented shade leaves.
 fn shade_disks(mol: &MoleculeIn, dx: f64, dy: f64) -> Vec<(usize, f64, f64, f64)> {
-    let Some(ref scores) = mol.atom_shade else {
-        return Vec::new();
-    };
-    if scores.is_empty() {
+    let atom_zs = mol.atom_shade.as_deref().unwrap_or(&[]);
+    let bond_zs = mol.bond_shade.as_deref().unwrap_or(&[]);
+    if atom_zs.is_empty() && bond_zs.is_empty() {
         return Vec::new();
     }
-    let has_bond = mol
-        .bond_shade
-        .as_ref()
-        .map(|b| !b.is_empty())
-        .unwrap_or(false);
-    let base_r = crate::depict::shade_base_radius_px(true, has_bond);
+    let base_r = crate::depict::shade_base_radius_px(!atom_zs.is_empty(), !bond_zs.is_empty());
     let vmin = mol.shade_vmin.unwrap_or(0.0);
     let vmax = mol.shade_vmax.unwrap_or(1.0);
-    let norm = crate::depict::normalize_shade_scores(scores, vmin, vmax);
+    let mut zs: Vec<f64> = Vec::new();
+    let mut tags: Vec<(usize, f64, f64)> = Vec::new();
+    if !atom_zs.is_empty() {
+        for (a, &z) in mol.atoms.iter().zip(atom_zs.iter()) {
+            let (cx, cy) = atom_xy(a, dx, dy);
+            zs.push(z);
+            tags.push((a.index.max(0) as usize, cx, cy));
+        }
+    }
+    if !bond_zs.is_empty() {
+        for (bond, &z) in mol.bonds.iter().zip(bond_zs.iter()) {
+            if bond.begin < 0 || bond.end < 0 {
+                continue;
+            }
+            let Some(a0) = find_atom(mol, bond.begin as u32) else {
+                continue;
+            };
+            let Some(a1) = find_atom(mol, bond.end as u32) else {
+                continue;
+            };
+            zs.push(z);
+            tags.push((
+                usize::MAX,
+                (a0.x + a1.x) * 0.5 + dx,
+                (a0.y + a1.y) * 0.5 + dy,
+            ));
+        }
+    }
+    let norm = crate::depict::normalize_shade_scores(&zs, vmin, vmax);
     let mut out = Vec::new();
-    for (i, a) in mol.atoms.iter().enumerate() {
-        let Some(&z) = norm.get(i) else {
-            continue;
-        };
+    for ((idx, cx, cy), &z) in tags.iter().zip(norm.iter()) {
         if !z.is_finite() {
             continue;
         }
         let Some(r) = crate::depict::shade_outer_radius_px(z, base_r) else {
             continue;
         };
-        let (cx, cy) = atom_xy(a, dx, dy);
-        out.push((a.index.max(0) as usize, cx, cy, r));
+        out.push((*idx, *cx, *cy, r));
     }
     out
 }
@@ -2605,6 +2656,7 @@ mod tests {
         AtomNumberBy, AtomNumberSpec, CalloutSpec, FillSpec, MolText, RegionSpec, RegionStyle,
         StrokeSpec,
     };
+    use crate::doc::layout_constraints::REGION_TEXT_TETHER_PX;
     use crate::doc::spec::LabelPos;
     use crate::scene::{AtomIn, BondIn};
 
@@ -2870,6 +2922,22 @@ mod tests {
             (r - expected).abs() < 1e-9,
             "clash r={r} != painted outer {expected}"
         );
+    }
+
+    #[test]
+    fn shade_clash_disk_includes_bond_midpoint() {
+        let mut mol = ethanol();
+        mol.atom_shade = None;
+        mol.bond_shade = Some(vec![0.45, 0.0]);
+        let (dx, dy) = frame_offset(&mol);
+        let disks = shade_disks(&mol, dx, dy);
+        assert_eq!(disks.len(), 1, "only C–C is shaded; got {disks:?}");
+        assert_eq!(disks[0].0, usize::MAX, "bond wash is unparented");
+        let (cx, cy) = (15.0 + dx, dy);
+        assert!((disks[0].1 - cx).abs() < 1e-9 && (disks[0].2 - cy).abs() < 1e-9);
+        let base = crate::depict::shade_base_radius_px(false, true);
+        let expected = crate::depict::shade_outer_radius_px(0.45, base).unwrap();
+        assert!((disks[0].3 - expected).abs() < 1e-9);
     }
 
     #[test]
@@ -3141,6 +3209,119 @@ mod tests {
             !(overlap_x && overlap_y),
             "number '2' AABB {nbox:?} overlaps OH chem box {oh:?}"
         );
+    }
+
+    #[test]
+    fn atom_number_clears_radical_dot() {
+        let mut ch = atom(1, "C", 6, 0.0, 0.0, Some("CH"));
+        ch.radical = 1;
+        let mol = MoleculeIn {
+            id: None,
+            atoms: vec![
+                atom(0, "C", 6, -30.0, 12.0, Some("CH3")),
+                ch,
+                atom(2, "C", 6, 30.0, 12.0, None),
+                atom(3, "C", 6, 55.0, 0.0, None),
+            ],
+            bonds: vec![bond(0, 0, 1), bond(1, 1, 2), bond(2, 2, 3)],
+            ..Default::default()
+        };
+        let (dx, dy) = frame_offset(&mol);
+        let scene = crate::depict::depict_molecule(&mol);
+        let node = MolNode {
+            atom_number: Some(AtomNumberSpec::ByName(AtomNumberBy::Index)),
+            ..Default::default()
+        };
+        let out = apply_mol_chrome(&node, &mol, scene);
+        let disks = crate::depict::radical_disks(&mol, dx, dy);
+        assert!(!disks.is_empty(), "CH radical must paint a disk");
+        let numbers: Vec<Aabb> = layer_prims(&out)
+            .into_iter()
+            .filter_map(|p| match p {
+                Primitive::Path {
+                    d, class: Some(c), ..
+                } if c.contains("atom-number") => path_aabb(d),
+                _ => None,
+            })
+            .collect();
+        assert!(!numbers.is_empty(), "expected atom-number glyphs");
+        for &(_, cx, cy, r) in &disks {
+            for nbox in &numbers {
+                let qx = cx.clamp(nbox.x0, nbox.x1);
+                let qy = cy.clamp(nbox.y0, nbox.y1);
+                let d = (cx - qx).hypot(cy - qy);
+                assert!(
+                    d >= r,
+                    "atom-number {nbox:?} overlaps radical disk at ({cx},{cy}) r={r} d={d}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn atom_number_clears_aromatic_circle_stroke() {
+        let r = 20.0;
+        let atoms: Vec<AtomIn> = (0..6)
+            .map(|i| {
+                let a = i as f64 * std::f64::consts::PI / 3.0;
+                c(i, r * a.cos(), r * a.sin())
+            })
+            .collect();
+        let bonds: Vec<BondIn> = (0..6)
+            .map(|i| {
+                let mut b = bond(i, i, (i + 1) % 6);
+                b.order = 4.0;
+                b
+            })
+            .collect();
+        let mut mol = molecule("bz", atoms, bonds);
+        mol.aromatic = AromaticStyle::Circle;
+        let (dx, dy) = frame_offset(&mol);
+        let segs = aromatic_circle_segs(&mol, dx, dy);
+        assert!(!segs.is_empty(), "circle-style benzene must have ring strokes");
+        let scene = crate::depict::depict_molecule(&mol);
+        let node = MolNode {
+            atom_number: Some(AtomNumberSpec::ByName(AtomNumberBy::Index)),
+            ..Default::default()
+        };
+        let out = apply_mol_chrome(&node, &mol, scene);
+        let numbers: Vec<Aabb> = layer_prims(&out)
+            .into_iter()
+            .filter_map(|p| match p {
+                Primitive::Path {
+                    d, class: Some(c), ..
+                } if c.contains("atom-number") => path_aabb(d),
+                _ => None,
+            })
+            .collect();
+        assert!(!numbers.is_empty(), "expected atom-number glyphs");
+        let half = STROKE_PX.max(0.8) * 0.5;
+        for nbox in &numbers {
+            for &(x0, y0, x1, y1) in &segs {
+                let d = aabb_seg_dist(*nbox, x0, y0, x1, y1);
+                assert!(
+                    d >= half,
+                    "atom-number {nbox:?} overlaps aromatic stroke ({x0},{y0})-({x1},{y1}) d={d}"
+                );
+            }
+        }
+    }
+
+    fn aabb_seg_dist(box_: Aabb, x0: f64, y0: f64, x1: f64, y1: f64) -> f64 {
+        let samples = [
+            (box_.x0, box_.y0),
+            (box_.x1, box_.y0),
+            (box_.x1, box_.y1),
+            (box_.x0, box_.y1),
+            box_.center(),
+        ];
+        let mut best = f64::INFINITY;
+        for &(px, py) in &samples {
+            best = best.min(point_to_seg(px, py, x0, y0, x1, y1));
+        }
+        let qx = ((x0 + x1) * 0.5).clamp(box_.x0, box_.x1);
+        let qy = ((y0 + y1) * 0.5).clamp(box_.y0, box_.y1);
+        best.min(point_to_seg(qx, qy, x0, y0, x1, y1))
     }
 
     #[test]

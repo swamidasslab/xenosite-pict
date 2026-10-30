@@ -1,5 +1,6 @@
 # TODO
 
+- Chem tree still uses bond centerlines for stereo wedges and Kekulé offset strokes
 - Raise xpict-core llvm-cov back toward 97% (caption, chrome_paint, layout_constraints)
 - Spoke bonds: molfile ENDPTS / haptic CX `C:` (ATTACH=ALL); CX `m:` ring-center stems are in core
 - Align pose lock: atom maps for fused scaffolds / metabolites / erythro–azithro are element-true; CoordGen soft-constrain still rotates morphine-like pentacycles (skip already shares the pose)

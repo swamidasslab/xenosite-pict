@@ -334,6 +334,8 @@ pub fn refine_scheme_edges(
                 &atoms,
                 &[],
                 &[],
+                &[],
+                &[],
             );
             // Glyphs and captions are ink, not atom disks. Install them as
             // leaves so Outside can keep shafts off CHO letters and names.
@@ -1588,6 +1590,8 @@ mod tests {
             &[(0, 0.0, 40.0), (1, 120.0, 40.0)],
             &[],
             &[],
+            &[],
+            &[],
         );
         let centroid = (60.0, 40.0);
         let p = ray_ink_pose(&world, "mol/chem", centroid, (200.0, 40.0), 30.0, 180.0);
@@ -1638,6 +1642,8 @@ mod tests {
             &atoms,
             &[],
             &[],
+            &[],
+            &[],
         );
         let hole = min_ink_signed(&world, "mol/chem", (0.0, 0.0));
         assert!(
@@ -1662,6 +1668,8 @@ mod tests {
             "mol",
             &bonds,
             &atoms,
+            &[],
+            &[],
             &[],
             &[],
         );
@@ -1700,6 +1708,8 @@ mod tests {
             "mol",
             &bonds,
             &atoms,
+            &[],
+            &[],
             &[],
             &[],
         );

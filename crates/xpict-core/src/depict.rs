@@ -267,7 +267,7 @@ pub(crate) fn depict_chem(mol: &MoleculeIn) -> Scene {
         });
     }
 
-    let radical_dots = radical_dot_prims(mol, &by_index, dx, dy, color);
+    let radical_dots = radical_dot_prims(mol, &by_index, dx, dy, color, &placed, face);
     #[cfg(feature = "geom")]
     {
         for p in &radical_dots {
@@ -389,17 +389,31 @@ fn atom_bond_degree(mol: &MoleculeIn) -> HashMap<i32, usize> {
     d
 }
 
-/// Unit vector from the atom into the largest open wedge (away from bonds).
+/// Unit vector from the atom into an open wedge that also misses label ink.
 ///
-/// One neighbor: perpendicular to the bond, preferring SVG-up (−Y) so a
-/// terminal `CH2•` sits above the carbon rather than on the traveling H.
-/// Isolated atoms: north-east.
-fn radical_open_dir(ax: f64, ay: f64, nbrs: &[(f64, f64)]) -> (f64, f64) {
+/// Bonds occupy their rays (largest open gap, same as before). Label occupancy
+/// is the full glyph ink [`place_backbone`] already uses so bonds miss traveling
+/// H and charges — the radical disk must stay off that ink too. Isolated atoms
+/// with no ink prefer SVG-up; a slight up tie-break remains when several dirs
+/// are equally clear.
+fn radical_open_dir(
+    ax: f64,
+    ay: f64,
+    nbrs: &[(f64, f64)],
+    occupancy: Option<&crate::geom::Shape>,
+    unpaired: u8,
+) -> (f64, f64) {
     const TAU: f64 = std::f64::consts::TAU;
-    if nbrs.is_empty() {
-        let s = std::f64::consts::FRAC_1_SQRT_2;
-        return (s, -s);
-    }
+    const N_SAMPLES: i32 = 24;
+    // Reject dirs within ~14° of a bond (|sin θ| < 0.25).
+    const MIN_BOND_SIN: f64 = 0.25;
+
+    let mut cands: Vec<(f64, f64)> = (0..N_SAMPLES)
+        .map(|i| {
+            let a = (i as f64) * TAU / (N_SAMPLES as f64);
+            (a.cos(), a.sin())
+        })
+        .collect();
     if nbrs.len() == 1 {
         let (nx, ny) = nbrs[0];
         let bx = nx - ax;
@@ -407,20 +421,70 @@ fn radical_open_dir(ax: f64, ay: f64, nbrs: &[(f64, f64)]) -> (f64, f64) {
         let len = bx.hypot(by).max(1e-9);
         let px = -by / len;
         let py = bx / len;
-        // Prefer SVG-up so the dot does not sit on traveling H.
-        if py > 0.0 {
-            return (-px, -py);
-        }
-        return (px, py);
+        cands.push((px, py));
+        cands.push((-px, -py));
+    } else if nbrs.len() >= 2 {
+        cands.extend(wedge_bisectors(ax, ay, nbrs));
     }
+
+    let mut best_clear: Option<(f64, f64, f64)> = None;
+    let mut best_any: Option<(f64, f64, f64)> = None;
+    for &(ux, uy) in &cands {
+        let bond_sin = min_bond_sin(ux, uy, ax, ay, nbrs);
+        if !nbrs.is_empty() && bond_sin < MIN_BOND_SIN {
+            continue;
+        }
+        let hits = occupancy
+            .map(|occ| {
+                radical_dot_centers(ax, ay, (ux, uy), unpaired)
+                    .iter()
+                    .any(|&(cx, cy)| occ.contains(cx, cy))
+            })
+            .unwrap_or(false);
+        // Prefer open (high |sin| to bonds), then SVG-up as a weak tie-break.
+        let score = bond_sin + 0.08 * (-uy).max(0.0);
+        let any_score = if hits { score - 10.0 } else { score };
+        if best_any.is_none_or(|(s, _, _)| any_score > s) {
+            best_any = Some((any_score, ux, uy));
+        }
+        if !hits && best_clear.is_none_or(|(s, _, _)| score > s) {
+            best_clear = Some((score, ux, uy));
+        }
+    }
+    if let Some((_, ux, uy)) = best_clear {
+        return (ux, uy);
+    }
+    if let Some((_, ux, uy)) = best_any {
+        return (ux, uy);
+    }
+    let s = std::f64::consts::FRAC_1_SQRT_2;
+    (s, -s)
+}
+
+fn min_bond_sin(ux: f64, uy: f64, ax: f64, ay: f64, nbrs: &[(f64, f64)]) -> f64 {
+    if nbrs.is_empty() {
+        return 1.0;
+    }
+    let mut best = f64::INFINITY;
+    for &(nx, ny) in nbrs {
+        let bx = nx - ax;
+        let by = ny - ay;
+        let len = bx.hypot(by).max(1e-9);
+        let sin = (ux * by - uy * bx).abs() / len;
+        best = best.min(sin);
+    }
+    best
+}
+
+fn wedge_bisectors(ax: f64, ay: f64, nbrs: &[(f64, f64)]) -> Vec<(f64, f64)> {
+    const TAU: f64 = std::f64::consts::TAU;
     let mut angs: Vec<f64> = nbrs
         .iter()
         .map(|&(nx, ny)| (ny - ay).atan2(nx - ax))
         .collect();
     angs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     let n = angs.len();
-    let mut best_gap = -1.0;
-    let mut best_bisect = 0.0;
+    let mut out = Vec::with_capacity(n);
     for i in 0..n {
         let a0 = angs[i];
         let a1 = if i + 1 == n {
@@ -428,13 +492,10 @@ fn radical_open_dir(ax: f64, ay: f64, nbrs: &[(f64, f64)]) -> (f64, f64) {
         } else {
             angs[i + 1]
         };
-        let gap = a1 - a0;
-        if gap > best_gap {
-            best_gap = gap;
-            best_bisect = a0 + 0.5 * gap;
-        }
+        let bisect = a0 + 0.5 * (a1 - a0);
+        out.push((bisect.cos(), bisect.sin()));
     }
-    (best_bisect.cos(), best_bisect.sin())
+    out
 }
 
 fn radical_dot_centers(ax: f64, ay: f64, dir: (f64, f64), n: u8) -> Vec<(f64, f64)> {
@@ -472,13 +533,53 @@ fn radical_dot_centers(ax: f64, ay: f64, dir: (f64, f64), n: u8) -> Vec<(f64, f6
     }
 }
 
-fn radical_dot_prims(
+/// Radical-dot disks in framed SVG space: `(atom_index, cx, cy, r)`.
+///
+/// Chrome occupancy and constraint kits treat these as chem ink (same family
+/// as heteroatom glyphs), not a per-annotation special case.
+pub(crate) fn radical_disks(mol: &MoleculeIn, dx: f64, dy: f64) -> Vec<(usize, f64, f64, f64)> {
+    let by_index: HashMap<i32, usize> = mol
+        .atoms
+        .iter()
+        .enumerate()
+        .map(|(i, a)| (a.index, i))
+        .collect();
+    let degree = atom_bond_degree(mol);
+    let label_atoms: Vec<labels::AtomIn> = mol
+        .atoms
+        .iter()
+        .map(|a| labels::AtomIn {
+            x: a.x + dx,
+            y: a.y + dy,
+            label: display_label(a, *degree.get(&a.index).unwrap_or(&0)),
+        })
+        .collect();
+    let label_bonds: Vec<labels::BondIn> = mol
+        .bonds
+        .iter()
+        .map(|b| labels::BondIn {
+            begin: *by_index.get(&b.begin).unwrap_or(&0),
+            end: *by_index.get(&b.end).unwrap_or(&0),
+        })
+        .collect();
+    let (_, placed) = place_backbone(
+        &label_atoms,
+        &label_bonds,
+        FONT_PX,
+        FaceStyle::Regular,
+        mol.weight,
+    );
+    radical_disks_from_placed(mol, &by_index, dx, dy, &placed, FaceStyle::Regular)
+}
+
+fn radical_disks_from_placed(
     mol: &MoleculeIn,
     by_index: &HashMap<i32, usize>,
     dx: f64,
     dy: f64,
-    color: &str,
-) -> Vec<Primitive> {
+    placed: &[Option<labels::PlacedLabel>],
+    face: FaceStyle,
+) -> Vec<(usize, f64, f64, f64)> {
     let n = mol.atoms.len();
     let mut nbrs: Vec<Vec<(f64, f64)>> = vec![Vec::new(); n];
     for b in &mol.bonds {
@@ -501,21 +602,42 @@ fn radical_dot_prims(
         }
         let ax = a.x + dx;
         let ay = a.y + dy;
-        let dir = radical_open_dir(ax, ay, &nbrs[i]);
+        let occupancy = placed.get(i).and_then(|pl| {
+            pl.as_ref().and_then(|pl| {
+                labels::label_ink_shape(pl, FONT_PX, face).map(|s| s.buffer(RADICAL_DOT_PX))
+            })
+        });
+        let dir = radical_open_dir(ax, ay, &nbrs[i], occupancy.as_ref(), a.radical);
+        let idx = a.index.max(0) as usize;
         for (cx, cy) in radical_dot_centers(ax, ay, dir, a.radical) {
-            out.push(Primitive::Circle {
-                cx,
-                cy,
-                r: RADICAL_DOT_PX,
-                fill: Some(color.to_string()),
-                stroke: None,
-                stroke_width: 0.0,
-                opacity: 1.0,
-                class: Some(format!("atom-{} radical", a.index)),
-            });
+            out.push((idx, cx, cy, RADICAL_DOT_PX));
         }
     }
     out
+}
+
+fn radical_dot_prims(
+    mol: &MoleculeIn,
+    by_index: &HashMap<i32, usize>,
+    dx: f64,
+    dy: f64,
+    color: &str,
+    placed: &[Option<labels::PlacedLabel>],
+    face: FaceStyle,
+) -> Vec<Primitive> {
+    radical_disks_from_placed(mol, by_index, dx, dy, placed, face)
+        .into_iter()
+        .map(|(idx, cx, cy, r)| Primitive::Circle {
+            cx,
+            cy,
+            r,
+            fill: Some(color.to_string()),
+            stroke: None,
+            stroke_width: 0.0,
+            opacity: 1.0,
+            class: Some(format!("atom-{idx} radical")),
+        })
+        .collect()
 }
 
 /// Explicit ``label``, else heteroatom / charged / isolated-carbon symbol.
@@ -1861,6 +1983,109 @@ mod tests {
             })
             .unwrap_or(0);
         assert_eq!(n, 2, "carbene paints two unpaired-electron dots");
+    }
+
+    #[test]
+    fn radical_dot_misses_traveling_label_ink() {
+        // Degree-2 CH: chain along +x with a kink so the largest bond wedge
+        // can point at traveling H. Occupancy (not a CH special case) must
+        // rotate the dot off that glyph.
+        let mut ch = atom(1, "C", 0.0, 0.0, Some("CH"));
+        ch.radical = 1;
+        let mol = MoleculeIn {
+            id: None,
+            atoms: vec![
+                atom(0, "C", -30.0, 12.0, Some("CH3")),
+                ch,
+                atom(2, "C", 30.0, 12.0, None),
+                atom(3, "C", 55.0, 0.0, None),
+            ],
+            bonds: vec![
+                BondIn {
+                    index: 0,
+                    begin: 0,
+                    end: 1,
+                    order: 1.0,
+                    stereo: None,
+                    interior: None,
+                },
+                BondIn {
+                    index: 1,
+                    begin: 1,
+                    end: 2,
+                    order: 1.0,
+                    stereo: None,
+                    interior: None,
+                },
+                BondIn {
+                    index: 2,
+                    begin: 2,
+                    end: 3,
+                    order: 1.0,
+                    stereo: None,
+                    interior: None,
+                },
+            ],
+            ..Default::default()
+        };
+        let scene = depict_molecule(&mol);
+        let dots: Vec<(f64, f64, f64)> = scene.viewports[0]
+            .layers
+            .iter()
+            .filter(|l| l.name == LayerName::Marks)
+            .flat_map(|l| l.primitives.iter())
+            .filter_map(|p| match p {
+                Primitive::Circle {
+                    cx,
+                    cy,
+                    r,
+                    class: Some(c),
+                    ..
+                } if c.contains("atom-1") && c.contains("radical") => Some((*cx, *cy, *r)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(dots.len(), 1, "CH radical paints one dot, got {dots:?}");
+
+        let (dx, dy) = frame_offset(&mol);
+        let degree = atom_bond_degree(&mol);
+        let by_index: HashMap<i32, usize> = mol
+            .atoms
+            .iter()
+            .enumerate()
+            .map(|(i, a)| (a.index, i))
+            .collect();
+        let label_atoms: Vec<labels::AtomIn> = mol
+            .atoms
+            .iter()
+            .map(|a| labels::AtomIn {
+                x: a.x + dx,
+                y: a.y + dy,
+                label: display_label(a, *degree.get(&a.index).unwrap_or(&0)),
+            })
+            .collect();
+        let label_bonds: Vec<labels::BondIn> = mol
+            .bonds
+            .iter()
+            .map(|b| labels::BondIn {
+                begin: by_index[&b.begin],
+                end: by_index[&b.end],
+            })
+            .collect();
+        let (_, placed) = place_backbone(
+            &label_atoms,
+            &label_bonds,
+            FONT_PX,
+            FaceStyle::Regular,
+            mol.weight,
+        );
+        let pl = placed[1].as_ref().expect("CH label");
+        for (cx, cy, r) in dots {
+            assert!(
+                !labels::disk_hits_label_ink(pl, FONT_PX, FaceStyle::Regular, cx, cy, r),
+                "radical disk at ({cx}, {cy}) r={r} overlaps CH label ink"
+            );
+        }
     }
 
     #[test]

@@ -2,6 +2,12 @@
 
 ## 2026-10-29
 
+- Chem tree was missing two painted strokes that occupancy already knew about: aromatic ring circles (greedy segs + post-nudge only) and bond-midpoint PlotDots (shade_disks was atom-only). Both are now leaves — aromatic strokes under `mol/chem/aromatic` (line segments so the hole stays air), bond wash under `mol/chem/shades`. Kits that already `push_clear_bonds` / `push_clear_shades` pick them up. Stereo wedges and Kekulé offset strokes still use the bond centerline.
+
+- Radical dots now treat placed label glyph ink as occupancy (the same full-label ink `place_backbone` already uses so bonds miss traveling H and charges). Open-wedge placement still prefers a bond-clear direction, but a candidate that lands on H / charge is rejected. Fixes `[CH3][CH]CC` parking the CH• on the hydrogen without a CH-specific rule.
+
+- Radical dots are chem leaves (`mol/chem/atoms/aN/radicalK`). Kits that already `push_clear_bonds` also Outside vs those marks, so atom indexes / labels / callouts / region text keep off the dots without a per-kit special case. Greedy occupancy and chem-text AABBs include the disks; captions treat `class=radical` as structure.
+
 - Dropped Chematic. SMILES is the vendored xenosmarts-syntax parser (`smiles_syntax/`, snapshot `9f9c733`); molfile is a tiny V2000/V3000 CTAB reader. Aromaticity is as written (lowercase / bond type 4); unwritten aromatic–aromatic bonds are aromatic. OpenSMILES organic H + unpaired electrons stay in-core. SMARTS (`gen_xsmarts`) is not copied. Size win is dropping chematic-smiles + chematic-mol kitchen-sink formats.
 
 - SMILES radicals: Chematic already stores bracket H (`C[CH2]` → methylene H=2). We were dropping the valence deficit, so paint treated the carbon as a silent vertex. Unpaired electrons are now `valence_inferred_hcount − implicit_hcount` on `AtomIn.radical`; `CH2`/`CH3`/`OH` labels stay, and ACS filled dots paint on the marks layer (`class="… radical"`). Organic-subset atoms stay 0.

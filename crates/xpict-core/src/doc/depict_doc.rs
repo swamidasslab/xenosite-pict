@@ -422,6 +422,95 @@ mod tests {
     }
 
     #[test]
+    fn depict_ch_radical_dot_misses_label_ink() {
+        // `[CH3][CH]CC` used to park the unpaired-electron dot on the
+        // traveling H. Label occupancy (same ink bonds already clear) must
+        // keep the disk off the CH glyph, not a CH-specific rule.
+        let spec = DepictSpec::Mol(MolNode {
+            smiles: Some("[CH3][CH]CC".into()),
+            ..Default::default()
+        });
+        let painted = depict(&spec).unwrap();
+        assert_eq!(painted.len(), 1);
+        let mol = &painted[0].molecule;
+        let ch = mol
+            .atoms
+            .iter()
+            .find(|a| a.radical > 0)
+            .expect("CH carbon has unpaired electrons");
+        let dots: Vec<(f64, f64, f64)> = painted[0]
+            .scene
+            .viewports
+            .iter()
+            .flat_map(|v| v.layers.iter())
+            .filter(|l| l.name == crate::scene::LayerName::Marks)
+            .flat_map(|l| l.primitives.iter())
+            .filter_map(|p| match p {
+                crate::scene::Primitive::Circle {
+                    cx,
+                    cy,
+                    r,
+                    class: Some(c),
+                    ..
+                } if c.contains(&format!("atom-{}", ch.index)) && c.contains("radical") => {
+                    Some((*cx, *cy, *r))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(dots.len(), 1, "expected one radical dot, got {dots:?}");
+
+        let (dx, dy) = crate::depict::frame_offset(mol);
+        let by_index: std::collections::HashMap<i32, usize> = mol
+            .atoms
+            .iter()
+            .enumerate()
+            .map(|(i, a)| (a.index, i))
+            .collect();
+        let label_atoms: Vec<crate::labels::AtomIn> = mol
+            .atoms
+            .iter()
+            .map(|a| crate::labels::AtomIn {
+                x: a.x + dx,
+                y: a.y + dy,
+                label: a.label.clone(),
+            })
+            .collect();
+        let label_bonds: Vec<crate::labels::BondIn> = mol
+            .bonds
+            .iter()
+            .map(|b| crate::labels::BondIn {
+                begin: by_index[&b.begin],
+                end: by_index[&b.end],
+            })
+            .collect();
+        let (_, placed) = crate::labels::place_backbone(
+            &label_atoms,
+            &label_bonds,
+            crate::metrics::FONT_PX,
+            crate::font::FaceStyle::Regular,
+            mol.weight,
+        );
+        let slot = by_index[&ch.index];
+        let pl = placed[slot].as_ref().expect("CH radical keeps a CH label");
+        for (cx, cy, r) in dots {
+            assert!(
+                !crate::labels::disk_hits_label_ink(
+                    pl,
+                    crate::metrics::FONT_PX,
+                    crate::font::FaceStyle::Regular,
+                    cx,
+                    cy,
+                    r
+                ),
+                "CH radical disk at ({cx}, {cy}) r={r} overlaps label ink (side={:?} text={})",
+                pl.side,
+                pl.text
+            );
+        }
+    }
+
+    #[test]
     fn depict_methane_paints_ch4_not_blank() {
         let spec = DepictSpec::Mol(MolNode {
             smiles: Some("C".into()),
