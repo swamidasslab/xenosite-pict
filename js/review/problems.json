@@ -1,0 +1,12 @@
+{
+  "multi-product": "Arrow overlaps. Needs a test because this is detectable. plus.",
+  "multi-both": "Arrow overlaps. Needs a test because this is detectable. No plus.",
+  "deuteromethane": "This isn't deutero.",
+  "chrome-on-scheme": "Callout line clashes with 6. Clashing ink should be a basic generalizable test check. This should be easily fixable with constraints.",
+  "equilibrium": "Arrowheads not joined to shaft.",
+  "fan": "Lowermost arrow overlaps structure. Should be a basic generalizable test for shaft overlap. We need a way of identifying case like that, and adding visible-point routing.",
+  "multi-reactant": "Overlapping arrow. Once again. Easy generalizable test is possible.",
+  "atom-label-greek": "greek label too small and too thin.",
+  "star-bare": "Should look more like an asterix.",
+  "overlap-z": "Regions need a small default padding so it's clear when a box contains another box. And regions should honor it."
+}

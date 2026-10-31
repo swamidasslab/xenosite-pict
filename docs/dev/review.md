@@ -44,6 +44,7 @@ just that branch. Figures paint when a case is open and near the viewport.
 
 Each open case has ok / problem / later plus a textarea. Autosaves to
 `js/review/notes.local.json` (gitignored) and mirrors `localStorage`.
+The last committed problem list is `js/review/problems.json` (id → note).
 Export / import JSON still works from the header. On reload, groups and
 cases with **problem** notes sort first (then **later**); marking a case
 while the page is open does not reshuffle.

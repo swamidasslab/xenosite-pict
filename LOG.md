@@ -2,6 +2,8 @@
 
 ## 2026-10-31
 
+- Review gallery problems (10 cases) snapshot in `js/review/problems.json`. Local notes stay gitignored; this file is the committed list for tests.
+
 - Local review gallery (`make review`): Vite app paints live DepictSpec through JS/WASM. Examples are YAML files under `js/review/cases/<group>/`, not hard-coded in the UI. Notes in localStorage; Playwright snapshots optional (`make review-test`). Catalog smoke is part of `npm run test:api`.
 
 - Review notes autosave to `js/review/notes.local.json` (gitignored) via a Vite middleware; localStorage is only a cache. Reload still has the marks, and the file is readable from the repo.

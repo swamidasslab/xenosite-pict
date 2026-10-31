@@ -22,6 +22,7 @@ single group. Figures paint lazily when a case is open and in view.
 Notes (ok / problem / later) autosave to `notes.local.json` (gitignored)
 and `localStorage`. Export / import JSON still works from the header. On
 reload, problem cases sort first; editing notes does not reshuffle.
+Checked-in problem ids live in `problems.json`.
 
 ## Visual diffs
 

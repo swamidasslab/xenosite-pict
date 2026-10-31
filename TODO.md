@@ -1,5 +1,7 @@
 # TODO
 
+- Scheme plus signs and multi-endpoint packing (A+B → C+D)
+- Scheme shaft–chem overlap: visible-point routing when a chord cuts a mol (fan, multi-*)
 - Chem tree still uses bond centerlines for stereo wedges and Kekulé offset strokes
 - Raise xpict-core llvm-cov back toward 97% (caption, chrome_paint, layout_constraints)
 - Spoke bonds: molfile ENDPTS / haptic CX `C:` (ATTACH=ALL); CX `m:` ring-center stems are in core
