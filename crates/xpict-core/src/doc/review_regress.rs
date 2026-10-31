@@ -340,6 +340,35 @@ fn overlap_z_nested_boxes_show_containment() {
         extra_w > pad || extra_h > pad,
         "container must outsize the child on at least one axis: inner={inner:?} outer={outer:?}"
     );
+    let mut child_label = None;
+    for vp in &scene.viewports {
+        let (ox, oy) = vp.local_origin();
+        for layer in &vp.layers {
+            for p in &layer.primitives {
+                if let Primitive::Path {
+                    d,
+                    class: Some(c),
+                    data_text: Some(t),
+                    ..
+                } = p
+                {
+                    if c.contains("region-label") && t.trim() == "right" {
+                        if let Some((x0, y0, x1, y1)) = path_aabb(d) {
+                            child_label = Some((x0 + ox, y0 + oy, x1 + ox, y1 + oy));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let lab = child_label.expect("child region-label 'right'");
+    assert!(
+        lab.0 >= outer.0 - 0.5
+            && lab.1 >= outer.1 - 0.5
+            && lab.2 <= outer.2 + 0.5
+            && lab.3 <= outer.3 + 0.5,
+        "contained region label {lab:?} must sit inside outer box {outer:?}"
+    );
 }
 
 #[test]

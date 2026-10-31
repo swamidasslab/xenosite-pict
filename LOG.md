@@ -6,6 +6,8 @@
 
 - Easy gallery fixes in xpict-core: SMILES isotopes paint (`D`/`T`, `^{13}C`); dummy `*` is a six-spoke asterisk; equilibrium harpoons join the shaft; greek atom labels are bold at full size; region default pad is 0.35 bond with extra outer pad on nested containers; callout shafts nudge off atom numbers; multi-endpoint schemes paint `+`. Shaft–chem overlap still needs visible-point routing (tests sample interiors).
 
+- Nested region labels: a containing hull now covers child region-label ink (overlap-z: "right" stays inside "both"). Children paint first so the parent cover sees those boxes.
+
 - Local review gallery (`make review`): Vite app paints live DepictSpec through JS/WASM. Examples are YAML files under `js/review/cases/<group>/`, not hard-coded in the UI. Notes in localStorage; Playwright snapshots optional (`make review-test`). Catalog smoke is part of `npm run test:api`.
 
 - Review notes autosave to `js/review/notes.local.json` (gitignored) via a Vite middleware; localStorage is only a cache. Reload still has the marks, and the file is readable from the repo.

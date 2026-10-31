@@ -143,46 +143,63 @@ pub fn apply_mol_chrome(node: &MolNode, mol: &MoleculeIn, mut scene: Scene) -> S
             _ => None,
         })
         .collect();
-    for ann in &anns {
-        if let Annotation::Region { spec, z } = ann {
-            // A region that contains another region's atoms gets extra outer
-            // pad so nested boxes do not share an outer edge.
-            let mine: HashSet<u32> = spec.atoms.iter().copied().collect();
-            let contains_child = region_sets
-                .iter()
-                .any(|o| !o.is_empty() && o.len() < mine.len() && o.is_subset(&mine));
-            let mut spec = spec.clone();
-            if contains_child {
-                spec.padding = Some(region_cover_pad(&spec) + HALF_BOND_PX);
-            }
-            // Hull under shade; region text always in the front Labels layer.
-            for p in region_primitives(
-                mol,
-                &spec,
-                dx,
-                dy,
-                &caption_boxes,
-                &shade,
-                &placed_label_boxes,
-                &atom_chrome_boxes,
-            ) {
-                let is_label = matches!(
-                    &p,
-                    Primitive::Path {
-                        class: Some(c),
-                        ..
-                    } if c.contains("region-label")
-                );
-                if is_label {
-                    if let Primitive::Path { d, .. } = &p {
-                        if let Some(box_) = path_aabb(d) {
-                            placed_label_boxes.push(box_);
-                        }
+    // Nested children first so a parent hull can cover their labels.
+    let mut region_jobs: Vec<(&RegionSpec, i32)> = anns
+        .iter()
+        .filter_map(|a| match a {
+            Annotation::Region { spec, z } => Some((spec, *z)),
+            _ => None,
+        })
+        .collect();
+    region_jobs.sort_by(|a, b| a.0.atoms.len().cmp(&b.0.atoms.len()).then(a.1.cmp(&b.1)));
+    let mut nested_region_labels: Vec<(HashSet<u32>, Aabb)> = Vec::new();
+    for (spec, z) in region_jobs {
+        // A region that contains another region's atoms gets extra outer
+        // pad so nested boxes do not share an outer edge.
+        let mine: HashSet<u32> = spec.atoms.iter().copied().collect();
+        let contains_child = region_sets
+            .iter()
+            .any(|o| !o.is_empty() && o.len() < mine.len() && o.is_subset(&mine));
+        let mut spec = spec.clone();
+        if contains_child {
+            spec.padding = Some(region_cover_pad(&spec) + HALF_BOND_PX);
+        }
+        let child_labels: Vec<Aabb> = nested_region_labels
+            .iter()
+            .filter(|(atoms, _)| {
+                !atoms.is_empty() && atoms.len() < mine.len() && atoms.is_subset(&mine)
+            })
+            .map(|(_, b)| *b)
+            .collect();
+        // Hull under shade; region text always in the front Labels layer.
+        for p in region_primitives(
+            mol,
+            &spec,
+            dx,
+            dy,
+            &caption_boxes,
+            &shade,
+            &placed_label_boxes,
+            &atom_chrome_boxes,
+            &child_labels,
+        ) {
+            let is_label = matches!(
+                &p,
+                Primitive::Path {
+                    class: Some(c),
+                    ..
+                } if c.contains("region-label")
+            );
+            if is_label {
+                if let Primitive::Path { d, .. } = &p {
+                    if let Some(box_) = path_aabb(d) {
+                        placed_label_boxes.push(box_);
+                        nested_region_labels.push((mine.clone(), box_));
                     }
-                    label_prims.push((Z_REGION_LABEL, p));
-                } else {
-                    underlay_prims.push((*z, p));
                 }
+                label_prims.push((Z_REGION_LABEL, p));
+            } else {
+                underlay_prims.push((z, p));
             }
         }
     }
@@ -893,6 +910,7 @@ fn region_primitives(
     shades: &[(usize, f64, f64, f64)],
     other_labels: &[Aabb],
     atom_chrome: &[(i32, Aabb)],
+    nested_labels: &[Aabb],
 ) -> Vec<Primitive> {
     let included: Vec<i32> = spec
         .atoms
@@ -920,6 +938,10 @@ fn region_primitives(
         if include_set.contains(&idx) {
             push_aabb_corners(&mut cover, box_);
         }
+    }
+    // Nested child region labels must stay inside a containing hull.
+    for box_ in nested_labels {
+        push_aabb_corners(&mut cover, *box_);
     }
     // Interior-atom shade — actual painted outer disks (fixed with chem).
     for &(idx, cx, cy, r) in shades {

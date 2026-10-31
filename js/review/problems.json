@@ -8,5 +8,5 @@
   "multi-reactant": "Overlapping arrow. Once again. Easy generalizable test is possible.",
   "atom-label-greek": "greek label too small and too thin.",
   "star-bare": "Should look more like an asterix.",
-  "overlap-z": "Regions need a small default padding so it's clear when a box contains another box. And regions should honor it."
+  "overlap-z": "If a region is contained in another, it needs to contain the region's label too."
 }
