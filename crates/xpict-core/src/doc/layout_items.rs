@@ -3,7 +3,7 @@
 //! Chem ink (bonds, atom disks) is fixed obstacles. Callouts / region labels /
 //! similar annotations register a preferred side + size and grow gap until clear.
 
-use crate::metrics::BOND_PX;
+use crate::metrics::{BOND_PX, FONT_PX};
 use crate::scene::{AtomIn, MoleculeIn};
 
 /// Default “no clash” air: 0.1 CC-bond.
@@ -18,6 +18,10 @@ pub const HALF_BOND_PX: f64 = 0.5 * BOND_PX;
 pub const ATOM_DISK_R_PX: f64 = 0.3 * BOND_PX;
 /// Extra pad when a shape must **contain** another (on top of the contained size).
 pub const CONTAIN_MARGIN_PX: f64 = CLASH_MARGIN_PX;
+/// Default region-hull pad (chem-space px). Larger than [`CONTAIN_MARGIN_PX`]
+/// so nested boxes show air between ink and the frame, and a container can
+/// sit visibly outside a child region.
+pub const REGION_PAD_PX: f64 = 0.35 * BOND_PX;
 
 /// Axis-aligned obstacle or candidate label box.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -333,10 +337,12 @@ impl Occupancy {
     /// veto so Above-through-exo loses to a 45° pose still past the atom,
     /// without empty-page Right winning.
     pub fn shaft_hits(&self, p: &Placement, margin: f64, anchor: (f64, f64)) -> bool {
-        let (Some(from), Some(to)) = (p.arrow_from, p.arrow_to) else {
+        let Some(from) = p.arrow_from else {
             return false;
         };
-        shaft_hits_obstacles(from, to, &self.aabbs, margin, anchor)
+        // Paint aims at the atom; a shortened tip can sit just short of a
+        // snug number that the painted ray then cuts.
+        shaft_hits_obstacles(from, anchor, &self.aabbs, margin, anchor)
     }
 }
 
@@ -469,7 +475,10 @@ pub fn place_greedy(occ: &Occupancy, req: &PlaceRequest) -> Placement {
         let mut gap = req.min_gap;
         while gap <= req.max_gap + 1e-9 {
             let p = force_place(req, side, gap);
-            let pen = occ.clash_penalty(p.bounds, req.margin);
+            let mut pen = occ.clash_penalty(p.bounds, req.margin);
+            if occ.shaft_hits(&p, req.margin, req.anchor) {
+                pen += 1e6;
+            }
             if pen <= 1e-12 {
                 return p;
             }
@@ -657,6 +666,60 @@ pub fn callout_arrow_clearing(
     fallback
 }
 
+/// Slide the label in the facing-edge plane until a shaft to `anchor` misses
+/// `obstacles` (atom numbers on the callout ray). Returns the original box
+/// when every offset still hits.
+pub fn nudge_callout_off_labels(
+    bounds: Aabb,
+    anchor: (f64, f64),
+    side: Side,
+    tip_standoff: f64,
+    label_pullback: f64,
+    obstacles: &[Aabb],
+    margin: f64,
+) -> Aabb {
+    let (from, to) = callout_arrow_clearing(
+        bounds,
+        anchor,
+        side,
+        tip_standoff,
+        label_pullback,
+        obstacles,
+        margin,
+    );
+    if let Some(from) = from {
+        let _ = to;
+        if !shaft_hits_obstacles(from, anchor, obstacles, margin, anchor) {
+            return bounds;
+        }
+    }
+    let (ux, uy) = side.unit();
+    let (px, py) = (-uy, ux);
+    let _ = (ux, uy);
+    for k in 1..=16 {
+        let step = k as f64 * 4.0;
+        for sign in [1.0, -1.0] {
+            let b = bounds.translated(px * step * sign, py * step * sign);
+            let (from, to) = callout_arrow_clearing(
+                b,
+                anchor,
+                side,
+                tip_standoff,
+                label_pullback,
+                obstacles,
+                margin,
+            );
+            if let Some(from) = from {
+                let _ = to;
+                if !shaft_hits_obstacles(from, anchor, obstacles, margin, anchor) {
+                    return b;
+                }
+            }
+        }
+    }
+    bounds
+}
+
 fn facing_edge_mid(bounds: Aabb, side: Side) -> (f64, f64) {
     let (ux, uy) = side.unit();
     let hx = if ux > 1e-9 {
@@ -747,8 +810,10 @@ fn shaft_hits_obstacles(
     anchor: (f64, f64),
 ) -> bool {
     for &a in obstacles {
-        // Destination mark covering the target is the tip's home, not a miss.
-        if a.covers_point(anchor, 1.0) {
+        // Highlight circles / atom disks covering the target are the tip's
+        // home. Small chrome (atom numbers) on that atom is not — a shaft
+        // through "6" is a miss.
+        if a.covers_point(anchor, 1.0) && a.width().min(a.height()) > FONT_PX {
             continue;
         }
         if seg_aabb_min_dist(from.0, from.1, to.0, to.1, a) < margin {

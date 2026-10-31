@@ -20,10 +20,10 @@ use crate::doc::layout_constraints::{
     Shape, ATOM_NUMBER_TETHER_PX, ATOM_TEXT_TETHER_PX,
 };
 use crate::doc::layout_items::{
-    callout_arrow, callout_arrow_clearing, padded_label_ink, place_auto, place_greedy,
-    place_region_auto, place_region_edge, tip_standoff_clearing, Aabb, InkAtOrigin, Occupancy,
-    PlaceRequest, Seg, Side, ATOM_DISK_R_PX, CLASH_MARGIN_PX, CONTAIN_MARGIN_PX, HALF_BOND_PX,
-    LABEL_PAD_X_PX,
+    callout_arrow, callout_arrow_clearing, nudge_callout_off_labels, padded_label_ink, place_auto,
+    place_greedy, place_region_auto, place_region_edge, tip_standoff_clearing, Aabb, InkAtOrigin,
+    Occupancy, PlaceRequest, Seg, Side, ATOM_DISK_R_PX, CLASH_MARGIN_PX, CONTAIN_MARGIN_PX,
+    HALF_BOND_PX, LABEL_PAD_X_PX, REGION_PAD_PX,
 };
 use crate::doc::spec::{LabelPos, MolNode};
 use crate::doc::text_paint::{markup_bounds_at_origin, outline_markup};
@@ -37,7 +37,7 @@ use crate::scene::{AromaticStyle, AtomIn, LayerName, MoleculeIn, Primitive, Scen
 use std::collections::{HashMap, HashSet};
 
 const NUMBER_FONT_FRAC: f64 = 0.72;
-const TEXT_FONT_FRAC: f64 = 0.85;
+const TEXT_FONT_FRAC: f64 = 1.05;
 const NUMBER_GAP_PX: f64 = 4.0;
 const TEXT_GAP_PX: f64 = 5.0;
 
@@ -136,12 +136,29 @@ pub fn apply_mol_chrome(node: &MolNode, mol: &MoleculeIn, mut scene: Scene) -> S
         &mut label_prims,
         &mut halo_prims,
     );
+    let region_sets: Vec<HashSet<u32>> = anns
+        .iter()
+        .filter_map(|a| match a {
+            Annotation::Region { spec, .. } => Some(spec.atoms.iter().copied().collect()),
+            _ => None,
+        })
+        .collect();
     for ann in &anns {
         if let Annotation::Region { spec, z } = ann {
+            // A region that contains another region's atoms gets extra outer
+            // pad so nested boxes do not share an outer edge.
+            let mine: HashSet<u32> = spec.atoms.iter().copied().collect();
+            let contains_child = region_sets
+                .iter()
+                .any(|o| !o.is_empty() && o.len() < mine.len() && o.is_subset(&mine));
+            let mut spec = spec.clone();
+            if contains_child {
+                spec.padding = Some(region_cover_pad(&spec) + HALF_BOND_PX);
+            }
             // Hull under shade; region text always in the front Labels layer.
             for p in region_primitives(
                 mol,
-                spec,
+                &spec,
                 dx,
                 dy,
                 &caption_boxes,
@@ -1258,13 +1275,14 @@ fn label_pos_side(pos: LabelPos) -> Side {
 }
 
 /// Cover pad in chem-space px. Set `RegionSpec.padding` replaces the house
-/// contain margin (~0.1 bond); omit keeps the house value. Non-finite / negative
-/// values clamp to 0.
+/// region pad (~0.35 bond); omit keeps that value. Non-finite / negative
+/// values clamp to 0. Nested containers get an extra half-bond so a child
+/// box does not share the outer edge.
 fn region_cover_pad(spec: &RegionSpec) -> f64 {
     spec.padding
         .filter(|p| p.is_finite())
         .map(|p| p.max(0.0))
-        .unwrap_or(CONTAIN_MARGIN_PX)
+        .unwrap_or(REGION_PAD_PX)
 }
 
 fn aabb(pts: &[(f64, f64)], pad: f64) -> (f64, f64, f64, f64) {
@@ -1558,11 +1576,32 @@ fn callout_primitives(
         &clear_segs,
         CLASH_MARGIN_PX + STROKE_PX.max(0.8) * 0.5,
     );
-    let placed_x = seed.x + label_dxy.0 + nudge_x;
-    let placed_y = seed.y + label_dxy.1 + nudge_y;
-    let placed_bounds = seed
+    let mut placed_x = seed.x + label_dxy.0 + nudge_x;
+    let mut placed_y = seed.y + label_dxy.1 + nudge_y;
+    let mut placed_bounds = seed
         .bounds
         .translated(label_dxy.0 + nudge_x, label_dxy.1 + nudge_y);
+    if spec.arrow && !caption_boxes.is_empty() {
+        let paint_side0 =
+            Side::from_vec(placed_bounds.center().0 - ax, placed_bounds.center().1 - ay)
+                .unwrap_or(side);
+        let nudged = nudge_callout_off_labels(
+            placed_bounds,
+            (ax, ay),
+            paint_side0,
+            seed_standoff(paint_side0),
+            CALLOUT_LABEL_PULLBACK_PX,
+            caption_boxes,
+            CLASH_MARGIN_PX,
+        );
+        let (dxn, dyn_) = (
+            nudged.center().0 - placed_bounds.center().0,
+            nudged.center().1 - placed_bounds.center().1,
+        );
+        placed_bounds = nudged;
+        placed_x += dxn;
+        placed_y += dyn_;
+    }
     // Paint both ends from the placed label toward the atom so the shaft
     // stays on that ray (meeting the highlight circle). Do not splice in an
     // independently shifted tip.
@@ -2884,7 +2923,7 @@ mod tests {
                     ..Default::default()
                 })
             }),
-            padding: None,
+            padding: Some(CONTAIN_MARGIN_PX),
             z: None,
         }
     }
@@ -3290,7 +3329,10 @@ mod tests {
         mol.aromatic = AromaticStyle::Circle;
         let (dx, dy) = frame_offset(&mol);
         let segs = aromatic_circle_segs(&mol, dx, dy);
-        assert!(!segs.is_empty(), "circle-style benzene must have ring strokes");
+        assert!(
+            !segs.is_empty(),
+            "circle-style benzene must have ring strokes"
+        );
         let scene = crate::depict::depict_molecule(&mol);
         let node = MolNode {
             atom_number: Some(AtomNumberSpec::ByName(AtomNumberBy::Index)),
@@ -5392,7 +5434,7 @@ mod tests {
 
     #[test]
     fn region_cover_pad_replaces_house_margin() {
-        assert_eq!(region_cover_pad(&RegionSpec::default()), CONTAIN_MARGIN_PX);
+        assert_eq!(region_cover_pad(&RegionSpec::default()), REGION_PAD_PX);
         assert_eq!(
             region_cover_pad(&RegionSpec {
                 padding: Some(12.0),
@@ -5419,7 +5461,7 @@ mod tests {
                 padding: Some(f64::NAN),
                 ..Default::default()
             }),
-            CONTAIN_MARGIN_PX
+            REGION_PAD_PX
         );
     }
 
@@ -5440,7 +5482,7 @@ mod tests {
             apply_mol_chrome(&node, &mol, scene.clone())
         };
         let extra = 18.0;
-        let delta = extra - CONTAIN_MARGIN_PX;
+        let delta = extra - REGION_PAD_PX;
 
         let box_aabb = |out: &Scene| {
             layer_prims(out)
