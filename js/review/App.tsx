@@ -342,16 +342,18 @@ function GroupBlock({
           </button>
         </span>
       </summary>
-      {cases.map((c) => (
-        <CaseBlock
-          key={c.id}
-          c={c}
-          note={notes[c.id]}
-          open={openCases.has(c.id)}
-          onToggle={(next) => onToggleCase(c.id, next)}
-          onNote={onNote}
-        />
-      ))}
+      <div className="group-cases">
+        {cases.map((c) => (
+          <CaseBlock
+            key={c.id}
+            c={c}
+            note={notes[c.id]}
+            open={openCases.has(c.id)}
+            onToggle={(next) => onToggleCase(c.id, next)}
+            onNote={onNote}
+          />
+        ))}
+      </div>
     </details>
   );
 }

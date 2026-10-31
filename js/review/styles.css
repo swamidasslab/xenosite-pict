@@ -109,19 +109,34 @@ button:hover, .btn:hover { border-color: var(--accent); }
 }
 .group-tools button { font-size: 0.82rem; padding: 0.1rem 0.45rem; }
 
+.group-cases {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.65rem 0.85rem;
+  padding: 0.55rem 0.65rem 0.7rem;
+}
 .case {
-  border-top: 1px solid var(--line);
-  padding: 0 0.75rem 0.65rem;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: max-content;
+  max-width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0 0.7rem 0.55rem;
   scroll-margin-top: calc(var(--bar) + 2.4rem);
+  background: #fff;
 }
 .case > summary {
   padding: 0.45rem 0 0.35rem;
+  max-width: 100%;
 }
 .case-title { font-weight: 600; }
 .case-expect {
   color: var(--muted);
   font-size: 0.9rem;
-  flex: 1 1 12rem;
+  flex: 0 1 auto;
 }
 .chip {
   font-size: 0.75rem;
@@ -134,7 +149,15 @@ button:hover, .btn:hover { border-color: var(--accent); }
 .chip-problem { color: var(--problem); border-color: var(--problem); }
 .chip-later { color: var(--muted); }
 
-.file { color: var(--muted); display: block; margin-bottom: 0.35rem; }
+.file {
+  color: var(--muted);
+  display: block;
+  margin-bottom: 0.35rem;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .review-figure {
   background: #fff;
@@ -151,20 +174,29 @@ button:hover, .btn:hover { border-color: var(--accent); }
 .xpict-pending { color: var(--muted); margin: 0; line-height: 1.4; min-height: 1.2em; }
 .xpict-error { color: var(--problem); white-space: pre-wrap; }
 
-.note-editor { margin-top: 0.55rem; }
+.note-editor,
+.source {
+  margin-top: 0.45rem;
+  align-self: stretch;
+  min-width: 0;
+  max-width: 100%;
+}
 .note-status { display: flex; gap: 0.8rem; font-size: 0.9rem; }
 .note-editor textarea {
+  display: block;
   width: 100%;
+  min-width: 0;
   margin-top: 0.35rem;
   font: inherit;
   padding: 0.35rem 0.5rem;
   border: 1px solid var(--line);
   border-radius: 4px;
   resize: vertical;
+  box-sizing: border-box;
 }
 .note-editor[data-status="problem"] textarea { border-color: var(--problem); }
 
-.source { margin-top: 0.4rem; color: var(--muted); }
+.source { color: var(--muted); }
 .source > summary { padding: 0.2rem 0; font-size: 0.88rem; }
 .source pre {
   background: var(--bg);
