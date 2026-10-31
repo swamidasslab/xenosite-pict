@@ -228,6 +228,10 @@ fn compose_reaction(
             overlays.push(scene_prim);
         }
     }
+    for plus in scheme_plus_overlays(spec, &vp_boxes) {
+        expand_bounds_prim(&plus, &mut max_r, &mut max_b);
+        overlays.push(plus);
+    }
 
     Ok(Scene {
         width: max_r.max(placement.width.unwrap_or(0.0)),
@@ -664,6 +668,44 @@ fn resolve_edge_label(spec: &DepictSpec, edge: &EdgeNode) -> (Option<String>, Op
         LabelPos::BelowRight => "below_right".into(),
     });
     (text, pos)
+}
+
+/// `+` between consecutive co-endpoint mols on a multi-source / multi-target edge.
+fn scheme_plus_overlays(
+    spec: &DepictSpec,
+    vp_boxes: &HashMap<&str, (f64, f64, f64, f64)>,
+) -> Vec<Primitive> {
+    let mut out = Vec::new();
+    for edge in spec.edges() {
+        for ids in [edge.sources.as_slice(), edge.targets.as_slice()] {
+            if ids.len() < 2 {
+                continue;
+            }
+            for w in ids.windows(2) {
+                let Some(&(x0, y0, w0, h0)) = vp_boxes.get(w[0].as_str()) else {
+                    continue;
+                };
+                let Some(&(x1, y1, w1, h1)) = vp_boxes.get(w[1].as_str()) else {
+                    continue;
+                };
+                let ax = x0 + w0 * 0.5;
+                let ay = y0 + h0 * 0.5;
+                let bx = x1 + w1 * 0.5;
+                let by = y1 + h1 * 0.5;
+                out.push(Primitive::Text {
+                    x: (ax + bx) * 0.5,
+                    y: (ay + by) * 0.5,
+                    text: "+".into(),
+                    fill: "#222".into(),
+                    font_size: crate::metrics::FONT_PX,
+                    anchor: TextAnchor::Middle,
+                    class: Some("scheme-plus".into()),
+                    rotate: None,
+                });
+            }
+        }
+    }
+    out
 }
 
 fn edge_prim_to_scene(p: &EdgePrim) -> Primitive {
