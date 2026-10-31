@@ -16,6 +16,9 @@ Examples live in [`cases/`](cases/) as YAML (one file per figure). The app
 loads that directory; it does not hard-code structures. See
 [`cases/README.md`](cases/README.md).
 
+The page is one scrolling tree: expand/collapse all, groups only, or a
+single group. Figures paint lazily when a case is open and in view.
+
 Notes (ok / problem / later) stay in `localStorage` and can be exported as
 JSON from the header.
 

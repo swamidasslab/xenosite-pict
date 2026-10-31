@@ -14,6 +14,7 @@ export default defineConfig({
     exclude: ["@xenosite/xpict"],
   },
   server: {
+    host: "127.0.0.1",
     port: 5177,
     strictPort: true,
     fs: { allow: [jsRoot] },

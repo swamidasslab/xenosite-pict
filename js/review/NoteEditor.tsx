@@ -13,7 +13,13 @@ const STATUSES: { id: NoteStatus; label: string }[] = [
   { id: "later", label: "later" },
 ];
 
-export function NoteEditor({ id }: { id: string }) {
+export function NoteEditor({
+  id,
+  onChange,
+}: {
+  id: string;
+  onChange?: () => void;
+}) {
   const [note, setNote] = useState<ReviewNote>(() => loadNote(id));
 
   useEffect(() => {
@@ -22,6 +28,7 @@ export function NoteEditor({ id }: { id: string }) {
 
   function update(patch: Partial<ReviewNote>) {
     setNote(saveNote(id, patch));
+    onChange?.();
   }
 
   return (

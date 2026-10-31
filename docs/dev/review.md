@@ -37,7 +37,12 @@ across groups). Format: [`js/review/cases/README.md`](../../js/review/cases/READ
 
 ## Notes
 
-Each card has ok / problem / later plus a textarea. Stored in
+Cases sit in a collapsible tree (group → case). **Expand all** to scroll
+the catalog; **Groups** to fold figures and keep section headers; **Collapse
+all** to start from a closed tree. Each group also has Expand / Collapse for
+just that branch. Figures paint when a case is open and near the viewport.
+
+Each open case has ok / problem / later plus a textarea. Stored in
 `localStorage`; export / import JSON from the header.
 
 ## Visual regression
