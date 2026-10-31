@@ -256,6 +256,7 @@ class RegionSpec(StrictModel):
     atoms: list[int] = Field(default_factory=list, description='Atom indices that must lie inside the region.')
     exclude: list[int] = Field(default_factory=list, description='Atom indices that must stay outside.')
     fill: FillSpec | None = None
+    padding: Annotated[float | None, Field(description='Pad (chem-space px) around the included-atom cover. Omit → house contain margin (~0.1 bond). Applies to box / circle / bezier alike.')] = None
     stroke: StrokeSpec | None = None
     style: RegionStyle = 'box'
     text: MolText | None = None

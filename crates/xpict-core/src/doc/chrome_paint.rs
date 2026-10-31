@@ -923,7 +923,7 @@ fn region_primitives(
         .iter()
         .filter_map(|&i| find_atom(mol, i).map(|a| atom_xy(a, dx, dy)))
         .collect();
-    let mut pad = CONTAIN_MARGIN_PX;
+    let mut pad = region_cover_pad(spec);
     for _ in 0..8 {
         let (x0, y0, x1, y1) = aabb(&cover, pad);
         let ok = exclude_xy
@@ -1255,6 +1255,16 @@ fn label_pos_side(pos: LabelPos) -> Side {
         LabelPos::BelowLeft => Side::BelowLeft,
         LabelPos::BelowRight => Side::BelowRight,
     }
+}
+
+/// Cover pad in chem-space px. Set `RegionSpec.padding` replaces the house
+/// contain margin (~0.1 bond); omit keeps the house value. Non-finite / negative
+/// values clamp to 0.
+fn region_cover_pad(spec: &RegionSpec) -> f64 {
+    spec.padding
+        .filter(|p| p.is_finite())
+        .map(|p| p.max(0.0))
+        .unwrap_or(CONTAIN_MARGIN_PX)
 }
 
 fn aabb(pts: &[(f64, f64)], pad: f64) -> (f64, f64, f64, f64) {
@@ -2697,6 +2707,7 @@ mod tests {
                 }),
                 stroke: None,
                 text: None,
+                padding: None,
                 z: None,
             })),
             ..Default::default()
@@ -2873,6 +2884,7 @@ mod tests {
                     ..Default::default()
                 })
             }),
+            padding: None,
             z: None,
         }
     }
@@ -3590,6 +3602,7 @@ mod tests {
                     pos: Some(LabelPos::Right),
                     ..Default::default()
                 })),
+                padding: None,
                 z: None,
             })),
             ..Default::default()
@@ -3845,6 +3858,7 @@ mod tests {
                     pos: Some(LabelPos::Left),
                     ..Default::default()
                 })),
+                padding: None,
                 z: None,
             })),
             ..Default::default()
@@ -3924,6 +3938,7 @@ mod tests {
                         pos: Some(LabelPos::Left),
                         ..Default::default()
                     })),
+                    padding: None,
                     z: None,
                 })),
                 ..Default::default()
@@ -4064,6 +4079,7 @@ mod tests {
                     dash: None,
                 }),
                 text: Some(MolText::Plain("ring".into())),
+                padding: None,
                 z: None,
             })),
             callout: Some(crate::doc::chrome::CalloutField::One(CalloutSpec {
@@ -4255,6 +4271,7 @@ mod tests {
                     dash: None,
                 }),
                 text: Some(MolText::Plain("ring".into())),
+                padding: None,
                 z: None,
             })),
             callout: Some(crate::doc::chrome::CalloutField::One(CalloutSpec {
@@ -4711,6 +4728,7 @@ mod tests {
                     pos: Some(LabelPos::Left),
                     ..Default::default()
                 })),
+                padding: None,
                 z: None,
             })),
             ..Default::default()
@@ -4754,6 +4772,7 @@ mod tests {
                     dash: None,
                 }),
                 text: Some(MolText::Plain("Et".into())),
+                padding: None,
                 z: None,
             })),
             ..Default::default()
@@ -5136,6 +5155,7 @@ mod tests {
                         place: Some(place),
                         ..Default::default()
                     })),
+                    padding: None,
                     z: None,
                 })),
                 ..Default::default()
@@ -5198,6 +5218,7 @@ mod tests {
                     place: Some(RegionTextPlace::Inside),
                     ..Default::default()
                 })),
+                padding: None,
                 z: None,
             })),
             ..Default::default()
@@ -5257,6 +5278,7 @@ mod tests {
                         pos: Some(LabelPos::Left),
                         ..Default::default()
                     })),
+                    padding: None,
                     z: None,
                 })),
                 ..Default::default()
@@ -5325,6 +5347,7 @@ mod tests {
                 fill: None,
                 stroke: None,
                 text: Some(MolText::Plain("$R_1$".into())),
+                padding: None,
                 z: None,
             })),
             callout: Some(crate::doc::chrome::CalloutField::One(CalloutSpec {
@@ -5364,6 +5387,131 @@ mod tests {
                 .iter()
                 .any(|(c, t)| c.contains("callout") && (t.contains('⁺') || t.contains('+'))),
             "callout markup data_text missing: {texts:?}"
+        );
+    }
+
+    #[test]
+    fn region_cover_pad_replaces_house_margin() {
+        assert_eq!(region_cover_pad(&RegionSpec::default()), CONTAIN_MARGIN_PX);
+        assert_eq!(
+            region_cover_pad(&RegionSpec {
+                padding: Some(12.0),
+                ..Default::default()
+            }),
+            12.0
+        );
+        assert_eq!(
+            region_cover_pad(&RegionSpec {
+                padding: Some(0.0),
+                ..Default::default()
+            }),
+            0.0
+        );
+        assert_eq!(
+            region_cover_pad(&RegionSpec {
+                padding: Some(-4.0),
+                ..Default::default()
+            }),
+            0.0
+        );
+        assert_eq!(
+            region_cover_pad(&RegionSpec {
+                padding: Some(f64::NAN),
+                ..Default::default()
+            }),
+            CONTAIN_MARGIN_PX
+        );
+    }
+
+    #[test]
+    fn region_padding_grows_box_circle_and_bezier() {
+        let mol = ethanol();
+        let scene = crate::depict::depict_molecule(&mol);
+        let paint = |style: RegionStyle, padding: Option<f64>| {
+            let node = MolNode {
+                region: Some(crate::doc::chrome::RegionField::One(RegionSpec {
+                    style,
+                    atoms: vec![0, 1, 2],
+                    padding,
+                    ..Default::default()
+                })),
+                ..Default::default()
+            };
+            apply_mol_chrome(&node, &mol, scene.clone())
+        };
+        let extra = 18.0;
+        let delta = extra - CONTAIN_MARGIN_PX;
+
+        let box_aabb = |out: &Scene| {
+            layer_prims(out)
+                .into_iter()
+                .find_map(|p| match p {
+                    Primitive::Path {
+                        d, class: Some(c), ..
+                    } if c.contains("region") && c.contains("box") => path_aabb(d),
+                    _ => None,
+                })
+                .expect("region box")
+        };
+        let b0 = box_aabb(&paint(RegionStyle::Box, None));
+        let bp = box_aabb(&paint(RegionStyle::Box, Some(extra)));
+        assert!(
+            (bp.width() - b0.width() - 2.0 * delta).abs() < 0.6,
+            "box width should grow by 2·(padding − house): w0={} wp={} delta={}",
+            b0.width(),
+            bp.width(),
+            delta
+        );
+        assert!(
+            (bp.height() - b0.height() - 2.0 * delta).abs() < 0.6,
+            "box height should grow by 2·(padding − house): h0={} hp={} delta={}",
+            b0.height(),
+            bp.height(),
+            delta
+        );
+
+        let circ_r = |out: &Scene| {
+            layer_prims(out)
+                .into_iter()
+                .find_map(|p| match p {
+                    Primitive::Circle {
+                        r, class: Some(c), ..
+                    } if c.contains("region") => Some(*r),
+                    _ => None,
+                })
+                .expect("region circle")
+        };
+        let r0 = circ_r(&paint(RegionStyle::Circle, None));
+        let rp = circ_r(&paint(RegionStyle::Circle, Some(extra)));
+        assert!(
+            (rp - r0 - delta).abs() < 0.6,
+            "circle r should grow by padding − house: r0={r0} rp={rp} delta={delta}"
+        );
+
+        let bez_aabb = |out: &Scene| {
+            layer_prims(out)
+                .into_iter()
+                .find_map(|p| match p {
+                    Primitive::Path {
+                        d, class: Some(c), ..
+                    } if c.contains("region") && c.contains("bezier") => path_aabb(d),
+                    _ => None,
+                })
+                .expect("region bezier")
+        };
+        let z0 = bez_aabb(&paint(RegionStyle::Bezier, None));
+        let zp = bez_aabb(&paint(RegionStyle::Bezier, Some(extra)));
+        assert!(
+            zp.width() > z0.width() + delta,
+            "bezier hull should grow with padding: w0={} wp={}",
+            z0.width(),
+            zp.width()
+        );
+        assert!(
+            zp.height() > z0.height() + delta,
+            "bezier hull should grow with padding: h0={} hp={}",
+            z0.height(),
+            zp.height()
         );
     }
 }

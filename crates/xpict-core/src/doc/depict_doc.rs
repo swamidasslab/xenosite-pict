@@ -608,6 +608,7 @@ mod tests {
                 fill: None,
                 stroke: None,
                 text: Some(MolText::Plain("ring".into())),
+                padding: None,
                 z: None,
             })),
             callout: Some(CalloutField::One(CalloutSpec {
@@ -769,6 +770,7 @@ mod tests {
                 }),
                 stroke: None,
                 text: None,
+                padding: None,
                 z: None,
             })),
             ..Default::default()
@@ -864,6 +866,7 @@ mod tests {
                         }),
                         stroke: None,
                         text: None,
+                        padding: None,
                         z: None,
                     })),
                     ..Default::default()

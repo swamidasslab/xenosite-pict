@@ -140,7 +140,7 @@ pub enum RegionStyle {
 }
 
 /// One region highlight on a mol.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
 #[cfg_attr(feature = "codegen", ts(export))]
 pub struct RegionSpec {
@@ -161,6 +161,11 @@ pub struct RegionSpec {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub text: Option<MolText>,
+    /// Pad (chem-space px) around the included-atom cover. Omit → house contain
+    /// margin (~0.1 bond). Applies to box / circle / bezier alike.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub padding: Option<f64>,
     /// Optional z-order override (lower = further back). Default band: region base.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
@@ -821,6 +826,7 @@ mod tests {
                 }),
                 stroke: None,
                 text: Some(MolText::Plain("pocket".into())),
+                padding: None,
                 z: None,
             })),
             ..Default::default()
@@ -947,6 +953,7 @@ mod tests {
                 fill: None,
                 stroke: None,
                 text: None,
+                padding: None,
                 z: None,
             })),
             callout: Some(CalloutField::One(CalloutSpec {
@@ -1002,5 +1009,10 @@ mod tests {
         }
         let num: AtomNumberSpec = serde_json::from_str(r#""mapno""#).unwrap();
         assert!(matches!(num, AtomNumberSpec::ByName(AtomNumberBy::Mapno)));
+        let padded: RegionSpec =
+            serde_json::from_str(r#"{"style":"box","atoms":[0,1],"padding":12}"#).unwrap();
+        assert_eq!(padded.padding, Some(12.0));
+        let omitted: RegionSpec = serde_json::from_str(r#"{"atoms":[0]}"#).unwrap();
+        assert_eq!(omitted.padding, None);
     }
 }

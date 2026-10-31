@@ -242,6 +242,7 @@ class RegionSpecDict(TypedDict, total=False):
     atoms: NotRequired[list[int]]
     exclude: NotRequired[list[int]]
     fill: NotRequired[FillSpecDict]
+    padding: NotRequired[float]
     stroke: NotRequired[StrokeSpecDict]
     style: NotRequired[RegionStyle]
     text: NotRequired[MolTextDict]

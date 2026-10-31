@@ -17,6 +17,11 @@ atoms: Array<number>,
  */
 exclude: Array<number>, fill?: FillSpec, stroke?: StrokeSpec, text?: MolText, 
 /**
+ * Pad (chem-space px) around the included-atom cover. Omit → house contain
+ * margin (~0.1 bond). Applies to box / circle / bezier alike.
+ */
+padding?: number, 
+/**
  * Optional z-order override (lower = further back). Default band: region base.
  */
 z?: number, };

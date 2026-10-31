@@ -1,5 +1,9 @@
 # Lab log
 
+## 2026-10-31
+
+- Region hulls take `padding` (chem-space px) on `RegionSpec`. Omit keeps the house contain margin (~0.1 bond); a set value replaces that pad for box / circle / bezier.
+
 ## 2026-10-30
 
 - Product 0.8.2: network U-routes keep ELK corridors (no NM/Catmull) and hug tips toward the adjacent elbow so end chords stay on the centroid ray.

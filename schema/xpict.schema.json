@@ -2372,6 +2372,14 @@
             }
           ]
         },
+        "padding": {
+          "description": "Pad (chem-space px) around the included-atom cover. Omit → house contain margin (~0.1 bond). Applies to box / circle / bezier alike.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
         "stroke": {
           "anyOf": [
             {

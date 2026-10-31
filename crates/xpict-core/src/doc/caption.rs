@@ -1057,6 +1057,7 @@ mod tests {
                     dash: None,
                 }),
                 text: None,
+                padding: None,
                 z: None,
             })),
             ..Default::default()
