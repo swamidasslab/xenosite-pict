@@ -13,6 +13,8 @@ import {
   hydrateNotes,
   importNotes,
   problemCount,
+  type NoteMap,
+  type NoteStatus,
   type ReviewNote,
 } from "./notes.js";
 
@@ -28,6 +30,40 @@ function allGroupSet() {
 
 function allCaseSet() {
   return new Set(CASES.map((c) => c.id));
+}
+
+function failRank(status: NoteStatus | undefined): number {
+  if (status === "problem") return 0;
+  if (status === "later") return 1;
+  return 2;
+}
+
+function sortCases(cases: ReviewCase[], order: NoteMap): ReviewCase[] {
+  return [...cases].sort((a, b) => {
+    const ra = failRank(order[a.id]?.status);
+    const rb = failRank(order[b.id]?.status);
+    if (ra !== rb) return ra - rb;
+    if (ra === 0) {
+      const ua = order[a.id]?.updated ?? "";
+      const ub = order[b.id]?.updated ?? "";
+      if (ua !== ub) return ub.localeCompare(ua);
+    }
+    return 0;
+  });
+}
+
+function sortGroups(order: NoteMap): ReviewGroup[] {
+  return [...GROUP_ORDER].sort((a, b) => {
+    const pa = CASES.filter(
+      (c) => c.group === a && order[c.id]?.status === "problem",
+    ).length;
+    const pb = CASES.filter(
+      (c) => c.group === b && order[c.id]?.status === "problem",
+    ).length;
+    if ((pa > 0) !== (pb > 0)) return pa > 0 ? -1 : 1;
+    if (pa !== pb) return pb - pa;
+    return GROUP_ORDER.indexOf(a) - GROUP_ORDER.indexOf(b);
+  });
 }
 
 function initialOpen(): { groups: Set<ReviewGroup>; cases: Set<string> } {
@@ -58,25 +94,37 @@ export function App() {
   const [openCases, setOpenCases] = useState<Set<string>>(() => seed.cases);
   const [problemsOnly, setProblemsOnly] = useState(false);
   const [tick, setTick] = useState(0);
+  /** Note snapshot used only for sort; live `notes` update chips without reshuffling. */
+  const [orderNotes, setOrderNotes] = useState<NoteMap>({});
+  const [hydrated, setHydrated] = useState(false);
 
   const notes = useMemo(() => allNotes(), [tick]);
   const nProblems = problemCount(CASES.map((c) => c.id));
 
   useEffect(() => {
-    hydrateNotes().then(() => setTick((n) => n + 1));
+    hydrateNotes().then((merged) => {
+      setOrderNotes(merged);
+      setHydrated(true);
+      setTick((n) => n + 1);
+    });
   }, []);
 
   const sections = useMemo(() => {
-    return GROUP_ORDER.map((g) => ({
-      group: g,
-      title: GROUP_TITLE[g],
-      cases: CASES.filter((c) => {
-        if (c.group !== g) return false;
-        if (problemsOnly && notes[c.id]?.status !== "problem") return false;
-        return true;
-      }),
-    })).filter((s) => s.cases.length);
-  }, [problemsOnly, notes]);
+    return sortGroups(orderNotes)
+      .map((g) => ({
+        group: g,
+        title: GROUP_TITLE[g],
+        cases: sortCases(
+          CASES.filter((c) => {
+            if (c.group !== g) return false;
+            if (problemsOnly && notes[c.id]?.status !== "problem") return false;
+            return true;
+          }),
+          orderNotes,
+        ),
+      }))
+      .filter((s) => s.cases.length);
+  }, [problemsOnly, notes, orderNotes]);
 
   const visibleCount = sections.reduce((n, s) => n + s.cases.length, 0);
 
@@ -137,6 +185,7 @@ export function App() {
   function onImport(file: File) {
     file.text().then((text) => {
       importNotes(JSON.parse(text) as Record<string, ReviewNote>);
+      setOrderNotes(allNotes());
       setTick((n) => n + 1);
     });
   }
@@ -195,7 +244,9 @@ export function App() {
       </div>
 
       <div className="tree">
-        {sections.length === 0 ? (
+        {!hydrated ? (
+          <p className="empty">loading notes…</p>
+        ) : sections.length === 0 ? (
           <p className="empty">No cases match.</p>
         ) : (
           sections.map((s) => (
