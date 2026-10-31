@@ -15,6 +15,8 @@ mod edge_resolve;
 mod fit;
 pub(crate) mod layout_constraints;
 mod layout_items;
+#[cfg(test)]
+mod review_regress;
 mod scheme_layout;
 mod spec;
 mod text_paint;
