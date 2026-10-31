@@ -4,7 +4,7 @@
 
 - Review gallery problems (10 cases) snapshot in `js/review/problems.json`. Local notes stay gitignored; this file is the committed list for tests.
 
-- Easy gallery fixes in xpict-core: SMILES isotopes paint (`D`/`T`, `^{13}C`); dummy `*` is a six-spoke asterisk; equilibrium harpoons join the shaft; greek atom labels are bold at full size; region default pad is 0.35 bond with extra outer pad on nested containers; callout shafts nudge off atom numbers; multi-endpoint schemes paint `+`. Shaft–chem overlap still needs visible-point routing (tests sample interiors).
+- Easy gallery fixes in xpict-core: SMILES isotopes paint (`D`/`T`, `^{13}C`); dummy `*` is a six-spoke asterisk; equilibrium harpoons join the shaft; greek atom labels are bold at full size; region default pad is the house contain margin (~0.1 bond) with a matching extra on nested containers; callout shafts nudge off atom numbers; multi-endpoint schemes paint `+`. Shaft–chem overlap still needs visible-point routing (tests sample interiors).
 
 - Nested region labels: a containing hull now covers child region-label ink (overlap-z: "right" stays inside "both"). Children paint first so the parent cover sees those boxes.
 

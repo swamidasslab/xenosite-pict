@@ -23,7 +23,7 @@ use crate::doc::layout_items::{
     callout_arrow, callout_arrow_clearing, nudge_callout_off_labels, padded_label_ink, place_auto,
     place_greedy, place_region_auto, place_region_edge, tip_standoff_clearing, Aabb, InkAtOrigin,
     Occupancy, PlaceRequest, Seg, Side, ATOM_DISK_R_PX, CLASH_MARGIN_PX, CONTAIN_MARGIN_PX,
-    HALF_BOND_PX, LABEL_PAD_X_PX, REGION_PAD_PX,
+    HALF_BOND_PX, LABEL_PAD_X_PX, REGION_NEST_EXTRA_PX, REGION_PAD_PX,
 };
 use crate::doc::spec::{LabelPos, MolNode};
 use crate::doc::text_paint::{markup_bounds_at_origin, outline_markup};
@@ -162,7 +162,7 @@ pub fn apply_mol_chrome(node: &MolNode, mol: &MoleculeIn, mut scene: Scene) -> S
             .any(|o| !o.is_empty() && o.len() < mine.len() && o.is_subset(&mine));
         let mut spec = spec.clone();
         if contains_child {
-            spec.padding = Some(region_cover_pad(&spec) + HALF_BOND_PX);
+            spec.padding = Some(region_cover_pad(&spec) + REGION_NEST_EXTRA_PX);
         }
         let child_labels: Vec<Aabb> = nested_region_labels
             .iter()
@@ -1297,9 +1297,9 @@ fn label_pos_side(pos: LabelPos) -> Side {
 }
 
 /// Cover pad in chem-space px. Set `RegionSpec.padding` replaces the house
-/// region pad (~0.35 bond); omit keeps that value. Non-finite / negative
-/// values clamp to 0. Nested containers get an extra half-bond so a child
-/// box does not share the outer edge.
+/// region pad (~0.1 bond); omit keeps that value. Non-finite / negative
+/// values clamp to 0. Nested containers get a small extra so a child box
+/// does not share the outer edge.
 fn region_cover_pad(spec: &RegionSpec) -> f64 {
     spec.padding
         .filter(|p| p.is_finite())
@@ -5457,6 +5457,8 @@ mod tests {
     #[test]
     fn region_cover_pad_replaces_house_margin() {
         assert_eq!(region_cover_pad(&RegionSpec::default()), REGION_PAD_PX);
+        assert_eq!(REGION_PAD_PX, CONTAIN_MARGIN_PX);
+        assert!(REGION_NEST_EXTRA_PX <= CONTAIN_MARGIN_PX + 1e-9);
         assert_eq!(
             region_cover_pad(&RegionSpec {
                 padding: Some(12.0),

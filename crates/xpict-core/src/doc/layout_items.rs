@@ -18,10 +18,13 @@ pub const HALF_BOND_PX: f64 = 0.5 * BOND_PX;
 pub const ATOM_DISK_R_PX: f64 = 0.3 * BOND_PX;
 /// Extra pad when a shape must **contain** another (on top of the contained size).
 pub const CONTAIN_MARGIN_PX: f64 = CLASH_MARGIN_PX;
-/// Default region-hull pad (chem-space px). Larger than [`CONTAIN_MARGIN_PX`]
-/// so nested boxes show air between ink and the frame, and a container can
-/// sit visibly outside a child region.
-pub const REGION_PAD_PX: f64 = 0.35 * BOND_PX;
+/// Default region-hull pad (chem-space px). Same order as [`CONTAIN_MARGIN_PX`]
+/// so a lone box hugs the cover; nested containers add
+/// [`REGION_NEST_EXTRA_PX`] on top.
+pub const REGION_PAD_PX: f64 = CONTAIN_MARGIN_PX;
+/// Extra outer pad when a region contains another region's atoms, so the
+/// boxes do not share an edge.
+pub const REGION_NEST_EXTRA_PX: f64 = CONTAIN_MARGIN_PX;
 
 /// Axis-aligned obstacle or candidate label box.
 #[derive(Debug, Clone, Copy, PartialEq)]
