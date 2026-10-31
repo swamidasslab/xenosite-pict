@@ -144,6 +144,7 @@ mod tests {
             hcount,
             radical: 0,
             mapno: None,
+            isotope: None,
         }
     }
 

@@ -18,6 +18,8 @@ pub struct AtomRec {
     /// CTAB `M  RAD` / charge-code 4. SMILES radicals use H deficit instead.
     pub radical: u8,
     pub mapno: Option<u32>,
+    /// Mass number from a SMILES isotope prefix (`[13C]`, `[2H]`). `None` = natural.
+    pub isotope: Option<u16>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -52,6 +54,7 @@ pub struct Parsed {
     pub implicit_hs: Vec<u32>,
     pub radicals: Vec<u8>,
     pub atom_mapnos: Vec<Option<u32>>,
+    pub isotopes: Vec<Option<u16>>,
 }
 
 pub fn parse_source(source: &str) -> Result<Parsed, String> {
@@ -77,12 +80,14 @@ pub fn graph_to_parsed(g: &MolGraph) -> Result<Parsed, String> {
     let mut implicit_hs = Vec::with_capacity(n);
     let mut radicals = Vec::with_capacity(n);
     let mut atom_mapnos = Vec::with_capacity(n);
+    let mut isotopes = Vec::with_capacity(n);
     for i in 0..n {
         atomic_numbers.push(g.atoms[i].z);
         formal_charges.push(g.atoms[i].charge);
         implicit_hs.push(u32::from(implicit_hcount(&g.atoms, &g.bonds, i)));
         radicals.push(unpaired_electrons(&g.atoms, &g.bonds, i).max(g.atoms[i].radical));
         atom_mapnos.push(g.atoms[i].mapno);
+        isotopes.push(g.atoms[i].isotope);
     }
     let mut bond_from = Vec::new();
     let mut bond_to = Vec::new();
@@ -115,6 +120,7 @@ pub fn graph_to_parsed(g: &MolGraph) -> Result<Parsed, String> {
         implicit_hs,
         radicals,
         atom_mapnos,
+        isotopes,
     })
 }
 

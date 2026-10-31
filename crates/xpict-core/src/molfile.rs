@@ -80,6 +80,7 @@ fn parse_v2000_atom(line: &str) -> Result<AtomRec, String> {
         hcount: None,
         radical,
         mapno: None,
+        isotope: None,
     })
 }
 
@@ -171,6 +172,7 @@ fn parse_v3000(text: &str) -> Result<MolGraph, String> {
             hcount: None,
             radical: 0,
             mapno: None,
+            isotope: None,
         };
         na
     ];
@@ -284,6 +286,7 @@ fn parse_v3000_atom(line: &str, atoms: &mut [AtomRec], seen: &mut [bool]) -> Res
         hcount: None,
         radical,
         mapno: map.filter(|&m| m > 0),
+        isotope: None,
     };
     seen[i] = true;
     Ok(())

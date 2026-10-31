@@ -42,6 +42,7 @@ fn to_graph(mol: &SmilesMol) -> Result<MolGraph, String> {
             },
             radical: 0,
             mapno: a.atom_class.map(u32::from),
+            isotope: a.isotope.filter(|&m| m > 0),
         });
     }
     let mut bonds = Vec::with_capacity(mol.bonds.len());
@@ -181,6 +182,18 @@ mod tests {
         let g = parse_smiles("[Pt]<-N").unwrap();
         assert_eq!(g.bonds[0].a, 1);
         assert_eq!(g.bonds[0].b, 0);
+    }
+
+    #[test]
+    fn isotope_mass_is_kept() {
+        let g = parse_smiles("[2H]C").unwrap();
+        assert_eq!(g.atoms[0].z, 1);
+        assert_eq!(g.atoms[0].isotope, Some(2));
+        assert_eq!(g.atoms[1].z, 6);
+        assert_eq!(g.atoms[1].isotope, None);
+        let g = parse_smiles("[13CH4]").unwrap();
+        assert_eq!(g.atoms[0].z, 6);
+        assert_eq!(g.atoms[0].isotope, Some(13));
     }
 
     #[test]

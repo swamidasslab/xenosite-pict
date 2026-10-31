@@ -71,7 +71,8 @@ fn to_molecule_in(id: &str, parsed: &Parsed, coords: &LayoutResult, source: &str
             let radical = parsed.radicals.get(i).copied().unwrap_or(0);
             // Charge stays on `AtomIn.charge`; `display_label` appends the
             // suffix so we do not bake it into the string twice.
-            let label = atom_display_label(&element, hs, 0, degree[i], radical);
+            let isotope = parsed.isotopes.get(i).copied().flatten();
+            let label = atom_display_label(&element, hs, 0, degree[i], radical, isotope);
             AtomIn {
                 index: i as i32,
                 element: Some(element),
