@@ -81,7 +81,8 @@ fn parse_into(src: &str, out: &mut Vec<ChemGlyph>, bold: bool, italic: bool, in_
                 let (name, after) = read_command_name(&chars, i + 1);
                 if let Some(sym) = lookup_symbol(&name) {
                     for ch in sym.chars() {
-                        push_char(out, ch, ScriptRole::Normal, bold, italic);
+                        let greek = is_greek_letter(ch);
+                        push_char(out, ch, ScriptRole::Normal, bold || greek, italic && !greek);
                     }
                     i = after;
                     continue;
@@ -191,6 +192,10 @@ fn lookup_style_cmd(name: &str) -> Option<StyleKind> {
         "textit" | "mathit" | "it" | "emph" => Some(StyleKind::Italic),
         _ => None,
     }
+}
+
+fn is_greek_letter(ch: char) -> bool {
+    ('\u{0370}'..='\u{03FF}').contains(&ch) || ('\u{1F00}'..='\u{1FFF}').contains(&ch)
 }
 
 fn lookup_symbol(name: &str) -> Option<&'static str> {
@@ -447,6 +452,10 @@ mod tests {
     fn greek_and_delta() {
         let g = parse_label_markup(r"\alpha-\beta", FaceStyle::Regular);
         assert_eq!(g.iter().map(|x| x.ch).collect::<String>(), "α-β");
+        assert!(g
+            .iter()
+            .filter(|x| x.ch != '-')
+            .all(|x| x.face == FaceStyle::Bold));
         let d = parse_label_markup(r"\Delta\DeltaG", FaceStyle::Regular);
         assert_eq!(d.iter().map(|x| x.ch).collect::<String>(), "ΔΔG");
     }
@@ -465,6 +474,7 @@ mod tests {
     fn math_with_alpha_sub() {
         let g = parse_label_markup(r"$\alpha_D$", FaceStyle::Regular);
         assert_eq!(g[0].ch, 'α');
+        assert_eq!(g[0].face, FaceStyle::Bold);
         assert_eq!(g[1].ch, 'D');
         assert_eq!(g[1].role, ScriptRole::Subscript);
     }
