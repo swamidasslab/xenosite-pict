@@ -10,6 +10,7 @@ import {
 } from "./catalog/types.js";
 import {
   allNotes,
+  hydrateNotes,
   importNotes,
   problemCount,
   type ReviewNote,
@@ -60,6 +61,10 @@ export function App() {
 
   const notes = useMemo(() => allNotes(), [tick]);
   const nProblems = problemCount(CASES.map((c) => c.id));
+
+  useEffect(() => {
+    hydrateNotes().then(() => setTick((n) => n + 1));
+  }, []);
 
   const sections = useMemo(() => {
     return GROUP_ORDER.map((g) => ({

@@ -4,6 +4,8 @@
 
 - Local review gallery (`make review`): Vite app paints live DepictSpec through JS/WASM. Examples are YAML files under `js/review/cases/<group>/`, not hard-coded in the UI. Notes in localStorage; Playwright snapshots optional (`make review-test`). Catalog smoke is part of `npm run test:api`.
 
+- Review notes autosave to `js/review/notes.local.json` (gitignored) via a Vite middleware; localStorage is only a cache. Reload still has the marks, and the file is readable from the repo.
+
 - Review gallery is a collapsible group→case tree (expand/collapse all, or one branch). Figures paint lazily when open and in view, so you can scroll the catalog without a sidebar hop.
 
 - Review gallery always uses this checkout’s JS: `js/review` is a workspace package with `"@xenosite/xpict": "file:.."`, and Vite aliases that to `js/src` (live wasm/TS, not a registry install or a stale `dist/`).

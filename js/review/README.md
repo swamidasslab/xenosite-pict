@@ -19,8 +19,8 @@ loads that directory; it does not hard-code structures. See
 The page is one scrolling tree: expand/collapse all, groups only, or a
 single group. Figures paint lazily when a case is open and in view.
 
-Notes (ok / problem / later) stay in `localStorage` and can be exported as
-JSON from the header.
+Notes (ok / problem / later) autosave to `notes.local.json` (gitignored)
+and `localStorage`. Export / import JSON still works from the header.
 
 ## Visual diffs
 

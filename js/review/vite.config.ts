@@ -2,13 +2,14 @@ import react from "@vitejs/plugin-react";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
+import { reviewNotesPlugin } from "./notesPlugin.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const jsRoot = resolve(here, "..");
 
 export default defineConfig({
   root: here,
-  plugins: [react()],
+  plugins: [react(), reviewNotesPlugin()],
   assetsInclude: ["**/*.wasm"],
   optimizeDeps: {
     exclude: ["@xenosite/xpict"],

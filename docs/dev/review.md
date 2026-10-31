@@ -42,8 +42,9 @@ the catalog; **Groups** to fold figures and keep section headers; **Collapse
 all** to start from a closed tree. Each group also has Expand / Collapse for
 just that branch. Figures paint when a case is open and near the viewport.
 
-Each open case has ok / problem / later plus a textarea. Stored in
-`localStorage`; export / import JSON from the header.
+Each open case has ok / problem / later plus a textarea. Autosaves to
+`js/review/notes.local.json` (gitignored) and mirrors `localStorage`.
+Export / import JSON still works from the header.
 
 ## Visual regression
 

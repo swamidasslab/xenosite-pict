@@ -14,5 +14,6 @@
       "@xenosite/xpict": ["../src/index.ts"]
     }
   },
-  "include": ["./**/*.ts", "./**/*.tsx"]
+  "include": ["./**/*.ts", "./**/*.tsx"],
+  "exclude": ["notesPlugin.ts", "vite.config.ts"]
 }
