@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { xpict, type DepictSpec } from "@xenosite/xpict";
+import { xpict, type DepictSpec } from "@xenosite/xpict"; // workspace file:.. → js/src
 
 export function Depict({ spec }: { spec: DepictSpec }) {
   const key = useMemo(() => JSON.stringify(spec), [spec]);

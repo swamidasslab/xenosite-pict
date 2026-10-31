@@ -1,0 +1,9 @@
+{
+  "name": "xpict-review",
+  "private": true,
+  "type": "module",
+  "description": "Local depiction gallery. Always linked to this repo's js/ — never the npm registry.",
+  "dependencies": {
+    "@xenosite/xpict": "file:.."
+  }
+}

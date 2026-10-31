@@ -4,6 +4,8 @@
 
 - Local review gallery (`make review`): Vite app paints live DepictSpec through JS/WASM. Examples are YAML files under `js/review/cases/<group>/`, not hard-coded in the UI. Notes in localStorage; Playwright snapshots optional (`make review-test`). Catalog smoke is part of `npm run test:api`.
 
+- Review gallery always uses this checkout’s JS: `js/review` is a workspace package with `"@xenosite/xpict": "file:.."`, and Vite aliases that to `js/src` (live wasm/TS, not a registry install or a stale `dist/`).
+
 - Review cases: `region/` (exclude hulls, inside labels, GSH cover, multi-region) and non-trivial `scheme/` nets (coterminal lanes, down pair, fan, wrap, metabolism, multi-endpoint).
 
 - Product 0.8.3: region hulls take `padding` (chem-space px) on `RegionSpec`.

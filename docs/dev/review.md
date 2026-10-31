@@ -8,7 +8,9 @@ make review
 ```
 
 Opens `http://127.0.0.1:5177`. Figures come from `xpict.depict` /
-`xpict.toSvg` (same paint as `@xenosite/xpict`).
+`xpict.toSvg` on the **in-repo** JS/WASM tree (`js/review` depends on
+`@xenosite/xpict` via `file:..`; Vite aliases that to `js/src`). It never
+installs the published npm package.
 
 ## Cases (the source of truth)
 

@@ -1,7 +1,8 @@
 # Local depiction review
 
-Private Vite app. Paints every case through **`@xenosite/xpict`** (JS/WASM).
-Not part of the published npm package or the public MkDocs site.
+Private Vite app. Paints every case through **this checkout’s**
+`@xenosite/xpict` (`file:..` → `js/`, Vite alias to `js/src`). Never the
+npm registry. Not part of the published package or the public MkDocs site.
 
 ```bash
 make review          # http://127.0.0.1:5177

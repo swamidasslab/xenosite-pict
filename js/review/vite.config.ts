@@ -19,9 +19,12 @@ export default defineConfig({
     fs: { allow: [jsRoot] },
   },
   resolve: {
+    // Workspace `file:..` installs this repo's js/, not the registry. Alias
+    // to src/ so review paints the live tree (wasm + TS) instead of a stale dist/.
     alias: {
       "@xenosite/xpict": resolve(jsRoot, "src/index.ts"),
     },
+    dedupe: ["@xenosite/xpict"],
   },
   build: {
     outDir: resolve(jsRoot, "dist-review"),
