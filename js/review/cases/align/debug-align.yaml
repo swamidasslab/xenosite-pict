@@ -1,0 +1,13 @@
+title: Debug align
+expect: Correspondence tags / role badge on the aligned mol.
+spec:
+  type: group
+  align: true
+  debug_align: true
+  children:
+    - type: mol
+      id: a
+      smiles: c1ccccc1O
+    - type: mol
+      id: b
+      smiles: COc1ccccc1

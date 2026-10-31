@@ -1,0 +1,8 @@
+title: Atom numbers (subset)
+expect: Only atoms 0 and 6 numbered.
+spec:
+  type: mol
+  smiles: c1ccccc1O
+  atom_number:
+    by: index
+    only: [0, 6]

@@ -1,0 +1,14 @@
+title: Region bezier
+expect: Smooth hull around the ring atoms.
+spec:
+  type: mol
+  smiles: c1ccccc1O
+  region:
+    style: bezier
+    atoms: [0, 1, 2, 3, 4, 5]
+    fill:
+      color: "#48a"
+      opacity: 0.12
+    stroke:
+      color: "#48a"
+    text: ring

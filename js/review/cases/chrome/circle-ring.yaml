@@ -1,0 +1,11 @@
+title: Circle on ring centroid
+expect: One circle at the benzene centroid (ring atom list).
+spec:
+  type: mol
+  smiles: c1ccccc1
+  circle:
+    atoms: []
+    bonds: []
+    ring: [0, 1, 2, 3, 4, 5]
+    stroke:
+      color: "#06c"

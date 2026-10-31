@@ -1,0 +1,6 @@
+title: star_labels markup
+expect: xpict chem markup $R_1$ → R₁ (not the CX trailer).
+spec:
+  type: mol
+  smiles: "*C"
+  star_labels: ["$R_1$"]

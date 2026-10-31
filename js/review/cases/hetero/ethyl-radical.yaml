@@ -1,0 +1,5 @@
+title: Ethyl radical
+expect: CH2 (not CH3) on the radical carbon, plus a dot.
+spec:
+  type: mol
+  smiles: C[CH2]

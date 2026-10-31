@@ -1,0 +1,15 @@
+title: Line (no head)
+expect: Shaft without an arrowhead.
+spec:
+  type: reaction_scheme
+  children:
+    - type: mol
+      id: A
+      smiles: CCO
+    - type: mol
+      id: B
+      smiles: CC=O
+    - type: edge
+      sources: A
+      targets: B
+      arrow: line

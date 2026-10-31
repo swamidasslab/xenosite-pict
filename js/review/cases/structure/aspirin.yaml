@@ -1,0 +1,5 @@
+title: Aspirin
+expect: ortho-substituted benzene with ester and carboxylic acid.
+spec:
+  type: mol
+  smiles: CC(=O)Oc1ccccc1C(=O)O

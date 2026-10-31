@@ -1,0 +1,5 @@
+title: Cyclooctane
+expect: Medium ring; not collapsed onto itself.
+spec:
+  type: mol
+  smiles: C1CCCCCCC1

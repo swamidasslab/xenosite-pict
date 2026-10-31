@@ -1,0 +1,19 @@
+title: Flow down
+expect: Product below reactant; names stay off the arrow corridor.
+spec:
+  type: reaction_scheme
+  layout:
+    direction: down
+  children:
+    - type: mol
+      id: A
+      smiles: CCO
+      name: ethanol
+    - type: mol
+      id: B
+      smiles: CC=O
+      name: acetaldehyde
+    - type: edge
+      sources: A
+      targets: B
+      arrow: forward

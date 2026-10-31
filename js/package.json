@@ -48,16 +48,28 @@
     "build:ts": "tsc -p tsconfig.json",
     "build:copy-wasm": "bash scripts/copy-wasm.sh",
     "build": "npm run build:wasm && npm run build:ts && npm run build:copy-wasm",
-    "check": "tsc -p tsconfig.json --noEmit --strict",
-    "test:api": "tsx src/api.smoke.ts && tsx src/align.smoke.ts && tsx src/scheme.smoke.ts",
+    "check": "tsc -p tsconfig.json --noEmit --strict && tsc -p review/tsconfig.json --noEmit",
+    "review": "vite --config review/vite.config.ts --open",
+    "review:build": "vite build --config review/vite.config.ts",
+    "test:catalog": "tsx review/catalog.smoke.ts",
+    "test:visual": "playwright test --config review/playwright.config.ts",
+    "test:api": "tsx src/api.smoke.ts && tsx src/align.smoke.ts && tsx src/scheme.smoke.ts && tsx review/catalog.smoke.ts",
     "test": "npm run check && npm run test:api",
     "build:pages": "bash ../scripts/build_pages.sh",
     "prepack": "npm run build:ts && npm run build:copy-wasm"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@types/node": "^22.20.4",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "tsx": "^4.23.15",
     "typedoc": "^0.28.20",
-    "typescript": "^5.6.0"
+    "typescript": "^5.6.0",
+    "vite": "^8.3.5",
+    "yaml": "^2.9.1"
   }
 }

@@ -1,0 +1,7 @@
+title: Greek atom label
+expect: Markup alpha on a carbon (not a literal backslash).
+spec:
+  type: mol
+  smiles: CCO
+  atom_label:
+    "0": "$\\alpha$"

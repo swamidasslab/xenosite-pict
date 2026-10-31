@@ -1,0 +1,5 @@
+title: Butane
+expect: Zig-zag aliphatic chain (not linear 180°).
+spec:
+  type: mol
+  smiles: CCCC

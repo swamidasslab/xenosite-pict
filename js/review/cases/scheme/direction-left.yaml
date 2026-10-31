@@ -1,0 +1,17 @@
+title: Flow left
+expect: Product to the left of reactant.
+spec:
+  type: reaction_scheme
+  layout:
+    direction: left
+  children:
+    - type: mol
+      id: A
+      smiles: CCO
+    - type: mol
+      id: B
+      smiles: CC=O
+    - type: edge
+      sources: A
+      targets: B
+      arrow: forward

@@ -1,0 +1,9 @@
+title: Ethanol bond shade
+expect: Per-bond wash along the chain (C–C cooler, C–O hotter).
+spec:
+  type: mol
+  smiles: CCO
+  shade:
+    bonds: [0.2, 0.9]
+    vmin: 0
+    vmax: 1

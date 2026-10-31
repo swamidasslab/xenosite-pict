@@ -1,0 +1,5 @@
+title: Phenol
+expect: Aromatic OH; oxygen labeled, ring default aromatic style.
+spec:
+  type: mol
+  smiles: c1ccccc1O

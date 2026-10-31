@@ -1,0 +1,6 @@
+title: Weight 2/3
+expect: Thinner bonds and glyph stems than the house default.
+spec:
+  type: mol
+  smiles: CCO
+  weight: 0.6666666667

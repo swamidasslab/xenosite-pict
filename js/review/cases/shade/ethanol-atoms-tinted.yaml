@@ -1,0 +1,10 @@
+title: Ethanol shade + color
+expect: Shade disks plus green molecular ink.
+spec:
+  type: mol
+  smiles: CCO
+  color: "#0b6e4f"
+  shade:
+    atoms: [0, 0.2, 0.9]
+    vmin: 0
+    vmax: 1

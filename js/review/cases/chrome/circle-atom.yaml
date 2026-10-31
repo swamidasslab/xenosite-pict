@@ -1,0 +1,10 @@
+title: Circle on atom
+expect: Highlight circle centered on the oxygen.
+spec:
+  type: mol
+  smiles: c1ccccc1O
+  circle:
+    atoms: [6]
+    stroke:
+      color: "#06c"
+      width: 1.4

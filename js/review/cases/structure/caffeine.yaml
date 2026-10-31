@@ -1,0 +1,5 @@
+title: Caffeine
+expect: Fused imidazole + pyrimidine dione; methyls on N.
+spec:
+  type: mol
+  smiles: CN1C=NC2=C1C(=O)N(C(=O)N2C)C

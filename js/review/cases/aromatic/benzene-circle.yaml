@@ -1,0 +1,6 @@
+title: Benzene (circle)
+expect: Skeleton singles plus an aromatic ring circle (default).
+spec:
+  type: mol
+  smiles: c1ccccc1
+  aromatic: circle

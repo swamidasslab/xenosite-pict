@@ -7,6 +7,10 @@ dist/
 *.egg-info/
 htmlcov/
 js/dist/
+js/dist-review/
+playwright-report/
+test-results/
+blob-report/
 .mypy_cache/
 _native*.so
 node_modules/

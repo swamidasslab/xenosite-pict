@@ -1,0 +1,5 @@
+title: Phosphoric acid
+expect: Pentavalent phosphorus with three OH.
+spec:
+  type: mol
+  smiles: O=P(O)(O)O

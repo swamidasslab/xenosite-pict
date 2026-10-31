@@ -1,0 +1,5 @@
+title: Isobutane
+expect: Branched carbon (isopropyl).
+spec:
+  type: mol
+  smiles: CC(C)C

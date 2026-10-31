@@ -1,0 +1,14 @@
+title: Region circle
+expect: Circular hull around the ring (not the highlight-circle primitive).
+spec:
+  type: mol
+  smiles: c1ccccc1O
+  region:
+    style: circle
+    atoms: [0, 1, 2, 3, 4, 5]
+    fill:
+      color: "#48a"
+      opacity: 0.12
+    stroke:
+      color: "#48a"
+    text: ring

@@ -1,0 +1,5 @@
+title: Ethanol
+expect: Open-chain carbon skeleton with an OH label (implicit H on oxygen).
+spec:
+  type: mol
+  smiles: CCO

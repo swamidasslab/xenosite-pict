@@ -9,6 +9,7 @@ full list.
 | Tests (Rust core + Python + JS) | `make test` |
 | Live types from Rust | `make types` / `make types-check` |
 | Docs site | `make sync-docs && make pages` |
+| Local depiction gallery | `make review` |
 | Version bump (product) | `make bump VERSION=X.Y.Z` |
 | Registry publish | Tag-driven — see [`.github/PUBLISH.md`](.github/PUBLISH.md); local dry-runs via `make publish-dry-*` |
 

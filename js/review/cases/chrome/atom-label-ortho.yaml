@@ -1,0 +1,8 @@
+title: Custom atom labels
+expect: “ortho” / “exo” sit off the ring.
+spec:
+  type: mol
+  smiles: c1ccccc1O
+  atom_label:
+    "2": ortho
+    "6": exo

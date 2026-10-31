@@ -1,0 +1,5 @@
+title: ¹³C methane
+expect: Isotope mass on carbon (13 / superscript).
+spec:
+  type: mol
+  smiles: "[13CH4]"

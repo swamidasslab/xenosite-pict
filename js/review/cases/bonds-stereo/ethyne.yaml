@@ -1,0 +1,5 @@
+title: Ethyne
+expect: Carbon–carbon triple bond.
+spec:
+  type: mol
+  smiles: C#C

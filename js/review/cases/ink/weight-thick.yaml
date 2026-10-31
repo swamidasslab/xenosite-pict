@@ -1,0 +1,6 @@
+title: Weight 1.5
+expect: Thicker bonds and labels than default.
+spec:
+  type: mol
+  smiles: CCO
+  weight: 1.5

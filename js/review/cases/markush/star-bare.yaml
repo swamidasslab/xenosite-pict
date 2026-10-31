@@ -1,0 +1,5 @@
+title: Bare star
+expect: Dummy atom paints as * (not C, not R).
+spec:
+  type: mol
+  smiles: "*C"

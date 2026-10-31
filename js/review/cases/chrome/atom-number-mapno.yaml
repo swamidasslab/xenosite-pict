@@ -1,0 +1,6 @@
+title: Atom numbers (mapno)
+expect: CX atom maps 1–3 as labels, not layout indices.
+spec:
+  type: mol
+  smiles: "[CH3:1][CH2:2][OH:3]"
+  atom_number: mapno

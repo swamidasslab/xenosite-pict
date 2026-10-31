@@ -1,0 +1,5 @@
+title: Penicillin G
+expect: Fused beta-lactam + thiazolidine; phenylacetamide side chain.
+spec:
+  type: mol
+  smiles: CC1(C)S[C@@H]2[C@H](NC(=O)Cc3ccccc3)C(=O)N2[C@H]1C(=O)O

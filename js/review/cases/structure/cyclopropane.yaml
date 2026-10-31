@@ -1,0 +1,5 @@
+title: Cyclopropane
+expect: Equilateral three-membered ring.
+spec:
+  type: mol
+  smiles: C1CC1

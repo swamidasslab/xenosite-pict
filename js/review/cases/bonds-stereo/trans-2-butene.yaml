@@ -1,0 +1,5 @@
+title: trans-2-Butene
+expect: E olefin; opposite substituents across the double bond.
+spec:
+  type: mol
+  smiles: C/C=C/C

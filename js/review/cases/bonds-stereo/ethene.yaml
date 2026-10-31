@@ -1,0 +1,5 @@
+title: Ethene
+expect: Carbon–carbon double bond (two parallel strokes).
+spec:
+  type: mol
+  smiles: C=C

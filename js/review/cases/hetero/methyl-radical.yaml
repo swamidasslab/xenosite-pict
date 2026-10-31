@@ -1,0 +1,5 @@
+title: Methyl radical
+expect: CH3 label plus a radical dot.
+spec:
+  type: mol
+  smiles: "[CH3]"

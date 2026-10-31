@@ -1,0 +1,5 @@
+title: Nitrobenzene
+expect: Nitro as [N+](=O)[O-]; charges and oxygens readable.
+spec:
+  type: mol
+  smiles: c1ccccc1[N+](=O)[O-]

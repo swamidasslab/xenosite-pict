@@ -1,0 +1,5 @@
+title: Naphthalene
+expect: Fused aromatic 6+6; two rings, default aromatic style.
+spec:
+  type: mol
+  smiles: c1ccc2ccccc2c1

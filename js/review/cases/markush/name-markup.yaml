@@ -1,0 +1,6 @@
+title: Caption markup
+expect: Mol name with subscript / italic chem markup.
+spec:
+  type: mol
+  smiles: CCO
+  name: "$\\alpha$-EtOH"

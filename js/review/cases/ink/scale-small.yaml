@@ -1,0 +1,6 @@
+title: Scale 0.75
+expect: Uniformly smaller diagram (font, stroke, geometry).
+spec:
+  type: mol
+  smiles: CCO
+  scale: 0.75

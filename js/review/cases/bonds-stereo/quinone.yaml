@@ -1,0 +1,5 @@
+title: p-Benzoquinone
+expect: Kekulé cyclohexadiene-dione (not an aromatic circle).
+spec:
+  type: mol
+  smiles: O=C1C=CC(=O)C=C1

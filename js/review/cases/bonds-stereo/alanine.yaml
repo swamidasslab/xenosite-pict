@@ -1,0 +1,5 @@
+title: L-Alanine
+expect: Amino acid; stereo carbon, NH2/COOH terminals, not flattened.
+spec:
+  type: mol
+  smiles: N[C@@H](C)C(=O)O

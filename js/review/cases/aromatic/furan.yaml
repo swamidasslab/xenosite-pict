@@ -1,0 +1,5 @@
+title: Furan
+expect: Five-membered oxygen heteroaromatic.
+spec:
+  type: mol
+  smiles: c1ccoc1

@@ -1,0 +1,15 @@
+title: Forward arrow
+expect: Ethanol → acetaldehyde, one packed scene, arrow between mols.
+spec:
+  type: reaction_scheme
+  children:
+    - type: mol
+      id: A
+      smiles: CCO
+    - type: mol
+      id: B
+      smiles: CC=O
+    - type: edge
+      sources: A
+      targets: B
+      arrow: forward

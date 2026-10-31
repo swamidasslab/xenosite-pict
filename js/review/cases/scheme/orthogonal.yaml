@@ -1,0 +1,18 @@
+title: Orthogonal routing
+expect: Axis-aligned shaft (ELK orthogonal), not a diagonal polyline.
+spec:
+  type: reaction_scheme
+  layout:
+    algorithm: layered
+    edge_routing: orthogonal
+  children:
+    - type: mol
+      id: A
+      smiles: CCO
+    - type: mol
+      id: B
+      smiles: CC=O
+    - type: edge
+      sources: A
+      targets: B
+      arrow: forward

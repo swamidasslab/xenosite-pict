@@ -1,0 +1,18 @@
+title: A + B → C
+expect: Two sources into one product; one composed scene.
+spec:
+  type: reaction_scheme
+  children:
+    - type: mol
+      id: A
+      smiles: C
+    - type: mol
+      id: B
+      smiles: O
+    - type: mol
+      id: C
+      smiles: CO
+    - type: edge
+      sources: [A, B]
+      targets: C
+      arrow: forward

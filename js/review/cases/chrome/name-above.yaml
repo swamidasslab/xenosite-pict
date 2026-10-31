@@ -1,0 +1,8 @@
+title: Name above
+expect: Caption locked above the mol, not in the structure.
+spec:
+  type: mol
+  smiles: c1ccccc1O
+  name:
+    content: phenol
+    pos: above

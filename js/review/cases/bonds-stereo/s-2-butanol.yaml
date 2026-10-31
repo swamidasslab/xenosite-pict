@@ -1,0 +1,5 @@
+title: (S)-2-Butanol
+expect: Opposite tetrahedral configuration vs (R)-2-butanol.
+spec:
+  type: mol
+  smiles: CC[C@@H](C)O

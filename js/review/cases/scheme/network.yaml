@@ -1,0 +1,22 @@
+title: Network A→B→C
+expect: Three distinct viewports; two arrows; not stacked on one point.
+spec:
+  type: reaction_scheme
+  children:
+    - type: mol
+      id: A
+      smiles: CCO
+    - type: mol
+      id: B
+      smiles: C
+    - type: mol
+      id: C
+      smiles: O
+    - type: edge
+      sources: A
+      targets: B
+      arrow: forward
+    - type: edge
+      sources: B
+      targets: C
+      arrow: forward

@@ -1,0 +1,5 @@
+title: Ibuprofen
+expect: para-substituted benzene, branched alkyl, carboxylic acid, stereo SMILES.
+spec:
+  type: mol
+  smiles: CC(C)Cc1ccc(cc1)[C@@H](C)C(=O)O

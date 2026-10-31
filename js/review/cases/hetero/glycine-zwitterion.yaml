@@ -1,0 +1,5 @@
+title: Glycine zwitterion
+expect: Both NH3+ and CO2− on one molecule.
+spec:
+  type: mol
+  smiles: "[NH3+]CC(=O)[O-]"

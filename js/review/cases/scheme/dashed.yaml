@@ -1,0 +1,17 @@
+title: Dashed shaft
+expect: Dashed edge, optional color.
+spec:
+  type: reaction_scheme
+  children:
+    - type: mol
+      id: A
+      smiles: CCO
+    - type: mol
+      id: B
+      smiles: CC=O
+    - type: edge
+      sources: A
+      targets: B
+      arrow: forward
+      dashed: true
+      color: "#06c"

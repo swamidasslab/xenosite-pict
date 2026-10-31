@@ -1,0 +1,5 @@
+title: trans-1,2-Difluoroethene
+expect: E fluoroalkene; F labels opposite.
+spec:
+  type: mol
+  smiles: F/C=C/F

@@ -1,0 +1,5 @@
+title: Pyridine
+expect: Aza-arene; N in the ring with default aromatic paint.
+spec:
+  type: mol
+  smiles: c1ccncc1

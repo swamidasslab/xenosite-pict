@@ -1,0 +1,5 @@
+title: Spiro[4.5]decane
+expect: Spiro fusion — rings share one atom, not a bond.
+spec:
+  type: mol
+  smiles: C1CCC2(C1)CCCC2

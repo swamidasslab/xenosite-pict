@@ -1,0 +1,9 @@
+title: Phenol oxygen shade
+expect: Hot plot-dot on the oxygen; ring carbons cool.
+spec:
+  type: mol
+  smiles: c1ccccc1O
+  shade:
+    atoms: [0, 0, 0, 0, 0, 0, 0.95]
+    vmin: 0
+    vmax: 1

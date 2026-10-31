@@ -1,0 +1,6 @@
+title: Color
+expect: Whole-mol ink tint (bonds + labels) in green, not default near-black.
+spec:
+  type: mol
+  smiles: c1ccccc1
+  color: "#0b6e4f"

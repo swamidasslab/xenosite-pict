@@ -1,0 +1,6 @@
+title: Scale 1.5
+expect: Uniformly larger diagram than house size.
+spec:
+  type: mol
+  smiles: CCO
+  scale: 1.5

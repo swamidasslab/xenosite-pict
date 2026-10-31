@@ -1,0 +1,5 @@
+title: cis-2-Butene
+expect: Z olefin; same-side substituents, distinct from the trans case.
+spec:
+  type: mol
+  smiles: "C/C=C\\C"

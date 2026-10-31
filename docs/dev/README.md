@@ -8,6 +8,7 @@ These pages are excluded from the public MkDocs site (`exclude_docs: dev/**`).
 | [`layout-notes.md`](layout-notes.md) | Layout / paint design notes |
 | [`migration-xenosite.md`](migration-xenosite.md) | xenosite.org migration track |
 | [`typebridge.md`](typebridge.md) | Plan: Rust-first live types → TS + Pydantic |
+| [`review.md`](review.md) | Local JS/WASM depiction gallery (`make review`) |
 
 Root [`Makefile`](../../Makefile) (`make help`) is the front door for build /
 test / pages / version bump / publish dry-runs. CI and agent bootstrap use the

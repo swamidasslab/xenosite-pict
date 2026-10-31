@@ -1,0 +1,5 @@
+title: Glucose (stereo)
+expect: Pyranose with several stereo wedges/hashes from stereo SMILES.
+spec:
+  type: mol
+  smiles: OC[C@H]1OC(O)[C@H](O)[C@@H](O)[C@@H]1O

@@ -1,0 +1,21 @@
+title: Explicit atom map
+expect: Query follows the given pairs (skips MCS); rings still overlay.
+spec:
+  type: group
+  align: false
+  children:
+    - type: mol
+      id: ref
+      smiles: c1ccccc1O
+    - type: mol
+      id: q
+      smiles: COc1ccccc1
+      align_to:
+        ref: ref
+        atom_map:
+          - [1, 0]
+          - [2, 1]
+          - [3, 2]
+          - [4, 3]
+          - [5, 4]
+          - [6, 5]

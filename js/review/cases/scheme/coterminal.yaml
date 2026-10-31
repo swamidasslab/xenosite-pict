@@ -1,0 +1,23 @@
+title: Coterminal A⇄B
+expect: Two shafts that share terminals stay parallel (miter-offset lanes).
+spec:
+  type: reaction_scheme
+  children:
+    - type: mol
+      id: A
+      smiles: CCO
+      name: ethanol
+    - type: mol
+      id: B
+      smiles: CC=O
+      name: acetaldehyde
+    - type: edge
+      sources: A
+      targets: B
+      arrow: forward
+      color: "#06c"
+    - type: edge
+      sources: B
+      targets: A
+      arrow: forward
+      color: "#c40"

@@ -1,0 +1,10 @@
+title: Group (no align)
+expect: Two mols as sibling cells, independent poses.
+spec:
+  type: group
+  align: false
+  children:
+    - type: mol
+      smiles: CCO
+    - type: mol
+      smiles: c1ccccc1

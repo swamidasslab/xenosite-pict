@@ -1,0 +1,23 @@
+title: Labeled arrow
+expect: “ADH” above the shaft; mols named.
+spec:
+  type: reaction_scheme
+  children:
+    - type: mol
+      id: A
+      smiles: CCO
+      name: ethanol
+    - type: text
+      id: lab
+      text: ADH
+    - type: mol
+      id: B
+      smiles: CC=O
+      name: acetaldehyde
+    - type: edge
+      sources: A
+      targets: B
+      arrow: forward
+      label:
+        id: lab
+        pos: above

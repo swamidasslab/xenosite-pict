@@ -1,0 +1,5 @@
+title: Decalin
+expect: Fused aliphatic 6+6; two rings share a bond.
+spec:
+  type: mol
+  smiles: C1CCC2CCCCC2C1

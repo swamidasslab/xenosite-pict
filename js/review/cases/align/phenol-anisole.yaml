@@ -1,0 +1,14 @@
+title: Phenol → anisole
+expect: Anisole ring overlays phenol’s pose (methoxy off the shared ring).
+spec:
+  type: group
+  align: true
+  children:
+    - type: mol
+      id: a
+      smiles: c1ccccc1O
+      name: phenol
+    - type: mol
+      id: b
+      smiles: COc1ccccc1
+      name: anisole

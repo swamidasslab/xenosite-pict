@@ -1,0 +1,6 @@
+title: Benzene (Kekulé)
+expect: Alternating double bonds; no inner circle. Stored orders unchanged.
+spec:
+  type: mol
+  smiles: c1ccccc1
+  aromatic: kekule

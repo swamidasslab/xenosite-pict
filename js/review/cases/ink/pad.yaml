@@ -1,0 +1,6 @@
+title: ViewBox pad
+expect: Extra empty margin around the drawing vs the house pad.
+spec:
+  type: mol
+  smiles: CCO
+  pad: 24

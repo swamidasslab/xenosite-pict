@@ -1,0 +1,19 @@
+title: Grid 2×2
+expect: Two rows of two mols; packing is row-wise.
+spec:
+  type: grid
+  children:
+    - type: group
+      align: false
+      children:
+        - type: mol
+          smiles: CCO
+        - type: mol
+          smiles: CC=O
+    - type: group
+      align: false
+      children:
+        - type: mol
+          smiles: c1ccccc1
+        - type: mol
+          smiles: c1ccccc1O

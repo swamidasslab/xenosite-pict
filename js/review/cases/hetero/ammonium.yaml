@@ -1,0 +1,5 @@
+title: Ammonium
+expect: NH4+ (implicit H and a single plus, not 2+).
+spec:
+  type: mol
+  smiles: "[NH4+]"

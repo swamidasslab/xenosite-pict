@@ -1,0 +1,5 @@
+title: Hydroxy radical
+expect: OH plus a radical dot.
+spec:
+  type: mol
+  smiles: "[OH]"

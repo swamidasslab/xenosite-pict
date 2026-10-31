@@ -1,0 +1,15 @@
+title: Molfile V2000
+expect: Uses CTAB coordinates (bent C–C–O), not a SMILES CoordGen pose.
+spec:
+  type: mol
+  molfile: |
+    ethanol
+      xpict
+    
+      3  2  0  0  0  0  0  0  0  0999 V2000
+        0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+        1.5000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+        2.2500    1.2990    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0
+      1  2  1  0  0  0  0
+      2  3  1  0  0  0  0
+    M  END

@@ -41,6 +41,7 @@ make help              # documented targets (build / test / publish helpers)
 make agent-install     # uv sync + maturin develop
 make test              # Rust core + Python + JS
 make pages             # MkDocs site → _site/
+make review            # local JS/WASM depiction gallery (not published)
 ```
 
 Equivalent without Make: see the `Makefile` recipes (they wrap

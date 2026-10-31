@@ -1,0 +1,11 @@
+title: Circle on bond
+expect: Highlight at a bond midpoint (ring bond 0–1).
+spec:
+  type: mol
+  smiles: c1ccccc1
+  circle:
+    atoms: []
+    bonds:
+      - [0, 1]
+    stroke:
+      color: "#c40"

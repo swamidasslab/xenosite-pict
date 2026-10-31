@@ -1,0 +1,5 @@
+title: Bromobenzene
+expect: Aryl bromide; Br heteroatom label.
+spec:
+  type: mol
+  smiles: c1ccccc1Br

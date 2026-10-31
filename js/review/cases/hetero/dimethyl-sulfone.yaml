@@ -1,0 +1,5 @@
+title: Dimethyl sulfone
+expect: Hexavalent sulfur with two oxygens.
+spec:
+  type: mol
+  smiles: CS(=O)(=O)C

@@ -1,0 +1,5 @@
+title: Acetate
+expect: Carboxylate anion; minus on oxygen.
+spec:
+  type: mol
+  smiles: CC(=O)[O-]

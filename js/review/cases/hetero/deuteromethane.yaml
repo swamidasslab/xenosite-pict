@@ -1,0 +1,5 @@
+title: Deuteromethane
+expect: Explicit deuterium (2H / D) on carbon.
+spec:
+  type: mol
+  smiles: "[2H]C"

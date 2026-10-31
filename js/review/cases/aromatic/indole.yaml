@@ -1,0 +1,5 @@
+title: Indole
+expect: Fused benzene + pyrrole.
+spec:
+  type: mol
+  smiles: c1ccc2[nH]ccc2c1

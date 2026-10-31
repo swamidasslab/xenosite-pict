@@ -1,0 +1,5 @@
+title: Aryl R1 (CX)
+expect: "Dummy * on chlorobenzene with R1 alias."
+spec:
+  type: mol
+  cxsmiles: "*c1ccccc1Cl |$R1;;;;;$|"

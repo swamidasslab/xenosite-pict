@@ -1,0 +1,9 @@
+title: Aspirin atom shade
+expect: Per-atom scores; carboxylic / ester oxygens hotter.
+spec:
+  type: mol
+  smiles: CC(=O)Oc1ccccc1C(=O)O
+  shade:
+    atoms: [0, 0, 0.15, 0, 0, 0, 0, 0.55, 0, 0, 0, 0.9, 0]
+    vmin: 0
+    vmax: 1

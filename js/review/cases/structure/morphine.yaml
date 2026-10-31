@@ -1,0 +1,5 @@
+title: Morphine
+expect: Pentacyclic opioid scaffold; dense fused rings stay readable.
+spec:
+  type: mol
+  smiles: CN1CCC23c4c5ccc(O)c4OC2C(O)C=CC3C1C5

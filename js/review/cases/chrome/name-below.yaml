@@ -1,0 +1,6 @@
+title: Name below
+expect: Caption “phenol” under the drawing (house default).
+spec:
+  type: mol
+  smiles: c1ccccc1O
+  name: phenol

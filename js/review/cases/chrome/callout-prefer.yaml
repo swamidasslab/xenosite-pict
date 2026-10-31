@@ -1,0 +1,10 @@
+title: Callout prefer below-right
+expect: Callout locked to the below-right slot.
+spec:
+  type: mol
+  smiles: c1ccccc1O
+  callout:
+    atoms: [6]
+    text: OH
+    arrow: true
+    prefer: below_right

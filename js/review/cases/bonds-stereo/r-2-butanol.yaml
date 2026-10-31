@@ -1,0 +1,5 @@
+title: (R)-2-Butanol
+expect: Tetrahedral stereo at C2 (wedge/hash from @).
+spec:
+  type: mol
+  smiles: CC[C@H](C)O

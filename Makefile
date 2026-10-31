@@ -109,6 +109,14 @@ js-test-api: ## JS API smoke scripts; assumes build
 .PHONY: js-ci
 js-ci: js-check build-js js-test-api ## CI JS job body (after js-deps + emsdk)
 
+.PHONY: review
+review: ## Local JS/WASM depiction gallery (Vite; not published)
+	cd "$(ROOT)/js" && npm run review
+
+.PHONY: review-test
+review-test: ## Playwright screenshots of js/review (needs: npx playwright install chromium)
+	cd "$(ROOT)/js" && npm run test:visual
+
 .PHONY: host-py-loc
 host-py-loc: ## Line counts for hand-written python/xpict (largest first)
 	cd "$(ROOT)" && python3 scripts/host_py_loc.py

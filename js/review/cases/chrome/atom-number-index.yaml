@@ -1,0 +1,6 @@
+title: Atom numbers (index)
+expect: Encounter-order indices on every atom, off bonds and labels.
+spec:
+  type: mol
+  smiles: c1ccccc1O
+  atom_number: index

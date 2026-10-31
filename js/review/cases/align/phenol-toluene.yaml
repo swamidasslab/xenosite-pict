@@ -1,0 +1,12 @@
+title: Phenol → toluene
+expect: Toluene ring shares phenol’s ring pose; methyl vs OH distinct.
+spec:
+  type: group
+  align: true
+  children:
+    - type: mol
+      id: a
+      smiles: c1ccccc1O
+    - type: mol
+      id: b
+      smiles: Cc1ccccc1

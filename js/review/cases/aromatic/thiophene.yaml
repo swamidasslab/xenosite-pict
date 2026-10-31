@@ -1,0 +1,5 @@
+title: Thiophene
+expect: Five-membered sulfur heteroaromatic.
+spec:
+  type: mol
+  smiles: c1ccsc1

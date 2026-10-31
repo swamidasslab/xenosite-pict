@@ -1,0 +1,33 @@
+title: Kitchen sink
+expect: Shade, indices, ortho/exo labels, O circle, ring box, OH callout — no collisions.
+spec:
+  type: mol
+  smiles: c1ccccc1O
+  name: phenol
+  shade:
+    atoms: [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0]
+    vmin: 0
+    vmax: 1
+  atom_number: index
+  atom_label:
+    "2": ortho
+    "6": exo
+  circle:
+    atoms: [6]
+    stroke:
+      color: "#06c"
+      width: 1.4
+  region:
+    style: box
+    atoms: [0, 1, 2, 3, 4, 5]
+    fill:
+      color: "#48a"
+      opacity: 0.12
+    stroke:
+      color: "#48a"
+      width: 1
+    text: ring
+  callout:
+    atoms: [6]
+    text: phenol OH
+    arrow: true

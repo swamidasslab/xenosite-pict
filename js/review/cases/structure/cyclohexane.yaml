@@ -1,0 +1,5 @@
+title: Cyclohexane
+expect: Aliphatic six-membered ring (not an aromatic circle).
+spec:
+  type: mol
+  smiles: C1CCCCC1

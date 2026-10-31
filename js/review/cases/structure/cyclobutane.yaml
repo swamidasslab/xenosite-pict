@@ -1,0 +1,5 @@
+title: Cyclobutane
+expect: Four-membered ring (square / puckered 2D).
+spec:
+  type: mol
+  smiles: C1CCC1

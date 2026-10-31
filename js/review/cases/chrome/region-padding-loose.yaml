@@ -1,0 +1,14 @@
+title: Region padding 12
+expect: Clearly larger box than the default / zero-pad cases.
+spec:
+  type: mol
+  smiles: c1ccccc1O
+  region:
+    style: box
+    atoms: [0, 1, 2, 3, 4, 5]
+    padding: 12
+    fill:
+      color: "#48a"
+      opacity: 0.12
+    stroke:
+      color: "#48a"

@@ -1,0 +1,5 @@
+title: Aniline
+expect: Aromatic NH2 (implicit H on nitrogen).
+spec:
+  type: mol
+  smiles: c1ccccc1N

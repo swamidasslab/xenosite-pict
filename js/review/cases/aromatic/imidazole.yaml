@@ -1,0 +1,5 @@
+title: Imidazole
+expect: Two nitrogens in a five-membered aromatic ring.
+spec:
+  type: mol
+  smiles: c1c[nH]cn1

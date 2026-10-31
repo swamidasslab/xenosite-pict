@@ -1,0 +1,6 @@
+title: Naphthalene (Kekulé)
+expect: Fused Kekulé doubles; no inner circles.
+spec:
+  type: mol
+  smiles: c1ccc2ccccc2c1
+  aromatic: kekule

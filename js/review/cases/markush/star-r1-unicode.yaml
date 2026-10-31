@@ -1,0 +1,6 @@
+title: Unicode R₁ via star_labels
+expect: Unicode subscript in star_labels paints as R₁ (CX trailers stay ASCII aliases).
+spec:
+  type: mol
+  smiles: "*C"
+  star_labels: ["R₁"]

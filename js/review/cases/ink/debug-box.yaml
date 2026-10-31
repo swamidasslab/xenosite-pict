@@ -1,0 +1,7 @@
+title: Debug boxes
+expect: Dashed rectangles for label / mol / scene layout boxes.
+spec:
+  type: mol
+  smiles: c1ccccc1O
+  name: phenol
+  debug_box: true

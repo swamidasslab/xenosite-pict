@@ -1,0 +1,5 @@
+title: Ethane
+expect: Two-carbon chain; no heteroatom labels.
+spec:
+  type: mol
+  smiles: CC

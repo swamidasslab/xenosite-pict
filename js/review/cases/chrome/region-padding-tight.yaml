@@ -1,0 +1,14 @@
+title: Region padding 0
+expect: Box hugs included atoms (no house contain margin).
+spec:
+  type: mol
+  smiles: c1ccccc1O
+  region:
+    style: box
+    atoms: [0, 1, 2, 3, 4, 5]
+    padding: 0
+    fill:
+      color: "#48a"
+      opacity: 0.12
+    stroke:
+      color: "#48a"

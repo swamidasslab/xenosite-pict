@@ -1,0 +1,5 @@
+title: CX alias R1
+expect: ChemAxon CXSMILES alias paints as literal R1 (no subscript).
+spec:
+  type: mol
+  cxsmiles: "*C |$R1;$|"

@@ -1,0 +1,5 @@
+title: Methane
+expect: Single carbon; hydrogen-suppressed C (or CH4 if labeled).
+spec:
+  type: mol
+  smiles: C

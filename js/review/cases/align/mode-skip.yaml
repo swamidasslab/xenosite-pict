@@ -1,0 +1,15 @@
+title: Align skip
+expect: Second mol laid out independently (not locked to the template pose).
+spec:
+  type: group
+  align: false
+  children:
+    - type: mol
+      id: ref
+      smiles: c1ccccc1O
+    - type: mol
+      id: q
+      smiles: COc1ccccc1
+      align_to:
+        ref: ref
+        mode: skip

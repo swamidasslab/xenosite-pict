@@ -1,0 +1,9 @@
+title: Pyridine nitrogen shade
+expect: Hot on the ring nitrogen.
+spec:
+  type: mol
+  smiles: c1ccncc1
+  shade:
+    atoms: [0.1, 0, 0, 0.8, 0, 0]
+    vmin: 0
+    vmax: 1

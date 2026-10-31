@@ -1,0 +1,14 @@
+title: APAP → NAPQI
+expect: Parent/metabolite overlay; quinone vs phenol ring correspondence.
+spec:
+  type: group
+  align: true
+  children:
+    - type: mol
+      id: a
+      smiles: CC(=O)Nc1ccc(O)cc1
+      name: APAP
+    - type: mol
+      id: b
+      smiles: CC(=O)N=C1C=CC(=O)C=C1
+      name: NAPQI

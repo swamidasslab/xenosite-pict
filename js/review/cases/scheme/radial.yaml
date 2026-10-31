@@ -1,0 +1,24 @@
+title: Radial algorithm
+expect: Hub-and-spoke placement (not layered left-to-right).
+spec:
+  type: reaction_scheme
+  layout:
+    algorithm: radial
+  children:
+    - type: mol
+      id: A
+      smiles: CCO
+    - type: mol
+      id: B
+      smiles: C
+    - type: mol
+      id: C
+      smiles: O
+    - type: edge
+      sources: A
+      targets: B
+      arrow: forward
+    - type: edge
+      sources: A
+      targets: C
+      arrow: forward

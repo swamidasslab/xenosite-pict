@@ -1,0 +1,6 @@
+title: Halo off
+expect: Labels without collision halo (may sit on bonds).
+spec:
+  type: mol
+  smiles: CCO
+  halo: false
