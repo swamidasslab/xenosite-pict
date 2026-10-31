@@ -2,6 +2,8 @@
 
 ## 2026-10-31
 
+- Product 0.8.3: region hulls take `padding` (chem-space px) on `RegionSpec`.
+
 - Region hulls take `padding` (chem-space px) on `RegionSpec`. Omit keeps the house contain margin (~0.1 bond); a set value replaces that pad for box / circle / bezier.
 
 ## 2026-10-30
