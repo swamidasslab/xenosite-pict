@@ -587,9 +587,12 @@ fn harpoon_poly(
     routing: Option<EdgeRouting>,
     curve_catmull: bool,
 ) -> Vec<EdgePrim> {
-    let (shaft_d, tip, base, (ux, uy)) = shaft_and_head(pts, head_size, routing, curve_catmull);
+    // Shaft runs to the tip so the barb meets it. Shortening like a filled
+    // head left a gap between the offset lane and the half-arrow.
+    let (shaft_d, tip, _, (ux, uy)) = shaft_and_head(pts, 0.0, routing, curve_catmull);
     let (px, py) = perp(ux, uy);
     let barb = head_size * 0.55;
+    let base = (tip.0 - ux * head_size, tip.1 - uy * head_size);
     let mut out = Vec::new();
     if !shaft_d.is_empty() {
         out.push(path_prim(shaft_d, color, "none", width, dashed, class));
@@ -1110,6 +1113,51 @@ mod tests {
                 ..
             }
         )));
+    }
+
+    #[test]
+    fn equilibrium_harpoon_joins_shaft() {
+        let edge = paint(vec![(0.0, 0.0), (80.0, 0.0)], EdgeArrow::Equilibrium, None);
+        let prims = edge_primitives(&edge);
+        let shaft = prims.iter().find_map(|p| match p {
+            EdgePrim::Path { d, class, .. }
+                if class.contains("eq-fwd") && !class.contains("harpoon") =>
+            {
+                Some(d.as_str())
+            }
+            _ => None,
+        });
+        let barb = prims.iter().find_map(|p| match p {
+            EdgePrim::Path { d, class, .. }
+                if class.contains("eq-fwd") && class.contains("harpoon") =>
+            {
+                Some(d.as_str())
+            }
+            _ => None,
+        });
+        let shaft = shaft.expect("eq-fwd shaft");
+        let barb = barb.expect("eq-fwd harpoon");
+        let shaft_nums: Vec<f64> = shaft
+            .split(|c: char| !c.is_ascii_digit() && c != '.' && c != '-')
+            .filter_map(|t| t.parse().ok())
+            .collect();
+        let barb_nums: Vec<f64> = barb
+            .split(|c: char| !c.is_ascii_digit() && c != '.' && c != '-')
+            .filter_map(|t| t.parse().ok())
+            .collect();
+        assert!(
+            shaft_nums.len() >= 2 && barb_nums.len() >= 2,
+            "{shaft} / {barb}"
+        );
+        let sx = shaft_nums[shaft_nums.len() - 2];
+        let sy = shaft_nums[shaft_nums.len() - 1];
+        let bx = barb_nums[0];
+        let by = barb_nums[1];
+        let gap = (sx - bx).hypot(sy - by);
+        assert!(
+            gap < 1.5,
+            "harpoon must meet the shaft end: shaft=({sx:.2},{sy:.2}) barb=({bx:.2},{by:.2}) gap={gap:.2} {shaft} {barb}"
+        );
     }
 
     #[test]
