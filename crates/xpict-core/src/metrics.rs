@@ -57,8 +57,8 @@ pub const SUPERSCRIPT_SCALE: f64 = 0.90;
 pub const SCRIPT_SCALE: f64 = SUBSCRIPT_SCALE;
 /// Dummy / R-group ``*`` height as a multiple of Liberation cap-height.
 ///
-/// Custom five-point star (not the Liberation asterisk); ~2× letter height so
-/// attachment points read clearly next to heteroatom labels.
+/// Custom six-spoke asterisk (Liberation's glyph is too small / high); ~2×
+/// letter height so attachment points read clearly next to heteroatom labels.
 pub const STAR_FRAC: f64 = 2.0;
 
 /// Filled radical-dot radius as a fraction of bond length (ACS / RDKit).

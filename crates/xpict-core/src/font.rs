@@ -7,7 +7,7 @@
 //! Chem scripts (H-counts, charges) are **fake** sub/superscripts: scale by
 //! [`crate::metrics::SUBSCRIPT_SCALE`] / [`crate::metrics::SUPERSCRIPT_SCALE`],
 //! buffer the outline to restore stem weight, and cache the result. Dummy
-//! ``*`` uses a custom star at [`STAR_FRAC`].
+//! ``*`` uses a custom six-spoke asterisk at [`STAR_FRAC`].
 
 #![cfg(feature = "font")]
 
@@ -353,27 +353,38 @@ fn outline_glyph_em_uncached(ch: char, style: FaceStyle, role: ScriptRole) -> (O
     }
 }
 
-/// Custom five-point star in em units (centered on advance, mid cap-height).
+/// Custom six-spoke asterisk in em units (centered on advance, mid cap-height).
 ///
 /// Liberation's asterisk is too small / high for R-group markers. Size is
-/// driven by [`STAR_FRAC`] × cap-height (outer diameter).
+/// driven by [`STAR_FRAC`] × cap-height (outer diameter). Three rectangles
+/// through the center (0° / 60° / 120°) read as `*`, not a pentagram.
 pub fn outline_star_em(style: FaceStyle) -> (Shape, f64) {
     let face_m = face_metrics(style);
     let height = STAR_FRAC * face_m.cap_height;
     let outer = 0.5 * height;
-    let inner = outer * 0.38;
+    let spoke_w = outer * 0.16;
     let pad = 0.12 * face_m.cap_height;
     let advance = height + pad;
     let cx = 0.5 * advance;
     let cy = 0.5 * face_m.cap_height;
-    let mut ring = Vec::with_capacity(10);
-    for i in 0..10 {
-        let a = -std::f64::consts::FRAC_PI_2 + i as f64 * std::f64::consts::PI / 5.0;
-        let r = if i % 2 == 0 { outer } else { inner };
-        ring.push((cx + r * a.cos(), cy + r * a.sin()));
+    let mut acc: Option<Shape> = None;
+    for k in 0..3 {
+        let a = k as f64 * std::f64::consts::PI / 3.0;
+        let (c, s) = (a.cos(), a.sin());
+        let (px, py) = (-s, c);
+        let ring = [
+            (cx + c * outer + px * spoke_w, cy + s * outer + py * spoke_w),
+            (cx + c * outer - px * spoke_w, cy + s * outer - py * spoke_w),
+            (cx - c * outer - px * spoke_w, cy - s * outer - py * spoke_w),
+            (cx - c * outer + px * spoke_w, cy - s * outer + py * spoke_w),
+        ];
+        let piece = Shape::from_ring(&ring);
+        acc = Some(match acc.take() {
+            Some(prev) => prev.union(&piece),
+            None => piece,
+        });
     }
-    let shape = Shape::from_ring(&ring);
-    (shape, advance)
+    (acc.unwrap_or_else(Shape::empty), advance)
 }
 
 /// Outline a chem glyph run in em space (+Y up). Returns `(shape, advance_em)`.
@@ -387,7 +398,7 @@ pub fn outline_chem_run_em(glyphs: &[ChemGlyph], style: FaceStyle) -> (Option<Sh
     if glyphs.is_empty() {
         return (None, 0.0);
     }
-    // Lone ``*`` → custom star.
+    // Lone ``*`` → custom asterisk.
     if glyphs.len() == 1 && glyphs[0].ch == '*' && glyphs[0].role == ScriptRole::Normal {
         let (s, adv) = outline_star_em(glyphs[0].face);
         return (if s.is_empty() { None } else { Some(s) }, adv);
@@ -589,12 +600,21 @@ mod tests {
         let (star, adv_star) = outline_star_em(FaceStyle::Regular);
         assert!(adv_star > adv_ast * 1.2);
         let face = face_metrics(FaceStyle::Regular);
-        let (_x0, y0, _x1, y1) = star.bounds().expect("star ink");
+        let (x0, y0, x1, y1) = star.bounds().expect("star ink");
         let height = y1 - y0;
-        // Custom star targets STAR_FRAC × cap-height; allow simplify slack.
+        // Custom asterisk targets STAR_FRAC × cap-height; allow simplify slack.
         assert!(height > 1.7 * face.cap_height);
         assert!(height < 2.3 * face.cap_height);
         let _ = STAR_FRAC;
+        let cx = 0.5 * (x0 + x1);
+        let cy = 0.5 * (y0 + y1);
+        assert!(star.contains(cx, cy), "asterisk must cover its center");
+        // Six-spoke `*` has a horizontal arm; a five-point star does not.
+        let reach = 0.85 * 0.5 * height;
+        assert!(
+            star.contains(cx + reach, cy),
+            "asterisk must have a horizontal spoke"
+        );
     }
 
     #[test]
