@@ -1,0 +1,25 @@
+title: Coterminal down (phenol)
+expect: Vertical A⇄B through phenol / benzaldehyde; shafts miss CHO and the rings; names sit off the corridor (right).
+spec:
+  type: reaction_scheme
+  layout:
+    direction: down
+  children:
+    - type: mol
+      id: A
+      smiles: c1ccccc1O
+      name: phenol
+    - type: mol
+      id: B
+      smiles: c1ccccc1C=O
+      name: benzaldehyde
+    - type: edge
+      sources: A
+      targets: B
+      arrow: forward
+      color: "#06c"
+    - type: edge
+      sources: B
+      targets: A
+      arrow: forward
+      color: "#c40"

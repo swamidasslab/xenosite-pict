@@ -1,0 +1,30 @@
+title: Long-range bow around the middle
+expect: A→B→C plus A→C; the long-range shaft bows around benzene B (does not cut the ring hole).
+spec:
+  type: reaction_scheme
+  layout:
+    edge_routing: polyline
+  children:
+    - type: mol
+      id: A
+      smiles: c1ccccc1
+    - type: mol
+      id: B
+      smiles: c1ccccc1
+    - type: mol
+      id: C
+      smiles: c1ccccc1
+    - type: edge
+      sources: A
+      targets: B
+      arrow: forward
+    - type: edge
+      sources: B
+      targets: C
+      arrow: forward
+    - type: edge
+      sources: A
+      targets: C
+      arrow: forward
+      color: "#c40"
+      dashed: true

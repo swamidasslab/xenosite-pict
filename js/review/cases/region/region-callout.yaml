@@ -1,0 +1,18 @@
+title: Region plus callout
+expect: Ring hull and an OH callout; “ring” stays off the callout cluster.
+spec:
+  type: mol
+  smiles: c1ccccc1O
+  region:
+    style: box
+    atoms: [0, 1, 2, 3, 4, 5]
+    fill:
+      color: "#48a"
+      opacity: 0.12
+    stroke:
+      color: "#48a"
+    text: ring
+  callout:
+    atoms: [6]
+    text: phenol OH
+    arrow: true

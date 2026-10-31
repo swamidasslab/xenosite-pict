@@ -28,6 +28,8 @@ spec:
 
 `<group>` is the sidebar section; `<id>` is the snapshot / notes key (unique
 across groups). Format: [`js/review/cases/README.md`](../../js/review/cases/README.md).
+`region/` covers hull styles, exclude, padding, GSH cover, and z-order;
+`scheme/` covers coterminal lanes, fans, wraps, and multi-endpoint nets.
 
 `npm run test:catalog` (part of `make test-js`) paints every file.
 

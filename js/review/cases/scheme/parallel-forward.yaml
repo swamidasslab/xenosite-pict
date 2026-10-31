@@ -1,0 +1,24 @@
+title: Two forward A→B
+expect: Two same-direction arrows share one centerline and paint as parallel lanes (not one flung shaft).
+spec:
+  type: reaction_scheme
+  children:
+    - type: mol
+      id: A
+      smiles: CCO
+      name: ethanol
+    - type: mol
+      id: B
+      smiles: CC=O
+      name: acetaldehyde
+    - type: edge
+      sources: A
+      targets: B
+      arrow: forward
+      color: "#06c"
+    - type: edge
+      sources: A
+      targets: B
+      arrow: forward
+      color: "#c40"
+      dashed: true

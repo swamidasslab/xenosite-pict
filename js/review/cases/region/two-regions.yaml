@@ -1,0 +1,22 @@
+title: Two regions
+expect: Ring box and a separate circle hull on the oxygen; they do not merge.
+spec:
+  type: mol
+  smiles: c1ccccc1O
+  region:
+    - style: box
+      atoms: [0, 1, 2, 3, 4, 5]
+      fill:
+        color: "#48a"
+        opacity: 0.12
+      stroke:
+        color: "#48a"
+      text: ring
+    - style: circle
+      atoms: [6]
+      fill:
+        color: "#c40"
+        opacity: 0.12
+      stroke:
+        color: "#c40"
+      text: OH

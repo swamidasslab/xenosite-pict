@@ -10,6 +10,7 @@ export type ReviewGroup =
   | "shade"
   | "markush"
   | "chrome"
+  | "region"
   | "align"
   | "scheme"
   | "compose";
@@ -23,6 +24,7 @@ export const GROUP_TITLE: Record<ReviewGroup, string> = {
   shade: "Shade",
   markush: "Markush & markup",
   chrome: "Chrome",
+  region: "Region annotation",
   align: "Align",
   scheme: "Schemes",
   compose: "Compose (group / grid)",
@@ -37,6 +39,7 @@ export const GROUP_ORDER: ReviewGroup[] = [
   "shade",
   "markush",
   "chrome",
+  "region",
   "align",
   "scheme",
   "compose",

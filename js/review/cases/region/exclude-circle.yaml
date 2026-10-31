@@ -1,0 +1,18 @@
+title: Exclude (circle)
+expect: Smallest enclosing circle of the ring; center shifts away from the ethyl, which stays out.
+spec:
+  type: mol
+  smiles: c1ccccc1CC
+  region:
+    style: circle
+    atoms: [0, 1, 2, 3, 4, 5]
+    exclude: [6, 7]
+    fill:
+      color: "#eee"
+    stroke:
+      color: "#c44"
+      width: 1.2
+    text:
+      content: aryl
+      pos: left
+      place: inside

@@ -1,0 +1,18 @@
+title: Inside label grows hull
+expect: “aryl” sits inside the box on the left; hull grows around the label, still excluding ethyl.
+spec:
+  type: mol
+  smiles: c1ccccc1CC
+  region:
+    style: box
+    atoms: [0, 1, 2, 3, 4, 5]
+    exclude: [6, 7]
+    fill:
+      color: "#eee"
+    stroke:
+      color: "#c44"
+      width: 1.2
+    text:
+      content: aryl
+      pos: left
+      place: inside

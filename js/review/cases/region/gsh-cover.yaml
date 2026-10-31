@@ -1,0 +1,11 @@
+title: Region covers GSH star
+expect: Bezier hull on the dummy covers the GSH alias (same mol group, not a leftover sibling).
+spec:
+  type: mol
+  cxsmiles: "*C |$GSH;$|"
+  region:
+    style: bezier
+    atoms: [0]
+    fill:
+      color: "#2a9d8f"
+      opacity: 0.25

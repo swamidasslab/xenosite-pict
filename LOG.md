@@ -4,6 +4,8 @@
 
 - Local review gallery (`make review`): Vite app paints live DepictSpec through JS/WASM. Examples are YAML files under `js/review/cases/<group>/`, not hard-coded in the UI. Notes in localStorage; Playwright snapshots optional (`make review-test`). Catalog smoke is part of `npm run test:api`.
 
+- Review cases: `region/` (exclude hulls, inside labels, GSH cover, multi-region) and non-trivial `scheme/` nets (coterminal lanes, down pair, fan, wrap, metabolism, multi-endpoint).
+
 - Product 0.8.3: region hulls take `padding` (chem-space px) on `RegionSpec`.
 
 - Region hulls take `padding` (chem-space px) on `RegionSpec`. Omit keeps the house contain margin (~0.1 bond); a set value replaces that pad for box / circle / bezier.

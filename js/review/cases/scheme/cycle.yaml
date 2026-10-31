@@ -1,0 +1,31 @@
+title: Cycle A→B→C→A
+expect: Three mols in a loop; each arrow keeps its own terminals (not a star into one hub).
+spec:
+  type: reaction_scheme
+  layout:
+    algorithm: force
+  children:
+    - type: mol
+      id: A
+      smiles: CCO
+      name: ethanol
+    - type: mol
+      id: B
+      smiles: c1ccccc1O
+      name: phenol
+    - type: mol
+      id: C
+      smiles: CC=O
+      name: acetaldehyde
+    - type: edge
+      sources: A
+      targets: B
+      arrow: forward
+    - type: edge
+      sources: B
+      targets: C
+      arrow: forward
+    - type: edge
+      sources: C
+      targets: A
+      arrow: forward

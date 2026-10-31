@@ -1,0 +1,31 @@
+title: Chrome on a scheme mol
+expect: Annotated phenol as a scheme child uses the same MolNode chrome as a root mol.
+spec:
+  type: reaction_scheme
+  children:
+    - type: mol
+      id: ph
+      smiles: c1ccccc1O
+      name: phenol
+      atom_number: index
+      region:
+        style: box
+        atoms: [0, 1, 2, 3, 4, 5]
+        fill:
+          color: "#48a"
+          opacity: 0.12
+        stroke:
+          color: "#48a"
+        text: ring
+      callout:
+        atoms: [6]
+        text: OH
+        arrow: true
+    - type: mol
+      id: et
+      smiles: CCO
+      name: ethanol
+    - type: edge
+      sources: ph
+      targets: et
+      arrow: forward

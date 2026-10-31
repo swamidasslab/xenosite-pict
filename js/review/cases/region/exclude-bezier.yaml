@@ -1,0 +1,18 @@
+title: Exclude (bezier)
+expect: Smooth hull around the ring with a bay so the ethyl is not swallowed.
+spec:
+  type: mol
+  smiles: c1ccccc1CC
+  region:
+    style: bezier
+    atoms: [0, 1, 2, 3, 4, 5]
+    exclude: [6, 7]
+    fill:
+      color: "#eee"
+    stroke:
+      color: "#c44"
+      width: 1.2
+    text:
+      content: aryl
+      pos: left
+      place: inside

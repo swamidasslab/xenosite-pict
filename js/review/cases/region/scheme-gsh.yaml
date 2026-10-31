@@ -1,0 +1,22 @@
+title: GSH region in a scheme
+expect: Product star+GSH sits in a bezier region; hull still covers the label after scheme pack.
+spec:
+  type: reaction_scheme
+  children:
+    - type: mol
+      id: a
+      smiles: CCO
+      name: ethanol
+    - type: mol
+      id: b
+      cxsmiles: "*C |$GSH;$|"
+      region:
+        style: bezier
+        atoms: [0]
+        fill:
+          color: "#2a9d8f"
+          opacity: 0.25
+    - type: edge
+      sources: a
+      targets: b
+      arrow: forward

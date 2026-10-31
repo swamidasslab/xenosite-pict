@@ -9,7 +9,7 @@ cases/<group>/<id>.yaml
 
 | Piece | Meaning |
 | --- | --- |
-| `<group>` | Sidebar section (`structure`, `chrome`, `scheme`, …) |
+| `<group>` | Sidebar section (`structure`, `region`, `scheme`, …) |
 | `<id>` | Snapshot / notes key. Must be unique across all groups. |
 | `title` | Short heading |
 | `expect` | What a reviewer should see (the “key behavior”) |

@@ -1,0 +1,21 @@
+title: A + B → C + D
+expect: Two reactants and two products on one edge; four viewports in one packed scene.
+spec:
+  type: reaction_scheme
+  children:
+    - type: mol
+      id: A
+      smiles: C
+    - type: mol
+      id: B
+      smiles: O
+    - type: mol
+      id: C
+      smiles: CO
+    - type: mol
+      id: D
+      smiles: O=O
+    - type: edge
+      sources: [A, B]
+      targets: [C, D]
+      arrow: forward

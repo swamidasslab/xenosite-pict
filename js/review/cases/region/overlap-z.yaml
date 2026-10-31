@@ -1,0 +1,24 @@
+title: Overlapping regions (z)
+expect: Two box hulls on naphthalene rings; the right ring (higher z) paints in front of the full-molecule box.
+spec:
+  type: mol
+  smiles: c1ccc2ccccc2c1
+  region:
+    - style: box
+      atoms: [0, 1, 2, 3, 8, 9, 4, 5, 6, 7]
+      fill:
+        color: "#48a"
+        opacity: 0.18
+      stroke:
+        color: "#48a"
+      text: both
+      z: -40
+    - style: box
+      atoms: [3, 4, 5, 6, 7, 8]
+      fill:
+        color: "#c40"
+        opacity: 0.22
+      stroke:
+        color: "#c40"
+      text: right
+      z: -20

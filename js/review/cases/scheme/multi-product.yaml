@@ -1,0 +1,18 @@
+title: A → B + C
+expect: One source, two products; fork is visible (not a single pair).
+spec:
+  type: reaction_scheme
+  children:
+    - type: mol
+      id: A
+      smiles: CCO
+    - type: mol
+      id: B
+      smiles: CC=O
+    - type: mol
+      id: C
+      smiles: C
+    - type: edge
+      sources: A
+      targets: [B, C]
+      arrow: forward

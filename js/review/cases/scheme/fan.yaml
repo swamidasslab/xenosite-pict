@@ -1,0 +1,58 @@
+title: Network fan (8 mols)
+expect: Hub plus seven products trips the network path; tips attach around the hull, not one shared port latitude.
+spec:
+  type: reaction_scheme
+  children:
+    - type: mol
+      id: src
+      smiles: c1ccccc1O
+      name: phenol
+    - type: mol
+      id: t0
+      smiles: CC(=O)O
+    - type: mol
+      id: t1
+      smiles: CCO
+    - type: mol
+      id: t2
+      smiles: c1ccccc1
+    - type: mol
+      id: t3
+      smiles: c1ccncc1
+    - type: mol
+      id: t4
+      smiles: C1CCCCC1
+    - type: mol
+      id: t5
+      smiles: CC=O
+    - type: mol
+      id: t6
+      smiles: O=C(C)C
+    - type: edge
+      sources: src
+      targets: t0
+      arrow: forward
+    - type: edge
+      sources: src
+      targets: t1
+      arrow: forward
+    - type: edge
+      sources: src
+      targets: t2
+      arrow: forward
+    - type: edge
+      sources: src
+      targets: t3
+      arrow: forward
+    - type: edge
+      sources: src
+      targets: t4
+      arrow: forward
+    - type: edge
+      sources: src
+      targets: t5
+      arrow: forward
+    - type: edge
+      sources: src
+      targets: t6
+      arrow: forward

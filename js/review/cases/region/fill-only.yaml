@@ -1,0 +1,12 @@
+title: Fill, no stroke
+expect: Filled hull with no outline (omit stroke when fill is set — not house blue).
+spec:
+  type: mol
+  smiles: c1ccccc1O
+  region:
+    style: bezier
+    atoms: [0, 1, 2, 3, 4, 5]
+    fill:
+      color: "#2a9d8f"
+      opacity: 0.25
+    text: ring

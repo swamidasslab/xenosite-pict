@@ -1,0 +1,24 @@
+title: Spline routing
+expect: Curved shafts (splines), not a polyline of elbows.
+spec:
+  type: reaction_scheme
+  layout:
+    edge_routing: splines
+  children:
+    - type: mol
+      id: A
+      smiles: CCO
+    - type: mol
+      id: B
+      smiles: CC=O
+    - type: mol
+      id: C
+      smiles: CC
+    - type: edge
+      sources: A
+      targets: B
+      arrow: forward
+    - type: edge
+      sources: B
+      targets: C
+      arrow: forward

@@ -1,0 +1,19 @@
+title: Fused-ring arrow heads
+expect: Shafts and heads sit outside naphthalene skeletons (not in the ring holes).
+spec:
+  type: reaction_scheme
+  layout:
+    edge_routing: polyline
+  children:
+    - type: mol
+      id: A
+      smiles: c1ccc2ccccc2c1
+      name: naphthalene
+    - type: mol
+      id: B
+      smiles: c1ccc2ccccc2c1
+    - type: edge
+      sources: A
+      targets: B
+      arrow: forward
+      stroke_width: 4.8

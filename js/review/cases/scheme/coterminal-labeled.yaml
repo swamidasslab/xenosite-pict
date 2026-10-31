@@ -1,0 +1,35 @@
+title: Coterminal labels
+expect: “ox” above and “red” below the pair; labels sit on opposite sides and do not tilt the shafts.
+spec:
+  type: reaction_scheme
+  children:
+    - type: mol
+      id: A
+      smiles: CCO
+      name: ethanol
+    - type: mol
+      id: B
+      smiles: CC=O
+      name: acetaldehyde
+    - type: text
+      id: ox
+      text: ox
+    - type: text
+      id: red
+      text: red
+    - type: edge
+      sources: A
+      targets: B
+      arrow: forward
+      color: "#06c"
+      label:
+        id: ox
+        pos: above
+    - type: edge
+      sources: B
+      targets: A
+      arrow: forward
+      color: "#c40"
+      label:
+        id: red
+        pos: below

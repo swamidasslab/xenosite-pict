@@ -1,0 +1,15 @@
+title: Dashed region stroke
+expect: Dashed outline around the ring hull.
+spec:
+  type: mol
+  smiles: c1ccccc1O
+  region:
+    style: box
+    atoms: [0, 1, 2, 3, 4, 5]
+    fill:
+      color: "#48a"
+      opacity: 0.08
+    stroke:
+      color: "#48a"
+      dash: dashed
+    text: ring

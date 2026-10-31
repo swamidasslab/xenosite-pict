@@ -1,0 +1,17 @@
+title: Exclude (box)
+expect: Ring inside the box; ethyl chain stays outside (Ex6). Caption “aryl” not on the chain.
+spec:
+  type: mol
+  smiles: c1ccccc1CC
+  region:
+    style: box
+    atoms: [0, 1, 2, 3, 4, 5]
+    exclude: [6, 7]
+    fill:
+      color: "#eee"
+    stroke:
+      color: "#c44"
+      width: 1.2
+    text:
+      content: aryl
+      pos: left

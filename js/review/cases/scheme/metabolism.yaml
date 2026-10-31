@@ -1,0 +1,42 @@
+title: Branched metabolism
+expect: APAP fans to NAPQI / G / S; NAPQI to GSH. Distinct poses; arrows miss rings.
+spec:
+  type: reaction_scheme
+  children:
+    - type: mol
+      id: apap
+      smiles: CC(=O)Nc1ccc(O)cc1
+      name: APAP
+    - type: mol
+      id: napqi
+      smiles: CC(=O)N=C1C=CC(=O)C=C1
+      name: NAPQI
+    - type: mol
+      id: g
+      smiles: "*C"
+      star_labels: ["$G$"]
+      name: gluc
+    - type: mol
+      id: s
+      smiles: "*C"
+      star_labels: ["$S$"]
+      name: sulf
+    - type: mol
+      id: gsh
+      cxsmiles: "*C |$GSH;$|"
+    - type: edge
+      sources: apap
+      targets: napqi
+      arrow: forward
+    - type: edge
+      sources: apap
+      targets: g
+      arrow: forward
+    - type: edge
+      sources: apap
+      targets: s
+      arrow: forward
+    - type: edge
+      sources: napqi
+      targets: gsh
+      arrow: forward

@@ -1,0 +1,37 @@
+title: Diamond A→B,C→D
+expect: Two paths from A to D; four distinct viewports; arrows do not collapse onto one chord.
+spec:
+  type: reaction_scheme
+  children:
+    - type: mol
+      id: A
+      smiles: CCO
+      name: A
+    - type: mol
+      id: B
+      smiles: CC=O
+      name: B
+    - type: mol
+      id: C
+      smiles: c1ccccc1
+      name: C
+    - type: mol
+      id: D
+      smiles: c1ccccc1O
+      name: D
+    - type: edge
+      sources: A
+      targets: B
+      arrow: forward
+    - type: edge
+      sources: A
+      targets: C
+      arrow: forward
+    - type: edge
+      sources: B
+      targets: D
+      arrow: forward
+    - type: edge
+      sources: C
+      targets: D
+      arrow: forward
