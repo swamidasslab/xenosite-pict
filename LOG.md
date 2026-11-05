@@ -2,6 +2,16 @@
 
 ## 2026-11-05
 
+- Sequential commit underprices crossings until both shafts exist. Fix: after
+  pass-2, reoptimize still-crossing arrows a few times against the full peer
+  set; string-pull must not collapse a priced zero-crossing walk back into an
+  X; resnap/nudge must refuse tip/corridor moves that reopen crossings. Also
+  add a scheme-wide Steiner frame so over-top / around-net corridors exist,
+  and route multi-cross arrows *last* so they see locked corridors. Epirubicin
+  centerlines end at 0 proper crossings (Catmull paint can still kiss);
+  ranolazine timing still over budget (`should_panic` until denser vis is
+  sped up).
+
 - Visibility already found 4-point hull walks (m0→m4/m6); `prefer_simpler`
   then swapped them for the 2-point punch because fewer bends. Rank by
   hull-clearance first; only simplify among clear candidates.

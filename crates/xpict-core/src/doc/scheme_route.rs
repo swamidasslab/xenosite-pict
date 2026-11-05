@@ -23,9 +23,19 @@ type Pt = (f64, f64);
 const SEGMENT_PENALTY: f64 = 80.0;
 const ANGLE_PENALTY: f64 = 120.0;
 const SHARED_PATH_PENALTY: f64 = 110.0;
-/// Soft cost per crossing with an already-routed shaft. High enough that two
-/// crossings lose to a longer clean detour (libavoid ~200; we go higher).
-const CROSSING_PENALTY: f64 = 450.0;
+/// Soft cost per crossing with an already-routed shaft. Must dominate a long
+/// clean detour (length + bends); otherwise Dijkstra hugs the near silhouette
+/// and "crosses" locked shafts instead of taking the far free-space side.
+const CROSSING_PENALTY: f64 = 2_500.0;
+/// Extra margin outside each hull AABB for free-space Steiner corners so
+/// over-top / around-box corridors exist without hugging ink.
+const BOX_CORNER_MARGIN: f64 = BOND_PX;
+/// Padding outside the union of all obstacles for a scheme-wide Steiner
+/// frame — the corridor that goes over-top / around the whole net.
+const FRAME_MARGIN: f64 = BOND_PX * 4.0;
+/// After the sequential pass, re-route still-crossing shafts a few times so
+/// crossings that only appear once both ends exist get priced.
+const REOPT_PASSES: usize = 3;
 /// Inflate full-ink hulls by this before visibility (shapeBufferDistance).
 const ROUTING_CLEARANCE: f64 = SCHEME_INK_STANDOFF + 0.5 * 1.6;
 /// Parallel-track gap after shared corridors (idealNudgingDistance).
@@ -168,7 +178,10 @@ pub fn route_scheme_edges(
                 segment_clears_obstacles(s, g, &obstacles, &empty_skip)
                     && chord_clears_ink(world, s, g, mol_ids, &ink_skip, clashes[i])
             };
-        // Clean straights first (0), then few crossings, then many.
+        // Clean straights first. Within dirty tiers, few-crossing shafts
+        // lock first so the multi-cross long arrows route *last* against a
+        // full committed set (and take the outer detour instead of punching
+        // through while peers bow around them).
         let tier = if straight_ok && draft_cross[i] == 0 {
             0
         } else if straight_ok {
@@ -176,7 +189,7 @@ pub fn route_scheme_edges(
         } else {
             2
         };
-        (tier, std::cmp::Reverse(draft_cross[i]), i)
+        (tier, draft_cross[i], i)
     });
 
     let mut group_centers: Vec<Vec<Pt>> = vec![Vec::new(); groups.len()];
@@ -228,6 +241,20 @@ pub fn route_scheme_edges(
         group_centers[gi] = center;
     }
 
+    // Sequential commit only prices crossings against *already* routed shafts.
+    // Re-optimize still-crossing arrows against the full peer set a few times.
+    reoptimize_crossing_routes(
+        &mut group_centers,
+        &group_ends,
+        &tips,
+        &skips,
+        &clashes,
+        world,
+        mol_ids,
+        &obstacles,
+        &vis,
+    );
+
     // Pull arrival tips off foreign shafts so they do not look like branches.
     clear_tips_from_foreign_shafts(&mut group_centers, &group_ends, &centroids);
     // Final string-pull must not reopen a locked X: only accept a shortcut that
@@ -242,8 +269,9 @@ pub fn route_scheme_edges(
             })
             .collect();
         let before = group_centers[gi].clone();
-        // Empty skip: shortcuts must clear endpoint hulls too.
-        let pulled = string_pull(&before, &obstacles, &empty_skip);
+        // Empty skip: shortcuts must clear endpoint hulls too; committed peers
+        // keep the pull from reopening an X.
+        let pulled = string_pull(&before, &obstacles, &empty_skip, &others);
         if path_clears_obstacles(&pulled, &obstacles, &empty_skip)
             && path_crosses_committed(&pulled, &others)
                 <= path_crosses_committed(&before, &others)
@@ -375,8 +403,8 @@ fn route_one_centerline(
     }
 
     let vis_path = visibility_route(start, goal, src, tgt, vis, obstacles, committed);
-    // String-pull must not cut through endpoint hulls either.
-    let pulled = string_pull(&vis_path, obstacles, &empty);
+    // String-pull must not cut through endpoint hulls or reopen locked crossings.
+    let pulled = string_pull(&vis_path, obstacles, &empty, committed);
     let pulled_ok = path_clears_obstacles(&pulled, obstacles, &empty);
     if pulled.len() == 2
         && pulled_ok
@@ -441,7 +469,14 @@ fn path_crosses_committed(pts: &[Pt], committed: &[Committed]) -> usize {
 
 /// Remove intermediate verts when the chord still clears obstacles (classic
 /// string-pull / funnel). Stops hull-hugging when a straighter cut exists.
-fn string_pull(pts: &[Pt], obstacles: &[Obstacle], skip: &HashSet<&str>) -> Vec<Pt> {
+/// Rejects shortcuts that properly cross a committed shaft — otherwise a
+/// priced zero-crossing walk collapses back into an X.
+fn string_pull(
+    pts: &[Pt],
+    obstacles: &[Obstacle],
+    skip: &HashSet<&str>,
+    committed: &[Committed],
+) -> Vec<Pt> {
     if pts.len() < 3 {
         return prune_close_controls(pts, CLOSE_CTRL_PX);
     }
@@ -450,7 +485,9 @@ fn string_pull(pts: &[Pt], obstacles: &[Obstacle], skip: &HashSet<&str>) -> Vec<
     while i < pts.len() - 1 {
         let mut j = pts.len() - 1;
         while j > i + 1 {
-            if segment_clears_obstacles(pts[i], pts[j], obstacles, skip) {
+            if segment_clears_obstacles(pts[i], pts[j], obstacles, skip)
+                && path_crosses_committed(&[pts[i], pts[j]], committed) == 0
+            {
                 break;
             }
             j -= 1;
@@ -493,6 +530,114 @@ fn polyline_len(pts: &[Pt]) -> f64 {
         .sum()
 }
 
+/// Re-route groups that still properly cross a peer, with all other shafts
+/// treated as committed — so intersection cost applies even when the peer was
+/// routed later in the sequential pass.
+fn reoptimize_crossing_routes(
+    centers: &mut [Vec<Pt>],
+    ends: &[(String, String)],
+    tips: &[(Pt, Pt)],
+    skips: &[HashSet<String>],
+    clashes: &[f64],
+    world: &LayoutWorld,
+    mol_ids: &[String],
+    obstacles: &[Obstacle],
+    vis: &VisGraph,
+) {
+    let n = centers.len();
+    if n < 2 {
+        return;
+    }
+    // Skip arrows whose last attempt did not improve until a peer does —
+    // dense nets otherwise re-Dijkstra the same irreducible X's every pass.
+    let mut stuck: HashSet<usize> = HashSet::new();
+    for _ in 0..REOPT_PASSES {
+        let mut crossers: Vec<(usize, usize)> = (0..n)
+            .map(|i| (count_crossings_with_peers(i, centers), i))
+            .filter(|(c, i)| *c > 0 && !stuck.contains(i))
+            .collect();
+        if crossers.is_empty() {
+            break;
+        }
+        // Worst offenders first.
+        crossers.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+        let mut improved = false;
+        for &(_, gi) in &crossers {
+            let before = centers[gi].clone();
+            let before_x = count_crossings_with_peers(gi, centers);
+            if before_x == 0 {
+                continue;
+            }
+            let peers: Vec<Committed> = centers
+                .iter()
+                .enumerate()
+                .filter(|&(j, _)| j != gi)
+                .map(|(_, c)| Committed {
+                    segs: c.windows(2).map(|w| (w[0], w[1])).collect(),
+                })
+                .collect();
+            let (src, tgt) = &ends[gi];
+            let (start, goal) = tips[gi];
+            let skip: HashSet<&str> = skips[gi].iter().map(String::as_str).collect();
+            let clash = clashes[gi];
+            let candidate = route_one_centerline(
+                start,
+                goal,
+                src,
+                tgt,
+                &skip,
+                world,
+                mol_ids,
+                clash,
+                obstacles,
+                vis,
+                &peers,
+            );
+            if candidate.len() < 2 {
+                stuck.insert(gi);
+                continue;
+            }
+            // Temporarily install to score peer crossings.
+            centers[gi] = candidate;
+            let after_x = count_crossings_with_peers(gi, centers);
+            let empty = HashSet::new();
+            let clears = path_clears_obstacles(&centers[gi], obstacles, &empty);
+            let before_clears = path_clears_obstacles(&before, obstacles, &empty);
+            // Never accept more crossings; otherwise prefer fewer, then
+            // newly-clear, then shorter at equal clearance.
+            let better = after_x < before_x
+                || (after_x == before_x
+                    && clears
+                    && !before_clears)
+                || (after_x == before_x
+                    && clears
+                    && before_clears
+                    && polyline_len(&centers[gi]) + 1.0 < polyline_len(&before));
+            if better {
+                improved = true;
+                stuck.clear();
+            } else {
+                centers[gi] = before;
+                stuck.insert(gi);
+            }
+        }
+        if !improved {
+            break;
+        }
+    }
+}
+
+fn count_crossings_with_peers(i: usize, centers: &[Vec<Pt>]) -> usize {
+    let mut n = 0;
+    for (j, other) in centers.iter().enumerate() {
+        if j == i {
+            continue;
+        }
+        n += count_poly_crossings(&centers[i], other);
+    }
+    n
+}
+
 /// Place start/end tips on the rays `src_centroid → path[1]` and
 /// `tgt_centroid → path[n-2]` so end chords aim at the centroids after a bow.
 fn resnap_tips_to_approach_rays(
@@ -506,21 +651,25 @@ fn resnap_tips_to_approach_rays(
     groups: &[ArrowGroup],
 ) {
     let edges = spec.edges();
-    for (gi, center) in centers.iter_mut().enumerate() {
-        if center.len() < 2 {
+    for gi in 0..centers.len() {
+        if centers[gi].len() < 2 {
             continue;
         }
         let (ref src, ref tgt) = ends[gi];
-        let src_c = centroids.get(src).copied().unwrap_or(center[0]);
-        let tgt_c = centroids.get(tgt).copied().unwrap_or(center[center.len() - 1]);
+        let src_c = centroids.get(src).copied().unwrap_or(centers[gi][0]);
+        let last_i = centers[gi].len() - 1;
+        let tgt_c = centroids
+            .get(tgt)
+            .copied()
+            .unwrap_or(centers[gi][last_i]);
         let clash = clashes.get(gi).copied().unwrap_or(SCHEME_INK_STANDOFF);
         let min_shaft = groups
             .get(gi)
             .and_then(|g| edges.get(g.members[0]))
             .map(|e| min_shaft_px(e.stroke_width))
             .unwrap_or_else(|| min_shaft_px(None));
-        let next = center[1];
-        let prev = center[center.len() - 2];
+        let next = centers[gi][1];
+        let prev = centers[gi][centers[gi].len() - 2];
         let start = tip_outside_hull(
             obstacles,
             src,
@@ -535,16 +684,22 @@ fn resnap_tips_to_approach_rays(
             tgt_c,
             prev,
         );
-        // Keep the resnap only when the new end chords still clear hulls.
+        // Keep the resnap only when the new end chords still clear hulls and
+        // do not reopen a crossing with another shaft.
         let empty = HashSet::new();
+        let before = centers[gi].clone();
+        let before_x = count_crossings_with_peers(gi, centers);
         if segment_clears_obstacles(start, next, obstacles, &empty) {
-            center[0] = start;
+            centers[gi][0] = start;
         }
         if segment_clears_obstacles(prev, goal, obstacles, &empty) {
-            let last = center.len() - 1;
-            center[last] = goal;
+            let last = centers[gi].len() - 1;
+            centers[gi][last] = goal;
         }
-        *center = prune_close_controls(center, CLOSE_CTRL_PX);
+        centers[gi] = prune_close_controls(&centers[gi], CLOSE_CTRL_PX);
+        if count_crossings_with_peers(gi, centers) > before_x {
+            centers[gi] = before;
+        }
     }
 }
 
@@ -688,6 +843,8 @@ fn build_visibility_graph(obstacles: &[Obstacle]) -> VisGraph {
     let mut owner = Vec::new();
     // Ranges of verts per obstacle for boundary edges.
     let mut ranges: Vec<(usize, usize)> = Vec::new();
+    // Expanded AABB corner Steiner points (free-space "over the top" ports).
+    let mut box_ranges: Vec<(usize, usize)> = Vec::new();
     for o in obstacles {
         let start = pts.len();
         for &p in &o.hull {
@@ -695,7 +852,41 @@ fn build_visibility_graph(obstacles: &[Obstacle]) -> VisGraph {
             owner.push(Some(o.mol_id.clone()));
         }
         ranges.push((start, pts.len()));
+        let (x0, y0, x1, y1) = hull_aabb(&o.hull);
+        let m = BOX_CORNER_MARGIN;
+        let corners = [
+            (x0 - m, y0 - m),
+            (x1 + m, y0 - m),
+            (x1 + m, y1 + m),
+            (x0 - m, y1 + m),
+        ];
+        let b0 = pts.len();
+        for c in corners {
+            pts.push(c);
+            owner.push(Some(o.mol_id.clone()));
+        }
+        box_ranges.push((b0, pts.len()));
     }
+    // Scheme-wide frame so a route can travel over-top / around the net in
+    // free space instead of only hopping per-mol AABB corners.
+    let frame_range = if pts.is_empty() {
+        None
+    } else {
+        let (gx0, gy0, gx1, gy1) = hull_aabb(&pts);
+        let m = FRAME_MARGIN;
+        let corners = [
+            (gx0 - m, gy0 - m),
+            (gx1 + m, gy0 - m),
+            (gx1 + m, gy1 + m),
+            (gx0 - m, gy1 + m),
+        ];
+        let f0 = pts.len();
+        for c in corners {
+            pts.push(c);
+            owner.push(None);
+        }
+        Some((f0, pts.len()))
+    };
     let n = pts.len();
     let mut adj: Vec<Vec<(usize, f64)>> = vec![Vec::new(); n];
     let mut linked = vec![HashSet::<usize>::new(); n];
@@ -729,15 +920,47 @@ fn build_visibility_graph(obstacles: &[Obstacle]) -> VisGraph {
         }
     }
 
-    // 2) Full inter-obstacle visibility: every clear segment between verts on
-    // *different* hulls. Sparse K-nearest dropped long left/right corridors
-    // that Dijkstra needs in order to prefer a hull-clear detour.
+    // 1b) Outer AABB-corner cycles — free-space ring around each mol so a
+    // long route can go over the top / down the far side without hugging ink.
+    for (ri, &(lo, hi)) in box_ranges.iter().enumerate() {
+        let skip: HashSet<&str> = [obstacles[ri].mol_id.as_str()].into_iter().collect();
+        for k in 0..4 {
+            let i = lo + k;
+            let j = lo + (k + 1) % 4;
+            if segment_clears_obstacles(pts[i], pts[j], obstacles, &skip) {
+                add(&mut adj, &mut linked, i, j, dist(pts[i], pts[j]));
+            }
+        }
+        // Also stitch each box corner to nearby hull verts of the same mol.
+        for i in lo..hi {
+            for j in ranges[ri].0..ranges[ri].1 {
+                if segment_clears_obstacles(pts[i], pts[j], obstacles, &skip) {
+                    add(&mut adj, &mut linked, i, j, dist(pts[i], pts[j]));
+                }
+            }
+        }
+    }
+
+    // 1c) Scheme frame cycle (unowned Steiners — not same-owner skipped below).
     let empty_skip = HashSet::new();
+    if let Some((flo, _fhi)) = frame_range {
+        for k in 0..4 {
+            let i = flo + k;
+            let j = flo + (k + 1) % 4;
+            if segment_clears_obstacles(pts[i], pts[j], obstacles, &empty_skip) {
+                add(&mut adj, &mut linked, i, j, dist(pts[i], pts[j]));
+            }
+        }
+    }
+
+    // 2) Full inter-obstacle visibility: every clear segment between verts on
+    // *different* hulls/boxes (frame verts are unowned and link to all clear).
+    // Same-owner non-ring chords still skip (cut ink).
     for i in 0..n {
         let oi = owner[i].as_deref();
         for j in (i + 1)..n {
-            if owner[j].as_deref() == oi {
-                continue; // non-adjacent same-hull chords cut through the mol
+            if oi.is_some() && owner[j].as_deref() == oi {
+                continue;
             }
             if segment_clears_obstacles(pts[i], pts[j], obstacles, &empty_skip) {
                 add(&mut adj, &mut linked, i, j, dist(pts[i], pts[j]));
@@ -745,6 +968,20 @@ fn build_visibility_graph(obstacles: &[Obstacle]) -> VisGraph {
         }
     }
     VisGraph { pts, owner, adj }
+}
+
+fn hull_aabb(hull: &[Pt]) -> (f64, f64, f64, f64) {
+    let mut x0 = f64::INFINITY;
+    let mut y0 = f64::INFINITY;
+    let mut x1 = f64::NEG_INFINITY;
+    let mut y1 = f64::NEG_INFINITY;
+    for &(x, y) in hull {
+        x0 = x0.min(x);
+        y0 = y0.min(y);
+        x1 = x1.max(x);
+        y1 = y1.max(y);
+    }
+    (x0, y0, x1, y1)
 }
 
 fn collect_ink_points(world: &LayoutWorld, under: &str) -> Vec<Pt> {
@@ -1145,7 +1382,7 @@ fn visibility_route(
         }
     }
     let mut pts: Vec<Pt> = idxs.into_iter().map(|i| nodes[i]).collect();
-    pts = string_pull(&pts, obstacles, &empty_skip);
+    pts = string_pull(&pts, obstacles, &empty_skip, committed);
     if pts.len() < 2 {
         return fallback_bow(start, goal, obstacles, &empty_skip, committed);
     }
@@ -1319,18 +1556,24 @@ fn nudge_shared_corridors(centers: &mut [Vec<Pt>]) {
             if !polylines_share_corridor(&a, &b) {
                 continue;
             }
+            let before_x = count_crossings_with_peers(j, centers);
             let (px, py) = corridor_normal(&a);
-            centers[j] = offset_polyline(&b, NUDGE_PX);
+            let mut cand = offset_polyline(&b, NUDGE_PX);
             // Flip if offset moved toward a.
             let mid_a = polyline_mid(&a);
-            let mid_b = polyline_mid(&centers[j]);
+            let mid_b = polyline_mid(&cand);
             let mid_b0 = polyline_mid(&b);
             let d0 = dist(mid_a, mid_b0);
             let d1 = dist(mid_a, mid_b);
             if d1 + 0.5 < d0 {
-                centers[j] = offset_polyline(&b, -NUDGE_PX);
+                cand = offset_polyline(&b, -NUDGE_PX);
             }
             let _ = (px, py);
+            // Never reopen an X just to parallel-track shared corridors.
+            centers[j] = cand;
+            if count_crossings_with_peers(j, centers) > before_x {
+                centers[j] = b;
+            }
         }
     }
 }
@@ -1587,11 +1830,38 @@ mod tests {
             (20.0, 0.0),
             (30.0, 0.0),
         ];
-        let pulled = string_pull(&windy, &empty, &skip);
+        let pulled = string_pull(&windy, &empty, &skip, &[]);
         assert_eq!(
             pulled.len(),
             2,
             "open space must collapse to a straight chord: {pulled:?}"
+        );
+    }
+
+    #[test]
+    fn string_pull_keeps_detour_that_avoids_locked_shaft() {
+        let empty: Vec<Obstacle> = Vec::new();
+        let skip = HashSet::new();
+        // Vertical start→goal would cross the locked horizontal; the U-detour
+        // goes around. Pull must not collapse back to the piercing chord.
+        let detour = vec![(50.0, 0.0), (0.0, 0.0), (0.0, 100.0), (50.0, 100.0)];
+        let committed = vec![Committed {
+            segs: vec![((0.0, 50.0), (100.0, 50.0))],
+        }];
+        assert_eq!(
+            path_crosses_committed(&[(50.0, 0.0), (50.0, 100.0)], &committed),
+            1,
+            "sanity: direct chord crosses"
+        );
+        let pulled = string_pull(&detour, &empty, &skip, &committed);
+        assert_eq!(
+            path_crosses_committed(&pulled, &committed),
+            0,
+            "pull must not collapse into the locked shaft: {pulled:?}"
+        );
+        assert!(
+            pulled.len() >= 3,
+            "must keep the detour verts: {pulled:?}"
         );
     }
 
@@ -1618,6 +1888,93 @@ mod tests {
         assert_eq!(got.len(), 3, "single bow should win: {got:?}");
     }
 
+
+    #[test]
+    fn reoptimize_untangles_sequential_blind_cross() {
+        // Simulate pass-2 order blindness: A routed first as a straight, B
+        // later as a crossing straight (no peers priced for A). Reopt must
+        // see both shafts and pull one clear.
+        let empty_obs: Vec<Obstacle> = Vec::new();
+        let vis = build_visibility_graph(&empty_obs);
+        let world = LayoutWorld::new("scheme");
+        let mol_ids: Vec<String> = Vec::new();
+        let mut centers = vec![
+            vec![(0.0, 0.0), (100.0, 100.0)],
+            vec![(0.0, 100.0), (100.0, 0.0)],
+        ];
+        assert_eq!(count_crossings_with_peers(0, &centers), 1);
+        let ends = vec![("a".into(), "b".into()), ("c".into(), "d".into())];
+        let tips = [(centers[0][0], centers[0][1]), (centers[1][0], centers[1][1])];
+        let skips = [
+            HashSet::from(["a".into(), "b".into()]),
+            HashSet::from(["c".into(), "d".into()]),
+        ];
+        let clashes = [2.0_f64, 2.0];
+        reoptimize_crossing_routes(
+            &mut centers,
+            &ends,
+            &tips,
+            &skips,
+            &clashes,
+            &world,
+            &mol_ids,
+            &empty_obs,
+            &vis,
+        );
+        assert_eq!(
+            count_crossings_with_peers(0, &centers),
+            0,
+            "reopt must clear the X once both shafts exist: {centers:?}"
+        );
+        assert_eq!(count_crossings_with_peers(1, &centers), 0);
+    }
+
+    #[test]
+    fn higher_crossing_cost_takes_far_side_not_near_cross() {
+        // Blocker in the middle; a locked shaft on the LEFT. The short walk
+        // around the left crosses it; the far (right) walk does not. Raising
+        // CROSSING_PENALTY must force the clear side.
+        let square = vec![(40.0, 40.0), (60.0, 40.0), (60.0, 60.0), (40.0, 60.0)];
+        let obstacles = vec![Obstacle {
+            mol_id: "blocker".into(),
+            hull: inflate_convex(&square, 2.0),
+        }];
+        let vis = build_visibility_graph(&obstacles);
+        // Locked shaft cuts the *left* silhouette corridor (near side).
+        let committed = vec![Committed {
+            segs: vec![((10.0, 50.0), (45.0, 50.0))],
+        }];
+        let skip = HashSet::new();
+        let world = LayoutWorld::new("scheme");
+        let mol_ids: Vec<String> = Vec::new();
+        let path = route_one_centerline(
+            (50.0, 10.0),
+            (50.0, 90.0),
+            "a",
+            "b",
+            &skip,
+            &world,
+            &mol_ids,
+            2.0,
+            &obstacles,
+            &vis,
+            &committed,
+        );
+        assert!(
+            path.len() >= 3,
+            "must detour around the blocker: {path:?}"
+        );
+        assert_eq!(
+            path_crosses_committed(&path, &committed),
+            0,
+            "high crossing cost must prefer the clear (right) side: {path:?}"
+        );
+        let max_x = path.iter().map(|p| p.0).fold(f64::NEG_INFINITY, f64::max);
+        assert!(
+            max_x > 60.0,
+            "expected a right-side walk (over the far box), got {path:?}"
+        );
+    }
 
     #[test]
     fn route_one_keeps_visibility_detour_over_punch() {
