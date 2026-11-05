@@ -2,6 +2,8 @@
 
 ## 2026-11-05
 
+- Reopt is one-at-a-time (most crossings, then longest); skip zero-cross; refresh only pairs involving the changed arrow. Pathway crossings priced in Dijkstra via centroid hops.
+
 - Intersection scoring is centroid→centroid pathways only. Tip hug is a later
   paint step — pulling tips back toward a centroid must not “clear” an X, and
   tip-on-shaft / clear_tips were removed from routing (they also collapsed two

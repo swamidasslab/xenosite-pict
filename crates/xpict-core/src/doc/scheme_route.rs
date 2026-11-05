@@ -208,6 +208,8 @@ pub fn route_scheme_edges(
             route_one_centerline(
                 start,
                 goal,
+                src_c,
+                tgt_c,
                 src,
                 tgt,
                 &skip,
@@ -376,12 +378,23 @@ fn committed_from_pathway(path: &[Pt], src_c: Pt, tgt_c: Pt) -> Committed {
     }
 }
 
+/// Pathway crossing count for a free-space walk, including centroid stubs.
+fn pathway_crosses_committed(
+    path: &[Pt],
+    src_c: Pt,
+    tgt_c: Pt,
+    committed: &[Committed],
+) -> usize {
+    path_crosses_committed(&extend_to_centroids(path, src_c, tgt_c), committed)
+}
+
 /// Straight chord first when it also clears already-locked pathways; else
-/// visibility + string-pull. Never replace a clean detour with a bow that
-/// reintroduces crossings. Tip-on-shaft is *not* a routing concern.
+/// visibility + string-pull. Crossing rank is always on the centroid pathway.
 fn route_one_centerline(
     start: Pt,
     goal: Pt,
+    src_c: Pt,
+    tgt_c: Pt,
     src: &str,
     tgt: &str,
     skip: &HashSet<&str>,
@@ -395,51 +408,46 @@ fn route_one_centerline(
     let empty: HashSet<&str> = HashSet::new();
     let mol_clear = segment_clears_obstacles(start, goal, obstacles, &empty)
         && chord_clears_ink(world, start, goal, mol_ids, skip, clash);
-    let crosses_locked = path_crosses_committed(&[start, goal], committed) > 0;
-    // Pass-2 must actually re-route against the locked set. A mol-clear chord
-    // that still crosses a locked pathway is not done.
+    let crosses_locked = pathway_crosses_committed(&[start, goal], src_c, tgt_c, committed) > 0;
+    // Pass-2 must actually re-route against the locked set. A mol-clear tip
+    // chord that still crosses on the centroid pathway is not done.
     if mol_clear && !crosses_locked {
         return prune_close_controls(&[start, goal], CLOSE_CTRL_PX);
     }
 
-    let vis_path = visibility_route(start, goal, src, tgt, vis, obstacles, committed);
+    let vis_path =
+        visibility_route(start, goal, src_c, tgt_c, src, tgt, vis, obstacles, committed);
     // String-pull must not cut through endpoint hulls or reopen locked crossings.
     let pulled = string_pull(&vis_path, obstacles, &empty, committed);
     let pulled_ok = path_clears_obstacles(&pulled, obstacles, &empty);
-    if pulled.len() == 2
-        && pulled_ok
-        && path_crosses_committed(&pulled, committed) == 0
-    {
+    let pulled_x = pathway_crosses_committed(&pulled, src_c, tgt_c, committed);
+    if pulled.len() == 2 && pulled_ok && pulled_x == 0 {
         return pulled;
     }
 
     let bow = fallback_bow(start, goal, obstacles, &empty, committed);
     let bow_ok = path_clears_obstacles(&bow, obstacles, &empty);
-    // A hull-clear visibility detour always beats a punch-through "simpler"
-    // chord (prefer_simpler used to discard 4-point walks for 2-point pierces).
+    let bow_x = pathway_crosses_committed(&bow, src_c, tgt_c, committed);
+    // Fewer pathway crossings win even if the walk is longer / less "clear"
+    // on ink — a direct 1-cross beats a circuitous 2-cross.
+    if bow_x < pulled_x && bow.len() >= 2 {
+        return bow;
+    }
+    if pulled_x < bow_x && pulled.len() >= 2 {
+        return pulled;
+    }
     match (pulled_ok, bow_ok) {
-        (true, false) => return pulled,
-        (false, true) => return bow,
-        (true, true) => {
-            let pulled_x = path_crosses_committed(&pulled, committed);
-            let bow_x = path_crosses_committed(&bow, committed);
-            if bow_x < pulled_x {
-                return bow;
-            }
-            if bow_x > pulled_x {
-                return pulled;
-            }
-            return prefer_simpler_path(&pulled, &bow);
-        }
+        (true, true) => prefer_simpler_path(&pulled, &bow),
+        (true, false) => pulled,
+        (false, true) => bow,
         (false, false) => {
-            // Last resort: keep the longer non-trivial path if either has bends.
             if pulled.len() >= 3 {
-                return pulled;
+                pulled
+            } else if bow.len() >= 3 {
+                bow
+            } else {
+                pulled
             }
-            if bow.len() >= 3 {
-                return bow;
-            }
-            pulled
         }
     }
 }
@@ -529,7 +537,84 @@ fn polyline_len(pts: &[Pt]) -> f64 {
         .sum()
 }
 
-/// Re-route groups whose *centroid pathways* still properly cross a peer.
+/// Pairwise pathway crossing counts. `pair[i * n + j]` (i < j) stores how many
+/// proper crossings pathway i makes with j; `degree[i]` is the row sum.
+struct CrossingIndex {
+    n: usize,
+    /// Upper triangle packed? Keep dense n×n for simple updates (symmetric).
+    pair: Vec<usize>,
+    degree: Vec<usize>,
+}
+
+impl CrossingIndex {
+    fn new(centers: &[Vec<Pt>], group_centroids: &[(Pt, Pt)]) -> Self {
+        let n = centers.len();
+        let mut pair = vec![0usize; n * n];
+        let mut degree = vec![0usize; n];
+        for i in 0..n {
+            let (sc_i, tc_i) = group_centroids[i];
+            let a = extend_to_centroids(&centers[i], sc_i, tc_i);
+            for j in (i + 1)..n {
+                let (sc_j, tc_j) = group_centroids[j];
+                let b = extend_to_centroids(&centers[j], sc_j, tc_j);
+                let c = count_poly_crossings(&a, &b);
+                if c == 0 {
+                    continue;
+                }
+                pair[i * n + j] = c;
+                pair[j * n + i] = c;
+                degree[i] += c;
+                degree[j] += c;
+            }
+        }
+        Self { n, pair, degree }
+    }
+
+    /// After `centers[gi]` changed, recompute only pairs involving `gi`.
+    fn refresh_arrow(
+        &mut self,
+        gi: usize,
+        centers: &[Vec<Pt>],
+        group_centroids: &[(Pt, Pt)],
+    ) {
+        let n = self.n;
+        let (sc_i, tc_i) = group_centroids[gi];
+        let a = extend_to_centroids(&centers[gi], sc_i, tc_i);
+        // Drop old contributions involving gi.
+        for j in 0..n {
+            if j == gi {
+                continue;
+            }
+            let old = self.pair[gi * n + j];
+            if old > 0 {
+                self.degree[gi] -= old;
+                self.degree[j] -= old;
+                self.pair[gi * n + j] = 0;
+                self.pair[j * n + gi] = 0;
+            }
+        }
+        // Add new contributions.
+        for j in 0..n {
+            if j == gi {
+                continue;
+            }
+            let (sc_j, tc_j) = group_centroids[j];
+            let b = extend_to_centroids(&centers[j], sc_j, tc_j);
+            let c = count_poly_crossings(&a, &b);
+            if c == 0 {
+                continue;
+            }
+            self.pair[gi * n + j] = c;
+            self.pair[j * n + gi] = c;
+            self.degree[gi] += c;
+            self.degree[j] += c;
+        }
+    }
+}
+
+/// Re-route crossing arrows **one at a time**: skip zero-cross, prefer most
+/// intersections then longest length, commit immediately, and only refresh
+/// pairwise counts that involve the changed arrow.
 fn reoptimize_crossing_routes(
     centers: &mut [Vec<Pt>],
     ends: &[(String, String)],
@@ -546,82 +631,93 @@ fn reoptimize_crossing_routes(
     if n < 2 {
         return;
     }
-    // Skip arrows whose last attempt did not improve until a peer does —
-    // dense nets otherwise re-Dijkstra the same irreducible X's every pass.
+    let mut index = CrossingIndex::new(centers, group_centroids);
+    let mut lengths: Vec<f64> = (0..n)
+        .map(|i| {
+            let (sc, tc) = group_centroids[i];
+            polyline_len(&extend_to_centroids(&centers[i], sc, tc))
+        })
+        .collect();
+    let max_steps = n.saturating_mul(REOPT_PASSES).max(REOPT_PASSES);
     let mut stuck: HashSet<usize> = HashSet::new();
-    for _ in 0..REOPT_PASSES {
-        let mut crossers: Vec<(usize, usize)> = (0..n)
-            .map(|i| (count_pathway_crossings_with_peers(i, centers, group_centroids), i))
-            .filter(|(c, i)| *c > 0 && !stuck.contains(i))
+    for _ in 0..max_steps {
+        // Skip zero-cross; among the rest: most intersections, then longest.
+        let mut worst: Option<(usize, f64, usize)> = None; // (cross, len, gi)
+        for i in 0..n {
+            if stuck.contains(&i) || index.degree[i] == 0 {
+                continue;
+            }
+            let c = index.degree[i];
+            let len = lengths[i];
+            let replace = match worst {
+                None => true,
+                Some((wc, wlen, wi)) => {
+                    c > wc || (c == wc && (len > wlen || (len == wlen && i < wi)))
+                }
+            };
+            if replace {
+                worst = Some((c, len, i));
+            }
+        }
+        let Some((before_x, _, gi)) = worst else {
+            break;
+        };
+        let before = centers[gi].clone();
+        let peers: Vec<Committed> = centers
+            .iter()
+            .enumerate()
+            .filter(|&(j, _)| j != gi)
+            .map(|(j, c)| {
+                let (sc, tc) = group_centroids[j];
+                committed_from_pathway(c, sc, tc)
+            })
             .collect();
-        if crossers.is_empty() {
-            break;
+        let (src, tgt) = &ends[gi];
+        let (src_c, tgt_c) = group_centroids[gi];
+        let (start, goal) = tips[gi];
+        let skip: HashSet<&str> = skips[gi].iter().map(String::as_str).collect();
+        let clash = clashes[gi];
+        let candidate = route_one_centerline(
+            start,
+            goal,
+            src_c,
+            tgt_c,
+            src,
+            tgt,
+            &skip,
+            world,
+            mol_ids,
+            clash,
+            obstacles,
+            vis,
+            &peers,
+        );
+        if candidate.len() < 2 {
+            stuck.insert(gi);
+            continue;
         }
-        // Worst offenders first.
-        crossers.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
-        let mut improved = false;
-        for &(_, gi) in &crossers {
-            let before = centers[gi].clone();
-            let before_x = count_pathway_crossings_with_peers(gi, centers, group_centroids);
-            if before_x == 0 {
-                continue;
-            }
-            let peers: Vec<Committed> = centers
-                .iter()
-                .enumerate()
-                .filter(|&(j, _)| j != gi)
-                .map(|(j, c)| {
-                    let (sc, tc) = group_centroids[j];
-                    committed_from_pathway(c, sc, tc)
-                })
-                .collect();
-            let (src, tgt) = &ends[gi];
-            let (start, goal) = tips[gi];
-            let skip: HashSet<&str> = skips[gi].iter().map(String::as_str).collect();
-            let clash = clashes[gi];
-            let candidate = route_one_centerline(
-                start,
-                goal,
-                src,
-                tgt,
-                &skip,
-                world,
-                mol_ids,
-                clash,
-                obstacles,
-                vis,
-                &peers,
-            );
-            if candidate.len() < 2 {
-                stuck.insert(gi);
-                continue;
-            }
-            // Temporarily install to score peer *pathway* crossings.
-            centers[gi] = candidate;
-            let after_x = count_pathway_crossings_with_peers(gi, centers, group_centroids);
-            let empty = HashSet::new();
-            let clears = path_clears_obstacles(&centers[gi], obstacles, &empty);
-            let before_clears = path_clears_obstacles(&before, obstacles, &empty);
-            // Never accept more crossings; otherwise prefer fewer, then
-            // newly-clear, then shorter at equal clearance.
-            let better = after_x < before_x
-                || (after_x == before_x
-                    && clears
-                    && !before_clears)
-                || (after_x == before_x
-                    && clears
-                    && before_clears
-                    && polyline_len(&centers[gi]) + 1.0 < polyline_len(&before));
-            if better {
-                improved = true;
-                stuck.clear();
-            } else {
-                centers[gi] = before;
-                stuck.insert(gi);
-            }
-        }
-        if !improved {
-            break;
+        centers[gi] = candidate;
+        index.refresh_arrow(gi, centers, group_centroids);
+        let after_x = index.degree[gi];
+        let empty = HashSet::new();
+        let clears = path_clears_obstacles(&centers[gi], obstacles, &empty);
+        let before_clears = path_clears_obstacles(&before, obstacles, &empty);
+        let new_len = polyline_len(&extend_to_centroids(&centers[gi], src_c, tgt_c));
+        // Lexicographic: fewer pathway crossings first, then clearance, then length.
+        let better = after_x < before_x
+            || (after_x == before_x && clears && !before_clears)
+            || (after_x == before_x
+                && clears
+                && before_clears
+                && new_len + 1.0 < lengths[gi]);
+        if better {
+            lengths[gi] = new_len;
+            // Fixed in place — peers' degrees already refreshed via index.
+            stuck.clear();
+        } else {
+            centers[gi] = before;
+            index.refresh_arrow(gi, centers, group_centroids);
+            stuck.insert(gi);
         }
     }
 }
@@ -1220,6 +1316,8 @@ fn segments_properly_cross(a: Pt, b: Pt, c: Pt, d: Pt) -> bool {
 fn visibility_route(
     start: Pt,
     goal: Pt,
+    src_c: Pt,
+    tgt_c: Pt,
     _src: &str,
     _tgt: &str,
     vis: &VisGraph,
@@ -1265,8 +1363,17 @@ fn visibility_route(
                         angle_penalty(nodes[prev], nodes[u], nodes[v]) + SEGMENT_PENALTY * 0.15
                     };
                     let share = shared_penalty(nodes[u], nodes[v], committed);
-                    let cross = crossing_penalty(nodes[u], nodes[v], committed);
-                    // Tip-on-shaft is tip-layout, not pathway cost.
+                    // Pathway-aware hops: leave/enter via centroids so tip
+                    // chords cannot hide an X that the centroid pathway sees.
+                    let cross = if u == 0 && v == 1 {
+                        crossing_penalty(src_c, tgt_c, committed)
+                    } else if u == 0 {
+                        crossing_penalty(src_c, nodes[v], committed)
+                    } else if v == 1 {
+                        crossing_penalty(nodes[u], tgt_c, committed)
+                    } else {
+                        crossing_penalty(nodes[u], nodes[v], committed)
+                    };
                     let cost = len + bend + share + cross;
                     Some(((v, u), ordered_float(cost)))
                 })
@@ -1873,6 +1980,8 @@ mod tests {
         let path = route_one_centerline(
             (50.0, 10.0),
             (50.0, 90.0),
+            (50.0, 10.0),
+            (50.0, 90.0),
             "a",
             "b",
             &skip,
@@ -1915,6 +2024,8 @@ mod tests {
         let path = route_one_centerline(
             (50.0, 10.0),
             (50.0, 90.0),
+            (50.0, 10.0),
+            (50.0, 90.0),
             "a",
             "b",
             &skip,
@@ -1953,6 +2064,8 @@ mod tests {
             "blocker hull verts must be linked on the boundary"
         );
         let path = visibility_route(
+            (50.0, 10.0),
+            (50.0, 90.0),
             (50.0, 10.0),
             (50.0, 90.0),
             "a",
@@ -1994,6 +2107,8 @@ mod tests {
         let world = LayoutWorld::new("scheme");
         let mol_ids: Vec<String> = Vec::new();
         let path = route_one_centerline(
+            (20.0, 0.0),
+            (20.0, 100.0),
             (20.0, 0.0),
             (20.0, 100.0),
             "a",
