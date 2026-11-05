@@ -172,10 +172,13 @@ pub fn route_scheme_edges(
         let skip: HashSet<&str> = skips[gi].iter().map(String::as_str).collect();
         let clash = clashes[gi];
 
+        // Only lock a draft straight when the *global* draft had no crossings
+        // with any other arrow — otherwise sequential commit order would keep
+        // an X that only shows up once the other draft is locked later.
         let keep_draft = drafts[gi].len() == 2
+            && draft_cross[gi] == 0
             && segment_clears_obstacles(start, goal, &obstacles, &skip)
             && chord_clears_ink(world, start, goal, mol_ids, &skip, clash)
-            && count_crossings_with(&drafts[gi], &committed) == 0
             && !tip_hits_committed_shaft(start, &committed)
             && !tip_hits_committed_shaft(goal, &committed);
 
@@ -286,20 +289,6 @@ fn count_poly_crossings(a: &[Pt], b: &[Pt]) -> usize {
     n
 }
 
-fn count_crossings_with(pts: &[Pt], committed: &[Committed]) -> usize {
-    let mut n = 0;
-    for w in pts.windows(2) {
-        for c in committed {
-            for &(p, q) in &c.segs {
-                if segments_properly_cross(w[0], w[1], p, q) {
-                    n += 1;
-                }
-            }
-        }
-    }
-    n
-}
-
 fn tip_hits_committed_shaft(tip: Pt, committed: &[Committed]) -> bool {
     for c in committed {
         for &(a, b) in &c.segs {
@@ -398,8 +387,8 @@ fn polyline_len(pts: &[Pt]) -> f64 {
         .sum()
 }
 
-/// If a tip sits on another arrow's open shaft it reads as a branch. Pull that
-/// tip toward its mol centroid (along the end chord) until clear.
+/// If a tip sits on another arrow's open shaft it reads as a branch. Nudge the
+/// tip off the shaft (perp away from it, then re-project onto the end ray).
 fn clear_tips_from_foreign_shafts(
     centers: &mut [Vec<Pt>],
     ends: &[(String, String)],
@@ -422,7 +411,7 @@ fn clear_tips_from_foreign_shafts(
         let (ref src, ref tgt) = ends[i];
         for &(end, mol_id) in &[(0usize, src.as_str()), (last, tgt.as_str())] {
             let tip = centers[i][end];
-            let Some((d, _)) = nearest_foreign_shaft(tip, i, &segs) else {
+            let Some((d, (sa, sb))) = nearest_foreign_shaft(tip, i, &segs) else {
                 continue;
             };
             if d >= TIP_SHAFT_CLEAR {
@@ -434,19 +423,21 @@ fn clear_tips_from_foreign_shafts(
             } else {
                 centers[i][last - 1]
             };
-            let pull = (TIP_SHAFT_CLEAR - d + 2.0).min(BOND_PX * 2.0);
-            let dx = mol_c.0 - tip.0;
-            let dy = mol_c.1 - tip.1;
-            let l = dx.hypot(dy).max(1e-9);
-            let mut new_tip = (tip.0 + dx / l * pull, tip.1 + dy / l * pull);
-            // Keep tip on the centroid→toward ray when possible.
+            // Perp away from the foreign shaft through the tip.
+            let (px, py) = unit((-(sb.1 - sa.1), sb.0 - sa.0));
+            let side = (tip.0 - sa.0) * px + (tip.1 - sa.1) * py;
+            let sign = if side >= 0.0 { 1.0 } else { -1.0 };
+            let need = (TIP_SHAFT_CLEAR - d + 2.0).min(BOND_PX * 2.0);
+            let mut new_tip = (tip.0 + px * sign * need, tip.1 + py * sign * need);
+            // Re-project onto the mol centroid → toward ray so the head still
+            // aims at the molecule.
             let rdx = toward.0 - mol_c.0;
             let rdy = toward.1 - mol_c.1;
             let rl = rdx.hypot(rdy).max(1e-9);
             let t_along =
                 ((new_tip.0 - mol_c.0) * rdx + (new_tip.1 - mol_c.1) * rdy) / (rl * rl);
             if t_along > 0.05 {
-                new_tip = (mol_c.0 + rdx * t_along, mol_c.1 + rdy * t_along);
+                new_tip = (mol_c.0 + rdx * t_along.max(0.05), mol_c.1 + rdy * t_along.max(0.05));
             }
             centers[i][end] = new_tip;
         }
