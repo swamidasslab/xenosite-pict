@@ -2,6 +2,10 @@
 //! visibility graph on inflated full-node-ink hulls with multi-penalty search.
 //!
 //! ELK places molecules only. Painted routes never reuse ELK edge sections.
+//!
+//! Intersection scoring uses **centroid→centroid pathways**. Tip hug (ink
+//! pose along the final approach) is a separate step and must not “clear”
+//! crossings by pulling ends back toward a centroid.
 
 use std::collections::{HashMap, HashSet};
 
@@ -22,7 +26,9 @@ type Pt = (f64, f64);
 /// Soft costs (libavoid-ish scales in document px).
 const SEGMENT_PENALTY: f64 = 80.0;
 const ANGLE_PENALTY: f64 = 120.0;
-const SHARED_PATH_PENALTY: f64 = 110.0;
+/// Soft cost for collinear overlap with a locked pathway — must dominate a
+/// short shared run so two arrows do not paint as one thick shaft.
+const SHARED_PATH_PENALTY: f64 = 400.0;
 /// Soft cost per crossing with an already-routed shaft. Must dominate a long
 /// clean detour (length + bends); otherwise Dijkstra hugs the near silhouette
 /// and "crosses" locked shafts instead of taking the far free-space side.
@@ -42,9 +48,6 @@ const ROUTING_CLEARANCE: f64 = SCHEME_INK_STANDOFF + 0.5 * 1.6;
 const NUDGE_PX: f64 = 8.0;
 const COTERMINAL_LANE_PX: f64 = 8.0;
 const COTERMINAL_PX: f64 = 8.0;
-/// Tip must sit at least this far from another arrow's open shaft (no false branch).
-const TIP_SHAFT_CLEAR: f64 = BOND_PX;
-
 struct ArrowGroup {
     members: Vec<usize>,
     reversed: Vec<bool>,
@@ -113,11 +116,12 @@ pub fn route_scheme_edges(
     // Visibility graph once per scheme (shared obstacle hull verts).
     let vis = build_visibility_graph(&obstacles);
 
-    // ---- Pass 1: draft every group as a direct tip–tip chord (or a
-    // mol-clearing detour with *empty* committed set). Intersection counts on
-    // this draft tell the second pass which arrows should go the long way.
+    // ---- Pass 1: draft every group as a *centroid→centroid* chord.
+    // Intersections are measured on these pathways — never on shortened tips.
+    // Tip hug is a separate step after pathways are locked.
     let mut drafts: Vec<Vec<Pt>> = Vec::with_capacity(groups.len());
     let mut group_ends: Vec<(String, String)> = Vec::with_capacity(groups.len());
+    let mut group_centroids: Vec<(Pt, Pt)> = Vec::with_capacity(groups.len());
     let mut tips: Vec<(Pt, Pt)> = Vec::with_capacity(groups.len());
     let mut skips: Vec<HashSet<String>> = Vec::with_capacity(groups.len());
     let mut clashes: Vec<f64> = Vec::with_capacity(groups.len());
@@ -130,8 +134,8 @@ pub fn route_scheme_edges(
         let tgt_c = centroids.get(&tgt).copied().unwrap_or((0.0, 0.0));
         let min_shaft = min_shaft_px(edge.stroke_width);
         let clash = shaft_chem_clash(edge.stroke_width, group.members.len());
-        // Ink tip first, then push onto/out of the inflated convex hull so
-        // visibility never needs to "skip" endpoint obstacles.
+        // Free-space terminals for the geometric router (outside inflated hulls).
+        // Crossing scores still use the centroid pathway, not these tips.
         let start = tip_outside_hull(
             &obstacles,
             &src,
@@ -148,43 +152,31 @@ pub fn route_scheme_edges(
         );
         let skip_owned: HashSet<String> = [src.clone(), tgt.clone()].into_iter().collect();
 
-        // Draft prefers the geometric direct line even when it hits ink — that
-        // is what reveals crossings. Real clearance comes in pass 2.
-        let draft = prune_close_controls(&[start, goal], CLOSE_CTRL_PX);
         tips.push((start, goal));
         skips.push(skip_owned);
         clashes.push(clash);
         group_ends.push((src, tgt));
-        drafts.push(if draft.len() >= 2 {
-            draft
-        } else {
-            vec![start, goal]
-        });
+        group_centroids.push((src_c, tgt_c));
+        // Draft chord is always centroid→centroid — even when it pierces ink.
+        drafts.push(vec![src_c, tgt_c]);
     }
 
     let draft_cross = draft_crossing_counts(&drafts);
 
-    // ---- Pass 2: lock clean straights first, then re-route high-crossing /
-    // mol-blocked arrows against the locked set (so a long detour beats two
-    // intersections with already-fixed corridors).
+    // ---- Pass 2: lock clean pathways first, then re-route high-crossing /
+    // mol-blocked arrows against the locked *centroid pathways*.
     let mut order: Vec<usize> = (0..groups.len()).collect();
     let empty_skip: HashSet<&str> = HashSet::new();
     order.sort_by_key(|&i| {
-        let straight_ok = drafts[i].len() == 2
-            && {
-                let ink_skip: HashSet<&str> = skips[i].iter().map(String::as_str).collect();
-                let (s, g) = tips[i];
-                // Hull check includes src/tgt — tips sit outside inflated hulls.
-                segment_clears_obstacles(s, g, &obstacles, &empty_skip)
-                    && chord_clears_ink(world, s, g, mol_ids, &ink_skip, clashes[i])
-            };
-        // Clean straights first. Within dirty tiers, few-crossing shafts
-        // lock first so the multi-cross long arrows route *last* against a
-        // full committed set (and take the outer detour instead of punching
-        // through while peers bow around them).
-        let tier = if straight_ok && draft_cross[i] == 0 {
+        let (s, g) = tips[i];
+        let ink_skip: HashSet<&str> = skips[i].iter().map(String::as_str).collect();
+        let tip_clear = segment_clears_obstacles(s, g, &obstacles, &empty_skip)
+            && chord_clears_ink(world, s, g, mol_ids, &ink_skip, clashes[i]);
+        // Clean tip chord + zero centroid-pathway crossings first. Within dirty
+        // tiers, few-crossing shafts lock first so multi-cross arrows route last.
+        let tier = if tip_clear && draft_cross[i] == 0 {
             0
-        } else if straight_ok {
+        } else if tip_clear {
             1
         } else {
             2
@@ -198,23 +190,21 @@ pub fn route_scheme_edges(
     for &gi in &order {
         let (src, tgt) = &group_ends[gi];
         let (start, goal) = tips[gi];
+        let (src_c, tgt_c) = group_centroids[gi];
         let skip: HashSet<&str> = skips[gi].iter().map(String::as_str).collect();
         let clash = clashes[gi];
 
-        // Only lock a draft straight when the *global* draft had no crossings
-        // with any other arrow — otherwise sequential commit order would keep
-        // an X that only shows up once the other draft is locked later.
-        let keep_draft = drafts[gi].len() == 2
-            && draft_cross[gi] == 0
+        // Lock a straight tip chord only when the centroid pathway has no
+        // crossings — tip shortening must not hide an X.
+        let keep_draft = draft_cross[gi] == 0
             && segment_clears_obstacles(start, goal, &obstacles, &empty_skip)
             && chord_clears_ink(world, start, goal, mol_ids, &skip, clash)
-            // Only arrivals on a shaft look like false branches — leave sources.
-            && !tip_hits_committed_shaft(goal, &committed);
+            && path_crosses_committed(&[src_c, tgt_c], &committed) == 0;
 
         let center = if keep_draft {
-            drafts[gi].clone()
+            vec![start, goal]
         } else {
-            // Against locked corridors: high crossing cost → long way around.
+            // Against locked centroid pathways: high crossing cost → detour.
             route_one_centerline(
                 start,
                 goal,
@@ -235,17 +225,16 @@ pub fn route_scheme_edges(
         } else {
             vec![start, goal]
         };
-        committed.push(Committed {
-            segs: center.windows(2).map(|w| (w[0], w[1])).collect(),
-        });
+        committed.push(committed_from_pathway(&center, src_c, tgt_c));
         group_centers[gi] = center;
     }
 
     // Sequential commit only prices crossings against *already* routed shafts.
-    // Re-optimize still-crossing arrows against the full peer set a few times.
+    // Re-optimize still-crossing pathways against the full peer set a few times.
     reoptimize_crossing_routes(
         &mut group_centers,
         &group_ends,
+        &group_centroids,
         &tips,
         &skips,
         &clashes,
@@ -255,33 +244,33 @@ pub fn route_scheme_edges(
         &vis,
     );
 
-    // Pull arrival tips off foreign shafts so they do not look like branches.
-    clear_tips_from_foreign_shafts(&mut group_centers, &group_ends, &centroids);
-    // Final string-pull must not reopen a locked X: only accept a shortcut that
-    // clears hulls *and* does not add crossings with sibling centerlines.
+    // Final string-pull must not reopen a locked pathway X.
     for gi in 0..group_centers.len() {
+        let (src_c, tgt_c) = group_centroids[gi];
         let others: Vec<Committed> = group_centers
             .iter()
             .enumerate()
             .filter(|&(j, _)| j != gi)
-            .map(|(_, c)| Committed {
-                segs: c.windows(2).map(|w| (w[0], w[1])).collect(),
+            .map(|(j, c)| {
+                let (sc, tc) = group_centroids[j];
+                committed_from_pathway(c, sc, tc)
             })
             .collect();
         let before = group_centers[gi].clone();
-        // Empty skip: shortcuts must clear endpoint hulls too; committed peers
-        // keep the pull from reopening an X.
         let pulled = string_pull(&before, &obstacles, &empty_skip, &others);
-        if path_clears_obstacles(&pulled, &obstacles, &empty_skip)
-            && path_crosses_committed(&pulled, &others)
-                <= path_crosses_committed(&before, &others)
-        {
+        let before_x = path_crosses_committed(
+            &extend_to_centroids(&before, src_c, tgt_c),
+            &others,
+        );
+        let after_x =
+            path_crosses_committed(&extend_to_centroids(&pulled, src_c, tgt_c), &others);
+        if path_clears_obstacles(&pulled, &obstacles, &empty_skip) && after_x <= before_x {
             group_centers[gi] = pulled;
         }
     }
 
-    // Tips were seeded on the centroid–centroid ray. After a side approach the
-    // last chord no longer aims at the target — re-hug along the final approach.
+    // ---- Tip layout (separate from pathway routing): hug ink along the
+    // final approach rays. Does not participate in intersection scoring.
     resnap_tips_to_approach_rays(
         &mut group_centers,
         &group_ends,
@@ -293,7 +282,7 @@ pub fn route_scheme_edges(
         &groups,
     );
 
-    nudge_shared_corridors(&mut group_centers);
+    nudge_shared_corridors(&mut group_centers, &group_centroids);
 
     let edge_list = spec.edges();
     for (gi, group) in groups.iter().enumerate() {
@@ -363,21 +352,33 @@ fn count_poly_crossings(a: &[Pt], b: &[Pt]) -> usize {
     n
 }
 
-fn tip_hits_committed_shaft(tip: Pt, committed: &[Committed]) -> bool {
-    for c in committed {
-        for &(a, b) in &c.segs {
-            let (d, t) = point_seg_dist(tip, a, b);
-            if (0.12..=0.88).contains(&t) && d < TIP_SHAFT_CLEAR {
-                return true;
-            }
-        }
+/// Prepend/append centroids so crossing tests see the full mol→mol pathway,
+/// not a tip-shortened shaft that can hide an X by pulling back.
+fn extend_to_centroids(path: &[Pt], src_c: Pt, tgt_c: Pt) -> Vec<Pt> {
+    if path.is_empty() {
+        return vec![src_c, tgt_c];
     }
-    false
+    let mut out = Vec::with_capacity(path.len() + 2);
+    if dist(path[0], src_c) > 1e-6 {
+        out.push(src_c);
+    }
+    out.extend_from_slice(path);
+    if dist(*path.last().unwrap(), tgt_c) > 1e-6 {
+        out.push(tgt_c);
+    }
+    out
 }
 
-/// Straight chord first when it also clears already-locked shafts; else
+fn committed_from_pathway(path: &[Pt], src_c: Pt, tgt_c: Pt) -> Committed {
+    let pts = extend_to_centroids(path, src_c, tgt_c);
+    Committed {
+        segs: pts.windows(2).map(|w| (w[0], w[1])).collect(),
+    }
+}
+
+/// Straight chord first when it also clears already-locked pathways; else
 /// visibility + string-pull. Never replace a clean detour with a bow that
-/// reintroduces crossings.
+/// reintroduces crossings. Tip-on-shaft is *not* a routing concern.
 fn route_one_centerline(
     start: Pt,
     goal: Pt,
@@ -395,10 +396,9 @@ fn route_one_centerline(
     let mol_clear = segment_clears_obstacles(start, goal, obstacles, &empty)
         && chord_clears_ink(world, start, goal, mol_ids, skip, clash);
     let crosses_locked = path_crosses_committed(&[start, goal], committed) > 0;
-    let tip_bad = tip_hits_committed_shaft(goal, committed);
     // Pass-2 must actually re-route against the locked set. A mol-clear chord
-    // that still crosses a locked shaft (or lands on one) is not done.
-    if mol_clear && !crosses_locked && !tip_bad {
+    // that still crosses a locked pathway is not done.
+    if mol_clear && !crosses_locked {
         return prune_close_controls(&[start, goal], CLOSE_CTRL_PX);
     }
 
@@ -409,7 +409,6 @@ fn route_one_centerline(
     if pulled.len() == 2
         && pulled_ok
         && path_crosses_committed(&pulled, committed) == 0
-        && !tip_hits_committed_shaft(pulled[pulled.len() - 1], committed)
     {
         return pulled;
     }
@@ -530,12 +529,11 @@ fn polyline_len(pts: &[Pt]) -> f64 {
         .sum()
 }
 
-/// Re-route groups that still properly cross a peer, with all other shafts
-/// treated as committed — so intersection cost applies even when the peer was
-/// routed later in the sequential pass.
+/// Re-route groups whose *centroid pathways* still properly cross a peer.
 fn reoptimize_crossing_routes(
     centers: &mut [Vec<Pt>],
     ends: &[(String, String)],
+    group_centroids: &[(Pt, Pt)],
     tips: &[(Pt, Pt)],
     skips: &[HashSet<String>],
     clashes: &[f64],
@@ -553,7 +551,7 @@ fn reoptimize_crossing_routes(
     let mut stuck: HashSet<usize> = HashSet::new();
     for _ in 0..REOPT_PASSES {
         let mut crossers: Vec<(usize, usize)> = (0..n)
-            .map(|i| (count_crossings_with_peers(i, centers), i))
+            .map(|i| (count_pathway_crossings_with_peers(i, centers, group_centroids), i))
             .filter(|(c, i)| *c > 0 && !stuck.contains(i))
             .collect();
         if crossers.is_empty() {
@@ -564,7 +562,7 @@ fn reoptimize_crossing_routes(
         let mut improved = false;
         for &(_, gi) in &crossers {
             let before = centers[gi].clone();
-            let before_x = count_crossings_with_peers(gi, centers);
+            let before_x = count_pathway_crossings_with_peers(gi, centers, group_centroids);
             if before_x == 0 {
                 continue;
             }
@@ -572,8 +570,9 @@ fn reoptimize_crossing_routes(
                 .iter()
                 .enumerate()
                 .filter(|&(j, _)| j != gi)
-                .map(|(_, c)| Committed {
-                    segs: c.windows(2).map(|w| (w[0], w[1])).collect(),
+                .map(|(j, c)| {
+                    let (sc, tc) = group_centroids[j];
+                    committed_from_pathway(c, sc, tc)
                 })
                 .collect();
             let (src, tgt) = &ends[gi];
@@ -597,9 +596,9 @@ fn reoptimize_crossing_routes(
                 stuck.insert(gi);
                 continue;
             }
-            // Temporarily install to score peer crossings.
+            // Temporarily install to score peer *pathway* crossings.
             centers[gi] = candidate;
-            let after_x = count_crossings_with_peers(gi, centers);
+            let after_x = count_pathway_crossings_with_peers(gi, centers, group_centroids);
             let empty = HashSet::new();
             let clears = path_clears_obstacles(&centers[gi], obstacles, &empty);
             let before_clears = path_clears_obstacles(&before, obstacles, &empty);
@@ -627,13 +626,21 @@ fn reoptimize_crossing_routes(
     }
 }
 
-fn count_crossings_with_peers(i: usize, centers: &[Vec<Pt>]) -> usize {
+fn count_pathway_crossings_with_peers(
+    i: usize,
+    centers: &[Vec<Pt>],
+    group_centroids: &[(Pt, Pt)],
+) -> usize {
+    let (sc_i, tc_i) = group_centroids[i];
+    let a = extend_to_centroids(&centers[i], sc_i, tc_i);
     let mut n = 0;
     for (j, other) in centers.iter().enumerate() {
         if j == i {
             continue;
         }
-        n += count_poly_crossings(&centers[i], other);
+        let (sc_j, tc_j) = group_centroids[j];
+        let b = extend_to_centroids(other, sc_j, tc_j);
+        n += count_poly_crossings(&a, &b);
     }
     n
 }
@@ -684,11 +691,9 @@ fn resnap_tips_to_approach_rays(
             tgt_c,
             prev,
         );
-        // Keep the resnap only when the new end chords still clear hulls and
-        // do not reopen a crossing with another shaft.
+        // Tip layout only cares about hull clearance — pathway crossings are
+        // already decided and must not be "fixed" by pulling tips back.
         let empty = HashSet::new();
-        let before = centers[gi].clone();
-        let before_x = count_crossings_with_peers(gi, centers);
         if segment_clears_obstacles(start, next, obstacles, &empty) {
             centers[gi][0] = start;
         }
@@ -697,104 +702,7 @@ fn resnap_tips_to_approach_rays(
             centers[gi][last] = goal;
         }
         centers[gi] = prune_close_controls(&centers[gi], CLOSE_CTRL_PX);
-        if count_crossings_with_peers(gi, centers) > before_x {
-            centers[gi] = before;
-        }
     }
-}
-
-/// If an *arrival* tip sits on another arrow's open shaft it reads as a branch.
-/// Only nudge target tips. Pulling source tips back left a fake gap that forced
-/// long neighbors to dodge under a mol instead of over the top.
-fn clear_tips_from_foreign_shafts(
-    centers: &mut [Vec<Pt>],
-    ends: &[(String, String)],
-    centroids: &HashMap<String, Pt>,
-) {
-    let n = centers.len();
-    if n < 2 {
-        return;
-    }
-    let segs: Vec<Vec<(Pt, Pt)>> = centers
-        .iter()
-        .map(|c| c.windows(2).map(|w| (w[0], w[1])).collect())
-        .collect();
-
-    for i in 0..n {
-        if centers[i].len() < 2 {
-            continue;
-        }
-        let last = centers[i].len() - 1;
-        let tgt = ends[i].1.as_str();
-        // Target tip only (arrival).
-        let end = last;
-        let tip = centers[i][end];
-        let Some((d, (sa, sb))) = nearest_foreign_shaft(tip, i, &segs) else {
-            centers[i] = prune_close_controls(&centers[i], CLOSE_CTRL_PX);
-            continue;
-        };
-        if d >= TIP_SHAFT_CLEAR {
-            centers[i] = prune_close_controls(&centers[i], CLOSE_CTRL_PX);
-            continue;
-        }
-        let mol_c = centroids.get(tgt).copied().unwrap_or(tip);
-        let toward = centers[i][last - 1];
-        // Perp away from the foreign shaft through the tip.
-        let (px, py) = unit((-(sb.1 - sa.1), sb.0 - sa.0));
-        let side = (tip.0 - sa.0) * px + (tip.1 - sa.1) * py;
-        let sign = if side >= 0.0 { 1.0 } else { -1.0 };
-        let need = (TIP_SHAFT_CLEAR - d + 2.0).min(BOND_PX * 2.0);
-        let mut new_tip = (tip.0 + px * sign * need, tip.1 + py * sign * need);
-        // Re-project onto the mol centroid → toward ray so the head still
-        // aims at the molecule. Cap outward travel so we do not invent a gap.
-        let rdx = toward.0 - mol_c.0;
-        let rdy = toward.1 - mol_c.1;
-        let rl = rdx.hypot(rdy).max(1e-9);
-        let t0 = ((tip.0 - mol_c.0) * rdx + (tip.1 - mol_c.1) * rdy) / (rl * rl);
-        let t_along =
-            ((new_tip.0 - mol_c.0) * rdx + (new_tip.1 - mol_c.1) * rdy) / (rl * rl);
-        // Keep the tip no farther from the mol than it already was.
-        let t = t_along.clamp(0.05, t0.max(0.05));
-        new_tip = (mol_c.0 + rdx * t, mol_c.1 + rdy * t);
-        centers[i][end] = new_tip;
-        centers[i] = prune_close_controls(&centers[i], CLOSE_CTRL_PX);
-    }
-}
-
-fn nearest_foreign_shaft(
-    tip: Pt,
-    self_i: usize,
-    segs: &[Vec<(Pt, Pt)>],
-) -> Option<(f64, (Pt, Pt))> {
-    let mut best: Option<(f64, (Pt, Pt))> = None;
-    for (j, js) in segs.iter().enumerate() {
-        if j == self_i {
-            continue;
-        }
-        for &(a, b) in js {
-            let (d, t) = point_seg_dist(tip, a, b);
-            // Ignore near the foreign shaft's own terminals (shared mol tips).
-            if !(0.12..=0.88).contains(&t) {
-                continue;
-            }
-            if best.map(|(bd, _)| d < bd).unwrap_or(true) {
-                best = Some((d, (a, b)));
-            }
-        }
-    }
-    best
-}
-
-fn point_seg_dist(p: Pt, a: Pt, b: Pt) -> (f64, f64) {
-    let vx = b.0 - a.0;
-    let vy = b.1 - a.1;
-    let l2 = vx * vx + vy * vy;
-    if l2 < 1e-12 {
-        return (dist(p, a), 0.0);
-    }
-    let t = (((p.0 - a.0) * vx + (p.1 - a.1) * vy) / l2).clamp(0.0, 1.0);
-    let q = (a.0 + t * vx, a.1 + t * vy);
-    (dist(p, q), t)
 }
 
 fn build_obstacles(mol_ids: &[String], world: &LayoutWorld, inflate: f64) -> Vec<Obstacle> {
@@ -1358,13 +1266,8 @@ fn visibility_route(
                     };
                     let share = shared_penalty(nodes[u], nodes[v], committed);
                     let cross = crossing_penalty(nodes[u], nodes[v], committed);
-                    // Landing the *arrival* on an open shaft looks like a branch.
-                    let tip_hit = if v == 1 {
-                        tip_on_shaft_penalty(nodes[v], committed)
-                    } else {
-                        0.0
-                    };
-                    let cost = len + bend + share + cross + tip_hit;
+                    // Tip-on-shaft is tip-layout, not pathway cost.
+                    let cost = len + bend + share + cross;
                     Some(((v, u), ordered_float(cost)))
                 })
                 .collect::<Vec<_>>()
@@ -1387,19 +1290,6 @@ fn visibility_route(
         return fallback_bow(start, goal, obstacles, &empty_skip, committed);
     }
     pts
-}
-
-fn tip_on_shaft_penalty(p: Pt, committed: &[Committed]) -> f64 {
-    let mut pen = 0.0;
-    for c in committed {
-        for &(a, b) in &c.segs {
-            let (d, t) = point_seg_dist(p, a, b);
-            if (0.12..=0.88).contains(&t) && d < TIP_SHAFT_CLEAR {
-                pen += 300.0 * (1.0 - d / TIP_SHAFT_CLEAR);
-            }
-        }
-    }
-    pen
 }
 
 fn link_terminal(
@@ -1539,7 +1429,7 @@ fn angle_penalty(a: Pt, b: Pt, c: Pt) -> f64 {
 }
 
 /// Separate remaining shared / near-collinear corridor runs into parallel tracks.
-fn nudge_shared_corridors(centers: &mut [Vec<Pt>]) {
+fn nudge_shared_corridors(centers: &mut [Vec<Pt>], group_centroids: &[(Pt, Pt)]) {
     let n = centers.len();
     if n < 2 {
         return;
@@ -1556,7 +1446,7 @@ fn nudge_shared_corridors(centers: &mut [Vec<Pt>]) {
             if !polylines_share_corridor(&a, &b) {
                 continue;
             }
-            let before_x = count_crossings_with_peers(j, centers);
+            let before_x = count_pathway_crossings_with_peers(j, centers, group_centroids);
             let (px, py) = corridor_normal(&a);
             let mut cand = offset_polyline(&b, NUDGE_PX);
             // Flip if offset moved toward a.
@@ -1569,9 +1459,9 @@ fn nudge_shared_corridors(centers: &mut [Vec<Pt>]) {
                 cand = offset_polyline(&b, -NUDGE_PX);
             }
             let _ = (px, py);
-            // Never reopen an X just to parallel-track shared corridors.
+            // Never reopen a pathway X just to parallel-track shared corridors.
             centers[j] = cand;
-            if count_crossings_with_peers(j, centers) > before_x {
+            if count_pathway_crossings_with_peers(j, centers, group_centroids) > before_x {
                 centers[j] = b;
             }
         }
@@ -1890,6 +1780,28 @@ mod tests {
 
 
     #[test]
+    fn tip_shortening_does_not_hide_centroid_pathway_cross() {
+        // Short painted shafts miss each other; centroid pathways still cross.
+        let src_a = (0.0, 0.0);
+        let tgt_a = (100.0, 100.0);
+        let src_b = (0.0, 100.0);
+        let tgt_b = (100.0, 0.0);
+        let short_a = vec![(5.0, 5.0), (30.0, 30.0)];
+        let short_b = vec![(5.0, 95.0), (30.0, 70.0)];
+        assert_eq!(
+            count_poly_crossings(&short_a, &short_b),
+            0,
+            "short tips must not cross"
+        );
+        let path_a = extend_to_centroids(&short_a, src_a, tgt_a);
+        let path_b = extend_to_centroids(&short_b, src_b, tgt_b);
+        assert!(
+            count_poly_crossings(&path_a, &path_b) > 0,
+            "centroid pathways must still count the X: {path_a:?} vs {path_b:?}"
+        );
+    }
+
+    #[test]
     fn reoptimize_untangles_sequential_blind_cross() {
         // Simulate pass-2 order blindness: A routed first as a straight, B
         // later as a crossing straight (no peers priced for A). Reopt must
@@ -1902,9 +1814,16 @@ mod tests {
             vec![(0.0, 0.0), (100.0, 100.0)],
             vec![(0.0, 100.0), (100.0, 0.0)],
         ];
-        assert_eq!(count_crossings_with_peers(0, &centers), 1);
         let ends = vec![("a".into(), "b".into()), ("c".into(), "d".into())];
-        let tips = [(centers[0][0], centers[0][1]), (centers[1][0], centers[1][1])];
+        let group_centroids = [
+            (centers[0][0], centers[0][1]),
+            (centers[1][0], centers[1][1]),
+        ];
+        assert_eq!(
+            count_pathway_crossings_with_peers(0, &centers, &group_centroids),
+            1
+        );
+        let tips = group_centroids;
         let skips = [
             HashSet::from(["a".into(), "b".into()]),
             HashSet::from(["c".into(), "d".into()]),
@@ -1913,6 +1832,7 @@ mod tests {
         reoptimize_crossing_routes(
             &mut centers,
             &ends,
+            &group_centroids,
             &tips,
             &skips,
             &clashes,
@@ -1922,11 +1842,14 @@ mod tests {
             &vis,
         );
         assert_eq!(
-            count_crossings_with_peers(0, &centers),
+            count_pathway_crossings_with_peers(0, &centers, &group_centroids),
             0,
             "reopt must clear the X once both shafts exist: {centers:?}"
         );
-        assert_eq!(count_crossings_with_peers(1, &centers), 0);
+        assert_eq!(
+            count_pathway_crossings_with_peers(1, &centers, &group_centroids),
+            0
+        );
     }
 
     #[test]

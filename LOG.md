@@ -2,6 +2,12 @@
 
 ## 2026-11-05
 
+- Intersection scoring is centroid→centroid pathways only. Tip hug is a later
+  paint step — pulling tips back toward a centroid must not “clear” an X, and
+  tip-on-shaft / clear_tips were removed from routing (they also collapsed two
+  arrows onto one corridor). Shared-path penalty raised so overlays lose.
+
+
 - Mol captions sat `margin` below the *global* structure AABB, so a dangling
   sugar (Doxorubicin) opened a large gap under the rings. Gap now uses the
   median local ink edge under the label span (and ink-mass centroid for
