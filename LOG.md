@@ -2,6 +2,10 @@
 
 ## 2026-11-05
 
+- Visibility already found 4-point hull walks (m0→m4/m6); `prefer_simpler`
+  then swapped them for the 2-point punch because fewer bends. Rank by
+  hull-clearance first; only simplify among clear candidates.
+
 - `segment_hits_convex` used closed point-in-polygon, so inflated-hull
   *boundary* edges counted as hits. Graph build skipped self for those edges,
   but string-pull / empty-skip validation rejected every walk-around → Dijkstra

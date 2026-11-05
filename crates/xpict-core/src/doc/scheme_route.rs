@@ -244,7 +244,10 @@ pub fn route_scheme_edges(
         let before = group_centers[gi].clone();
         // Empty skip: shortcuts must clear endpoint hulls too.
         let pulled = string_pull(&before, &obstacles, &empty_skip);
-        if path_crosses_committed(&pulled, &others) <= path_crosses_committed(&before, &others) {
+        if path_clears_obstacles(&pulled, &obstacles, &empty_skip)
+            && path_crosses_committed(&pulled, &others)
+                <= path_crosses_committed(&before, &others)
+        {
             group_centers[gi] = pulled;
         }
     }
@@ -362,7 +365,9 @@ fn route_one_centerline(
     let vis_path = visibility_route(start, goal, src, tgt, vis, obstacles, committed);
     // String-pull must not cut through endpoint hulls either.
     let pulled = string_pull(&vis_path, obstacles, &empty);
+    let pulled_ok = path_clears_obstacles(&pulled, obstacles, &empty);
     if pulled.len() == 2
+        && pulled_ok
         && path_crosses_committed(&pulled, committed) == 0
         && !tip_hits_committed_shaft(pulled[0], committed)
         && !tip_hits_committed_shaft(pulled[1], committed)
@@ -371,15 +376,42 @@ fn route_one_centerline(
     }
 
     let bow = fallback_bow(start, goal, obstacles, &empty, committed);
-    let pulled_x = path_crosses_committed(&pulled, committed);
-    let bow_x = path_crosses_committed(&bow, committed);
-    if bow_x < pulled_x {
-        return bow;
+    let bow_ok = path_clears_obstacles(&bow, obstacles, &empty);
+    // A hull-clear visibility detour always beats a punch-through "simpler"
+    // chord (prefer_simpler used to discard 4-point walks for 2-point pierces).
+    match (pulled_ok, bow_ok) {
+        (true, false) => return pulled,
+        (false, true) => return bow,
+        (true, true) => {
+            let pulled_x = path_crosses_committed(&pulled, committed);
+            let bow_x = path_crosses_committed(&bow, committed);
+            if bow_x < pulled_x {
+                return bow;
+            }
+            if bow_x > pulled_x {
+                return pulled;
+            }
+            return prefer_simpler_path(&pulled, &bow);
+        }
+        (false, false) => {
+            // Last resort: keep the longer non-trivial path if either has bends.
+            if pulled.len() >= 3 {
+                return pulled;
+            }
+            if bow.len() >= 3 {
+                return bow;
+            }
+            pulled
+        }
     }
-    if bow_x > pulled_x {
-        return pulled;
+}
+
+fn path_clears_obstacles(pts: &[Pt], obstacles: &[Obstacle], skip: &HashSet<&str>) -> bool {
+    if pts.len() < 2 {
+        return false;
     }
-    prefer_simpler_path(&pulled, &bow)
+    pts.windows(2)
+        .all(|w| segment_clears_obstacles(w[0], w[1], obstacles, skip))
 }
 
 fn path_crosses_committed(pts: &[Pt], committed: &[Committed]) -> usize {
@@ -1520,6 +1552,42 @@ mod tests {
         assert_eq!(got.len(), 3, "single bow should win: {got:?}");
     }
 
+
+    #[test]
+    fn route_one_keeps_visibility_detour_over_punch() {
+        // Visibility finds a walk; fallback_bow's last resort is the piercing
+        // chord. Must not prefer that "simpler" 2-point path.
+        let square = vec![(40.0, 40.0), (60.0, 40.0), (60.0, 60.0), (40.0, 60.0)];
+        let obstacles = vec![Obstacle {
+            mol_id: "blocker".into(),
+            hull: inflate_convex(&square, 2.0),
+        }];
+        let vis = build_visibility_graph(&obstacles);
+        let skip = HashSet::new();
+        let world = LayoutWorld::new("scheme");
+        let mol_ids: Vec<String> = Vec::new();
+        let path = route_one_centerline(
+            (50.0, 10.0),
+            (50.0, 90.0),
+            "a",
+            "b",
+            &skip,
+            &world,
+            &mol_ids,
+            2.0,
+            &obstacles,
+            &vis,
+            &[],
+        );
+        assert!(
+            path.len() >= 3,
+            "must keep the visibility walk, not punch: {path:?}"
+        );
+        assert!(
+            path_clears_obstacles(&path, &obstacles, &skip),
+            "kept path must clear the blocker: {path:?}"
+        );
+    }
 
     #[test]
     fn visibility_finds_left_detour_around_blocker() {
