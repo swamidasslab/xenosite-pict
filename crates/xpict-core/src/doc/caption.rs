@@ -107,6 +107,128 @@ fn annotation_occupancy_from_scene(scene: &Scene) -> Occupancy {
     occ
 }
 
+/// Bond / heteroatom ink as per-primitive AABBs (not one union box) so a
+/// caption can snug into silhouette notches beside dangling groups.
+fn structure_occupancy_from_scene(scene: &Scene) -> Occupancy {
+    let mut occ = Occupancy::new();
+    for vp in &scene.viewports {
+        let (ox, oy) = vp.local_origin();
+        for layer in &vp.layers {
+            for p in &layer.primitives {
+                if !is_structure_class(prim_class(p)) {
+                    continue;
+                }
+                add_prim_to_occupancy(&mut occ, p, ox, oy);
+            }
+        }
+    }
+    occ
+}
+
+const LOCAL_EDGE_SAMPLES: usize = 11;
+
+/// Bottom of structure ink under `[x0, x1]`: median of per-column maxima so a
+/// dangling sugar in one corner does not push the whole caption down to the
+/// global AABB.
+fn local_structure_bottom(occ: &Occupancy, x0: f64, x1: f64) -> Option<f64> {
+    local_structure_extent(occ, x0, x1, true)
+}
+
+fn local_structure_top(occ: &Occupancy, x0: f64, x1: f64) -> Option<f64> {
+    local_structure_extent(occ, x0, x1, false)
+}
+
+fn local_structure_extent(occ: &Occupancy, x0: f64, x1: f64, want_bottom: bool) -> Option<f64> {
+    if occ.aabbs.is_empty() {
+        return None;
+    }
+    let lo = x0.min(x1);
+    let hi = x0.max(x1);
+    let span = (hi - lo).max(1.0);
+    let mut samples = Vec::with_capacity(LOCAL_EDGE_SAMPLES);
+    for i in 0..LOCAL_EDGE_SAMPLES {
+        let t = i as f64 / (LOCAL_EDGE_SAMPLES - 1) as f64;
+        let x = lo + span * t;
+        let mut edge = if want_bottom {
+            f64::NEG_INFINITY
+        } else {
+            f64::INFINITY
+        };
+        let mut hit = false;
+        for a in &occ.aabbs {
+            if a.x1 < x || a.x0 > x {
+                continue;
+            }
+            hit = true;
+            if want_bottom {
+                edge = edge.max(a.y1);
+            } else {
+                edge = edge.min(a.y0);
+            }
+        }
+        if hit && edge.is_finite() {
+            samples.push(edge);
+        }
+    }
+    median_f64(&mut samples)
+}
+
+fn local_structure_left(occ: &Occupancy, y0: f64, y1: f64) -> Option<f64> {
+    local_structure_side(occ, y0, y1, true)
+}
+
+fn local_structure_right(occ: &Occupancy, y0: f64, y1: f64) -> Option<f64> {
+    local_structure_side(occ, y0, y1, false)
+}
+
+fn local_structure_side(occ: &Occupancy, y0: f64, y1: f64, want_left: bool) -> Option<f64> {
+    if occ.aabbs.is_empty() {
+        return None;
+    }
+    let lo = y0.min(y1);
+    let hi = y0.max(y1);
+    let span = (hi - lo).max(1.0);
+    let mut samples = Vec::with_capacity(LOCAL_EDGE_SAMPLES);
+    for i in 0..LOCAL_EDGE_SAMPLES {
+        let t = i as f64 / (LOCAL_EDGE_SAMPLES - 1) as f64;
+        let y = lo + span * t;
+        let mut edge = if want_left {
+            f64::INFINITY
+        } else {
+            f64::NEG_INFINITY
+        };
+        let mut hit = false;
+        for a in &occ.aabbs {
+            if a.y1 < y || a.y0 > y {
+                continue;
+            }
+            hit = true;
+            if want_left {
+                edge = edge.min(a.x0);
+            } else {
+                edge = edge.max(a.x1);
+            }
+        }
+        if hit && edge.is_finite() {
+            samples.push(edge);
+        }
+    }
+    median_f64(&mut samples)
+}
+
+fn median_f64(vals: &mut [f64]) -> Option<f64> {
+    if vals.is_empty() {
+        return None;
+    }
+    vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let n = vals.len();
+    if n % 2 == 1 {
+        Some(vals[n / 2])
+    } else {
+        Some(0.5 * (vals[n / 2 - 1] + vals[n / 2]))
+    }
+}
+
 fn add_prim_to_occupancy(occ: &mut Occupancy, p: &Primitive, ox: f64, oy: f64) {
     let mut x0 = f64::INFINITY;
     let mut y0 = f64::INFINITY;
@@ -298,7 +420,10 @@ struct PlacedCaption {
 ///
 /// Prefers privileged [`MolNode::name`]; also paints legacy [`MolNode::label`]
 /// text-node refs. Captions use chem markup. Gap to mol ink uses typographic
-/// **ascent**; viewBox / stack extent uses **descent** (not glyph outline AABB).
+/// **ascent** against the *local* silhouette under/ beside the label (median
+/// of column/row samples), not the global structure AABB — so a dangling
+/// sugar does not open a gap under the rest of the mol. ViewBox / stack
+/// extent uses **descent** (not glyph outline AABB).
 ///
 /// Call **after** chrome constraints are solved — the name is not a layout
 /// DOF. Placement snugs to structure, then nudges clear of regions and other
@@ -345,8 +470,12 @@ pub fn apply_mol_captions(spec: &DepictSpec, node: &MolNode, mut scene: Scene) -
     // Center and gap against the molecule structure, not chrome annotations.
     let (mol_x0, mol_y0, mol_x1, mol_y1) =
         structure_aabb(&scene).unwrap_or((0.0, 0.0, mol_w, mol_h));
-    let cx = (mol_x0 + mol_x1) * 0.5;
-    let cy = (mol_y0 + mol_y1) * 0.5;
+    let struct_occ = structure_occupancy_from_scene(&scene);
+    // Prefer ink-mass centroid so a dangling sugar does not drag the name
+    // under the stub; fall back to the structure AABB center.
+    let (cx, cy) = struct_occ
+        .centroid()
+        .unwrap_or(((mol_x0 + mol_x1) * 0.5, (mol_y0 + mol_y1) * 0.5));
 
     let mut above: Vec<&CaptionInk> = Vec::new();
     let mut below: Vec<&CaptionInk> = Vec::new();
@@ -370,8 +499,11 @@ pub fn apply_mol_captions(spec: &DepictSpec, node: &MolNode, mut scene: Scene) -
 
     let mut placed: Vec<PlacedCaption> = Vec::new();
 
-    // Below: margin from mol ink → typographic ascent; stack by descent.
+    // Below: margin from *local* ink under the label span (median column),
+    // not the global structure AABB — dangling groups must not open a gap
+    // under the rest of the silhouette.
     let mut stack_top = mol_y1;
+    let mut below_first = true;
     for ink in below {
         let anchor = "middle";
         let Some((tx0, _ty0, tx1, _ty1)) = markup_bounds_at_origin(&ink.text, ink.font_px, anchor)
@@ -379,9 +511,15 @@ pub fn apply_mol_captions(spec: &DepictSpec, node: &MolNode, mut scene: Scene) -
             continue;
         };
         let (asc, desc) = markup_ascent_descent_px(ink.font_px);
+        let x = cx;
+        if below_first {
+            let local = local_structure_bottom(&struct_occ, tx0 + x, tx1 + x).unwrap_or(mol_y1);
+            // Never sit farther than the global AABB seed.
+            stack_top = local.min(mol_y1);
+            below_first = false;
+        }
         // Ascent line sits margin below mol (or previous caption descent).
         let baseline = stack_top + ink.margin + asc;
-        let x = cx;
         let bounds = (tx0 + x, baseline - asc, tx1 + x, baseline + desc);
         stack_top = bounds.3;
         placed.push(PlacedCaption {
@@ -399,8 +537,9 @@ pub fn apply_mol_captions(spec: &DepictSpec, node: &MolNode, mut scene: Scene) -
         });
     }
 
-    // Above: margin from mol ink → typographic descent; stack by ascent.
+    // Above: same local-edge idea, stacked by ascent.
     let mut stack_bottom = mol_y0;
+    let mut above_first = true;
     for ink in above {
         let anchor = "middle";
         let Some((tx0, _ty0, tx1, _ty1)) = markup_bounds_at_origin(&ink.text, ink.font_px, anchor)
@@ -408,8 +547,13 @@ pub fn apply_mol_captions(spec: &DepictSpec, node: &MolNode, mut scene: Scene) -
             continue;
         };
         let (asc, desc) = markup_ascent_descent_px(ink.font_px);
-        let baseline = stack_bottom - ink.margin - desc;
         let x = cx;
+        if above_first {
+            let local = local_structure_top(&struct_occ, tx0 + x, tx1 + x).unwrap_or(mol_y0);
+            stack_bottom = local.max(mol_y0);
+            above_first = false;
+        }
+        let baseline = stack_bottom - ink.margin - desc;
         let bounds = (tx0 + x, baseline - asc, tx1 + x, baseline + desc);
         stack_bottom = bounds.1;
         placed.push(PlacedCaption {
@@ -427,7 +571,7 @@ pub fn apply_mol_captions(spec: &DepictSpec, node: &MolNode, mut scene: Scene) -
         });
     }
 
-    // Left / right: snug to mol sides; vertically center the em box on mol.
+    // Left / right: snug to local silhouette along the em-box height.
     for ink in left {
         let anchor = "end";
         let Some((tx0, _ty0, tx1, _ty1)) = markup_bounds_at_origin(&ink.text, ink.font_px, anchor)
@@ -435,10 +579,12 @@ pub fn apply_mol_captions(spec: &DepictSpec, node: &MolNode, mut scene: Scene) -
             continue;
         };
         let (asc, desc) = markup_ascent_descent_px(ink.font_px);
-        let target_right = mol_x0 - ink.margin - LABEL_PAD_X_PX;
-        let x = target_right - tx1;
         let em_h = asc + desc;
         let y = cy - em_h * 0.5 + asc; // baseline so em box is centered
+        let local_x0 =
+            local_structure_left(&struct_occ, y - asc, y + desc).unwrap_or(mol_x0);
+        let target_right = local_x0.max(mol_x0) - ink.margin - LABEL_PAD_X_PX;
+        let x = target_right - tx1;
         let bounds = (tx0 + x, y - asc, tx1 + x, y + desc);
         placed.push(PlacedCaption {
             ink: CaptionInk {
@@ -461,10 +607,12 @@ pub fn apply_mol_captions(spec: &DepictSpec, node: &MolNode, mut scene: Scene) -
             continue;
         };
         let (asc, desc) = markup_ascent_descent_px(ink.font_px);
-        let target_left = mol_x1 + ink.margin + LABEL_PAD_X_PX;
-        let x = target_left - tx0;
         let em_h = asc + desc;
         let y = cy - em_h * 0.5 + asc;
+        let local_x1 =
+            local_structure_right(&struct_occ, y - asc, y + desc).unwrap_or(mol_x1);
+        let target_left = local_x1.min(mol_x1) + ink.margin + LABEL_PAD_X_PX;
+        let x = target_left - tx0;
         let bounds = (tx0 + x, y - asc, tx1 + x, y + desc);
         placed.push(PlacedCaption {
             ink: CaptionInk {
@@ -894,6 +1042,25 @@ mod tests {
         assert!(
             data.iter().any(|t| t.contains('₁') || t.contains('R')),
             "expected markup data_text, got {data:?}"
+        );
+    }
+
+    #[test]
+    fn local_structure_bottom_ignores_corner_stub() {
+        let mut occ = Occupancy::new();
+        // Broad shelf — the silhouette the name should hug.
+        occ.add_aabb(Aabb::new(0.0, 0.0, 80.0, 40.0));
+        // Dangling stub far below on the right (sugar-like).
+        occ.add_aabb(Aabb::new(70.0, 40.0, 100.0, 100.0));
+        let global = 100.0;
+        let local = local_structure_bottom(&occ, 10.0, 90.0).expect("local");
+        assert!(
+            local < 55.0,
+            "median local bottom {local} must ignore the stub at y=100 (global={global})"
+        );
+        assert!(
+            local > 30.0,
+            "local bottom {local} should still see the shelf at y=40"
         );
     }
 

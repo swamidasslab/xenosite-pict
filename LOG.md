@@ -2,6 +2,11 @@
 
 ## 2026-11-05
 
+- Mol captions sat `margin` below the *global* structure AABB, so a dangling
+  sugar (Doxorubicin) opened a large gap under the rings. Gap now uses the
+  median local ink edge under the label span (and ink-mass centroid for
+  centering) so the name can snug into the silhouette.
+
 - Sequential commit underprices crossings until both shafts exist. Fix: after
   pass-2, reoptimize still-crossing arrows a few times against the full peer
   set; string-pull must not collapse a priced zero-crossing walk back into an
