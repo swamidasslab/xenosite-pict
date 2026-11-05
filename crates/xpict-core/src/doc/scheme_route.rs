@@ -20,16 +20,20 @@ use super::{DepictSpec, DocPaint, EdgeNode};
 type Pt = (f64, f64);
 
 /// Soft costs (libavoid-ish scales in document px).
-const SEGMENT_PENALTY: f64 = 50.0;
-const ANGLE_PENALTY: f64 = 50.0;
+const SEGMENT_PENALTY: f64 = 80.0;
+const ANGLE_PENALTY: f64 = 120.0;
 const SHARED_PATH_PENALTY: f64 = 110.0;
-const CROSSING_PENALTY: f64 = 200.0;
+/// Soft cost per crossing with an already-routed shaft. High enough that two
+/// crossings lose to a longer clean detour (libavoid ~200; we go higher).
+const CROSSING_PENALTY: f64 = 450.0;
 /// Inflate full-ink hulls by this before visibility (shapeBufferDistance).
 const ROUTING_CLEARANCE: f64 = SCHEME_INK_STANDOFF + 0.5 * 1.6;
 /// Parallel-track gap after shared corridors (idealNudgingDistance).
 const NUDGE_PX: f64 = 8.0;
 const COTERMINAL_LANE_PX: f64 = 8.0;
 const COTERMINAL_PX: f64 = 8.0;
+/// Tip must sit at least this far from another arrow's open shaft (no false branch).
+const TIP_SHAFT_CLEAR: f64 = BOND_PX;
 
 struct ArrowGroup {
     members: Vec<usize>,
@@ -99,8 +103,14 @@ pub fn route_scheme_edges(
     // Visibility graph once per scheme (shared obstacle hull verts).
     let vis = build_visibility_graph(&obstacles);
 
-    let mut committed: Vec<Committed> = Vec::new();
-    let mut group_centers: Vec<Vec<Pt>> = Vec::with_capacity(groups.len());
+    // ---- Pass 1: draft every group as a direct tip–tip chord (or a
+    // mol-clearing detour with *empty* committed set). Intersection counts on
+    // this draft tell the second pass which arrows should go the long way.
+    let mut drafts: Vec<Vec<Pt>> = Vec::with_capacity(groups.len());
+    let mut group_ends: Vec<(String, String)> = Vec::with_capacity(groups.len());
+    let mut tips: Vec<(Pt, Pt)> = Vec::with_capacity(groups.len());
+    let mut skips: Vec<HashSet<String>> = Vec::with_capacity(groups.len());
+    let mut clashes: Vec<f64> = Vec::with_capacity(groups.len());
 
     for group in &groups {
         let rep = group.members[0];
@@ -110,17 +120,82 @@ pub fn route_scheme_edges(
         let tgt_c = centroids.get(&tgt).copied().unwrap_or((0.0, 0.0));
         let min_shaft = min_shaft_px(edge.stroke_width);
         let clash = shaft_chem_clash(edge.stroke_width, group.members.len());
-
         let start = tip_pose(world, &src, src_c, tgt_c, clash, min_shaft);
         let goal = tip_pose(world, &tgt, tgt_c, src_c, clash, min_shaft);
+        let skip_owned: HashSet<String> = [src.clone(), tgt.clone()].into_iter().collect();
 
-        let skip: HashSet<&str> = [src.as_str(), tgt.as_str()].into_iter().collect();
-        let center = if segment_clears_obstacles(start, goal, &obstacles, &skip)
-            && chord_clears_ink(world, start, goal, mol_ids, &skip, clash)
-        {
-            prune_close_controls(&[start, goal], CLOSE_CTRL_PX)
+        // Draft prefers the geometric direct line even when it hits ink — that
+        // is what reveals crossings. Real clearance comes in pass 2.
+        let draft = prune_close_controls(&[start, goal], CLOSE_CTRL_PX);
+        tips.push((start, goal));
+        skips.push(skip_owned);
+        clashes.push(clash);
+        group_ends.push((src, tgt));
+        drafts.push(if draft.len() >= 2 {
+            draft
         } else {
-            visibility_route(start, goal, &src, &tgt, &vis, &obstacles, &committed)
+            vec![start, goal]
+        });
+    }
+
+    let draft_cross = draft_crossing_counts(&drafts);
+
+    // ---- Pass 2: lock clean straights first, then re-route high-crossing /
+    // mol-blocked arrows against the locked set (so a long detour beats two
+    // intersections with already-fixed corridors).
+    let mut order: Vec<usize> = (0..groups.len()).collect();
+    order.sort_by_key(|&i| {
+        let straight_ok = drafts[i].len() == 2
+            && {
+                let skip: HashSet<&str> = skips[i].iter().map(String::as_str).collect();
+                let (s, g) = tips[i];
+                segment_clears_obstacles(s, g, &obstacles, &skip)
+                    && chord_clears_ink(world, s, g, mol_ids, &skip, clashes[i])
+            };
+        // Clean straights first (0), then few crossings, then many.
+        let tier = if straight_ok && draft_cross[i] == 0 {
+            0
+        } else if straight_ok {
+            1
+        } else {
+            2
+        };
+        (tier, std::cmp::Reverse(draft_cross[i]), i)
+    });
+
+    let mut group_centers: Vec<Vec<Pt>> = vec![Vec::new(); groups.len()];
+    let mut committed: Vec<Committed> = Vec::new();
+
+    for &gi in &order {
+        let (src, tgt) = &group_ends[gi];
+        let (start, goal) = tips[gi];
+        let skip: HashSet<&str> = skips[gi].iter().map(String::as_str).collect();
+        let clash = clashes[gi];
+
+        let keep_draft = drafts[gi].len() == 2
+            && segment_clears_obstacles(start, goal, &obstacles, &skip)
+            && chord_clears_ink(world, start, goal, mol_ids, &skip, clash)
+            && count_crossings_with(&drafts[gi], &committed) == 0
+            && !tip_hits_committed_shaft(start, &committed)
+            && !tip_hits_committed_shaft(goal, &committed);
+
+        let center = if keep_draft {
+            drafts[gi].clone()
+        } else {
+            // Against locked corridors: high crossing cost → long way around.
+            route_one_centerline(
+                start,
+                goal,
+                src,
+                tgt,
+                &skip,
+                world,
+                mol_ids,
+                clash,
+                &obstacles,
+                &vis,
+                &committed,
+            )
         };
 
         let center = if center.len() >= 2 {
@@ -128,10 +203,17 @@ pub fn route_scheme_edges(
         } else {
             vec![start, goal]
         };
-        group_centers.push(center.clone());
         committed.push(Committed {
             segs: center.windows(2).map(|w| (w[0], w[1])).collect(),
         });
+        group_centers[gi] = center;
+    }
+
+    // Pull tips off foreign shafts so an arrival does not look like a branch.
+    clear_tips_from_foreign_shafts(&mut group_centers, &group_ends, &centroids);
+    for (gi, center) in group_centers.iter_mut().enumerate() {
+        let skip: HashSet<&str> = skips[gi].iter().map(String::as_str).collect();
+        *center = string_pull(center, &obstacles, &skip);
     }
 
     nudge_shared_corridors(&mut group_centers);
@@ -174,6 +256,238 @@ pub fn route_scheme_edges(
     }
 
     RouteResult { paths: out }
+}
+
+/// How many other draft polylines each draft properly crosses.
+fn draft_crossing_counts(drafts: &[Vec<Pt>]) -> Vec<usize> {
+    let n = drafts.len();
+    let mut counts = vec![0usize; n];
+    for i in 0..n {
+        for j in (i + 1)..n {
+            let c = count_poly_crossings(&drafts[i], &drafts[j]);
+            if c > 0 {
+                counts[i] += c;
+                counts[j] += c;
+            }
+        }
+    }
+    counts
+}
+
+fn count_poly_crossings(a: &[Pt], b: &[Pt]) -> usize {
+    let mut n = 0;
+    for w in a.windows(2) {
+        for z in b.windows(2) {
+            if segments_properly_cross(w[0], w[1], z[0], z[1]) {
+                n += 1;
+            }
+        }
+    }
+    n
+}
+
+fn count_crossings_with(pts: &[Pt], committed: &[Committed]) -> usize {
+    let mut n = 0;
+    for w in pts.windows(2) {
+        for c in committed {
+            for &(p, q) in &c.segs {
+                if segments_properly_cross(w[0], w[1], p, q) {
+                    n += 1;
+                }
+            }
+        }
+    }
+    n
+}
+
+fn tip_hits_committed_shaft(tip: Pt, committed: &[Committed]) -> bool {
+    for c in committed {
+        for &(a, b) in &c.segs {
+            let (d, t) = point_seg_dist(tip, a, b);
+            if (0.12..=0.88).contains(&t) && d < TIP_SHAFT_CLEAR {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Straight chord first; else visibility + string-pull, preferring a simple
+/// single bow when the visibility path is windy for little gain.
+fn route_one_centerline(
+    start: Pt,
+    goal: Pt,
+    src: &str,
+    tgt: &str,
+    skip: &HashSet<&str>,
+    world: &LayoutWorld,
+    mol_ids: &[String],
+    clash: f64,
+    obstacles: &[Obstacle],
+    vis: &VisGraph,
+    committed: &[Committed],
+) -> Vec<Pt> {
+    if segment_clears_obstacles(start, goal, obstacles, skip)
+        && chord_clears_ink(world, start, goal, mol_ids, skip, clash)
+    {
+        return prune_close_controls(&[start, goal], CLOSE_CTRL_PX);
+    }
+
+    let vis_path = visibility_route(start, goal, src, tgt, vis, obstacles, committed);
+    let pulled = string_pull(&vis_path, obstacles, skip);
+    // If string-pull opened a near-straight corridor, keep it.
+    if pulled.len() == 2 {
+        return pulled;
+    }
+
+    let bow = fallback_bow(start, goal, obstacles, skip);
+    prefer_simpler_path(&pulled, &bow)
+}
+
+/// Remove intermediate verts when the chord still clears obstacles (classic
+/// string-pull / funnel). Stops hull-hugging when a straighter cut exists.
+fn string_pull(pts: &[Pt], obstacles: &[Obstacle], skip: &HashSet<&str>) -> Vec<Pt> {
+    if pts.len() < 3 {
+        return prune_close_controls(pts, CLOSE_CTRL_PX);
+    }
+    let mut out = vec![pts[0]];
+    let mut i = 0;
+    while i < pts.len() - 1 {
+        let mut j = pts.len() - 1;
+        while j > i + 1 {
+            if segment_clears_obstacles(pts[i], pts[j], obstacles, skip) {
+                break;
+            }
+            j -= 1;
+        }
+        out.push(pts[j]);
+        i = j;
+    }
+    prune_close_controls(&out, CLOSE_CTRL_PX)
+}
+
+/// Prefer fewer elbows when length is comparable (within ~25%).
+fn prefer_simpler_path(a: &[Pt], b: &[Pt]) -> Vec<Pt> {
+    let la = polyline_len(a);
+    let lb = polyline_len(b);
+    if a.len() < 2 {
+        return b.to_vec();
+    }
+    if b.len() < 2 {
+        return a.to_vec();
+    }
+    let bends_a = a.len().saturating_sub(2);
+    let bends_b = b.len().saturating_sub(2);
+    // Same bend count → shorter. Fewer bends wins if not much longer.
+    if bends_b < bends_a && lb <= la * 1.25 + BOND_PX {
+        return b.to_vec();
+    }
+    if bends_a < bends_b && la <= lb * 1.25 + BOND_PX {
+        return a.to_vec();
+    }
+    if la <= lb {
+        a.to_vec()
+    } else {
+        b.to_vec()
+    }
+}
+
+fn polyline_len(pts: &[Pt]) -> f64 {
+    pts.windows(2)
+        .map(|w| dist(w[0], w[1]))
+        .sum()
+}
+
+/// If a tip sits on another arrow's open shaft it reads as a branch. Pull that
+/// tip toward its mol centroid (along the end chord) until clear.
+fn clear_tips_from_foreign_shafts(
+    centers: &mut [Vec<Pt>],
+    ends: &[(String, String)],
+    centroids: &HashMap<String, Pt>,
+) {
+    let n = centers.len();
+    if n < 2 {
+        return;
+    }
+    let segs: Vec<Vec<(Pt, Pt)>> = centers
+        .iter()
+        .map(|c| c.windows(2).map(|w| (w[0], w[1])).collect())
+        .collect();
+
+    for i in 0..n {
+        if centers[i].len() < 2 {
+            continue;
+        }
+        let last = centers[i].len() - 1;
+        let (ref src, ref tgt) = ends[i];
+        for &(end, mol_id) in &[(0usize, src.as_str()), (last, tgt.as_str())] {
+            let tip = centers[i][end];
+            let Some((d, _)) = nearest_foreign_shaft(tip, i, &segs) else {
+                continue;
+            };
+            if d >= TIP_SHAFT_CLEAR {
+                continue;
+            }
+            let mol_c = centroids.get(mol_id).copied().unwrap_or(tip);
+            let toward = if end == 0 {
+                centers[i][1]
+            } else {
+                centers[i][last - 1]
+            };
+            let pull = (TIP_SHAFT_CLEAR - d + 2.0).min(BOND_PX * 2.0);
+            let dx = mol_c.0 - tip.0;
+            let dy = mol_c.1 - tip.1;
+            let l = dx.hypot(dy).max(1e-9);
+            let mut new_tip = (tip.0 + dx / l * pull, tip.1 + dy / l * pull);
+            // Keep tip on the centroid→toward ray when possible.
+            let rdx = toward.0 - mol_c.0;
+            let rdy = toward.1 - mol_c.1;
+            let rl = rdx.hypot(rdy).max(1e-9);
+            let t_along =
+                ((new_tip.0 - mol_c.0) * rdx + (new_tip.1 - mol_c.1) * rdy) / (rl * rl);
+            if t_along > 0.05 {
+                new_tip = (mol_c.0 + rdx * t_along, mol_c.1 + rdy * t_along);
+            }
+            centers[i][end] = new_tip;
+        }
+        centers[i] = prune_close_controls(&centers[i], CLOSE_CTRL_PX);
+    }
+}
+
+fn nearest_foreign_shaft(
+    tip: Pt,
+    self_i: usize,
+    segs: &[Vec<(Pt, Pt)>],
+) -> Option<(f64, (Pt, Pt))> {
+    let mut best: Option<(f64, (Pt, Pt))> = None;
+    for (j, js) in segs.iter().enumerate() {
+        if j == self_i {
+            continue;
+        }
+        for &(a, b) in js {
+            let (d, t) = point_seg_dist(tip, a, b);
+            // Ignore near the foreign shaft's own terminals (shared mol tips).
+            if !(0.12..=0.88).contains(&t) {
+                continue;
+            }
+            if best.map(|(bd, _)| d < bd).unwrap_or(true) {
+                best = Some((d, (a, b)));
+            }
+        }
+    }
+    best
+}
+
+fn point_seg_dist(p: Pt, a: Pt, b: Pt) -> (f64, f64) {
+    let vx = b.0 - a.0;
+    let vy = b.1 - a.1;
+    let l2 = vx * vx + vy * vy;
+    if l2 < 1e-12 {
+        return (dist(p, a), 0.0);
+    }
+    let t = (((p.0 - a.0) * vx + (p.1 - a.1) * vy) / l2).clamp(0.0, 1.0);
+    let q = (a.0 + t * vx, a.1 + t * vy);
+    (dist(p, q), t)
 }
 
 fn build_obstacles(mol_ids: &[String], world: &LayoutWorld, inflate: f64) -> Vec<Obstacle> {
@@ -609,7 +923,13 @@ fn visibility_route(
                     };
                     let share = shared_penalty(nodes[u], nodes[v], committed);
                     let cross = crossing_penalty(nodes[u], nodes[v], committed);
-                    let cost = len + bend + share + cross;
+                    // Landing a new tip on an open shaft looks like a branch.
+                    let tip_hit = if v == 1 || u == 0 {
+                        tip_on_shaft_penalty(nodes[v], committed)
+                    } else {
+                        0.0
+                    };
+                    let cost = len + bend + share + cross + tip_hit;
                     Some(((v, u), ordered_float(cost)))
                 })
                 .collect::<Vec<_>>()
@@ -627,11 +947,24 @@ fn visibility_route(
         }
     }
     let mut pts: Vec<Pt> = idxs.into_iter().map(|i| nodes[i]).collect();
-    pts = prune_close_controls(&pts, CLOSE_CTRL_PX);
+    pts = string_pull(&pts, obstacles, &skip_end);
     if pts.len() < 2 {
         return fallback_bow(start, goal, obstacles, &skip_end);
     }
     pts
+}
+
+fn tip_on_shaft_penalty(p: Pt, committed: &[Committed]) -> f64 {
+    let mut pen = 0.0;
+    for c in committed {
+        for &(a, b) in &c.segs {
+            let (d, t) = point_seg_dist(p, a, b);
+            if (0.12..=0.88).contains(&t) && d < TIP_SHAFT_CLEAR {
+                pen += 300.0 * (1.0 - d / TIP_SHAFT_CLEAR);
+            }
+        }
+    }
+    pen
 }
 
 fn link_terminal(
@@ -1018,5 +1351,48 @@ mod tests {
         let (path, cost) = result.expect("path");
         assert_eq!(path, vec![0, 1, 2, 3]);
         assert_eq!(cost, 3);
+    }
+
+    #[test]
+    fn string_pull_drops_hull_hug_when_chord_clears() {
+        let empty: Vec<Obstacle> = Vec::new();
+        let skip = HashSet::new();
+        let windy = vec![
+            (0.0, 0.0),
+            (10.0, 0.0),
+            (10.0, 10.0),
+            (20.0, 10.0),
+            (20.0, 0.0),
+            (30.0, 0.0),
+        ];
+        let pulled = string_pull(&windy, &empty, &skip);
+        assert_eq!(
+            pulled.len(),
+            2,
+            "open space must collapse to a straight chord: {pulled:?}"
+        );
+    }
+
+    #[test]
+    fn draft_crossing_counts_see_an_x() {
+        let a = vec![(0.0, 0.0), (10.0, 10.0)];
+        let b = vec![(0.0, 10.0), (10.0, 0.0)];
+        let c = vec![(20.0, 0.0), (30.0, 0.0)];
+        let counts = draft_crossing_counts(&[a, b, c]);
+        assert_eq!(counts, vec![1, 1, 0]);
+    }
+
+    #[test]
+    fn prefer_simpler_takes_single_bow_over_windy() {
+        let windy = vec![
+            (0.0, 0.0),
+            (5.0, 20.0),
+            (10.0, 5.0),
+            (15.0, 20.0),
+            (20.0, 0.0),
+        ];
+        let bow = vec![(0.0, 0.0), (10.0, 12.0), (20.0, 0.0)];
+        let got = prefer_simpler_path(&windy, &bow);
+        assert_eq!(got.len(), 3, "single bow should win: {got:?}");
     }
 }

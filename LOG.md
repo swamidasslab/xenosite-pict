@@ -2,6 +2,12 @@
 
 ## 2026-11-04
 
+- Scheme routing is two-pass: draft every edge as a direct tip–tip chord to
+  see crossings, lock clean straights, then re-route mol-blocked / multi-cross
+  offenders against the locked set (high crossing penalty so a long detour
+  beats two intersections). String-pull collapses hull hugs; tips pull off
+  foreign shafts so arrivals do not look like branches.
+
 - Soft mol nudge before shaft routing (`scheme_nudge`): when a centroid chord
   is blocked, try small perpendicular moves of the blocker (≤3 bonds) if the
   boxes stay clear; then route. Prefer opening a straight corridor over a bow
