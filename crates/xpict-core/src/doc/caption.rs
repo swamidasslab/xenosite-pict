@@ -1065,6 +1065,41 @@ mod tests {
     }
 
     #[test]
+    fn doxorubicin_name_lifts_above_sugar_aabb() {
+        // Sugar hangs below the tetracycle; the name must not sit on the global
+        // ink AABB (that left a large gap under the rings).
+        let json = r#"{
+            "type":"mol",
+            "smiles":"COc1cccc2c1C(=O)c1c(O)c3c(c(O)c1C2=O)C[C@@](O)(C(=O)CO)C[C@@H]3O[C@H]1C[C@H](N)[C@H](O)[C@H](C)O1",
+            "name":"Doxorubicin"
+        }"#;
+        let spec: DepictSpec = serde_json::from_str(json).unwrap();
+        let scene = crate::doc::depict(&spec).expect("depict").remove(0).scene;
+        let (_x0, _y0, _x1, global_y1) = structure_aabb(&scene).expect("structure");
+        let mut cap_y0 = f64::INFINITY;
+        for p in overlay_prims(&scene) {
+            if let Primitive::Path {
+                d,
+                class: Some(c),
+                ..
+            } = p
+            {
+                if c.contains("mol-caption-metrics") {
+                    for (_, y) in path_xy(d) {
+                        cap_y0 = cap_y0.min(y);
+                    }
+                }
+            }
+        }
+        assert!(cap_y0.is_finite(), "expected Doxorubicin caption metrics");
+        let global_seed = global_y1 + CAPTION_MARGIN_DEFAULT;
+        assert!(
+            cap_y0 + 6.0 < global_seed,
+            "name should lift above the sugar AABB seed: cap_y0={cap_y0:.1} global_seed={global_seed:.1}"
+        );
+    }
+
+    #[test]
     fn below_placement_gap_uses_ascent_not_glyph_ink() {
         let margin = 8.0_f64;
         let mol_y1 = 100.0_f64;
