@@ -1949,7 +1949,9 @@ mod tests {
     }
 
     #[test]
-    fn refine_keeps_seed_crossing() {
+    fn refine_detours_seed_crossing() {
+        // Draft A–B / C–D chords make an X; pass-2 must re-route so at least
+        // one bows clear of the other (ELK edge geometry is discarded).
         let spec = scheme(vec![
             mol_node("A"),
             mol_node("B"),
@@ -1994,8 +1996,12 @@ mod tests {
         let a = refined.edge_paths[0].clone().expect("e0");
         let b = refined.edge_paths[1].clone().expect("e1");
         assert!(
-            shapes_properly_cross(&Shape::Polyline(a.clone()), &Shape::Polyline(b.clone())),
-            "ELK X must remain after refine: {a:?} vs {b:?}"
+            !shapes_properly_cross(&Shape::Polyline(a.clone()), &Shape::Polyline(b.clone())),
+            "draft X must be detoured away: {a:?} vs {b:?}"
+        );
+        assert!(
+            a.len() >= 3 || b.len() >= 3,
+            "at least one shaft should bow: {a:?} / {b:?}"
         );
     }
 

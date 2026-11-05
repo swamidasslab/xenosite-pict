@@ -1,6 +1,27 @@
 # Lab log
 
+## 2026-11-05
+
+- `segment_hits_convex` used closed point-in-polygon, so inflated-hull
+  *boundary* edges counted as hits. Graph build skipped self for those edges,
+  but string-pull / empty-skip validation rejected every walk-around → Dijkstra
+  fell back to punching the chord. Fix: strict-interior hit test so boundary
+  walks are legal; unit test `visibility_finds_left_detour_around_blocker`.
+
+- Visibility graph was incomplete: K-nearest inter-hull links + terminal caps
+  dropped long left/right corridors; terminal/start–goal clearance also
+  *skipped* src/tgt hulls so short chords tunneled through endpoint ink and
+  beat real detours on cost. Fix: full inter-obstacle visibility, tips pushed
+  outside inflated hulls, clearance never skips endpoint obstacles. Dijkstra
+  stays min-cost (length+bend+share+cross); the graph must contain the detour.
+
 ## 2026-11-04
+
+- Pass-2 was a no-op for mol-clear X's: `route_one_centerline` early-returned
+  the straight chord whenever hulls were clear, ignoring locked shafts. Also
+  stride-`simplify_hull` shrunk inflated obstacles inward. Fix: only keep a
+  straight when it clears locked corridors + tips; prefer bows with fewer
+  crossings; keep full inflated hulls; final string-pull must not reopen an X.
 
 - Scheme routing is two-pass: draft every edge as a direct tip–tip chord to
   see crossings, lock clean straights, then re-route mol-blocked / multi-cross
