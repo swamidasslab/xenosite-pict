@@ -228,7 +228,7 @@ pub fn route_scheme_edges(
         group_centers[gi] = center;
     }
 
-    // Pull tips off foreign shafts so an arrival does not look like a branch.
+    // Pull arrival tips off foreign shafts so they do not look like branches.
     clear_tips_from_foreign_shafts(&mut group_centers, &group_ends, &centroids);
     // Final string-pull must not reopen a locked X: only accept a shortcut that
     // clears hulls *and* does not add crossings with sibling centerlines.
@@ -251,6 +251,19 @@ pub fn route_scheme_edges(
             group_centers[gi] = pulled;
         }
     }
+
+    // Tips were seeded on the centroid–centroid ray. After a side approach the
+    // last chord no longer aims at the target — re-hug along the final approach.
+    resnap_tips_to_approach_rays(
+        &mut group_centers,
+        &group_ends,
+        &centroids,
+        world,
+        &obstacles,
+        &clashes,
+        spec,
+        &groups,
+    );
 
     nudge_shared_corridors(&mut group_centers);
 
@@ -478,6 +491,61 @@ fn polyline_len(pts: &[Pt]) -> f64 {
     pts.windows(2)
         .map(|w| dist(w[0], w[1]))
         .sum()
+}
+
+/// Place start/end tips on the rays `src_centroid → path[1]` and
+/// `tgt_centroid → path[n-2]` so end chords aim at the centroids after a bow.
+fn resnap_tips_to_approach_rays(
+    centers: &mut [Vec<Pt>],
+    ends: &[(String, String)],
+    centroids: &HashMap<String, Pt>,
+    world: &LayoutWorld,
+    obstacles: &[Obstacle],
+    clashes: &[f64],
+    spec: &DepictSpec,
+    groups: &[ArrowGroup],
+) {
+    let edges = spec.edges();
+    for (gi, center) in centers.iter_mut().enumerate() {
+        if center.len() < 2 {
+            continue;
+        }
+        let (ref src, ref tgt) = ends[gi];
+        let src_c = centroids.get(src).copied().unwrap_or(center[0]);
+        let tgt_c = centroids.get(tgt).copied().unwrap_or(center[center.len() - 1]);
+        let clash = clashes.get(gi).copied().unwrap_or(SCHEME_INK_STANDOFF);
+        let min_shaft = groups
+            .get(gi)
+            .and_then(|g| edges.get(g.members[0]))
+            .map(|e| min_shaft_px(e.stroke_width))
+            .unwrap_or_else(|| min_shaft_px(None));
+        let next = center[1];
+        let prev = center[center.len() - 2];
+        let start = tip_outside_hull(
+            obstacles,
+            src,
+            tip_pose(world, src, src_c, next, clash, min_shaft),
+            src_c,
+            next,
+        );
+        let goal = tip_outside_hull(
+            obstacles,
+            tgt,
+            tip_pose(world, tgt, tgt_c, prev, clash, min_shaft),
+            tgt_c,
+            prev,
+        );
+        // Keep the resnap only when the new end chords still clear hulls.
+        let empty = HashSet::new();
+        if segment_clears_obstacles(start, next, obstacles, &empty) {
+            center[0] = start;
+        }
+        if segment_clears_obstacles(prev, goal, obstacles, &empty) {
+            let last = center.len() - 1;
+            center[last] = goal;
+        }
+        *center = prune_close_controls(center, CLOSE_CTRL_PX);
+    }
 }
 
 /// If an *arrival* tip sits on another arrow's open shaft it reads as a branch.
