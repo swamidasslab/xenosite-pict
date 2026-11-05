@@ -195,7 +195,7 @@ pub fn route_scheme_edges(
             && draft_cross[gi] == 0
             && segment_clears_obstacles(start, goal, &obstacles, &empty_skip)
             && chord_clears_ink(world, start, goal, mol_ids, &skip, clash)
-            && !tip_hits_committed_shaft(start, &committed)
+            // Only arrivals on a shaft look like false branches — leave sources.
             && !tip_hits_committed_shaft(goal, &committed);
 
         let center = if keep_draft {
@@ -354,8 +354,7 @@ fn route_one_centerline(
     let mol_clear = segment_clears_obstacles(start, goal, obstacles, &empty)
         && chord_clears_ink(world, start, goal, mol_ids, skip, clash);
     let crosses_locked = path_crosses_committed(&[start, goal], committed) > 0;
-    let tip_bad = tip_hits_committed_shaft(start, committed)
-        || tip_hits_committed_shaft(goal, committed);
+    let tip_bad = tip_hits_committed_shaft(goal, committed);
     // Pass-2 must actually re-route against the locked set. A mol-clear chord
     // that still crosses a locked shaft (or lands on one) is not done.
     if mol_clear && !crosses_locked && !tip_bad {
@@ -369,8 +368,7 @@ fn route_one_centerline(
     if pulled.len() == 2
         && pulled_ok
         && path_crosses_committed(&pulled, committed) == 0
-        && !tip_hits_committed_shaft(pulled[0], committed)
-        && !tip_hits_committed_shaft(pulled[1], committed)
+        && !tip_hits_committed_shaft(pulled[pulled.len() - 1], committed)
     {
         return pulled;
     }
@@ -482,8 +480,9 @@ fn polyline_len(pts: &[Pt]) -> f64 {
         .sum()
 }
 
-/// If a tip sits on another arrow's open shaft it reads as a branch. Nudge the
-/// tip off the shaft (perp away from it, then re-project onto the end ray).
+/// If an *arrival* tip sits on another arrow's open shaft it reads as a branch.
+/// Only nudge target tips. Pulling source tips back left a fake gap that forced
+/// long neighbors to dodge under a mol instead of over the top.
 fn clear_tips_from_foreign_shafts(
     centers: &mut [Vec<Pt>],
     ends: &[(String, String)],
@@ -503,39 +502,38 @@ fn clear_tips_from_foreign_shafts(
             continue;
         }
         let last = centers[i].len() - 1;
-        let (ref src, ref tgt) = ends[i];
-        for &(end, mol_id) in &[(0usize, src.as_str()), (last, tgt.as_str())] {
-            let tip = centers[i][end];
-            let Some((d, (sa, sb))) = nearest_foreign_shaft(tip, i, &segs) else {
-                continue;
-            };
-            if d >= TIP_SHAFT_CLEAR {
-                continue;
-            }
-            let mol_c = centroids.get(mol_id).copied().unwrap_or(tip);
-            let toward = if end == 0 {
-                centers[i][1]
-            } else {
-                centers[i][last - 1]
-            };
-            // Perp away from the foreign shaft through the tip.
-            let (px, py) = unit((-(sb.1 - sa.1), sb.0 - sa.0));
-            let side = (tip.0 - sa.0) * px + (tip.1 - sa.1) * py;
-            let sign = if side >= 0.0 { 1.0 } else { -1.0 };
-            let need = (TIP_SHAFT_CLEAR - d + 2.0).min(BOND_PX * 2.0);
-            let mut new_tip = (tip.0 + px * sign * need, tip.1 + py * sign * need);
-            // Re-project onto the mol centroid → toward ray so the head still
-            // aims at the molecule.
-            let rdx = toward.0 - mol_c.0;
-            let rdy = toward.1 - mol_c.1;
-            let rl = rdx.hypot(rdy).max(1e-9);
-            let t_along =
-                ((new_tip.0 - mol_c.0) * rdx + (new_tip.1 - mol_c.1) * rdy) / (rl * rl);
-            if t_along > 0.05 {
-                new_tip = (mol_c.0 + rdx * t_along.max(0.05), mol_c.1 + rdy * t_along.max(0.05));
-            }
-            centers[i][end] = new_tip;
+        let tgt = ends[i].1.as_str();
+        // Target tip only (arrival).
+        let end = last;
+        let tip = centers[i][end];
+        let Some((d, (sa, sb))) = nearest_foreign_shaft(tip, i, &segs) else {
+            centers[i] = prune_close_controls(&centers[i], CLOSE_CTRL_PX);
+            continue;
+        };
+        if d >= TIP_SHAFT_CLEAR {
+            centers[i] = prune_close_controls(&centers[i], CLOSE_CTRL_PX);
+            continue;
         }
+        let mol_c = centroids.get(tgt).copied().unwrap_or(tip);
+        let toward = centers[i][last - 1];
+        // Perp away from the foreign shaft through the tip.
+        let (px, py) = unit((-(sb.1 - sa.1), sb.0 - sa.0));
+        let side = (tip.0 - sa.0) * px + (tip.1 - sa.1) * py;
+        let sign = if side >= 0.0 { 1.0 } else { -1.0 };
+        let need = (TIP_SHAFT_CLEAR - d + 2.0).min(BOND_PX * 2.0);
+        let mut new_tip = (tip.0 + px * sign * need, tip.1 + py * sign * need);
+        // Re-project onto the mol centroid → toward ray so the head still
+        // aims at the molecule. Cap outward travel so we do not invent a gap.
+        let rdx = toward.0 - mol_c.0;
+        let rdy = toward.1 - mol_c.1;
+        let rl = rdx.hypot(rdy).max(1e-9);
+        let t0 = ((tip.0 - mol_c.0) * rdx + (tip.1 - mol_c.1) * rdy) / (rl * rl);
+        let t_along =
+            ((new_tip.0 - mol_c.0) * rdx + (new_tip.1 - mol_c.1) * rdy) / (rl * rl);
+        // Keep the tip no farther from the mol than it already was.
+        let t = t_along.clamp(0.05, t0.max(0.05));
+        new_tip = (mol_c.0 + rdx * t, mol_c.1 + rdy * t);
+        centers[i][end] = new_tip;
         centers[i] = prune_close_controls(&centers[i], CLOSE_CTRL_PX);
     }
 }
@@ -1055,8 +1053,8 @@ fn visibility_route(
                     };
                     let share = shared_penalty(nodes[u], nodes[v], committed);
                     let cross = crossing_penalty(nodes[u], nodes[v], committed);
-                    // Landing a new tip on an open shaft looks like a branch.
-                    let tip_hit = if v == 1 || u == 0 {
+                    // Landing the *arrival* on an open shaft looks like a branch.
+                    let tip_hit = if v == 1 {
                         tip_on_shaft_penalty(nodes[v], committed)
                     } else {
                         0.0
