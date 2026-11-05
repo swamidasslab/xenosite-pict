@@ -359,6 +359,7 @@ fn layout_scheme(
         paints,
         sizes,
     );
+    placement.positions = refined.positions;
     placement.edge_paths = refined.edge_paths;
     placement.edge_labels = refined.edge_labels;
     Ok(placement)

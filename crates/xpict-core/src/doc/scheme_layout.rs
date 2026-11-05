@@ -251,10 +251,12 @@ fn replace_edge_points(world: &mut LayoutWorld, eid: &str, pts: &[(f64, f64)]) {
     }
 }
 
-/// Refined shaft polylines and optional label poses `(x, y, rotate_deg)`.
+/// Refined shaft polylines, optional label poses `(x, y, rotate_deg)`, and
+/// mol positions (ELK seed, possibly soft-nudged to open corridors).
 pub struct RefinedEdges {
     pub edge_paths: Vec<Option<Vec<(f64, f64)>>>,
     pub edge_labels: Vec<Option<(f64, f64, f64)>>,
+    pub positions: HashMap<String, (f64, f64)>,
 }
 
 pub fn refine_scheme_edges(
@@ -272,6 +274,8 @@ pub fn refine_scheme_edges(
     let mut out_labels = vec![None; spec.edges().len()];
 
     let _ = layout;
+    // Soft mol nudge before routing: open clear chords when a small move helps.
+    let positions = super::scheme_nudge::propose_mol_nudges(spec, positions, sizes);
     let mut world = LayoutWorld::rooted("scheme", ObjectType::Scheme);
     let size_of: HashMap<&str, (f64, f64)> = sizes
         .iter()
@@ -331,7 +335,7 @@ pub fn refine_scheme_edges(
                 ObjectType::Caption,
             );
         }
-        let (cx, cy) = mol_centroid(&paint_of, positions, &size_of, id);
+        let (cx, cy) = mol_centroid(&paint_of, &positions, &size_of, id);
         world.insert(
             format!("{mid}/centroid"),
             &mid,
@@ -355,7 +359,7 @@ pub fn refine_scheme_edges(
     );
 
     let routed = super::scheme_route::route_scheme_edges(
-        spec, positions, paints, sizes, &world, &mol_ids,
+        spec, &positions, paints, sizes, &world, &mol_ids,
     );
     for (i, path) in routed.paths.iter().enumerate() {
         let eid = format!("scheme/edges/e{i}");
@@ -526,6 +530,7 @@ pub fn refine_scheme_edges(
     RefinedEdges {
         edge_paths: out_paths,
         edge_labels: out_labels,
+        positions,
     }
 }
 
@@ -2515,27 +2520,37 @@ mod tests {
 
     #[test]
     fn refined_shaft_emits_catmull_cubics() {
-        // Blocked chord → visibility elbow → Catmull cubics; head still aims at B.
+        // Pack above/below the blocker so soft nudge cannot open the chord;
+        // visibility bows and Catmull still aims the head at B.
         let spec = scheme(vec![
             mol_node("A"),
             mol_node("M"),
+            mol_node("U"),
+            mol_node("D"),
             mol_node("B"),
             edge_node("A", "B", None),
         ]);
         let layout = LayoutOpts::default();
+        let gap = SCHEME_INK_STANDOFF + 2.0;
         let positions = HashMap::from([
-            ("A".into(), (0.0, 0.0)),
-            ("M".into(), (120.0, 0.0)),
-            ("B".into(), (240.0, 0.0)),
+            ("A".into(), (0.0, 100.0)),
+            ("M".into(), (120.0, 100.0)),
+            ("U".into(), (120.0, 100.0 - 80.0 - gap + 1.0)),
+            ("D".into(), (120.0, 100.0 + 80.0 + gap - 1.0)),
+            ("B".into(), (240.0, 100.0)),
         ]);
         let sizes = vec![
             ("A".into(), 80.0, 80.0),
             ("M".into(), 80.0, 80.0),
+            ("U".into(), 80.0, 80.0),
+            ("D".into(), 80.0, 80.0),
             ("B".into(), 80.0, 80.0),
         ];
         let paints = vec![
             chem_paint("A", 80.0, 80.0, 40.0, 40.0),
             chem_paint("M", 80.0, 80.0, 40.0, 40.0),
+            chem_paint("U", 80.0, 80.0, 40.0, 40.0),
+            chem_paint("D", 80.0, 80.0, 40.0, 40.0),
             chem_paint("B", 80.0, 80.0, 40.0, 40.0),
         ];
         let refined = refine_scheme_edges(
@@ -2549,7 +2564,7 @@ mod tests {
         let pts = refined.edge_paths[0].clone().expect("path");
         assert!(
             pts.len() >= 3,
-            "blocked chord must bow via visibility: {pts:?}"
+            "packed blocker must bow via visibility: {pts:?}"
         );
         let d = crate::catmull::centripetal_catmull_rom_open_path(&pts);
         assert!(d.contains('C'), "open CR shaft should be cubics: {d}");
@@ -2560,7 +2575,7 @@ mod tests {
             .iter()
             .map(|(id, w, h)| (id.as_str(), (*w, *h)))
             .collect();
-        let cb = mol_centroid(&paint_of, &positions, &size_of, "B");
+        let cb = mol_centroid(&paint_of, &refined.positions, &size_of, "B");
         let (tip, tan) = crate::catmull::open_catmull_end_frame(&pts);
         let to_c = (cb.0 - tip.0, cb.1 - tip.1);
         let clen = to_c.0.hypot(to_c.1).max(1e-9);
@@ -2849,25 +2864,35 @@ mod tests {
 
     #[test]
     fn bowed_route_end_chords_aim_at_centroids() {
+        // Pack so soft nudge cannot open A→B; visibility bow must still aim tips.
         let spec = scheme(vec![
             mol_node("A"),
             mol_node("M"),
+            mol_node("U"),
+            mol_node("D"),
             mol_node("B"),
             edge_node("A", "B", None),
         ]);
+        let gap = SCHEME_INK_STANDOFF + 2.0;
         let positions = HashMap::from([
-            ("A".into(), (0.0, 0.0)),
-            ("M".into(), (120.0, 0.0)),
-            ("B".into(), (240.0, 0.0)),
+            ("A".into(), (0.0, 100.0)),
+            ("M".into(), (120.0, 100.0)),
+            ("U".into(), (120.0, 100.0 - 80.0 - gap + 1.0)),
+            ("D".into(), (120.0, 100.0 + 80.0 + gap - 1.0)),
+            ("B".into(), (240.0, 100.0)),
         ]);
         let sizes = vec![
             ("A".into(), 80.0, 80.0),
             ("M".into(), 80.0, 80.0),
+            ("U".into(), 80.0, 80.0),
+            ("D".into(), 80.0, 80.0),
             ("B".into(), 80.0, 80.0),
         ];
         let paints = vec![
             chem_paint("A", 80.0, 80.0, 40.0, 40.0),
             chem_paint("M", 80.0, 80.0, 40.0, 40.0),
+            chem_paint("U", 80.0, 80.0, 40.0, 40.0),
+            chem_paint("D", 80.0, 80.0, 40.0, 40.0),
             chem_paint("B", 80.0, 80.0, 40.0, 40.0),
         ];
         let refined = refine_scheme_edges(
@@ -2879,15 +2904,15 @@ mod tests {
             &sizes,
         );
         let pts = refined.edge_paths[0].clone().expect("path");
-        assert!(pts.len() >= 3, "blocked chord must bend: {pts:?}");
+        assert!(pts.len() >= 3, "packed blocker must bend: {pts:?}");
         let paint_of: HashMap<&str, &DocPaint> =
             paints.iter().map(|p| (p.id.as_str(), p)).collect();
         let size_of: HashMap<&str, (f64, f64)> = sizes
             .iter()
             .map(|(id, w, h)| (id.as_str(), (*w, *h)))
             .collect();
-        let ca = mol_centroid(&paint_of, &positions, &size_of, "A");
-        let cb = mol_centroid(&paint_of, &positions, &size_of, "B");
+        let ca = mol_centroid(&paint_of, &refined.positions, &size_of, "A");
+        let cb = mol_centroid(&paint_of, &refined.positions, &size_of, "B");
         let last = pts.len() - 1;
         let (aim0, perp0) = chord_collinear(ca, pts[0], pts[1]);
         let (aim1, perp1) = chord_collinear(pts[last - 1], pts[last], cb);
@@ -2937,11 +2962,13 @@ mod tests {
         let refined =
             refine_scheme_edges(&spec, &layout, &positions, &[Some(seed)], &paints, &sizes);
         let (lx, ly, _) = refined.edge_labels[0].expect("label");
-        let d = paint_ink_signed(&paints[1], positions["C"], (lx, ly));
+        // Soft nudge may slide C off the A–B chord; measure against live pose.
+        let c_pos = refined.positions["C"];
+        let d = paint_ink_signed(&paints[1], c_pos, (lx, ly));
         let need = LABEL_FONT_PX * 0.5 + LABEL_SHAFT_PAD_PX;
         assert!(
             d + 1.0 >= need,
-            "label must clear C's chem: d={d} need={need} at ({lx},{ly})"
+            "label must clear C's chem: d={d} need={need} at ({lx},{ly}) C={c_pos:?}"
         );
     }
 

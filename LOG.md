@@ -2,6 +2,11 @@
 
 ## 2026-11-04
 
+- Soft mol nudge before shaft routing (`scheme_nudge`): when a centroid chord
+  is blocked, try small perpendicular moves of the blocker (≤3 bonds) if the
+  boxes stay clear; then route. Prefer opening a straight corridor over a bow
+  when space allows.
+
 - Scheme shafts: libavoid-style routing in `scheme_route` — ELK places mols
   only; straight centroid chord if it clears inflated full-node ink, else a
   shared visibility graph (`pathfinding` Dijkstra with length/bend/share/cross
