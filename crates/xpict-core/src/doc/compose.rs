@@ -386,14 +386,20 @@ fn build_elk_graph(spec: &DepictSpec, layout: &LayoutOpts, sizes: &[(String, f64
         })
         .collect();
 
-    // One ELK edge per unordered mol pair. Coterminal A→B / B→A (or two A→B)
-    // share a corridor; ELK only needs to route the representative.
+    // One ELK edge per unordered mol pair among layout-participating edges.
+    // Coterminal A→B / B→A (or two A→B) share a corridor; `layout: false`
+    // edges are omitted so reverse/feedback cannot bump sources off layer 0.
     let reps = coterminal_elk_rep(spec);
     let mut edges = Vec::new();
     for (i, e) in spec.edges().iter().enumerate() {
+        if !e.participates_in_layout() {
+            continue;
+        }
         if reps.get(i).copied() != Some(i) {
             continue;
         }
+        // Count every coterminal member (including paint-only) so a reverse
+        // with layout:false still keeps labels off the ELK corridor.
         let n_members = reps.iter().filter(|&&r| r == i).count();
         let eid = format!("e{i}");
         let mut entry = json!({
@@ -450,14 +456,32 @@ fn edge_src_tgt(e: &EdgeNode) -> (&str, &str) {
     (s, t)
 }
 
-/// Representative (first) edge index for each unordered mol pair.
+/// Representative edge index for each unordered mol pair.
+///
+/// Prefers the first `layout: true` member so a document-first reverse with
+/// `layout: false` cannot orient ELK layers. Paint-only edges that share a
+/// pair still point at that layout rep (for path copy/reverse). A pair with
+/// only paint-only edges keeps the first member as a no-op self-rep.
 fn coterminal_elk_rep(spec: &DepictSpec) -> Vec<usize> {
-    let n = spec.edges().len();
-    let mut first: HashMap<(String, String), usize> = HashMap::new();
+    let edges = spec.edges();
+    let n = edges.len();
+    let mut layout_first: HashMap<(String, String), usize> = HashMap::new();
+    let mut any_first: HashMap<(String, String), usize> = HashMap::new();
+    for (i, e) in edges.iter().enumerate() {
+        let key = unordered_mol_pair(e);
+        any_first.entry(key.clone()).or_insert(i);
+        if e.participates_in_layout() {
+            layout_first.entry(key).or_insert(i);
+        }
+    }
     let mut rep = vec![0; n];
-    for (i, e) in spec.edges().iter().enumerate() {
-        let r = *first.entry(unordered_mol_pair(e)).or_insert(i);
-        rep[i] = r;
+    for (i, e) in edges.iter().enumerate() {
+        let key = unordered_mol_pair(e);
+        rep[i] = layout_first
+            .get(&key)
+            .or_else(|| any_first.get(&key))
+            .copied()
+            .unwrap_or(i);
     }
     rep
 }
@@ -963,6 +987,7 @@ mod tests {
                     targets: MolIds::One("B".into()),
                     label: Some(crate::doc::Label::Id("lab".into())),
                     edge_routing: None,
+                    layout: None,
                     role: None,
                     arrow: EdgeArrow::Forward,
                     color: None,
@@ -1040,6 +1065,7 @@ mod tests {
                     targets: MolIds::One("B".into()),
                     label: None,
                     edge_routing: None,
+                    layout: None,
                     role: None,
                     arrow: EdgeArrow::Forward,
                     color: None,
@@ -1120,6 +1146,7 @@ mod tests {
                     targets: MolIds::One("B".into()),
                     label: None,
                     edge_routing: None,
+                    layout: None,
                     role: None,
                     arrow: EdgeArrow::Forward,
                     color: None,
@@ -1419,6 +1446,7 @@ mod tests {
                         pos: Some(LabelPos::Below),
                     })),
                     edge_routing: Some(EdgeRouting::Splines),
+                    layout: None,
                     role: None,
                     arrow: EdgeArrow::Line,
                     color: Some("#06c".into()),
@@ -1432,6 +1460,7 @@ mod tests {
                     targets: MolIds::One("missing".into()),
                     label: None,
                     edge_routing: None,
+                    layout: None,
                     role: None,
                     arrow: EdgeArrow::Forward,
                     color: None,
@@ -1475,6 +1504,7 @@ mod tests {
                 targets: MolIds::One("B".into()),
                 label: None,
                 edge_routing: None,
+                layout: None,
                 role: None,
                 arrow: EdgeArrow::Forward,
                 color: None,
@@ -1632,6 +1662,7 @@ mod tests {
                 targets: MolIds::One("B".into()),
                 label: Some(crate::doc::Label::Items(vec![])),
                 edge_routing: None,
+                layout: None,
                 role: None,
                 arrow: EdgeArrow::Forward,
                 color: None,
@@ -1701,6 +1732,7 @@ mod tests {
                     targets: MolIds::One("B".into()),
                     label: None,
                     edge_routing: None,
+                    layout: None,
                     role: None,
                     arrow: EdgeArrow::Forward,
                     color: None,
@@ -1762,6 +1794,7 @@ mod tests {
                     targets: MolIds::One("B".into()),
                     label: None,
                     edge_routing: None,
+                    layout: None,
                     role: None,
                     arrow: EdgeArrow::Forward,
                     color: None,
@@ -1846,6 +1879,7 @@ mod tests {
                 pos: Some(LabelPos::Above),
             })),
             edge_routing: None,
+            layout: None,
             role: None,
             arrow: EdgeArrow::Forward,
             color: None,
@@ -1861,6 +1895,7 @@ mod tests {
                 pos: Some(LabelPos::Below),
             })),
             edge_routing: None,
+            layout: None,
             role: None,
             arrow: EdgeArrow::Forward,
             color: None,
@@ -1926,6 +1961,7 @@ mod tests {
                     targets: MolIds::One("B".into()),
                     label: None,
                     edge_routing: None,
+                    layout: None,
                     role: None,
                     arrow: EdgeArrow::Forward,
                     color: None,
@@ -1938,6 +1974,7 @@ mod tests {
                     targets: MolIds::One("B".into()),
                     label: None,
                     edge_routing: None,
+                    layout: None,
                     role: None,
                     arrow: EdgeArrow::Forward,
                     color: None,
@@ -1961,6 +1998,138 @@ mod tests {
             .collect();
         let graph = build_elk_graph(&spec, &LayoutOpts::default(), &sizes);
         assert_eq!(graph["edges"].as_array().expect("edges").len(), 1);
+    }
+
+    fn edge_ab(src: &str, tgt: &str, layout: bool) -> Node {
+        Node::Edge(EdgeNode {
+            type_: EdgeNodeKind::Edge,
+            sources: MolIds::One(src.into()),
+            targets: MolIds::One(tgt.into()),
+            label: None,
+            edge_routing: None,
+            layout: if layout { None } else { Some(false) },
+            role: None,
+            arrow: EdgeArrow::Forward,
+            color: None,
+            stroke_width: None,
+            dashed: false,
+        })
+    }
+
+    fn mol(id: &str) -> Node {
+        Node::Mol(MolNode {
+            id: Some(id.into()),
+            smiles: Some("C".into()),
+            ..Default::default()
+        })
+    }
+
+    #[test]
+    fn edge_layout_defaults_true_when_omitted() {
+        let e: EdgeNode = serde_json::from_value(serde_json::json!({
+            "type": "edge",
+            "sources": "A",
+            "targets": "B",
+        }))
+        .expect("edge");
+        assert!(
+            e.participates_in_layout(),
+            "omitted layout must default to true"
+        );
+    }
+
+    #[test]
+    fn paint_only_reverse_first_uses_forward_elk_rep() {
+        // Document-first reverse must not orient layers when layout:false.
+        let spec = DepictSpec::ReactionScheme {
+            id: None,
+            children: vec![
+                mol("A"),
+                mol("B"),
+                edge_ab("B", "A", false),
+                edge_ab("A", "B", true),
+            ],
+            layout: None,
+            opts: None,
+            color: None,
+            scale: None,
+            aromatic: None,
+            debug_box: None,
+            debug_align: None,
+            pad: None,
+        };
+        let paints = vec![paint("A", 80.0, 60.0), paint("B", 80.0, 60.0)];
+        let sizes: Vec<(String, f64, f64)> = paints
+            .iter()
+            .map(|p| (p.id.clone(), p.scene.width, p.scene.height))
+            .collect();
+        let graph = build_elk_graph(&spec, &LayoutOpts::default(), &sizes);
+        let edges = graph["edges"].as_array().expect("edges");
+        assert_eq!(edges.len(), 1, "only the layout edge goes to ELK: {edges:?}");
+        assert_eq!(edges[0]["id"], "e1");
+        assert_eq!(edges[0]["sources"], serde_json::json!(["A"]));
+        assert_eq!(edges[0]["targets"], serde_json::json!(["B"]));
+
+        let scene = compose_scheme(&spec, &paints).expect("compose");
+        assert_eq!(overlay_shafts(&scene).len(), 2, "both shafts still paint");
+        let xa = scene.viewports.iter().find(|v| v.id.as_deref() == Some("A")).unwrap().x;
+        let xb = scene.viewports.iter().find(|v| v.id.as_deref() == Some("B")).unwrap().x;
+        assert!(xa < xb, "A should stay left of B: xa={xa} xb={xb}");
+    }
+
+    #[test]
+    fn paint_only_feedback_keeps_source_leftmost() {
+        let spec = DepictSpec::ReactionScheme {
+            id: None,
+            children: vec![
+                mol("A"),
+                mol("B"),
+                mol("C"),
+                edge_ab("A", "B", true),
+                edge_ab("B", "C", true),
+                edge_ab("C", "A", false),
+            ],
+            layout: None,
+            opts: None,
+            color: None,
+            scale: None,
+            aromatic: None,
+            debug_box: None,
+            debug_align: None,
+            pad: None,
+        };
+        let paints = vec![
+            paint("A", 80.0, 60.0),
+            paint("B", 80.0, 60.0),
+            paint("C", 80.0, 60.0),
+        ];
+        let sizes: Vec<(String, f64, f64)> = paints
+            .iter()
+            .map(|p| (p.id.clone(), p.scene.width, p.scene.height))
+            .collect();
+        let graph = build_elk_graph(&spec, &LayoutOpts::default(), &sizes);
+        let edges = graph["edges"].as_array().expect("edges");
+        assert_eq!(
+            edges.len(),
+            2,
+            "feedback with layout:false must not enter ELK: {edges:?}"
+        );
+
+        let place = layout_scheme(&spec, &LayoutOpts::default(), &sizes, &paints).expect("layout");
+        let xa = place.positions["A"].0;
+        let xb = place.positions["B"].0;
+        let xc = place.positions["C"].0;
+        assert!(
+            xa < xb && xb < xc,
+            "A→B→C layers left-to-right with paint-only feedback: A={xa} B={xb} C={xc}"
+        );
+
+        let scene = compose_scheme(&spec, &paints).expect("compose");
+        assert_eq!(
+            overlay_shafts(&scene).len(),
+            3,
+            "feedback shaft still paints"
+        );
     }
 
     #[test]

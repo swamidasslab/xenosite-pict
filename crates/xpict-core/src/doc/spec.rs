@@ -90,6 +90,11 @@ pub struct ShadeSpec {
     pub vmax: f64,
 }
 
+/// Omit when unset or true — only paint-only edges need `layout: false` on the wire.
+fn skip_edge_layout(v: &Option<bool>) -> bool {
+    !matches!(v, Some(false))
+}
+
 fn default_shade_vmin() -> f64 {
     0.0
 }
@@ -911,6 +916,12 @@ pub struct EdgeNode {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub edge_routing: Option<EdgeRouting>,
+    /// When false, the edge still paints but is omitted from scheme mol
+    /// placement (ELK). Use for reverse / feedback arrows that should not
+    /// bump intended sources off the top layer. Omitted / null → true.
+    #[serde(default, skip_serializing_if = "skip_edge_layout")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub layout: Option<bool>,
     /// Optional semantic role (e.g. enzyme) — not drawn by default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
@@ -932,6 +943,12 @@ impl EdgeNode {
     pub fn edge_routing_or(&self, scheme: &LayoutOpts) -> EdgeRouting {
         self.edge_routing
             .unwrap_or_else(|| scheme.edge_routing_or_default())
+    }
+
+    /// Whether this edge participates in scheme mol placement (ELK).
+    /// Omitted / null on the wire → true.
+    pub fn participates_in_layout(&self) -> bool {
+        self.layout.unwrap_or(true)
     }
 }
 

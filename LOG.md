@@ -1,5 +1,9 @@
 # Lab log
 
+## 2026-11-04
+
+- Scheme edges take `layout` (default true). `layout: false` still paints/refines the shaft but is omitted from the ELK graph, so reverse/feedback arrows do not bump the intended source off the first layer. Coterminal reps prefer the first `layout: true` member when a document-first reverse is paint-only.
+
 ## 2026-10-31
 
 - Review gallery problems (10 cases) snapshot in `js/review/problems.json`. Local notes stay gitignored; this file is the committed list for tests.

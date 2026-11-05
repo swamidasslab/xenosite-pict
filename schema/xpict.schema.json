@@ -1500,6 +1500,13 @@
             }
           ]
         },
+        "layout": {
+          "description": "When false, the edge still paints but is omitted from scheme mol placement (ELK). Use for reverse / feedback arrows that should not bump intended sources off the top layer. Omitted / null → true.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
         "role": {
           "description": "Optional semantic role (e.g. enzyme) — not drawn by default.",
           "type": [

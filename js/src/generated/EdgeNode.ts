@@ -36,6 +36,12 @@ label?: Label,
  */
 edge_routing?: EdgeRouting, 
 /**
+ * When false, the edge still paints but is omitted from scheme mol
+ * placement (ELK). Use for reverse / feedback arrows that should not
+ * bump intended sources off the top layer. Omitted / null → true.
+ */
+layout?: boolean, 
+/**
  * Optional semantic role (e.g. enzyme) — not drawn by default.
  */
 role?: string, arrow: EdgeArrow, color?: string, stroke_width?: number, dashed: boolean, };

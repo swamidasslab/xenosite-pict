@@ -314,6 +314,7 @@ class EdgeNodeDict(TypedDict, total=False):
     dashed: NotRequired[bool]
     edge_routing: NotRequired[EdgeRouting]
     label: NotRequired[LabelDict]
+    layout: NotRequired[bool]
     role: NotRequired[str]
     stroke_width: NotRequired[float]
 

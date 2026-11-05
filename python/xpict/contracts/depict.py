@@ -328,6 +328,7 @@ class EdgeNode(StrictModel):
     dashed: bool = False
     edge_routing: Annotated[EdgeRouting | None, Field(description='Per-edge override of scheme [`LayoutOpts::edge_routing`].')] = None
     label: Annotated[Label | None, Field(description='Label chrome: id / list / `{id, pos?}` / `{above,below,left,right}`.')] = None
+    layout: Annotated[bool | None, Field(description='When false, the edge still paints but is omitted from scheme mol placement (ELK). Use for reverse / feedback arrows that should not bump intended sources off the top layer. Omitted / null → true.')] = None
     role: Annotated[str | None, Field(description='Optional semantic role (e.g. enzyme) — not drawn by default.')] = None
     stroke_width: float | None = None
 
