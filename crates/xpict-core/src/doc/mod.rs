@@ -18,6 +18,9 @@ mod layout_items;
 #[cfg(test)]
 mod review_regress;
 mod scheme_layout;
+mod scheme_route;
+#[cfg(test)]
+mod scheme_xenobase;
 mod spec;
 mod text_paint;
 

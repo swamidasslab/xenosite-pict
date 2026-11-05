@@ -354,9 +354,43 @@ pub fn shaft_path_d(pts: &[Pt], routing: Option<EdgeRouting>) -> String {
 
 fn painted_shaft_d(pts: &[Pt], routing: Option<EdgeRouting>, curve_catmull: bool) -> String {
     if curve_catmull {
-        crate::catmull::centripetal_catmull_rom_open_path(pts)
+        safe_scheme_catmull_d(pts)
     } else {
         shaft_path_d(pts, routing)
+    }
+}
+
+/// Centripetal Catmull–Rom, but fall back to straight `L` chords when the
+/// cubic sagitta would leave the routing clearance corridor (~½ bond).
+fn safe_scheme_catmull_d(pts: &[Pt]) -> String {
+    const MAX_SAGITTA: f64 = 0.35 * crate::metrics::BOND_PX;
+    if pts.len() < 3 {
+        return crate::catmull::centripetal_catmull_rom_open_path(pts);
+    }
+    let samples = crate::catmull::sample_open_catmull(pts, 8);
+    let mut max_sag = 0.0_f64;
+    let mut si = 0;
+    for w in pts.windows(2) {
+        let (a, b) = (w[0], w[1]);
+        let ab = ((b.0 - a.0).hypot(b.1 - a.1)).max(1e-9);
+        while si < samples.len() {
+            let p = samples[si];
+            let t = ((p.0 - a.0) * (b.0 - a.0) + (p.1 - a.1) * (b.1 - a.1)) / (ab * ab);
+            if t > 1.0 + 1e-6 {
+                break;
+            }
+            if (0.0..=1.0).contains(&t) {
+                let qx = a.0 + t * (b.0 - a.0);
+                let qy = a.1 + t * (b.1 - a.1);
+                max_sag = max_sag.max((p.0 - qx).hypot(p.1 - qy));
+            }
+            si += 1;
+        }
+    }
+    if max_sag > MAX_SAGITTA {
+        polyline_d(pts)
+    } else {
+        crate::catmull::centripetal_catmull_rom_open_path(pts)
     }
 }
 

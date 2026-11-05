@@ -1,0 +1,195 @@
+{
+  "type": "reaction_scheme",
+  "layout": {
+    "direction": "down",
+    "layer_spacing": 60,
+    "node_spacing": 50
+  },
+  "children": [
+    {
+      "type": "mol",
+      "id": "m0",
+      "smiles": "Cc1cc(OC2O[C@H](C(=O)O)[C@@H](O)[C@H](O)[C@H]2O)cc(C)c1N",
+      "halo": false
+    },
+    {
+      "type": "mol",
+      "id": "m1",
+      "smiles": "Cc1cc(O)cc(C)c1N",
+      "halo": false
+    },
+    {
+      "type": "mol",
+      "id": "m2",
+      "smiles": "Cc1cccc(C)c1NC(=O)CN",
+      "halo": false
+    },
+    {
+      "type": "mol",
+      "id": "m3",
+      "smiles": "CCN(CC)CC(=O)Nc1c(C)cccc1C",
+      "halo": false,
+      "name": "Lidocaine"
+    },
+    {
+      "type": "mol",
+      "id": "m4",
+      "smiles": "CCN(CC)CC(=O)Nc1c(C)ccc(O)c1C",
+      "halo": false
+    },
+    {
+      "type": "mol",
+      "id": "m5",
+      "smiles": "CCN(C)CC(=O)Nc1c(C)cc(O)cc1C",
+      "halo": false
+    },
+    {
+      "type": "mol",
+      "id": "m6",
+      "smiles": "Cc1cccc(C)c1N",
+      "halo": false
+    },
+    {
+      "type": "mol",
+      "id": "m7",
+      "smiles": "Cc1cccc(C(=O)O)c1N",
+      "halo": false
+    },
+    {
+      "type": "mol",
+      "id": "m8",
+      "smiles": "CCNCC(=O)Nc1c(C)cccc1C",
+      "halo": false
+    },
+    {
+      "type": "mol",
+      "id": "m9",
+      "smiles": "CC[N+]([O-])(CC)CC(=O)Nc1c(C)cccc1C",
+      "halo": false
+    },
+    {
+      "type": "mol",
+      "id": "m10",
+      "smiles": "Cc1cccc(C)c1NO",
+      "halo": false
+    },
+    {
+      "type": "mol",
+      "id": "m11",
+      "smiles": "CCNCC(=O)Nc1c(C)ccc(O)c1C",
+      "halo": false
+    },
+    {
+      "type": "edge",
+      "sources": "m1",
+      "targets": "m0",
+      "arrow": "forward",
+      "stroke_width": 4.8
+    },
+    {
+      "type": "edge",
+      "sources": "m3",
+      "targets": "m1",
+      "arrow": "forward",
+      "stroke_width": 4.8
+    },
+    {
+      "type": "edge",
+      "sources": "m3",
+      "targets": "m6",
+      "arrow": "forward",
+      "stroke_width": 4.8
+    },
+    {
+      "type": "edge",
+      "sources": "m3",
+      "targets": "m8",
+      "arrow": "forward",
+      "stroke_width": 4.8
+    },
+    {
+      "type": "edge",
+      "sources": "m8",
+      "targets": "m2",
+      "arrow": "forward",
+      "stroke_width": 4.8
+    },
+    {
+      "type": "edge",
+      "sources": "m3",
+      "targets": "m2",
+      "arrow": "forward",
+      "stroke_width": 4.8
+    },
+    {
+      "type": "edge",
+      "sources": "m4",
+      "targets": "m11",
+      "arrow": "forward",
+      "stroke_width": 4.8
+    },
+    {
+      "type": "edge",
+      "sources": "m3",
+      "targets": "m7",
+      "arrow": "forward",
+      "stroke_width": 4.8
+    },
+    {
+      "type": "edge",
+      "sources": "m3",
+      "targets": "m4",
+      "arrow": "forward",
+      "stroke_width": 4.8
+    },
+    {
+      "type": "edge",
+      "sources": "m3",
+      "targets": "m5",
+      "arrow": "forward",
+      "stroke_width": 4.8
+    },
+    {
+      "type": "edge",
+      "sources": "m6",
+      "targets": "m1",
+      "arrow": "forward",
+      "stroke_width": 4.8
+    },
+    {
+      "type": "edge",
+      "sources": "m3",
+      "targets": "m9",
+      "arrow": "forward",
+      "stroke_width": 4.8
+    },
+    {
+      "type": "edge",
+      "sources": "m6",
+      "targets": "m10",
+      "arrow": "forward",
+      "stroke_width": 4.8
+    },
+    {
+      "type": "edge",
+      "sources": "m6",
+      "targets": "m7",
+      "arrow": "forward",
+      "stroke_width": 4.8
+    },
+    {
+      "type": "edge",
+      "sources": "m8",
+      "targets": "m11",
+      "arrow": "forward",
+      "stroke_width": 4.8
+    },
+    {
+      "type": "edge",
+      "sources": "m3",
+      "targets": "m11",
+      "arrow": "forward",
+      "stroke_width": 4.8
+    }
+  ]
+}

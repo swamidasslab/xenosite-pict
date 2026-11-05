@@ -1,0 +1,136 @@
+{
+  "type": "reaction_scheme",
+  "layout": {
+    "direction": "down",
+    "layer_spacing": 60,
+    "node_spacing": 50
+  },
+  "children": [
+    {
+      "type": "mol",
+      "id": "m0",
+      "smiles": "COc1cccc2c1C(=O)c1c(O)c3c(c(O)c1C2=O)C[C@@](O)(C(=O)CO)C[C@@H]3O[C@H]1C[C@H](N)[C@H](O)[C@H](C)O1",
+      "halo": false,
+      "name": "Doxorubicin"
+    },
+    {
+      "type": "mol",
+      "id": "m1",
+      "smiles": "O=C1c2cccc(O)c2C(=O)c2c(O)c3c(c(O)c21)C[C@@](O)(C(O)CO)CC3",
+      "halo": false
+    },
+    {
+      "type": "mol",
+      "id": "m2",
+      "smiles": "COc1cccc2c1C(=O)c1c(O)c3c(c(O)c1C2=O)C[C@@](O)(C(O)CO)CC3O",
+      "halo": false
+    },
+    {
+      "type": "mol",
+      "id": "m3",
+      "smiles": "COc1cccc2c1C(=O)c1c(O)c3c(c(O)c1C2=O)C[C@@](O)(C(=O)CO)C[C@@H]3O",
+      "halo": false
+    },
+    {
+      "type": "mol",
+      "id": "m4",
+      "smiles": "COc1cccc2c1C(=O)c1c(O)c3c(c(O)c1C2=O)C[C@@](O)(C(O)CO)CC3",
+      "halo": false
+    },
+    {
+      "type": "mol",
+      "id": "m5",
+      "smiles": "COc1cccc2c1C(=O)c1c(O)c3c(c(O)c1C2=O)C[C@@](O)(C(O)CO)C[C@@H]3O[C@H]1C[C@H](N)[C@H](O)[C@H](C)O1",
+      "halo": false
+    },
+    {
+      "type": "mol",
+      "id": "m6",
+      "smiles": "COc1cccc2c1C(=O)c1c(O)c3c(c(O)c1C2=O)C[C@@](O)(C(=O)CO)C[C@@H]3O[C@H]1C[C@H](N)[C@@H](O[C@@H]2O[C@H](C(=O)O)[C@@H](O)[C@H](O)[C@H]2O)[C@H](C)O1",
+      "halo": false
+    },
+    {
+      "type": "mol",
+      "id": "m7",
+      "smiles": "COc1cccc2c1C(=O)c1c(O)c3c(c(O)c1C2=O)C[C@@](O)(C(=O)CO)CC3",
+      "halo": false
+    },
+    {
+      "type": "edge",
+      "sources": "m7",
+      "targets": "m4",
+      "arrow": "forward",
+      "stroke_width": 4.8
+    },
+    {
+      "type": "edge",
+      "sources": "m0",
+      "targets": "m4",
+      "arrow": "forward",
+      "stroke_width": 4.8
+    },
+    {
+      "type": "edge",
+      "sources": "m3",
+      "targets": "m2",
+      "arrow": "forward",
+      "stroke_width": 4.8
+    },
+    {
+      "type": "edge",
+      "sources": "m0",
+      "targets": "m5",
+      "arrow": "forward",
+      "stroke_width": 4.8
+    },
+    {
+      "type": "edge",
+      "sources": "m5",
+      "targets": "m4",
+      "arrow": "forward",
+      "stroke_width": 4.8
+    },
+    {
+      "type": "edge",
+      "sources": "m5",
+      "targets": "m2",
+      "arrow": "forward",
+      "stroke_width": 4.8
+    },
+    {
+      "type": "edge",
+      "sources": "m0",
+      "targets": "m7",
+      "arrow": "forward",
+      "stroke_width": 4.8
+    },
+    {
+      "type": "edge",
+      "sources": "m0",
+      "targets": "m3",
+      "arrow": "forward",
+      "stroke_width": 4.8
+    },
+    {
+      "type": "edge",
+      "sources": "m5",
+      "targets": "m6",
+      "arrow": "forward",
+      "stroke_width": 4.8
+    },
+    {
+      "type": "edge",
+      "sources": "m0",
+      "targets": "m6",
+      "arrow": "forward",
+      "stroke_width": 4.8
+    },
+    {
+      "type": "edge",
+      "sources": "m4",
+      "targets": "m1",
+      "arrow": "forward",
+      "stroke_width": 4.8
+    }
+  ]
+}

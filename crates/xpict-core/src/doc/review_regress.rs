@@ -151,7 +151,7 @@ fn skeleton_signed(scene: &Scene, mol_id: &str, p: (f64, f64)) -> f64 {
 }
 
 /// Interior shaft samples must not sit inside another molecule's skeleton.
-fn shaft_interior_clear_of_mols(scene: &Scene, clash: f64) {
+pub(super) fn shaft_interior_clear_of_mols(scene: &Scene, clash: f64) {
     let mol_ids: Vec<String> = scene
         .viewports
         .iter()

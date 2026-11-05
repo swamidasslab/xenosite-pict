@@ -116,8 +116,6 @@ fn compose_reaction(
             (p.id.clone(), w, h)
         })
         .collect();
-    let network = super::scheme_layout::is_network_scheme(sizes.len(), spec.edges().len());
-
     let placement = match layout_scheme(spec, layout, &sizes, paints) {
         Ok(p) => p,
         Err(_) => row_placement(&sizes),
@@ -216,9 +214,9 @@ fn compose_reaction(
             label: label_text,
             label_pos,
             index: i,
-            // Reactions: Catmull through a few elbows. Networks: ELK U-corridors
-            // become page-edge loops if those verts interpolate a spline.
-            curve_catmull: !network,
+            // Visibility routes + tip standoff: Catmull through controls with
+            // safe sagitta (see painted_shaft_d / safe scheme path).
+            curve_catmull: true,
             label_xy: label_pose.map(|(x, y, _)| (x, y)),
             label_rotate: label_pose.map(|(_, _, r)| r),
         };

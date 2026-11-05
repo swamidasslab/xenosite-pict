@@ -2,6 +2,15 @@
 
 ## 2026-11-04
 
+- Scheme shafts: libavoid-style routing in `scheme_route` — ELK places mols
+  only; straight centroid chord if it clears inflated full-node ink, else a
+  shared visibility graph (`pathfinding` Dijkstra with length/bend/share/cross
+  penalties), then parallel nudge + tip standoff + reverse inset. Catmull paint
+  falls back to `L` when sagitta would leave the clearance corridor. Xenobase
+  fixtures (Epirubicin, Lidocaine, Ranolazine) under
+  `crates/xpict-core/tests/fixtures/xenobase/`; quality asserts on the first
+  two, timing on Ranolazine (debug ~13s is mostly CoordGen for ~40 mols).
+
 - Rebuilt `js/src/wasm` after `EdgeNode.layout`: the prior wasm still had a
   10-field EdgeNode and silently ignored `layout: false` (serde). Clean rebuild
   → 11-field EdgeNode; reverse-first coterminal pairs keep the forward source
