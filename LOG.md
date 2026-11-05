@@ -2,6 +2,8 @@
 
 ## 2026-11-04
 
+- Reverse coterminal lanes pull the source end in by `head_px + half stroke` so a thick filled head does not swallow the neighbor shaft (lane gap is only 8px).
+
 - Scheme edges take `layout` (default true). `layout: false` still paints/refines the shaft but is omitted from the ELK graph, so reverse/feedback arrows do not bump the intended source off the first layer. Coterminal reps prefer the first `layout: true` member when a document-first reverse is paint-only.
 
 ## 2026-10-31

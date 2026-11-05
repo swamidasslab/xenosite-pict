@@ -415,6 +415,28 @@ fn shorten_polyline_end(pts: &[Pt], amount: f64) -> (Vec<Pt>, Pt, (f64, f64)) {
     (pts, tip, (ux, uy))
 }
 
+/// Pull the first vertex forward along the polyline by `amount` (keep the tip).
+///
+/// Used for reverse coterminal lanes so a shaft does not run through the
+/// opposing arrow head at the source end.
+pub fn shorten_polyline_start(pts: &[Pt], amount: f64) -> Vec<Pt> {
+    if amount <= 1e-9 || pts.len() < 2 {
+        return pts.to_vec();
+    }
+    let mut rev = pts.to_vec();
+    rev.reverse();
+    let (mut shortened, _, _) = shorten_polyline_end(&rev, amount);
+    shortened.reverse();
+    shortened
+}
+
+/// How far to pull a reverse-lane shaft off its source so it clears the
+/// opposing filled head (scales with stroke; thick heads need more).
+pub fn reverse_source_inset(stroke_width: Option<f64>) -> f64 {
+    let w = stroke_width.unwrap_or(DEFAULT_WIDTH).max(0.5);
+    head_px(stroke_width) + w * 0.5
+}
+
 /// Shaft stroke and arrow head from the route controls: tip is the last
 /// vertex, base is that point pulled back along the last chord. Both pieces
 /// are those two points — never a second read of a painted `d`.
@@ -767,6 +789,126 @@ mod tests {
         assert!((head_px(Some(1.6)) - 9.0).abs() < 1e-9);
         assert!((head_px(Some(4.8)) - 27.0).abs() < 1e-9);
         assert!(min_shaft_px(Some(4.8)) > head_px(Some(4.8)) * 2.0);
+    }
+
+    fn path_nums(d: &str) -> Vec<f64> {
+        d.split(|c: char| !(c.is_ascii_digit() || c == '.' || c == '-'))
+            .filter(|s| !s.is_empty())
+            .filter_map(|s| s.parse().ok())
+            .collect()
+    }
+
+    fn head_triangle(d: &str) -> [(f64, f64); 3] {
+        let n = path_nums(d);
+        assert!(n.len() >= 6, "head triangle needs 3 points: {d}");
+        [(n[0], n[1]), (n[2], n[3]), (n[4], n[5])]
+    }
+
+    fn point_in_triangle(p: Pt, t: [(f64, f64); 3]) -> bool {
+        let (ax, ay) = t[0];
+        let (bx, by) = t[1];
+        let (cx, cy) = t[2];
+        let (px, py) = p;
+        let v0x = cx - ax;
+        let v0y = cy - ay;
+        let v1x = bx - ax;
+        let v1y = by - ay;
+        let v2x = px - ax;
+        let v2y = py - ay;
+        let dot00 = v0x * v0x + v0y * v0y;
+        let dot01 = v0x * v1x + v0y * v1y;
+        let dot02 = v0x * v2x + v0y * v2y;
+        let dot11 = v1x * v1x + v1y * v1y;
+        let dot12 = v1x * v2x + v1y * v2y;
+        let den = dot00 * dot11 - dot01 * dot01;
+        if den.abs() < 1e-18 {
+            return false;
+        }
+        let u = (dot11 * dot02 - dot01 * dot12) / den;
+        let v = (dot00 * dot12 - dot01 * dot02) / den;
+        u >= -1e-9 && v >= -1e-9 && u + v <= 1.0 + 1e-9
+    }
+
+    fn dist_point_seg(p: Pt, a: Pt, b: Pt) -> f64 {
+        point_line_distance(p.0, p.1, a.0, a.1, b.0, b.1).min(hypot(p.0 - a.0, p.1 - a.1))
+            .min(hypot(p.0 - b.0, p.1 - b.1))
+    }
+
+    /// Signed clearance: negative when the segment cuts the triangle interior.
+    fn seg_clearance_to_tri(a: Pt, b: Pt, t: [(f64, f64); 3]) -> f64 {
+        let samples = 24;
+        let mut best = f64::INFINITY;
+        for i in 0..=samples {
+            let u = i as f64 / samples as f64;
+            let p = (a.0 + (b.0 - a.0) * u, a.1 + (b.1 - a.1) * u);
+            if point_in_triangle(p, t) {
+                return -1.0;
+            }
+            for j in 0..3 {
+                best = best.min(dist_point_seg(p, t[j], t[(j + 1) % 3]));
+            }
+        }
+        for &v in &t {
+            best = best.min(dist_point_seg(v, a, b));
+        }
+        best
+    }
+
+    fn polyline_clearance_to_tri(pts: &[Pt], t: [(f64, f64); 3]) -> f64 {
+        let mut best = f64::INFINITY;
+        for w in pts.windows(2) {
+            best = best.min(seg_clearance_to_tri(w[0], w[1], t));
+        }
+        best
+    }
+
+    fn paint_forward(pts: Vec<Pt>, stroke: f64) -> (Vec<Pt>, [(f64, f64); 3]) {
+        let edge = EdgePaintIn {
+            pts: pts.clone(),
+            arrow: EdgeArrow::Forward,
+            routing: None,
+            color: Some("#06c".into()),
+            stroke_width: Some(stroke),
+            dashed: false,
+            label: None,
+            label_pos: None,
+            index: 0,
+            curve_catmull: false,
+            label_xy: None,
+            label_rotate: None,
+        };
+        let prims = edge_primitives(&edge);
+        let (shaft_d, head_d) = painted_shaft_and_head(&prims);
+        let shaft_pts: Vec<Pt> = path_nums(shaft_d)
+            .chunks_exact(2)
+            .map(|c| (c[0], c[1]))
+            .collect();
+        (shaft_pts, head_triangle(head_d))
+    }
+
+    #[test]
+    fn reverse_lane_shaft_clears_opposing_head() {
+        // Coterminal reverse lanes at COTERMINAL_LANE_PX (=8). Thick stroke →
+        // head half-width ≫ lane gap, so an un-inset source runs through the
+        // opposing filled head.
+        let stroke = 4.8;
+        let inset = reverse_source_inset(Some(stroke));
+        let mut fwd = vec![(0.0, -4.0), (200.0, -4.0)];
+        let mut rev = vec![(200.0, 4.0), (0.0, 4.0)];
+        fwd = shorten_polyline_start(&fwd, inset);
+        rev = shorten_polyline_start(&rev, inset);
+        let (shaft_a, head_a) = paint_forward(fwd, stroke);
+        let (shaft_b, head_b) = paint_forward(rev, stroke);
+        let clear_ab = polyline_clearance_to_tri(&shaft_a, head_b);
+        let clear_ba = polyline_clearance_to_tri(&shaft_b, head_a);
+        assert!(
+            clear_ab >= 0.5,
+            "A→B shaft must miss B→A head: clearance={clear_ab} shaft={shaft_a:?} head={head_b:?}"
+        );
+        assert!(
+            clear_ba >= 0.5,
+            "B→A shaft must miss A→B head: clearance={clear_ba} shaft={shaft_b:?} head={head_a:?}"
+        );
     }
 
     #[test]

@@ -9,7 +9,10 @@
 
 use std::collections::HashMap;
 
-use crate::arrows::{min_shaft_px, offset_polyline, prune_close_controls, CLOSE_CTRL_PX};
+use crate::arrows::{
+    min_shaft_px, offset_polyline, prune_close_controls, reverse_source_inset,
+    shorten_polyline_start, CLOSE_CTRL_PX,
+};
 use crate::metrics::BOND_PX;
 use crate::scene::{LayerName, MoleculeIn, Primitive, TextAnchor};
 
@@ -607,12 +610,38 @@ pub fn refine_scheme_edges(
         let center = prune_close_controls(&center, CLOSE_CTRL_PX);
         group_centers.push(center.clone());
         let offs = lane_offsets(group.members.len());
+        // Reverse pairs: each shaft runs past the opposing filled head. Pull
+        // the source end in by head length (+ half stroke) so thick heads do
+        // not swallow the neighbor lane.
+        let edge_list = spec.edges();
+        let has_reverse = group.reversed.iter().any(|&r| r);
+        let inset = if has_reverse && group.members.len() > 1 {
+            let stroke = group
+                .members
+                .iter()
+                .filter_map(|&i| edge_list.get(i).and_then(|e| e.stroke_width))
+                .fold(0.0_f64, f64::max);
+            let stroke = if stroke > 0.0 { Some(stroke) } else { None };
+            reverse_source_inset(stroke)
+        } else {
+            0.0
+        };
         for (lane, &i) in group.members.iter().enumerate() {
             let mut pts = offset_polyline(&center, offs[lane]);
             if group.reversed[lane] {
                 pts.reverse();
             }
             pts = prune_close_controls(&pts, CLOSE_CTRL_PX);
+            if inset > 0.0 {
+                let min_keep = min_shaft_px(edge_list.get(i).and_then(|e| e.stroke_width));
+                let len: f64 = pts
+                    .windows(2)
+                    .map(|w| (w[1].0 - w[0].0).hypot(w[1].1 - w[0].1))
+                    .sum();
+                // Leave room for the painted tip head + a visible shaft stub.
+                let max_inset = (len - min_keep).max(0.0);
+                pts = shorten_polyline_start(&pts, inset.min(max_inset));
+            }
             if pts.len() >= 2 {
                 replace_edge_points(&mut world, &format!("scheme/edges/e{i}"), &pts);
                 out_paths[i] = Some(pts);
@@ -2444,6 +2473,154 @@ mod tests {
         (lo, hi)
     }
 
+    fn thick_edge(src: &str, tgt: &str, stroke: f64) -> crate::doc::Node {
+        crate::doc::Node::Edge(crate::doc::EdgeNode {
+            type_: crate::doc::EdgeNodeKind::Edge,
+            sources: crate::doc::MolIds::One(src.into()),
+            targets: crate::doc::MolIds::One(tgt.into()),
+            label: None,
+            edge_routing: None,
+            layout: None,
+            role: None,
+            arrow: crate::doc::EdgeArrow::Forward,
+            color: None,
+            stroke_width: Some(stroke),
+            dashed: false,
+        })
+    }
+
+    #[test]
+    fn coterminal_reverse_thick_shaft_clears_opposing_head() {
+        // Thick heads are wider than COTERMINAL_LANE_PX; without pulling the
+        // source end in, each shaft cuts the opposing filled triangle.
+        let stroke = 4.8;
+        let spec = scheme(vec![
+            mol_node("A"),
+            mol_node("B"),
+            thick_edge("A", "B", stroke),
+            thick_edge("B", "A", stroke),
+        ]);
+        let layout = LayoutOpts::default();
+        let positions = HashMap::from([("A".into(), (0.0, 0.0)), ("B".into(), (240.0, 0.0))]);
+        let sizes = vec![("A".into(), 80.0, 80.0), ("B".into(), 80.0, 80.0)];
+        let paints = vec![
+            chem_paint("A", 80.0, 80.0, 40.0, 40.0),
+            chem_paint("B", 80.0, 80.0, 40.0, 40.0),
+        ];
+        let seed = vec![(80.0, 40.0), (240.0, 40.0)];
+        let refined = refine_scheme_edges(
+            &spec,
+            &layout,
+            &positions,
+            &[Some(seed.clone()), Some(seed)],
+            &paints,
+            &sizes,
+        );
+        let a = refined.edge_paths[0].clone().expect("e0");
+        let b = refined.edge_paths[1].clone().expect("e1");
+
+        let paint = |pts: Vec<(f64, f64)>, index: usize| {
+            let edge = crate::arrows::EdgePaintIn {
+                pts,
+                arrow: crate::doc::EdgeArrow::Forward,
+                routing: None,
+                color: Some("#06c".into()),
+                stroke_width: Some(stroke),
+                dashed: false,
+                label: None,
+                label_pos: None,
+                index,
+                curve_catmull: false,
+                label_xy: None,
+                label_rotate: None,
+            };
+            crate::arrows::edge_primitives(&edge)
+        };
+        let prims_a = paint(a, 0);
+        let prims_b = paint(b, 1);
+        let take_d = |prims: &[crate::arrows::EdgePrim], want_head: bool| -> String {
+            prims
+                .iter()
+                .find_map(|p| match p {
+                    crate::arrows::EdgePrim::Path { d, class, .. } => {
+                        let is_head = class.contains("head");
+                        let is_shaft = class.contains("edge")
+                            && !class.contains("head")
+                            && !class.contains("harpoon");
+                        if want_head && is_head || !want_head && is_shaft {
+                            Some(d.clone())
+                        } else {
+                            None
+                        }
+                    }
+                    _ => None,
+                })
+                .expect("path")
+        };
+        let nums = |d: &str| -> Vec<f64> {
+            d.split(|c: char| !(c.is_ascii_digit() || c == '.' || c == '-'))
+                .filter(|s| !s.is_empty())
+                .filter_map(|s| s.parse().ok())
+                .collect()
+        };
+        let tri = |d: &str| {
+            let n = nums(d);
+            [(n[0], n[1]), (n[2], n[3]), (n[4], n[5])]
+        };
+        let shaft_pts = |d: &str| {
+            nums(d)
+                .chunks_exact(2)
+                .map(|c| (c[0], c[1]))
+                .collect::<Vec<_>>()
+        };
+        let in_tri = |p: (f64, f64), t: [(f64, f64); 3]| {
+            let v0 = (t[2].0 - t[0].0, t[2].1 - t[0].1);
+            let v1 = (t[1].0 - t[0].0, t[1].1 - t[0].1);
+            let v2 = (p.0 - t[0].0, p.1 - t[0].1);
+            let dot00 = v0.0 * v0.0 + v0.1 * v0.1;
+            let dot01 = v0.0 * v1.0 + v0.1 * v1.1;
+            let dot02 = v0.0 * v2.0 + v0.1 * v2.1;
+            let dot11 = v1.0 * v1.0 + v1.1 * v1.1;
+            let dot12 = v1.0 * v2.0 + v1.1 * v2.1;
+            let den = dot00 * dot11 - dot01 * dot01;
+            if den.abs() < 1e-18 {
+                return false;
+            }
+            let u = (dot11 * dot02 - dot01 * dot12) / den;
+            let v = (dot00 * dot12 - dot01 * dot02) / den;
+            u >= -1e-9 && v >= -1e-9 && u + v <= 1.0 + 1e-9
+        };
+        let hits = |pts: &[(f64, f64)], t: [(f64, f64); 3]| {
+            for w in pts.windows(2) {
+                for i in 0..=24 {
+                    let u = i as f64 / 24.0;
+                    let p = (
+                        w[0].0 + (w[1].0 - w[0].0) * u,
+                        w[0].1 + (w[1].1 - w[0].1) * u,
+                    );
+                    if in_tri(p, t) {
+                        return true;
+                    }
+                }
+            }
+            false
+        };
+        let sa = shaft_pts(&take_d(&prims_a, false));
+        let sb = shaft_pts(&take_d(&prims_b, false));
+        let ha = tri(&take_d(&prims_a, true));
+        let hb = tri(&take_d(&prims_b, true));
+        assert!(
+            !hits(&sa, hb),
+            "A→B shaft must not cut B→A head: shaft={sa:?} head={hb:?} path_a={:?}",
+            refined.edge_paths[0]
+        );
+        assert!(
+            !hits(&sb, ha),
+            "B→A shaft must not cut A→B head: shaft={sb:?} head={ha:?} path_b={:?}",
+            refined.edge_paths[1]
+        );
+    }
+
     #[test]
     fn coterminal_reverse_arrows_offset_not_flung() {
         let spec = scheme(vec![
@@ -2485,15 +2662,37 @@ mod tests {
             b[0].0 > b[b.len() - 1].0,
             "B→A must keep reverse sense: {b:?}"
         );
-        let sep = mean_nearest_sep(&a, &b);
+        // Source insets leave the ends asymmetric; measure gap only on the
+        // overlapping longitudinal span where both shafts still run.
+        let ax0 = a[0].0.min(a[a.len() - 1].0);
+        let ax1 = a[0].0.max(a[a.len() - 1].0);
+        let bx0 = b[0].0.min(b[b.len() - 1].0);
+        let bx1 = b[0].0.max(b[b.len() - 1].0);
+        let lo_x = ax0.max(bx0);
+        let hi_x = ax1.min(bx1);
+        let clip = |pts: &[(f64, f64)]| {
+            pts.iter()
+                .copied()
+                .filter(|p| p.0 >= lo_x - 1e-6 && p.0 <= hi_x + 1e-6)
+                .collect::<Vec<_>>()
+        };
+        let mut ca = clip(&a);
+        let mut cb = clip(&b);
+        if ca.len() < 2 {
+            ca = vec![(lo_x, a[0].1), (hi_x, a[0].1)];
+        }
+        if cb.len() < 2 {
+            cb = vec![(lo_x, b[0].1), (hi_x, b[0].1)];
+        }
+        let sep = mean_nearest_sep(&ca, &cb);
         assert!(
             (sep - COTERMINAL_LANE_PX).abs() < 6.0,
             "lanes should sit COTERMINAL_LANE_PX apart, got {sep} a={a:?} b={b:?}"
         );
-        let (lo, hi) = sep_spread(&a, &b);
+        let (lo, hi) = sep_spread(&ca, &cb);
         assert!(
             hi - lo < 4.0,
-            "offset must stay constant along the path: lo={lo} hi={hi} a={a:?} b={b:?}"
+            "offset must stay constant on the shared span: lo={lo} hi={hi} a={a:?} b={b:?}"
         );
     }
 
