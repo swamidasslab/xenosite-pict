@@ -5,7 +5,9 @@
 - Doxorubicin name was still low: snug local-edge placement worked, then
   caption–chrome nudge treated mol `halo` (and shade) AABBs as obstacles and
   pushed the label below the full mol box. Halo/shade are underlays now; below
-  captions also slide horizontally into the highest median-edge pocket.
+  captions slide into the highest median-edge pocket, then drop only as far as
+  needed to clear real structure ink (empty notch columns were skewing the
+  median upward into the rings).
 
 - Unnecessary kinks were inflate-pad stair-steps: visibility walks hull
   corners, string-pull cannot chord through the pad, Catmull exaggerates the

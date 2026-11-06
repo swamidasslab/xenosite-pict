@@ -596,8 +596,23 @@ pub fn apply_mol_captions(spec: &DepictSpec, node: &MolNode, mut scene: Scene) -
         }
         let x = below_x;
         // Ascent line sits margin below mol (or previous caption descent).
-        let baseline = stack_top + ink.margin + asc;
-        let bounds = (tx0 + x, baseline - asc, tx1 + x, baseline + desc);
+        let mut baseline = stack_top + ink.margin + asc;
+        let mut bounds = (tx0 + x, baseline - asc, tx1 + x, baseline + desc);
+        // Empty notch columns are skipped by the median sampler, so a pocket
+        // placement can still overlap ring flanks — push down until clear.
+        let box0 = Aabb::new(bounds.0, bounds.1, bounds.2, bounds.3);
+        if struct_occ.clashes(box0, 0.5) {
+            for step in 1..160 {
+                let oy = step as f64;
+                let cand = Aabb::new(box0.x0, box0.y0 + oy, box0.x1, box0.y1 + oy);
+                if !struct_occ.clashes(cand, 0.5) {
+                    baseline += oy;
+                    bounds.1 += oy;
+                    bounds.3 += oy;
+                    break;
+                }
+            }
+        }
         stack_top = bounds.3;
         placed.push(PlacedCaption {
             ink: CaptionInk {
