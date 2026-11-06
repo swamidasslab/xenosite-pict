@@ -101,6 +101,7 @@ class MoleculeInDict(TypedDict, total=False):
     color: NotRequired[str]
     debug_align: NotRequired[bool]
     debug_box: NotRequired[bool]
+    halo: NotRequired[bool]
     id: NotRequired[str]
     scale: NotRequired[float]
     shade_vmax: NotRequired[float]

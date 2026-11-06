@@ -2,6 +2,13 @@
 
 ## 2026-11-05
 
+- `halo: false` was a no-op (`let _ = chrome.halo`). Wired onto
+  `MoleculeIn.halo` (default true) → skip chem knockout + chrome outline
+  halo. Release paint-only 42 steroids: 81→44 ms (~1.9×). Same net as a
+  42‑mol scheme: 344→304 ms (~1.1×) — routing still dominates; xenobase
+  Prasterone (~7–8 s) will only shed tens of ms, but SVG shrinks (~20%)
+  and the site’s existing `halo: false` finally applies.
+
 - SVG path bloat: halo/glyph `d` was multi‑MB because `i_overlay`
   `LineJoin::Round` was fed a px radius (treated as radians → ~0.02px
   stair-steps) and export never Douglas–Peucker’d. Fix: ~30° round

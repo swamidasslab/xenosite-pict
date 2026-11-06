@@ -377,8 +377,9 @@ fn apply_doc_chrome(mut mol: MoleculeIn, node: &MolNode, id: &str, chrome: &MolO
     if let Some(d) = chrome.debug_align {
         mol.debug_align = d;
     }
-    // halo reserved on chrome for future paint; MoleculeIn has no halo flag yet.
-    let _ = chrome.halo;
+    if let Some(h) = chrome.halo {
+        mol.halo = h;
+    }
     if let Some(ref labels) = node.star_labels {
         apply_star_labels(&mut mol, labels);
     } else if let Some(src) = cx_source(node.cxsmiles.as_deref(), node.smiles.as_deref()) {
@@ -1270,6 +1271,143 @@ mod tests {
             assert_eq!(c.weight, Some(1.5));
             assert_eq!(c.halo, Some(true));
         }
+    }
+
+    #[test]
+    fn halo_false_on_mol_spec_skips_chem_halo_paint() {
+        let on: DepictSpec = serde_json::from_str(
+            r##"{"type":"mol","smiles":"CCO","halo":true}"##,
+        )
+        .unwrap();
+        let off: DepictSpec = serde_json::from_str(
+            r##"{"type":"mol","smiles":"CCO","halo":false}"##,
+        )
+        .unwrap();
+        let painted_on = crate::doc::render(&on).expect("halo on");
+        let painted_off = crate::doc::render(&off).expect("halo off");
+        assert!(painted_on[0].molecule.halo);
+        assert!(!painted_off[0].molecule.halo);
+        let has = |scene: &crate::scene::Scene| {
+            scene.viewports.iter().any(|vp| {
+                vp.layers.iter().any(|l| {
+                    l.name == crate::scene::LayerName::Halo
+                        && l.primitives.iter().any(|prim| match prim {
+                            crate::scene::Primitive::Path {
+                                class: Some(c), ..
+                            }
+                            | crate::scene::Primitive::Circle {
+                                class: Some(c), ..
+                            } => c.split_whitespace().any(|t| t == "halo"),
+                            _ => false,
+                        })
+                })
+            })
+        };
+        assert!(
+            has(&painted_on[0].scene),
+            "default/on still paints chem halo"
+        );
+        assert!(
+            !has(&painted_off[0].scene),
+            "halo:false must reach depict"
+        );
+    }
+
+    /// Release timings for a Prasterone-sized scheme (print with --nocapture).
+    #[test]
+    fn halo_on_vs_off_scheme_timing() {
+        use std::time::Instant;
+        const STEROID: &str =
+            "C[C@]12CCC(=O)C=C1CC[C@@H]1[C@@H]2CC[C@]2(C)[C@H](O)CC[C@@H]12";
+        // 12 mols + 11 edges ≈ a thin slice of the Prasterone net; keeps CI
+        // under a couple seconds while still stressing halo geom + routing.
+        const N: usize = 12;
+        let mut children = Vec::new();
+        for i in 0..N {
+            children.push(format!(
+                "{{\"type\":\"mol\",\"id\":\"m{i}\",\"smiles\":\"{STEROID}\",\"name\":\"M{i}\"}}"
+            ));
+        }
+        for i in 0..N - 1 {
+            let j = i + 1;
+            children.push(format!(
+                "{{\"type\":\"edge\",\"sources\":\"m{i}\",\"targets\":\"m{j}\",\"arrow\":\"forward\"}}"
+            ));
+        }
+        let body = children.join(",");
+        let time_spec = |halo: bool| {
+            let spec: DepictSpec = serde_json::from_str(&format!(
+                "{{\"type\":\"reaction_scheme\",\"opts\":{{\"halo\":{halo}}},\"children\":[{body}],\"layout\":{{\"direction\":\"down\"}}}}"
+            ))
+            .unwrap();
+            let _ = crate::doc::render(&spec);
+            let t0 = Instant::now();
+            let painted = crate::doc::render(&spec).expect("scheme");
+            let ms = t0.elapsed().as_secs_f64() * 1000.0;
+            let svg = crate::scene_to_svg(&painted[0].scene);
+            let d_chars: usize = svg
+                .match_indices(" d=\"")
+                .map(|(i, _)| svg[i + 4..].find('"').unwrap_or(0))
+                .sum();
+            (ms, svg.len(), d_chars, painted[0].molecule.halo)
+        };
+        let (ms_on, bytes_on, d_on, halo_on) = time_spec(true);
+        let (ms_off, bytes_off, d_off, halo_off) = time_spec(false);
+        assert!(halo_on);
+        assert!(!halo_off);
+        eprintln!(
+            "halo timing (N={N} steroid scheme): on={ms_on:.0}ms / {}KB d={} | off={ms_off:.0}ms / {}KB d={} | speedup={:.2}x",
+            bytes_on / 1024,
+            d_on,
+            bytes_off / 1024,
+            d_off,
+            ms_on / ms_off.max(0.001)
+        );
+        assert!(
+            ms_off <= ms_on * 1.25,
+            "halo:false unexpectedly slower: on={ms_on:.0}ms off={ms_off:.0}ms"
+        );
+    }
+
+    /// Paint cost only (no edges / routing): 42 steroids, halo on vs off.
+    #[test]
+    fn halo_on_vs_off_paint_only_timing() {
+        use std::time::Instant;
+        const STEROID: &str =
+            "C[C@]12CCC(=O)C=C1CC[C@@H]1[C@@H]2CC[C@]2(C)[C@H](O)CC[C@@H]12";
+        const N: usize = 42;
+        let mut children = Vec::new();
+        for i in 0..N {
+            children.push(format!(
+                "{{\"type\":\"mol\",\"id\":\"m{i}\",\"smiles\":\"{STEROID}\"}}"
+            ));
+        }
+        let body = children.join(",");
+        let time_spec = |halo: bool| {
+            let spec: DepictSpec = serde_json::from_str(&format!(
+                "{{\"type\":\"group\",\"align\":false,\"opts\":{{\"halo\":{halo}}},\"children\":[{body}]}}"
+            ))
+            .unwrap();
+            let _ = crate::doc::render(&spec);
+            let t0 = Instant::now();
+            let painted = crate::doc::render(&spec).expect("group");
+            let ms = t0.elapsed().as_secs_f64() * 1000.0;
+            (
+                ms,
+                painted.len(),
+                painted.iter().filter(|p| p.molecule.halo).count(),
+            )
+        };
+        let (ms_on, n_on, halo_n) = time_spec(true);
+        let (ms_off, n_off, halo_off_n) = time_spec(false);
+        assert_eq!(n_on, N);
+        assert_eq!(n_off, N);
+        assert_eq!(halo_n, N);
+        assert_eq!(halo_off_n, 0);
+        eprintln!(
+            "halo paint-only (N={N} steroids, no edges): on={ms_on:.0}ms | off={ms_off:.0}ms | speedup={:.2}x",
+            ms_on / ms_off.max(0.001)
+        );
     }
 
     #[test]

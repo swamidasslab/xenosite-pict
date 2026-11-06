@@ -115,6 +115,7 @@ class MoleculeIn(StrictModel):
     color: Annotated[str | None, Field(description='Ink color for backbone bonds and atom labels (CSS). Default ``#111``.')] = None
     debug_align: Annotated[bool | None, Field(description='When true, paint alignment correspondence overlays (needs [`Self::align_debug`]).')] = None
     debug_box: Annotated[bool | None, Field(description='When true, paint dashed debug rectangles for label / mol / scene boxes.')] = None
+    halo: Annotated[bool | None, Field(description='White bond/label knockout underlay. Default on; set false for dense schemes where the halo cost dominates and ink already sits on a solid page background.')] = None
     id: str | None = None
     scale: Annotated[float | None, Field(description='Uniform diagram scale (font, stroke, pad, geometry). ``1.0`` = house size.')] = None
     shade_vmax: Annotated[float | None, Field(description='Shade colormap window high (default ``1``). Not inferred from data.')] = None

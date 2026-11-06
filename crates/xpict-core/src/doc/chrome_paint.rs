@@ -819,7 +819,7 @@ fn atom_label_primitive(
         .filter(|s| !s.is_empty())
         .unwrap_or("#444")
         .to_string();
-    let halo = if on_shade {
+    let halo = if on_shade && mol.halo {
         halo_for_markup(content, origin_x, origin_y, font_px, anchor, weight)
     } else {
         None
@@ -1680,7 +1680,7 @@ fn callout_primitives(
     }
     if let Some((d, data_text, _)) = outline_markup(content, placed_x, placed_y, font_px, anchor) {
         if !d.is_empty() {
-            let halo = if on_shade {
+            let halo = if on_shade && mol.halo {
                 halo_for_markup(content, placed_x, placed_y, font_px, anchor, weight)
             } else {
                 None

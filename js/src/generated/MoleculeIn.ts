@@ -45,6 +45,12 @@ weight: number,
  */
 aromatic: AromaticStyle, 
 /**
+ * White bond/label knockout underlay. Default on; set false for dense
+ * schemes where the halo cost dominates and ink already sits on a solid
+ * page background.
+ */
+halo: boolean, 
+/**
  * When true, paint dashed debug rectangles for label / mol / scene boxes.
  */
 debug_box: boolean, 

@@ -423,6 +423,11 @@ pub struct MoleculeIn {
     /// Aromatic ring paint: circle (default) or Kekulé doubles.
     #[serde(default, skip_serializing_if = "is_default_aromatic")]
     pub aromatic: AromaticStyle,
+    /// White bond/label knockout underlay. Default on; set false for dense
+    /// schemes where the halo cost dominates and ink already sits on a solid
+    /// page background.
+    #[serde(default = "default_mol_halo", skip_serializing_if = "is_default_mol_halo")]
+    pub halo: bool,
     /// When true, paint dashed debug rectangles for label / mol / scene boxes.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub debug_box: bool,
@@ -483,6 +488,14 @@ fn is_default_aromatic(s: &AromaticStyle) -> bool {
     *s == AromaticStyle::Circle
 }
 
+fn default_mol_halo() -> bool {
+    true
+}
+
+fn is_default_mol_halo(h: &bool) -> bool {
+    *h
+}
+
 impl Default for MoleculeIn {
     fn default() -> Self {
         Self {
@@ -497,6 +510,7 @@ impl Default for MoleculeIn {
             scale: 1.0,
             weight: 1.0,
             aromatic: AromaticStyle::default(),
+            halo: true,
             debug_box: false,
             debug_align: false,
             align_debug: None,

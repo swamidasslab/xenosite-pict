@@ -189,6 +189,7 @@ pub(crate) fn depict_chem(mol: &MoleculeIn) -> Scene {
 
     let mut bond_prims: Vec<Primitive> = Vec::new();
     let mut bond_strokes_for_halo: Vec<StrokePath> = Vec::new();
+    let want_halo = mol.halo;
     for bond in &prepared {
         let strokes = bond_strokes(
             bond.x1,
@@ -202,8 +203,10 @@ pub(crate) fn depict_chem(mol: &MoleculeIn) -> Scene {
             Some(stroke_px),
         );
         let tag = format!("bond-{} atom-{} atom-{}", bond.index, bond.begin, bond.end);
-        for sp in strokes.paint_order() {
-            bond_strokes_for_halo.push((*sp).clone());
+        if want_halo {
+            for sp in strokes.paint_order() {
+                bond_strokes_for_halo.push((*sp).clone());
+            }
         }
         for mut p in strokes.into_primitives(color) {
             if let Primitive::Path { ref mut class, .. } = p {
@@ -250,7 +253,9 @@ pub(crate) fn depict_chem(mol: &MoleculeIn) -> Scene {
             ink = ink.buffer(label_grow);
         }
         let d = ink.to_svg_d();
-        label_ink_for_halo.push(ink);
+        if want_halo {
+            label_ink_for_halo.push(ink);
+        }
         if d.is_empty() {
             continue;
         }
@@ -269,7 +274,7 @@ pub(crate) fn depict_chem(mol: &MoleculeIn) -> Scene {
 
     let radical_dots = radical_dot_prims(mol, &by_index, dx, dy, color, &placed, face);
     #[cfg(feature = "geom")]
-    {
+    if want_halo {
         for p in &radical_dots {
             if let Primitive::Circle { cx, cy, r, .. } = p {
                 label_ink_for_halo.push(crate::geom::Shape::disk(*cx, *cy, *r, 12));
@@ -278,12 +283,16 @@ pub(crate) fn depict_chem(mol: &MoleculeIn) -> Scene {
     }
 
     let shade_prims = paint_shade(mol, &by_index, dx, dy);
-    let halo_prims = paint_halo(
-        &bond_strokes_for_halo,
-        &label_ink_for_halo,
-        stroke_px,
-        weight,
-    );
+    let halo_prims = if want_halo {
+        paint_halo(
+            &bond_strokes_for_halo,
+            &label_ink_for_halo,
+            stroke_px,
+            weight,
+        )
+    } else {
+        Vec::new()
+    };
 
     let mut debug_prims: Vec<Primitive> = Vec::new();
     if mol.debug_box {
@@ -1121,6 +1130,33 @@ mod tests {
         assert_eq!(bonds.primitives.len(), 2);
         assert!(scene.width > PAD_PX);
         assert!(scene.height > PAD_PX);
+    }
+
+    #[test]
+    fn halo_false_omits_chem_halo_layer() {
+        let mut mol = ethanol();
+        mol.halo = false;
+        let scene = depict_molecule(&mol);
+        let has_halo = scene.viewports[0].layers.iter().any(|l| {
+            l.name == LayerName::Halo
+                && l.primitives.iter().any(|p| match p {
+                    Primitive::Path {
+                        class: Some(c), ..
+                    } => c.contains("halo"),
+                    Primitive::Circle {
+                        class: Some(c), ..
+                    } => c.contains("halo"),
+                    _ => false,
+                })
+        });
+        assert!(!has_halo, "halo:false must skip chem bond/label knockout");
+        assert!(
+            scene.viewports[0]
+                .layers
+                .iter()
+                .any(|l| l.name == LayerName::Bonds && !l.primitives.is_empty()),
+            "bonds still paint without halo"
+        );
     }
 
     /// Halo + glyph outlines used to emit multi‑MB SVGs (0.02px stair-steps).
