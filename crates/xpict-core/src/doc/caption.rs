@@ -599,13 +599,15 @@ pub fn apply_mol_captions(spec: &DepictSpec, node: &MolNode, mut scene: Scene) -
         let mut baseline = stack_top + ink.margin + asc;
         let mut bounds = (tx0 + x, baseline - asc, tx1 + x, baseline + desc);
         // Empty notch columns are skipped by the median sampler, so a pocket
-        // placement can still overlap ring flanks — push down until clear.
+        // placement can still overlap ring flanks — push down until clear of
+        // structure by a full caption margin (not a hairline kiss).
         let box0 = Aabb::new(bounds.0, bounds.1, bounds.2, bounds.3);
-        if struct_occ.clashes(box0, 0.5) {
-            for step in 1..160 {
+        let clear = ink.margin.max(0.5);
+        if struct_occ.clashes(box0, clear) {
+            for step in 1..200 {
                 let oy = step as f64;
                 let cand = Aabb::new(box0.x0, box0.y0 + oy, box0.x1, box0.y1 + oy);
-                if !struct_occ.clashes(cand, 0.5) {
+                if !struct_occ.clashes(cand, clear) {
                     baseline += oy;
                     bounds.1 += oy;
                     bounds.3 += oy;
