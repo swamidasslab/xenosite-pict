@@ -9,6 +9,7 @@
 
 use std::collections::{HashMap, HashSet};
 
+use pathfinding::directed::astar::astar;
 use pathfinding::directed::dijkstra::dijkstra;
 
 use crate::arrows::{
@@ -44,11 +45,25 @@ const BOX_CORNER_MARGIN: f64 = BOND_PX;
 /// Padding outside the union of all obstacles for a scheme-wide Steiner
 /// frame — the corridor that goes over-top / around the whole net.
 const FRAME_MARGIN: f64 = BOND_PX * 4.0;
-/// After the sequential pass, re-route still-crossing shafts a few times so
-/// crossings that only appear once both ends exist get priced.
-const REOPT_PASSES: usize = 3;
+/// After the sequential pass, re-route still-crossing shafts so crossings that
+/// only appear once both ends exist get priced. One pass over the crossers is
+/// enough in practice; denser nets were spending seconds in Dijkstra.
+const REOPT_PASSES: usize = 1;
+/// Hard cap on reopt A* calls for dense nets.
+const REOPT_MAX_STEPS: usize = 12;
 /// Inflate full-ink hulls by this before visibility (shapeBufferDistance).
 const ROUTING_CLEARANCE: f64 = SCHEME_INK_STANDOFF + 0.5 * 1.6;
+/// Cap how many nearby hull/box verts a terminal links to (plus all frame
+/// corners). Full fan-out to every vis node dominated dense routing.
+const TERMINAL_LINK_NEAR: usize = 40;
+/// Soft cap on inflated-hull verts kept for the visibility graph.
+const MAX_HULL_VERTS: usize = 24;
+/// Max clear links from each vis node to *other* obstacles (frame ports are
+/// always linked sparsely). Full O(V²) visibility made search ~200ms/arrow.
+const INTER_VIS_NEAR: usize = 10;
+/// Frame (scheme-box) ports only link to box-corners + this many nearest hull
+/// verts per mol — not every hull sample.
+const FRAME_HULL_NEAR: usize = 4;
 /// Parallel-track gap after shared corridors (idealNudgingDistance).
 const NUDGE_PX: f64 = 8.0;
 const COTERMINAL_LANE_PX: f64 = 8.0;
@@ -63,6 +78,13 @@ struct Obstacle {
     mol_id: String,
     /// Inflated hull vertices (CCW).
     hull: Vec<Pt>,
+    /// Cached AABB of `hull` for fast segment reject.
+    aabb: (f64, f64, f64, f64),
+}
+
+fn obstacle_with_hull(mol_id: String, hull: Vec<Pt>) -> Obstacle {
+    let aabb = hull_aabb(&hull);
+    Obstacle { mol_id, hull, aabb }
 }
 
 /// Committed route for soft share/cross penalties.
@@ -174,9 +196,9 @@ pub fn route_scheme_edges(
     let empty_skip: HashSet<&str> = HashSet::new();
     order.sort_by_key(|&i| {
         let (s, g) = tips[i];
-        let ink_skip: HashSet<&str> = skips[i].iter().map(String::as_str).collect();
-        let tip_clear = segment_clears_obstacles(s, g, &obstacles, &empty_skip)
-            && chord_clears_ink(world, s, g, mol_ids, &ink_skip, clashes[i]);
+        // Inflated hulls already pad ink; skip per-sample world SDF (was the
+        // dense-net hotspot).
+        let tip_clear = segment_clears_obstacles(s, g, &obstacles, &empty_skip);
         // Clean tip chord + zero centroid-pathway crossings first. Within dirty
         // tiers, few-crossing shafts lock first so multi-cross arrows route last.
         let tier = if tip_clear && draft_cross[i] == 0 {
@@ -203,7 +225,6 @@ pub fn route_scheme_edges(
         // crossings — tip shortening must not hide an X.
         let keep_draft = draft_cross[gi] == 0
             && segment_clears_obstacles(start, goal, &obstacles, &empty_skip)
-            && chord_clears_ink(world, start, goal, mol_ids, &skip, clash)
             && path_crosses_committed(&[src_c, tgt_c], &committed) == 0;
 
         let center = if keep_draft {
@@ -401,8 +422,8 @@ fn route_one_centerline(
     committed: &[Committed],
 ) -> Vec<Pt> {
     let empty: HashSet<&str> = HashSet::new();
-    let mol_clear = segment_clears_obstacles(start, goal, obstacles, &empty)
-        && chord_clears_ink(world, start, goal, mol_ids, skip, clash);
+    let _ = (world, mol_ids, skip, clash); // tip ink already posed; hulls pad structure
+    let mol_clear = segment_clears_obstacles(start, goal, obstacles, &empty);
     let crosses_locked = pathway_crosses_committed(&[start, goal], src_c, tgt_c, committed) > 0;
     // Pass-2 must actually re-route against the locked set. A mol-clear tip
     // chord that still crosses on the centroid pathway is not done.
@@ -420,6 +441,10 @@ fn route_one_centerline(
         return pulled;
     }
 
+    // Visibility walk already clear and crossing-optimal — skip the bow search.
+    if pulled_ok && pulled_x == 0 && pulled.len() >= 2 {
+        return pulled;
+    }
     let bow = fallback_bow(start, goal, obstacles, &empty, committed);
     let bow_ok = path_clears_obstacles(&bow, obstacles, &empty);
     let bow_x = pathway_crosses_committed(&bow, src_c, tgt_c, committed);
@@ -611,10 +636,7 @@ fn cosmetic_douglas_peucker(
 fn pad_tolerant_obstacles(obstacles: &[Obstacle], shrink: f64) -> Vec<Obstacle> {
     obstacles
         .iter()
-        .map(|o| Obstacle {
-            mol_id: o.mol_id.clone(),
-            hull: inflate_convex(&o.hull, -shrink),
-        })
+        .map(|o| obstacle_with_hull(o.mol_id.clone(), inflate_convex(&o.hull, -shrink)))
         .collect()
 }
 
@@ -837,7 +859,10 @@ fn reoptimize_crossing_routes(
             polyline_len(&extend_to_centroids(&centers[i], sc, tc))
         })
         .collect();
-    let max_steps = n.saturating_mul(REOPT_PASSES).max(REOPT_PASSES);
+    let max_steps = n
+        .saturating_mul(REOPT_PASSES)
+        .max(REOPT_PASSES)
+        .min(REOPT_MAX_STEPS);
     let mut stuck: HashSet<usize> = HashSet::new();
     for _ in 0..max_steps {
         // Skip zero-cross; among the rest: most intersections, then longest.
@@ -1017,19 +1042,31 @@ fn build_obstacles(mol_ids: &[String], world: &LayoutWorld, inflate: f64) -> Vec
         } else {
             continue;
         };
-        // Keep the full inflated hull. Stride-simplifying verts shrinks a
-        // convex polygon inward and lets shafts clip molecule ink.
+        // Keep the full inflated hull for collision (subsampling verts would
+        // shrink the polygon inward and let shafts clip ink). Visibility-graph
+        // nodes subsample separately.
         let hull = if hull.len() >= 3 {
             inflate_convex(&hull, inflate)
         } else {
             hull
         };
         if hull.len() >= 3 {
-            out.push(Obstacle {
-                mol_id: id.clone(),
-                hull,
-            });
+            out.push(obstacle_with_hull(id.clone(), hull));
         }
+    }
+    out
+}
+
+/// Evenly spaced subset of a convex ring — routing Steiner ports only.
+fn subsample_convex_ring(hull: &[Pt], max_verts: usize) -> Vec<Pt> {
+    let n = hull.len();
+    if n <= max_verts || max_verts < 3 {
+        return hull.to_vec();
+    }
+    let mut out = Vec::with_capacity(max_verts);
+    for i in 0..max_verts {
+        let idx = (i * n) / max_verts;
+        out.push(hull[idx]);
     }
     out
 }
@@ -1050,12 +1087,13 @@ fn build_visibility_graph(obstacles: &[Obstacle]) -> VisGraph {
     let mut box_ranges: Vec<(usize, usize)> = Vec::new();
     for o in obstacles {
         let start = pts.len();
-        for &p in &o.hull {
+        let ports = subsample_convex_ring(&o.hull, MAX_HULL_VERTS);
+        for &p in &ports {
             pts.push(p);
             owner.push(Some(o.mol_id.clone()));
         }
         ranges.push((start, pts.len()));
-        let (x0, y0, x1, y1) = hull_aabb(&o.hull);
+        let (x0, y0, x1, y1) = o.aabb;
         let m = BOX_CORNER_MARGIN;
         let corners = [
             (x0 - m, y0 - m),
@@ -1156,17 +1194,76 @@ fn build_visibility_graph(obstacles: &[Obstacle]) -> VisGraph {
         }
     }
 
-    // 2) Full inter-obstacle visibility: every clear segment between verts on
-    // *different* hulls/boxes (frame verts are unowned and link to all clear).
-    // Same-owner non-ring chords still skip (cut ink).
+    // 2) Inter-obstacle visibility (sparse). Frame ports are the over-top /
+    // around-net highways — link each to all box corners + a few nearest hull
+    // verts per mol. Other verts keep only nearest foreign ports.
+    let frame: Vec<usize> = owner
+        .iter()
+        .enumerate()
+        .filter_map(|(i, o)| o.is_none().then_some(i))
+        .collect();
+    for &fi in &frame {
+        for (ri, &(blo, bhi)) in box_ranges.iter().enumerate() {
+            // All four box corners of this mol.
+            for j in blo..bhi {
+                let len = dist(pts[fi], pts[j]);
+                if segment_clears_obstacles(pts[fi], pts[j], obstacles, &empty_skip) {
+                    add(&mut adj, &mut linked, fi, j, len);
+                }
+            }
+            // Nearest hull ports of this mol.
+            let (hlo, hhi) = ranges[ri];
+            let mut cands: Vec<(f64, usize)> = (hlo..hhi)
+                .map(|j| (dist(pts[fi], pts[j]), j))
+                .collect();
+            cands.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+            let mut kept = 0usize;
+            for (len, j) in cands {
+                if kept >= FRAME_HULL_NEAR {
+                    break;
+                }
+                if segment_clears_obstacles(pts[fi], pts[j], obstacles, &empty_skip) {
+                    add(&mut adj, &mut linked, fi, j, len);
+                    kept += 1;
+                }
+            }
+        }
+        // Frame cycle already added; also link frame corners to each other
+        // diagonally for short-cuts across the scheme.
+        for &fj in &frame {
+            if fj <= fi {
+                continue;
+            }
+            let len = dist(pts[fi], pts[fj]);
+            if segment_clears_obstacles(pts[fi], pts[fj], obstacles, &empty_skip) {
+                add(&mut adj, &mut linked, fi, fj, len);
+            }
+        }
+    }
     for i in 0..n {
+        if owner[i].is_none() {
+            continue; // frame handled above
+        }
         let oi = owner[i].as_deref();
-        for j in (i + 1)..n {
+        let mut cands: Vec<(f64, usize)> = Vec::new();
+        for j in 0..n {
+            if j == i || owner[j].is_none() {
+                continue;
+            }
             if oi.is_some() && owner[j].as_deref() == oi {
                 continue;
             }
+            cands.push((dist(pts[i], pts[j]), j));
+        }
+        cands.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+        let mut kept = 0usize;
+        for (len, j) in cands {
+            if kept >= INTER_VIS_NEAR {
+                break;
+            }
             if segment_clears_obstacles(pts[i], pts[j], obstacles, &empty_skip) {
-                add(&mut adj, &mut linked, i, j, dist(pts[i], pts[j]));
+                add(&mut adj, &mut linked, i, j, len);
+                kept += 1;
             }
         }
     }
@@ -1380,30 +1477,6 @@ fn min_ink_signed(world: &LayoutWorld, under: &str, p: Pt) -> f64 {
     best
 }
 
-fn chord_clears_ink(
-    world: &LayoutWorld,
-    a: Pt,
-    b: Pt,
-    mol_ids: &[String],
-    skip: &HashSet<&str>,
-    clash: f64,
-) -> bool {
-    let n = 24usize;
-    for i in 1..n {
-        let t = i as f64 / n as f64;
-        let p = (a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t);
-        for id in mol_ids {
-            if skip.contains(id.as_str()) {
-                continue;
-            }
-            if min_ink_signed(world, &format!("scheme/mols/{id}"), p) < clash - 0.5 {
-                return false;
-            }
-        }
-    }
-    true
-}
-
 fn segment_clears_obstacles(
     a: Pt,
     b: Pt,
@@ -1414,31 +1487,29 @@ fn segment_clears_obstacles(
         if skip.contains(o.mol_id.as_str()) {
             continue;
         }
-        if segment_hits_convex(a, b, &o.hull) {
+        if segment_hits_obstacle(a, b, o) {
             return false;
         }
     }
     true
 }
 
+fn segment_hits_obstacle(a: Pt, b: Pt, o: &Obstacle) -> bool {
+    segment_hits_convex_aabb(a, b, &o.hull, o.aabb)
+}
+
 /// Open segment hits the **strict interior** of a convex CCW polygon.
 /// Boundary edges (hull walks) must not count as hits — closed `point_in`
 /// treated on-edge midpoints as inside and blocked every detour.
 fn segment_hits_convex(a: Pt, b: Pt, hull: &[Pt]) -> bool {
+    segment_hits_convex_aabb(a, b, hull, hull_aabb(hull))
+}
+
+fn segment_hits_convex_aabb(a: Pt, b: Pt, hull: &[Pt], aabb: (f64, f64, f64, f64)) -> bool {
     if hull.len() < 3 {
         return false;
     }
-    // Fast AABB reject.
-    let mut x0 = f64::INFINITY;
-    let mut y0 = f64::INFINITY;
-    let mut x1 = f64::NEG_INFINITY;
-    let mut y1 = f64::NEG_INFINITY;
-    for &(x, y) in hull {
-        x0 = x0.min(x);
-        y0 = y0.min(y);
-        x1 = x1.max(x);
-        y1 = y1.max(y);
-    }
+    let (x0, y0, x1, y1) = aabb;
     let sx0 = a.0.min(b.0);
     let sy0 = a.1.min(b.1);
     let sx1 = a.0.max(b.0);
@@ -1524,61 +1595,103 @@ fn visibility_route(
     obstacles: &[Obstacle],
     committed: &[Committed],
 ) -> Vec<Pt> {
-    // Nodes: start=0, goal=1, then shared hull verts at 2..
-    let mut nodes: Vec<Pt> = vec![start, goal];
-    nodes.extend_from_slice(&vis.pts);
-    let n = nodes.len();
-
-    let mut adj: Vec<Vec<(usize, f64)>> = vec![Vec::new(); n];
-    // Copy shared visibility (shift indices by +2).
-    for (i, nbrs) in vis.adj.iter().enumerate() {
-        for &(j, len) in nbrs {
-            adj[i + 2].push((j + 2, len));
-        }
-    }
-    // Start / goal → every hull vert whose open segment clears *all* inflated
-    // hulls (including src/tgt). Skipping endpoints let chords tunnel through
-    // sugar moieties and beat real left/right detours on cost.
-    link_terminal(&mut adj, &nodes, 0, obstacles, &vis.owner);
-    link_terminal(&mut adj, &nodes, 1, obstacles, &vis.owner);
+    // Nodes: start=0, goal=1, then shared hull verts at 2.. — do **not** clone
+    // the shared adj each call; index into `vis.adj` with a +2 shift.
     let empty_skip = HashSet::new();
-    if segment_clears_obstacles(start, goal, obstacles, &empty_skip) {
-        let len = dist(start, goal);
-        adj[0].push((1, len));
-        adj[1].push((0, len));
+    let start_links = link_terminal_sparse(start, &vis.pts, &vis.owner, obstacles);
+    let goal_links = link_terminal_sparse(goal, &vis.pts, &vis.owner, obstacles);
+    let direct = segment_clears_obstacles(start, goal, obstacles, &empty_skip)
+        .then(|| dist(start, goal));
+
+    // Reverse maps: vis-node → link length to start/goal.
+    let mut to_start = vec![None; vis.pts.len()];
+    let mut to_goal = vec![None; vis.pts.len()];
+    for &(j, len) in &start_links {
+        to_start[j] = Some(len);
+    }
+    for &(j, len) in &goal_links {
+        to_goal[j] = Some(len);
     }
 
-    let path = dijkstra(
+    let node_pt = |i: usize| -> Pt {
+        match i {
+            0 => start,
+            1 => goal,
+            _ => vis.pts[i - 2],
+        }
+    };
+    // A*: edge costs are ≥ Euclidean length, so dist-to-goal is admissible.
+    let path = astar(
         &(0usize, 0usize),
         |&(u, prev)| {
-            adj[u]
-                .iter()
-                .filter_map(|&(v, len)| {
+            let mut nbrs: Vec<(usize, f64)> = Vec::new();
+            match u {
+                0 => {
+                    for &(j, len) in &start_links {
+                        nbrs.push((j + 2, len));
+                    }
+                    if let Some(len) = direct {
+                        nbrs.push((1, len));
+                    }
+                }
+                1 => {
+                    for &(j, len) in &goal_links {
+                        nbrs.push((j + 2, len));
+                    }
+                    if let Some(len) = direct {
+                        nbrs.push((0, len));
+                    }
+                }
+                _ => {
+                    let vi = u - 2;
+                    for &(j, len) in &vis.adj[vi] {
+                        nbrs.push((j + 2, len));
+                    }
+                    if let Some(len) = to_start[vi] {
+                        nbrs.push((0, len));
+                    }
+                    if let Some(len) = to_goal[vi] {
+                        nbrs.push((1, len));
+                    }
+                }
+            }
+            nbrs.into_iter()
+                .filter_map(|(v, len)| {
                     if v == prev && u != 0 {
                         return None;
                     }
+                    let pu = node_pt(u);
+                    let pv = node_pt(v);
+                    let pp = if prev == 0 {
+                        start
+                    } else if prev == 1 {
+                        goal
+                    } else if prev >= 2 {
+                        vis.pts[prev - 2]
+                    } else {
+                        pu
+                    };
                     let bend = if u == 0 || u == prev {
                         0.0
                     } else {
-                        angle_penalty(nodes[prev], nodes[u], nodes[v]) + SEGMENT_PENALTY * 0.15
+                        angle_penalty(pp, pu, pv) + SEGMENT_PENALTY * 0.15
                     };
-                    let share = shared_penalty(nodes[u], nodes[v], committed);
-                    // Pathway-aware hops: leave/enter via centroids so tip
-                    // chords cannot hide an X that the centroid pathway sees.
+                    let share = shared_penalty(pu, pv, committed);
                     let cross = if u == 0 && v == 1 {
                         crossing_penalty(src_c, tgt_c, committed)
                     } else if u == 0 {
-                        crossing_penalty(src_c, nodes[v], committed)
+                        crossing_penalty(src_c, pv, committed)
                     } else if v == 1 {
-                        crossing_penalty(nodes[u], tgt_c, committed)
+                        crossing_penalty(pu, tgt_c, committed)
                     } else {
-                        crossing_penalty(nodes[u], nodes[v], committed)
+                        crossing_penalty(pu, pv, committed)
                     };
                     let cost = len + bend + share + cross;
                     Some(((v, u), ordered_float(cost)))
                 })
                 .collect::<Vec<_>>()
         },
+        |&(u, _)| ordered_float(dist(node_pt(u), goal)),
         |&(g, _)| g == 1,
     );
 
@@ -1591,7 +1704,7 @@ fn visibility_route(
             idxs.push(node);
         }
     }
-    let mut pts: Vec<Pt> = idxs.into_iter().map(|i| nodes[i]).collect();
+    let mut pts: Vec<Pt> = idxs.into_iter().map(node_pt).collect();
     pts = string_pull(&pts, obstacles, &empty_skip, committed);
     if pts.len() < 2 {
         return fallback_bow(start, goal, obstacles, &empty_skip, committed);
@@ -1599,24 +1712,42 @@ fn visibility_route(
     pts
 }
 
-fn link_terminal(
-    adj: &mut [Vec<(usize, f64)>],
-    nodes: &[Pt],
-    hub: usize,
+/// Link a tip to all clear frame (unowned) ports plus the nearest clear hull /
+/// box verts — not every visibility node (that was O(V) clears per tip).
+fn link_terminal_sparse(
+    hub: Pt,
+    pts: &[Pt],
+    owner: &[Option<String>],
     obstacles: &[Obstacle],
-    _owner: &[Option<String>],
-) {
+) -> Vec<(usize, f64)> {
     let empty_skip = HashSet::new();
-    for j in 2..nodes.len() {
-        let len = dist(nodes[hub], nodes[j]);
+    let mut out = Vec::new();
+    let mut near: Vec<(f64, usize)> = Vec::new();
+    for (j, &p) in pts.iter().enumerate() {
+        let len = dist(hub, p);
         if len < 1e-6 {
             continue;
         }
-        if segment_clears_obstacles(nodes[hub], nodes[j], obstacles, &empty_skip) {
-            adj[hub].push((j, len));
-            adj[j].push((hub, len));
+        if owner[j].is_none() {
+            if segment_clears_obstacles(hub, p, obstacles, &empty_skip) {
+                out.push((j, len));
+            }
+        } else {
+            near.push((len, j));
         }
     }
+    near.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+    let mut linked = 0usize;
+    for (len, j) in near {
+        if linked >= TERMINAL_LINK_NEAR {
+            break;
+        }
+        if segment_clears_obstacles(hub, pts[j], obstacles, &empty_skip) {
+            out.push((j, len));
+            linked += 1;
+        }
+    }
+    out
 }
 
 fn fallback_bow(
@@ -1691,9 +1822,20 @@ fn shared_penalty(a: Pt, b: Pt, committed: &[Committed]) -> f64 {
 }
 
 fn crossing_penalty(a: Pt, b: Pt, committed: &[Committed]) -> f64 {
+    let ax0 = a.0.min(b.0);
+    let ay0 = a.1.min(b.1);
+    let ax1 = a.0.max(b.0);
+    let ay1 = a.1.max(b.1);
     let mut n = 0.0;
     for c in committed {
         for &(p, q) in &c.segs {
+            let px0 = p.0.min(q.0);
+            let py0 = p.1.min(q.1);
+            let px1 = p.0.max(q.0);
+            let py1 = p.1.max(q.1);
+            if ax1 < px0 || ax0 > px1 || ay1 < py0 || ay0 > py1 {
+                continue;
+            }
             if segments_properly_cross(a, b, p, q) {
                 n += 1.0;
             }
@@ -2061,10 +2203,7 @@ mod tests {
     fn cosmetic_dp_keeps_real_blocker_detour() {
         // Use routing-scale inflate so deflating by ε still leaves a blocker.
         let square = vec![(40.0, 40.0), (60.0, 40.0), (60.0, 60.0), (40.0, 60.0)];
-        let obstacles = vec![Obstacle {
-            mol_id: "blocker".into(),
-            hull: inflate_convex(&square, ROUTING_CLEARANCE),
-        }];
+        let obstacles = vec![obstacle_with_hull("blocker".into(), inflate_convex(&square, ROUTING_CLEARANCE))];
         let pad = pad_tolerant_obstacles(&obstacles, COSMETIC_SIMPLIFY_EPS);
         let skip = HashSet::new();
         let detour = vec![
@@ -2257,10 +2396,7 @@ mod tests {
         // around the left crosses it; the far (right) walk does not. Raising
         // CROSSING_PENALTY must force the clear side.
         let square = vec![(40.0, 40.0), (60.0, 40.0), (60.0, 60.0), (40.0, 60.0)];
-        let obstacles = vec![Obstacle {
-            mol_id: "blocker".into(),
-            hull: inflate_convex(&square, 2.0),
-        }];
+        let obstacles = vec![obstacle_with_hull("blocker".into(), inflate_convex(&square, 2.0))];
         let vis = build_visibility_graph(&obstacles);
         // Locked shaft cuts the *left* silhouette corridor (near side).
         let committed = vec![Committed {
@@ -2305,10 +2441,7 @@ mod tests {
         // Visibility finds a walk; fallback_bow's last resort is the piercing
         // chord. Must not prefer that "simpler" 2-point path.
         let square = vec![(40.0, 40.0), (60.0, 40.0), (60.0, 60.0), (40.0, 60.0)];
-        let obstacles = vec![Obstacle {
-            mol_id: "blocker".into(),
-            hull: inflate_convex(&square, 2.0),
-        }];
+        let obstacles = vec![obstacle_with_hull("blocker".into(), inflate_convex(&square, 2.0))];
         let vis = build_visibility_graph(&obstacles);
         let skip = HashSet::new();
         let world = LayoutWorld::new("scheme");
@@ -2345,10 +2478,7 @@ mod tests {
         let square = vec![(40.0, 40.0), (60.0, 40.0), (60.0, 60.0), (40.0, 60.0)];
         let hull = inflate_convex(&square, 2.0);
         assert!(segment_hits_convex((50.0, 10.0), (50.0, 90.0), &hull));
-        let obstacles = vec![Obstacle {
-            mol_id: "blocker".into(),
-            hull: hull.clone(),
-        }];
+        let obstacles = vec![obstacle_with_hull("blocker".into(), hull.clone())];
         let vis = build_visibility_graph(&obstacles);
         // Boundary walk + inter-obstacle (n/a) → each vert degree ≥ 2.
         assert!(

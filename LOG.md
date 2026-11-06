@@ -2,6 +2,12 @@
 
 ## 2026-11-05
 
+- Ranolazine compose was ~22s release (draft+reopt Dijkstra on a dense
+  visibility graph + per-route ink SDF). Sparse vis (K-nearest + frame
+  highways), A* instead of Dijkstra, hull AABB cache, skip world SDF once
+  hulls clear, and capped reopt → ~1s route / ~2s full compose. Dropped the
+  ranolazine `should_panic` budget xfail.
+
 - Doxorubicin name was still low: snug local-edge placement worked, then
   caption–chrome nudge treated mol `halo` (and shade) AABBs as obstacles and
   pushed the label below the full mol box. Halo/shade are underlays now; below
