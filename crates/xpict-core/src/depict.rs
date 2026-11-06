@@ -1123,6 +1123,45 @@ mod tests {
         assert!(scene.height > PAD_PX);
     }
 
+    /// Halo + glyph outlines used to emit multi‑MB SVGs (0.02px stair-steps).
+    /// Export must Douglas–Peucker so a steroid-sized mol stays compact.
+    #[test]
+    fn steroid_svg_paths_are_not_over_tessellated() {
+        // Prasterone-like polycycle with several heteroatom labels + halo.
+        let spec = crate::doc::DepictSpec::Mol(crate::doc::MolNode {
+            smiles: Some(
+                "C[C@]12CCC(=O)C=C1CC[C@@H]1[C@@H]2CC[C@]2(C)[C@H](O)CC[C@@H]12".into(),
+            ),
+            name: Some(crate::doc::MolText::Plain("Prasterone".into())),
+            ..Default::default()
+        });
+        let painted = crate::doc::render(&spec).expect("render");
+        let svg = crate::scene_to_svg(&painted[0].scene);
+        let d_chars: usize = svg
+            .match_indices(" d=\"")
+            .map(|(i, _)| {
+                let rest = &svg[i + 4..];
+                rest.find('"').unwrap_or(0)
+            })
+            .sum();
+        // Pre-fix Prasterone was ~2MB / ~2M d-chars. Compact house style
+        // should land well under a few hundred KB of path data.
+        assert!(
+            d_chars < 200_000,
+            "path d still over-tessellated: {d_chars} chars (svg {} bytes)",
+            svg.len()
+        );
+        assert!(
+            !svg.contains("204.78 L 35.63 204.76"),
+            "0.02px halo stair-steps still present"
+        );
+        assert!(
+            svg.len() < 400_000,
+            "SVG still huge: {} bytes",
+            svg.len()
+        );
+    }
+
     #[test]
     fn mol_weight_thickens_bond_stroke() {
         use crate::metrics::{stroke_px_for_weight, STROKE_PX};

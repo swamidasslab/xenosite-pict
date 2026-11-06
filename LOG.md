@@ -2,6 +2,15 @@
 
 ## 2026-11-05
 
+- SVG path bloat: halo/glyph `d` was multi‑MB because `i_overlay`
+  `LineJoin::Round` was fed a px radius (treated as radians → ~0.02px
+  stair-steps) and export never Douglas–Peucker’d. Fix: ~30° round
+  joins, `Shape::decimate` / `to_svg_d` at `SVG_PATH_EPS_PX=0.5`, coarser
+  capsules, font `BEZIER_STEPS=4` + em RDP. Native Prasterone: ~2.2 MB /
+  1.96 M `d` chars → ~12 KB / ~6 k. Sibling wasm rebuild that still
+  matched release had not picked up these uncommitted geom edits;
+  `cosmetic_simplify_eps` is scheme-arrow only.
+
 - Tiered constants policy: author-facing knobs stay on DepictSpec
   (cascade / `LayoutOpts`); implementation knobs live in Rust-only
   `EngineConfig` (not `make types`). Rubric + inventory in

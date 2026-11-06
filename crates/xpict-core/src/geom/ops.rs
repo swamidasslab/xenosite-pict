@@ -9,7 +9,10 @@ use i_overlay::mesh::float::outline::offset::OutlineOffset;
 use i_overlay::mesh::float::stroke::offset::StrokeOffset;
 use i_overlay::mesh::float::style::{LineCap, LineJoin, OutlineStyle, StrokeStyle};
 
-use super::{capsule_polygon, circle_polygon, polygon_to_svg_d};
+use super::{
+    capsule_polygon, circle_polygon, douglas_peucker_closed, polygon_to_svg_d, SVG_PATH_EPS_PX,
+};
+use std::f64::consts::FRAC_PI_6;
 
 type Contour = Vec<[f64; 2]>;
 type OverlayShape = Vec<Contour>;
@@ -69,7 +72,8 @@ impl Shape {
     }
 
     pub fn capsule(x1: f64, y1: f64, x2: f64, y2: f64, radius: f64) -> Self {
-        Self::from_ring(&capsule_polygon(x1, y1, x2, y2, radius, 8))
+        // 4 quad-segs (~8 arc samples / cap) is plenty for bond-width capsules.
+        Self::from_ring(&capsule_polygon(x1, y1, x2, y2, radius, 4))
     }
 
     pub fn polyline_buffer(pts: &[(f64, f64)], radius: f64) -> Self {
@@ -80,12 +84,14 @@ impl Shape {
             return Self::capsule(pts[0].0, pts[0].1, pts[1].0, pts[1].1, radius);
         }
         let path: Contour = pts.iter().copied().map(pt).collect();
-        let r = radius.max(0.05) * 0.2;
+        // `Round` takes a max turn angle (radians), not a distance — ~30° keeps
+        // round caps smooth without emitting dozens of micro-segments.
+        let ang = FRAC_PI_6;
         let style = StrokeStyle::new(radius * 2.0)
-            .line_join(LineJoin::Round(r))
-            .start_cap(LineCap::Round(r))
-            .end_cap(LineCap::Round(r));
-        Self::wrap(path.stroke(style, false))
+            .line_join(LineJoin::Round(ang))
+            .start_cap(LineCap::Round(ang))
+            .end_cap(LineCap::Round(ang));
+        Self::wrap(path.stroke(style, false)).decimate(SVG_PATH_EPS_PX)
     }
 
     pub fn multipoint_buffer(pts: &[(f64, f64)], radius: f64) -> Self {
@@ -140,11 +146,14 @@ impl Shape {
         if self.is_empty() || dist.abs() < 1e-15 {
             return self.clone();
         }
-        let join = LineJoin::Round((dist.abs() * 0.35).max(0.25));
+        // Angle (radians), not px — coarser than the old dist×0.35 mis-read.
+        let join = LineJoin::Round(FRAC_PI_6);
         Self::wrap(
             self.shapes
                 .outline(&OutlineStyle::new(dist).line_join(join)),
         )
+        .simplify()
+        .decimate(SVG_PATH_EPS_PX)
     }
 
     /// `i_overlay::SimplifyShape` (collinear cleanup; holes stay valid).
@@ -155,6 +164,31 @@ impl Shape {
         Self::wrap(self.shapes.simplify_shape(FillRule::NonZero))
     }
 
+    /// Drop near-collinear vertices for SVG / paint (topology via closed RDP).
+    pub fn decimate(&self, eps_px: f64) -> Self {
+        if self.is_empty() || eps_px <= 0.0 {
+            return self.clone();
+        }
+        let mut shapes = Vec::with_capacity(self.shapes.len());
+        for shape in &self.shapes {
+            let mut parts = Vec::with_capacity(shape.len());
+            for contour in shape {
+                if contour.len() < 3 {
+                    continue;
+                }
+                let ring: Vec<(f64, f64)> = contour.iter().copied().map(xy).collect();
+                let simplified = douglas_peucker_closed(&ring, eps_px);
+                if simplified.len() >= 3 {
+                    parts.push(simplified.into_iter().map(pt).collect());
+                }
+            }
+            if !parts.is_empty() {
+                shapes.push(parts);
+            }
+        }
+        Self::wrap(shapes)
+    }
+
     pub fn point_count(&self) -> usize {
         self.shapes
             .iter()
@@ -163,12 +197,13 @@ impl Shape {
             .sum()
     }
 
-    /// White knockout: simplify, then outline offset.
+    /// White knockout: simplify, outline offset, then decimate for SVG size.
     pub fn halo(&self, dist: f64) -> Self {
         if self.is_empty() || dist <= 0.0 {
             return Self::empty();
         }
-        self.simplify().buffer(dist)
+        // buffer() already simplify+decimate; keep an extra pass for unions.
+        self.simplify().buffer(dist).decimate(SVG_PATH_EPS_PX)
     }
 
     pub fn has_holes(&self) -> bool {
@@ -227,7 +262,10 @@ impl Shape {
     }
 
     pub fn to_svg_d(&self) -> String {
-        self.shapes
+        // Decimate at export so callers that skip [`Self::decimate`] still
+        // emit compact path data (halo / glyph outlines were multi-MB).
+        self.decimate(SVG_PATH_EPS_PX)
+            .shapes
             .iter()
             .flatten()
             .filter(|c| c.len() >= 3)

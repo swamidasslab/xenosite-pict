@@ -19,6 +19,136 @@ pub fn polygon_to_svg_d(ring: &[(f64, f64)]) -> String {
     out
 }
 
+/// House SVG export tolerance (px): drop vertices within this of the chord.
+///
+/// ~½ px is invisible under bond/halo strokes and chem labels, and collapses
+/// the 0.02‑px stair-steps `i_overlay` round joins used to emit.
+pub const SVG_PATH_EPS_PX: f64 = 0.5;
+
+/// Douglas–Peucker for an open polyline. Keeps endpoints.
+pub fn douglas_peucker(pts: &[(f64, f64)], eps: f64) -> Vec<(f64, f64)> {
+    if pts.len() < 3 || eps <= 0.0 {
+        return pts.to_vec();
+    }
+    let mut keep = vec![false; pts.len()];
+    keep[0] = true;
+    keep[pts.len() - 1] = true;
+    douglas_peucker_rec(pts, 0, pts.len() - 1, eps * eps, &mut keep);
+    pts.iter()
+        .enumerate()
+        .filter(|(i, _)| keep[*i])
+        .map(|(_, p)| *p)
+        .collect()
+}
+
+fn douglas_peucker_rec(
+    pts: &[(f64, f64)],
+    i0: usize,
+    i1: usize,
+    eps2: f64,
+    keep: &mut [bool],
+) {
+    if i1 <= i0 + 1 {
+        return;
+    }
+    let (ax, ay) = pts[i0];
+    let (bx, by) = pts[i1];
+    let dx = bx - ax;
+    let dy = by - ay;
+    let lab2 = dx * dx + dy * dy;
+    let mut best_i = i0;
+    let mut best_d2 = 0.0_f64;
+    for i in (i0 + 1)..i1 {
+        let (px, py) = pts[i];
+        let d2 = if lab2 < 1e-24 {
+            (px - ax).hypot(py - ay).powi(2)
+        } else {
+            let t = ((px - ax) * dx + (py - ay) * dy) / lab2;
+            let qx = ax + t * dx;
+            let qy = ay + t * dy;
+            (px - qx).hypot(py - qy).powi(2)
+        };
+        if d2 > best_d2 {
+            best_d2 = d2;
+            best_i = i;
+        }
+    }
+    if best_d2 <= eps2 || best_i == i0 {
+        return;
+    }
+    keep[best_i] = true;
+    douglas_peucker_rec(pts, i0, best_i, eps2, keep);
+    douglas_peucker_rec(pts, best_i, i1, eps2, keep);
+}
+
+/// Closed-ring Douglas–Peucker (does not repeat the first point at the end).
+pub fn douglas_peucker_closed(ring: &[(f64, f64)], eps: f64) -> Vec<(f64, f64)> {
+    let mut pts = ring.to_vec();
+    if pts.len() >= 2 {
+        let a = pts[0];
+        let b = *pts.last().unwrap();
+        if (a.0 - b.0).hypot(a.1 - b.1) <= 1e-9 {
+            pts.pop();
+        }
+    }
+    if pts.len() < 3 || eps <= 0.0 {
+        return pts;
+    }
+    // Diameter anchors: farthest from pts[0], then farthest from that — both
+    // arcs of the loop get simplified (open DP alone would pin neighbors).
+    let mut a = 0usize;
+    let mut b = 1usize;
+    let mut best = 0.0_f64;
+    for i in 1..pts.len() {
+        let d = (pts[i].0 - pts[0].0).hypot(pts[i].1 - pts[0].1);
+        if d > best {
+            best = d;
+            b = i;
+        }
+    }
+    best = 0.0;
+    for (i, p) in pts.iter().enumerate() {
+        let d = (p.0 - pts[b].0).hypot(p.1 - pts[b].1);
+        if d > best {
+            best = d;
+            a = i;
+        }
+    }
+    if a == b {
+        return douglas_peucker(&pts, eps);
+    }
+    let (lo, hi) = if a < b { (a, b) } else { (b, a) };
+    let mut keep = vec![false; pts.len()];
+    keep[lo] = true;
+    keep[hi] = true;
+    let eps2 = eps * eps;
+    douglas_peucker_rec(&pts, lo, hi, eps2, &mut keep);
+    // Wrap-around chain hi → … → n-1 → 0 → … → lo
+    let mut chain_idx: Vec<usize> = (hi..pts.len()).collect();
+    chain_idx.extend(0..=lo);
+    let chain: Vec<(f64, f64)> = chain_idx.iter().map(|&i| pts[i]).collect();
+    let mut chain_keep = vec![false; chain.len()];
+    chain_keep[0] = true;
+    *chain_keep.last_mut().unwrap() = true;
+    douglas_peucker_rec(&chain, 0, chain.len() - 1, eps2, &mut chain_keep);
+    for (k, &i) in chain_idx.iter().enumerate() {
+        if chain_keep[k] {
+            keep[i] = true;
+        }
+    }
+    let out: Vec<_> = pts
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| keep[*i])
+        .map(|(_, p)| *p)
+        .collect();
+    if out.len() >= 3 {
+        out
+    } else {
+        pts
+    }
+}
+
 /// Approximate a circle as a closed polygon (Shapely `quad_segs` style).
 pub fn circle_polygon(cx: f64, cy: f64, radius: f64, quad_segs: u32) -> Vec<(f64, f64)> {
     if radius <= 0.0 {
@@ -103,10 +233,11 @@ pub fn capsule_halo_path_d(
         return None;
     }
     let total = ink_radius + grow;
-    let ring = capsule_polygon(x1, y1, x2, y2, total, 8);
+    let ring = capsule_polygon(x1, y1, x2, y2, total, 4);
     if ring.len() < 3 {
         return None;
     }
+    let ring = douglas_peucker_closed(&ring, SVG_PATH_EPS_PX);
     Some(polygon_to_svg_d(&ring))
 }
 
@@ -115,10 +246,11 @@ pub fn disk_halo_path_d(cx: f64, cy: f64, ink_radius: f64, grow: f64) -> Option<
     if grow <= 0.0 || ink_radius < 0.0 {
         return None;
     }
-    let ring = circle_polygon(cx, cy, ink_radius + grow, 12);
+    let ring = circle_polygon(cx, cy, ink_radius + grow, 8);
     if ring.is_empty() {
         return None;
     }
+    let ring = douglas_peucker_closed(&ring, SVG_PATH_EPS_PX);
     Some(polygon_to_svg_d(&ring))
 }
 
@@ -276,6 +408,46 @@ mod tests {
         assert!((OFFSET_PX - 4.5).abs() < 1e-9);
     }
 
+    #[test]
+    fn rdp_collapses_0_02px_stairsteps() {
+        let mut ring = Vec::new();
+        for i in 0..500 {
+            ring.push((35.63, 100.0 + i as f64 * 0.02));
+        }
+        let y1 = ring.last().unwrap().1;
+        ring.push((40.0, y1));
+        ring.push((40.0, 100.0));
+        let out = douglas_peucker_closed(&ring, SVG_PATH_EPS_PX);
+        assert!(
+            out.len() < 20,
+            "expected dramatic collapse, got {} pts from {}",
+            out.len(),
+            ring.len()
+        );
+    }
+
+    #[cfg(feature = "geom")]
+    #[test]
+    fn halo_svg_not_megabytes_for_grid_of_capsules() {
+        let mut ink = Shape::empty();
+        for i in 0..40 {
+            let x = i as f64 * 12.0;
+            let cap = Shape::capsule(x, 0.0, x + 10.0, 8.0, 1.2);
+            ink = if ink.is_empty() { cap } else { ink.union(&cap) };
+        }
+        let halo = ink.halo(1.5);
+        let d = halo.to_svg_d();
+        let n_l = d.matches(" L ").count();
+        assert!(
+            d.len() < 50_000,
+            "halo d too big: {} chars, {} L cmds, {} pts",
+            d.len(),
+            n_l,
+            halo.point_count()
+        );
+        assert!(n_l < 2_000, "too many L commands: {n_l}");
+    }
+
     #[cfg(feature = "geom")]
     #[test]
     fn shape_ops_cover_buffers_booleans_and_empty() {
@@ -334,3 +506,4 @@ mod tests {
         assert_eq!(a.horizontal_span_at(1000.0), 0.0);
     }
 }
+

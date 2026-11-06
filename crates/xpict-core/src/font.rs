@@ -1,7 +1,7 @@
 //! Bundled Liberation Sans outlines (`ttf-parser`).
 //!
 //! Replaces Python fontTools for advances, ink bounds, and glyph contours.
-//! Contours are sampled (8 steps per curve) to match the old ContourPen, then
+//! Contours are sampled (4 steps per curve) then RDP-decimated, then
 //! assembled with even-odd fill into [`crate::geom::Shape`].
 //!
 //! Chem scripts (H-counts, charges) are **fake** sub/superscripts: scale by
@@ -19,7 +19,11 @@ use ttf_parser::{Face, GlyphId, OutlineBuilder, Rect};
 use crate::geom::Shape;
 use crate::metrics::{STAR_FRAC, SUBSCRIPT_SCALE, SUPERSCRIPT_SCALE};
 
-const BEZIER_STEPS: usize = 8;
+/// Quadratic/cubic samples per font curve. 4 is visually smooth at chem
+/// label sizes; 8 made glyph SVG paths hundreds of L segments each.
+const BEZIER_STEPS: usize = 4;
+/// Douglas–Peucker in em units after curve sampling (~0.5% of em).
+const CONTOUR_RDP_EM: f64 = 0.005;
 
 const FONT_REGULAR: &[u8] = include_bytes!("../fonts/LiberationSans-Regular.ttf");
 const FONT_BOLD: &[u8] = include_bytes!("../fonts/LiberationSans-Bold.ttf");
@@ -236,7 +240,21 @@ fn outline_glyph(face: &Face<'_>, gid: GlyphId) -> Vec<Vec<(f64, f64)>> {
     let mut collector = ContourCollector::new();
     let _ = face.outline_glyph(gid, &mut collector);
     collector.finish_contour();
-    collector.contours
+    let upem = f64::from(face.units_per_em()).max(1.0);
+    let eps = CONTOUR_RDP_EM * upem;
+    collector
+        .contours
+        .into_iter()
+        .map(|c| {
+            let s = crate::geom::douglas_peucker_closed(&c, eps);
+            if s.len() >= 3 {
+                s
+            } else {
+                c
+            }
+        })
+        .filter(|c| c.len() >= 3)
+        .collect()
 }
 
 /// Outline plain Unicode in font space (+Y up); return (shape, advance_em).

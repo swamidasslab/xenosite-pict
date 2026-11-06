@@ -107,7 +107,10 @@ pub use elk::{
 pub use engine_config::{
     ArrowConfig, ElkPolicyConfig, EngineConfig, NudgeConfig, RouteConfig, SchemeConfig, SolveConfig,
 };
-pub use geom::{capsule_halo_path_d, disk_halo_path_d, polygon_to_svg_d};
+pub use geom::{
+    capsule_halo_path_d, disk_halo_path_d, douglas_peucker, douglas_peucker_closed,
+    polygon_to_svg_d, SVG_PATH_EPS_PX,
+};
 #[cfg(feature = "font")]
 pub use labels::{
     atom_display_label, compose_label, label_side, place_backbone, place_label, shorten_bond,
