@@ -70,16 +70,19 @@ fn prim_class(p: &Primitive) -> Option<&str> {
     }
 }
 
-/// Chrome + shade obstacles the mol name must clear (placed **after** solve).
+/// Chrome obstacles the mol name must clear (placed **after** solve).
 ///
-/// Includes regions, callouts, circles, atom numbers/labels, and shade — not
-/// bonds/chem text. Captions themselves are skipped (we are placing them).
+/// Includes regions, callouts, circles, and atom numbers/labels — not
+/// bonds/chem text. Shade and halo are skipped: they are full-mol underlays /
+/// glows whose AABBs would push a below-caption out of every silhouette
+/// pocket. Captions themselves are skipped (we are placing them).
 fn annotation_occupancy_from_scene(scene: &Scene) -> Occupancy {
     let mut occ = Occupancy::new();
     for vp in &scene.viewports {
         for layer in &vp.layers {
             for p in &layer.primitives {
-                if is_structure_class(prim_class(p)) {
+                let c = prim_class(p);
+                if is_structure_class(c) || is_mol_underlay_class(c) {
                     continue;
                 }
                 add_prim_to_occupancy(&mut occ, p, vp.local_origin().0, vp.local_origin().1);
@@ -93,18 +96,20 @@ fn annotation_occupancy_from_scene(scene: &Scene) -> Occupancy {
                 continue;
             }
         }
-        if is_structure_class(c) {
+        if is_structure_class(c) || is_mol_underlay_class(c) {
             continue;
         }
         add_prim_to_occupancy(&mut occ, p, 0.0, 0.0);
     }
-    for p in &scene.halo {
-        if is_structure_class(prim_class(p)) {
-            continue;
-        }
-        add_prim_to_occupancy(&mut occ, p, 0.0, 0.0);
-    }
+    // scene.halo is the soft mol glow — never a caption obstacle.
     occ
+}
+
+fn is_mol_underlay_class(class: Option<&str>) -> bool {
+    let Some(c) = class.map(|s| s.to_ascii_lowercase()) else {
+        return false;
+    };
+    c.contains("shade") || c.contains("halo")
 }
 
 /// Bond / heteroatom ink as per-primitive AABBs (not one union box) so a
@@ -128,17 +133,36 @@ fn structure_occupancy_from_scene(scene: &Scene) -> Occupancy {
 const LOCAL_EDGE_SAMPLES: usize = 11;
 
 /// Bottom of structure ink under `[x0, x1]`: median of per-column maxima so a
-/// dangling sugar in one corner does not push the whole caption down to the
-/// global AABB.
+/// dangling sugar in one corner does not push the whole caption down.
 fn local_structure_bottom(occ: &Occupancy, x0: f64, x1: f64) -> Option<f64> {
-    local_structure_extent(occ, x0, x1, true)
+    let mut samples = local_structure_column_bottoms(occ, x0, x1)?;
+    median_f64(&mut samples)
 }
 
 fn local_structure_top(occ: &Occupancy, x0: f64, x1: f64) -> Option<f64> {
-    local_structure_extent(occ, x0, x1, false)
+    local_structure_extent_side(occ, x0, x1, false)
 }
 
-fn local_structure_extent(occ: &Occupancy, x0: f64, x1: f64, want_bottom: bool) -> Option<f64> {
+fn local_structure_column_bottoms(occ: &Occupancy, x0: f64, x1: f64) -> Option<Vec<f64>> {
+    local_structure_column_edges(occ, x0, x1, true)
+}
+
+fn local_structure_extent_side(
+    occ: &Occupancy,
+    x0: f64,
+    x1: f64,
+    want_bottom: bool,
+) -> Option<f64> {
+    let mut samples = local_structure_column_edges(occ, x0, x1, want_bottom)?;
+    median_f64(&mut samples)
+}
+
+fn local_structure_column_edges(
+    occ: &Occupancy,
+    x0: f64,
+    x1: f64,
+    want_bottom: bool,
+) -> Option<Vec<f64>> {
     if occ.aabbs.is_empty() {
         return None;
     }
@@ -170,7 +194,11 @@ fn local_structure_extent(occ: &Occupancy, x0: f64, x1: f64, want_bottom: bool) 
             samples.push(edge);
         }
     }
-    median_f64(&mut samples)
+    if samples.is_empty() {
+        None
+    } else {
+        Some(samples)
+    }
 }
 
 fn local_structure_left(occ: &Occupancy, y0: f64, y1: f64) -> Option<f64> {
@@ -227,6 +255,46 @@ fn median_f64(vals: &mut [f64]) -> Option<f64> {
     } else {
         Some(0.5 * (vals[n / 2 - 1] + vals[n / 2]))
     }
+}
+
+const SNUG_X_SAMPLES: usize = 17;
+
+/// Pick a below-caption anchor `x` that tucks into a silhouette pocket:
+/// minimize the median structure bottom under the label span so a dangling
+/// sugar / side-chain in a corner does not dominate when a notch exists.
+fn snug_below_anchor_x(
+    occ: &Occupancy,
+    cx: f64,
+    mol_x0: f64,
+    mol_x1: f64,
+    tx0: f64,
+    tx1: f64,
+) -> (f64, f64) {
+    let seed_bottom = local_structure_bottom(occ, tx0 + cx, tx1 + cx).unwrap_or(f64::NEG_INFINITY);
+    // Keep the label mostly under the structure; allow a little overhang.
+    let pad = (tx1 - tx0) * 0.15;
+    let x_lo = (mol_x0 - tx0 - pad).min(cx);
+    let x_hi = (mol_x1 - tx1 + pad).max(cx);
+    let span = (x_hi - x_lo).max(1.0);
+    let mut best_x = cx;
+    let mut best_bottom = seed_bottom;
+    for i in 0..SNUG_X_SAMPLES {
+        let t = i as f64 / (SNUG_X_SAMPLES - 1) as f64;
+        let x = x_lo + span * t;
+        let Some(bottom) = local_structure_bottom(occ, tx0 + x, tx1 + x) else {
+            continue;
+        };
+        let better = if (bottom - best_bottom).abs() < 1.0 {
+            (x - cx).abs() < (best_x - cx).abs()
+        } else {
+            bottom < best_bottom
+        };
+        if better {
+            best_x = x;
+            best_bottom = bottom;
+        }
+    }
+    (best_x, best_bottom)
 }
 
 fn add_prim_to_occupancy(occ: &mut Occupancy, p: &Primitive, ox: f64, oy: f64) {
@@ -501,8 +569,10 @@ pub fn apply_mol_captions(spec: &DepictSpec, node: &MolNode, mut scene: Scene) -
 
     // Below: margin from *local* ink under the label span (median column),
     // not the global structure AABB — dangling groups must not open a gap
-    // under the rest of the silhouette.
+    // under the rest of the silhouette. Also slide horizontally into a
+    // clear pocket (e.g. under doxorubicin rings, beside the sugar).
     let mut stack_top = mol_y1;
+    let mut below_x = cx;
     let mut below_first = true;
     for ink in below {
         let anchor = "middle";
@@ -511,13 +581,20 @@ pub fn apply_mol_captions(spec: &DepictSpec, node: &MolNode, mut scene: Scene) -
             continue;
         };
         let (asc, desc) = markup_ascent_descent_px(ink.font_px);
-        let x = cx;
         if below_first {
-            let local = local_structure_bottom(&struct_occ, tx0 + x, tx1 + x).unwrap_or(mol_y1);
+            let (sx, bottom) =
+                snug_below_anchor_x(&struct_occ, cx, mol_x0, mol_x1, tx0, tx1);
+            let local = if bottom.is_finite() {
+                bottom
+            } else {
+                local_structure_bottom(&struct_occ, tx0 + sx, tx1 + sx).unwrap_or(mol_y1)
+            };
             // Never sit farther than the global AABB seed.
             stack_top = local.min(mol_y1);
+            below_x = sx;
             below_first = false;
         }
+        let x = below_x;
         // Ascent line sits margin below mol (or previous caption descent).
         let baseline = stack_top + ink.margin + asc;
         let bounds = (tx0 + x, baseline - asc, tx1 + x, baseline + desc);
@@ -715,7 +792,7 @@ pub fn apply_mol_captions(spec: &DepictSpec, node: &MolNode, mut scene: Scene) -
         return scene;
     }
 
-    // Name must clear shade + chrome (regions, callouts, …) already solved.
+    // Name must clear chrome (regions, callouts, …) — not shade/halo underlays.
     let ann_occ = annotation_occupancy_from_scene(&scene);
     for p in &mut placed {
         let rest = Aabb::new(p.bounds.0, p.bounds.1, p.bounds.2, p.bounds.3);
@@ -1065,6 +1142,27 @@ mod tests {
     }
 
     #[test]
+    fn snug_below_shifts_into_shelf_pocket() {
+        let mut occ = Occupancy::new();
+        // Rings shelf on the left; sugar stub on the right.
+        occ.add_aabb(Aabb::new(0.0, 0.0, 80.0, 40.0));
+        occ.add_aabb(Aabb::new(85.0, 40.0, 140.0, 120.0));
+        // Wide label: at the stub-heavy centroid the median sees the stub;
+        // sliding left finds the shelf pocket.
+        let cx = 90.0;
+        let (tx0, tx1) = (-45.0, 45.0);
+        let (x, bottom) = snug_below_anchor_x(&occ, cx, 0.0, 140.0, tx0, tx1);
+        assert!(
+            x < cx - 5.0,
+            "should slide left into the shelf pocket, got x={x} cx={cx}"
+        );
+        assert!(
+            bottom < 50.0,
+            "pocket local bottom {bottom} should hug the shelf, not the stub"
+        );
+    }
+
+    #[test]
     fn doxorubicin_name_lifts_above_sugar_aabb() {
         // Sugar hangs below the tetracycle; the name must not sit on the global
         // ink AABB (that left a large gap under the rings).
@@ -1075,8 +1173,10 @@ mod tests {
         }"#;
         let spec: DepictSpec = serde_json::from_str(json).unwrap();
         let scene = crate::doc::depict(&spec).expect("depict").remove(0).scene;
-        let (_x0, _y0, _x1, global_y1) = structure_aabb(&scene).expect("structure");
+        let (sx0, _sy0, sx1, global_y1) = structure_aabb(&scene).expect("structure");
         let mut cap_y0 = f64::INFINITY;
+        let mut cap_x0 = f64::INFINITY;
+        let mut cap_x1 = f64::NEG_INFINITY;
         for p in overlay_prims(&scene) {
             if let Primitive::Path {
                 d,
@@ -1085,8 +1185,10 @@ mod tests {
             } = p
             {
                 if c.contains("mol-caption-metrics") {
-                    for (_, y) in path_xy(d) {
+                    for (x, y) in path_xy(d) {
                         cap_y0 = cap_y0.min(y);
+                        cap_x0 = cap_x0.min(x);
+                        cap_x1 = cap_x1.max(x);
                     }
                 }
             }
@@ -1096,6 +1198,19 @@ mod tests {
         assert!(
             cap_y0 + 6.0 < global_seed,
             "name should lift above the sugar AABB seed: cap_y0={cap_y0:.1} global_seed={global_seed:.1}"
+        );
+        // Pocket snug: should clear a substantial gap vs the sugar AABB, not
+        // just a few px, and sit under the rings rather than the sugar.
+        assert!(
+            global_seed - cap_y0 > 50.0,
+            "expected a deep pocket lift, got only {:.1}px (cap_y0={cap_y0:.1} seed={global_seed:.1})",
+            global_seed - cap_y0
+        );
+        let mid = 0.5 * (cap_x0 + cap_x1);
+        let struct_mid = 0.5 * (sx0 + sx1);
+        assert!(
+            mid < struct_mid + 5.0,
+            "name should bias left into the ring pocket (mid={mid:.1} struct_mid={struct_mid:.1})"
         );
     }
 
