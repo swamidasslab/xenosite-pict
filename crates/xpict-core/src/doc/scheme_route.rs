@@ -26,6 +26,11 @@ type Pt = (f64, f64);
 /// Soft costs (libavoid-ish scales in document px).
 const SEGMENT_PENALTY: f64 = 80.0;
 const ANGLE_PENALTY: f64 = 120.0;
+/// Final cosmetic Douglas–Peucker: drop hull-pad stair-steps whose deviation
+/// is well inside `ROUTING_CLEARANCE`, so Catmull does not kink near-straight
+/// shafts. Crossing count must not rise; chords are checked against hulls
+/// deflated by this ε so pad clipping is allowed but real blockers are not.
+const COSMETIC_SIMPLIFY_EPS: f64 = 0.35 * BOND_PX;
 /// Soft cost for collinear overlap with a locked pathway — must dominate a
 /// short shared run so two arrows do not paint as one thick shaft.
 const SHARED_PATH_PENALTY: f64 = 400.0;
@@ -246,30 +251,13 @@ pub fn route_scheme_edges(
         &vis,
     );
 
-    // Final string-pull must not reopen a locked pathway X.
-    for gi in 0..group_centers.len() {
-        let (src_c, tgt_c) = group_centroids[gi];
-        let others: Vec<Committed> = group_centers
-            .iter()
-            .enumerate()
-            .filter(|&(j, _)| j != gi)
-            .map(|(j, c)| {
-                let (sc, tc) = group_centroids[j];
-                committed_from_pathway(c, sc, tc)
-            })
-            .collect();
-        let before = group_centers[gi].clone();
-        let pulled = string_pull(&before, &obstacles, &empty_skip, &others);
-        let before_x = path_crosses_committed(
-            &extend_to_centroids(&before, src_c, tgt_c),
-            &others,
-        );
-        let after_x =
-            path_crosses_committed(&extend_to_centroids(&pulled, src_c, tgt_c), &others);
-        if path_clears_obstacles(&pulled, &obstacles, &empty_skip) && after_x <= before_x {
-            group_centers[gi] = pulled;
-        }
-    }
+    // Final string-pull / collinear collapse must not *add* pathway crossings.
+    simplify_routed_centers(
+        &mut group_centers,
+        &group_centroids,
+        &obstacles,
+        &empty_skip,
+    );
 
     // ---- Tip layout (separate from pathway routing): hug ink along the
     // final approach rays. Does not participate in intersection scoring.
@@ -285,6 +273,13 @@ pub fn route_scheme_edges(
     );
 
     nudge_shared_corridors(&mut group_centers, &group_centroids);
+    // Nudge can reintroduce tiny elbows — pull again with the same rules.
+    simplify_routed_centers(
+        &mut group_centers,
+        &group_centroids,
+        &obstacles,
+        &empty_skip,
+    );
 
     let edge_list = spec.edges();
     for (gi, group) in groups.iter().enumerate() {
@@ -476,8 +471,8 @@ fn path_crosses_committed(pts: &[Pt], committed: &[Committed]) -> usize {
 
 /// Remove intermediate verts when the chord still clears obstacles (classic
 /// string-pull / funnel). Stops hull-hugging when a straighter cut exists.
-/// Rejects shortcuts that properly cross a committed shaft — otherwise a
-/// priced zero-crossing walk collapses back into an X.
+/// A shortcut may keep existing crossings with committed shafts, but must not
+/// *add* any — otherwise a priced one-cross walk keeps every Steiner kink.
 fn string_pull(
     pts: &[Pt],
     obstacles: &[Obstacle],
@@ -492,9 +487,9 @@ fn string_pull(
     while i < pts.len() - 1 {
         let mut j = pts.len() - 1;
         while j > i + 1 {
-            if segment_clears_obstacles(pts[i], pts[j], obstacles, skip)
-                && path_crosses_committed(&[pts[i], pts[j]], committed) == 0
-            {
+            let sub_x = path_crosses_committed(&pts[i..=j], committed);
+            let chord_x = path_crosses_committed(&[pts[i], pts[j]], committed);
+            if segment_clears_obstacles(pts[i], pts[j], obstacles, skip) && chord_x <= sub_x {
                 break;
             }
             j -= 1;
@@ -502,7 +497,137 @@ fn string_pull(
         out.push(pts[j]);
         i = j;
     }
+    collapse_collinear(
+        &prune_close_controls(&out, CLOSE_CTRL_PX),
+        obstacles,
+        skip,
+        committed,
+    )
+}
+
+/// Drop intermediate verts that are nearly collinear when the chord still
+/// clears hulls and does not add committed crossings.
+fn collapse_collinear(
+    pts: &[Pt],
+    obstacles: &[Obstacle],
+    skip: &HashSet<&str>,
+    committed: &[Committed],
+) -> Vec<Pt> {
+    if pts.len() < 3 {
+        return pts.to_vec();
+    }
+    // Cosine of turn: keep only real elbows (~> ~14°). Tighter thresholds left
+    // inflate-pad micro-bends that Catmull turns into visible kinks.
+    const COLLINEAR_DOT: f64 = 0.97;
+    let mut out = vec![pts[0]];
+    for i in 1..pts.len() - 1 {
+        let a = *out.last().unwrap();
+        let b = pts[i];
+        let c = pts[i + 1];
+        let (ux, uy) = unit((b.0 - a.0, b.1 - a.1));
+        let (vx, vy) = unit((c.0 - b.0, c.1 - b.1));
+        let collinear = ux * vx + uy * vy >= COLLINEAR_DOT;
+        let short_stub = dist(a, b) < BOND_PX || dist(b, c) < BOND_PX;
+        if collinear || short_stub {
+            let sub_x = path_crosses_committed(&[a, b, c], committed);
+            let chord_x = path_crosses_committed(&[a, c], committed);
+            if segment_clears_obstacles(a, c, obstacles, skip) && chord_x <= sub_x {
+                continue; // drop b
+            }
+        }
+        out.push(b);
+    }
+    out.push(*pts.last().unwrap());
     prune_close_controls(&out, CLOSE_CTRL_PX)
+}
+
+/// Crossing- and (deflated-)obstacle-safe Ramer–Douglas–Peucker. `pad_obstacles`
+/// should be routing hulls shrunk by `eps` so inflate-pad stair-steps collapse
+/// while chords through real blockers stay rejected.
+fn cosmetic_douglas_peucker(
+    pts: &[Pt],
+    committed: &[Committed],
+    pad_obstacles: &[Obstacle],
+    skip: &HashSet<&str>,
+    eps: f64,
+) -> Vec<Pt> {
+    if pts.len() < 3 {
+        return pts.to_vec();
+    }
+    fn rec(
+        pts: &[Pt],
+        committed: &[Committed],
+        pad_obstacles: &[Obstacle],
+        skip: &HashSet<&str>,
+        eps: f64,
+        out: &mut Vec<Pt>,
+    ) {
+        if pts.len() < 3 {
+            if let Some(&p) = pts.last() {
+                if out.last().copied() != Some(p) {
+                    out.push(p);
+                }
+            }
+            return;
+        }
+        let a = pts[0];
+        let c = pts[pts.len() - 1];
+        let mut best_i = 0usize;
+        let mut best_d = 0.0;
+        for (i, &b) in pts.iter().enumerate().take(pts.len() - 1).skip(1) {
+            let d = point_line_dist(b, a, c);
+            if d > best_d {
+                best_d = d;
+                best_i = i;
+            }
+        }
+        let sub_x = path_crosses_committed(pts, committed);
+        let chord_x = path_crosses_committed(&[a, c], committed);
+        if best_d <= eps
+            && chord_x <= sub_x
+            && segment_clears_obstacles(a, c, pad_obstacles, skip)
+        {
+            if out.last().copied() != Some(c) {
+                out.push(c);
+            }
+            return;
+        }
+        if best_i == 0 {
+            for &p in pts.iter().skip(1) {
+                if out.last().copied() != Some(p) {
+                    out.push(p);
+                }
+            }
+            return;
+        }
+        rec(&pts[..=best_i], committed, pad_obstacles, skip, eps, out);
+        rec(&pts[best_i..], committed, pad_obstacles, skip, eps, out);
+    }
+    let mut out = vec![pts[0]];
+    rec(pts, committed, pad_obstacles, skip, eps, &mut out);
+    prune_close_controls(&out, CLOSE_CTRL_PX)
+}
+
+fn pad_tolerant_obstacles(obstacles: &[Obstacle], shrink: f64) -> Vec<Obstacle> {
+    obstacles
+        .iter()
+        .map(|o| Obstacle {
+            mol_id: o.mol_id.clone(),
+            hull: inflate_convex(&o.hull, -shrink),
+        })
+        .collect()
+}
+
+fn point_line_dist(p: Pt, a: Pt, b: Pt) -> f64 {
+    let (vx, vy) = (b.0 - a.0, b.1 - a.1);
+    let len = vx.hypot(vy);
+    if len < 1e-9 {
+        return dist(p, a);
+    }
+    let t = ((p.0 - a.0) * vx + (p.1 - a.1) * vy) / (len * len);
+    let t = t.clamp(0.0, 1.0);
+    let q = (a.0 + vx * t, a.1 + vy * t);
+    dist(p, q)
 }
 
 /// Prefer fewer elbows when length is comparable (within ~25%).
@@ -535,6 +660,80 @@ fn polyline_len(pts: &[Pt]) -> f64 {
     pts.windows(2)
         .map(|w| dist(w[0], w[1]))
         .sum()
+}
+
+/// String-pull + collinear collapse + pad-tolerant Douglas–Peucker for every
+/// centerline; accept only when pathway crossings do not increase.
+fn simplify_routed_centers(
+    centers: &mut [Vec<Pt>],
+    group_centroids: &[(Pt, Pt)],
+    obstacles: &[Obstacle],
+    skip: &HashSet<&str>,
+) {
+    let pad = pad_tolerant_obstacles(obstacles, COSMETIC_SIMPLIFY_EPS);
+    for gi in 0..centers.len() {
+        let (src_c, tgt_c) = group_centroids[gi];
+        let others: Vec<Committed> = centers
+            .iter()
+            .enumerate()
+            .filter(|&(j, _)| j != gi)
+            .map(|(j, c)| {
+                let (sc, tc) = group_centroids[j];
+                committed_from_pathway(c, sc, tc)
+            })
+            .collect();
+        let before = centers[gi].clone();
+        let before_x =
+            path_crosses_committed(&extend_to_centroids(&before, src_c, tgt_c), &others);
+        let mut pulled = string_pull(&before, obstacles, skip, &others);
+        pulled = cosmetic_douglas_peucker(
+            &pulled,
+            &others,
+            &pad,
+            skip,
+            COSMETIC_SIMPLIFY_EPS,
+        );
+        // Second pass against deflated hulls: drop leftover ~10° elbows that
+        // only existed to walk the inflate pad.
+        pulled = collapse_collinear(&pulled, &pad, skip, &others);
+        pulled = string_pull(&pulled, &pad, skip, &others);
+        // Prefer a tip–tip chord or single bow when pad-clear and no extra X.
+        if pulled.len() > 2 {
+            let a = pulled[0];
+            let b = *pulled.last().unwrap();
+            if segment_clears_obstacles(a, b, &pad, skip) {
+                let chord = vec![a, b];
+                let cx = path_crosses_committed(
+                    &extend_to_centroids(&chord, src_c, tgt_c),
+                    &others,
+                );
+                if cx <= before_x {
+                    pulled = chord;
+                }
+            }
+            if pulled.len() > 2 {
+                let bow = fallback_bow(a, b, &pad, skip, &others);
+                if bow.len() < pulled.len() && path_clears_obstacles(&bow, &pad, skip) {
+                    let bx = path_crosses_committed(
+                        &extend_to_centroids(&bow, src_c, tgt_c),
+                        &others,
+                    );
+                    if bx <= before_x {
+                        pulled = bow;
+                    }
+                }
+            }
+        }
+        // Cosmetic passes may clip inflate pad; still refuse deep ink hits.
+        if !path_clears_obstacles(&pulled, &pad, skip) {
+            continue;
+        }
+        let after_x =
+            path_crosses_committed(&extend_to_centroids(&pulled, src_c, tgt_c), &others);
+        if after_x <= before_x {
+            centers[gi] = pulled;
+        }
+    }
 }
 
 /// Pairwise pathway crossing counts. `pair[i * n + j]` (i < j) stores how many
@@ -1030,7 +1229,7 @@ fn collect_ink_points(world: &LayoutWorld, under: &str) -> Vec<Pt> {
 /// Outward parallel offset of a CCW convex polygon by `dist`.
 fn inflate_convex(hull: &[Pt], dist: f64) -> Vec<Pt> {
     let n = hull.len();
-    if n < 3 || dist <= 0.0 {
+    if n < 3 || dist.abs() < 1e-12 {
         return hull.to_vec();
     }
     let mut out = Vec::with_capacity(n);
@@ -1040,7 +1239,8 @@ fn inflate_convex(hull: &[Pt], dist: f64) -> Vec<Pt> {
         let next = hull[(i + 1) % n];
         let e1 = (cur.0 - prev.0, cur.1 - prev.1);
         let e2 = (next.0 - cur.0, next.1 - cur.1);
-        // CCW walk: outward is right of the edge (ey, -ex).
+        // CCW walk: outward is right of the edge (ey, -ex). Negative `dist`
+        // shrinks (pad-tolerant simplify / cosmetic DP).
         let n1 = unit((e1.1, -e1.0));
         let n2 = unit((e2.1, -e2.0));
         let bx = n1.0 + n2.0;
@@ -1832,6 +2032,98 @@ mod tests {
             pulled.len(),
             2,
             "open space must collapse to a straight chord: {pulled:?}"
+        );
+    }
+
+    #[test]
+    fn cosmetic_dp_collapses_inflate_pad_stairstep() {
+        // Near-straight 4-point hug (tiny lateral jog) must become a chord
+        // when it does not add crossings — the case Catmull was kinking.
+        let committed: Vec<Committed> = Vec::new();
+        let skip = HashSet::new();
+        let stairstep = vec![
+            (0.0, 0.0),
+            (40.0, 50.0),
+            (42.0, 55.0),
+            (80.0, 120.0),
+        ];
+        let pulled = cosmetic_douglas_peucker(
+            &stairstep,
+            &committed,
+            &[],
+            &skip,
+            COSMETIC_SIMPLIFY_EPS,
+        );
+        assert_eq!(pulled.len(), 2, "pad stairstep must collapse: {pulled:?}");
+    }
+
+    #[test]
+    fn cosmetic_dp_keeps_real_blocker_detour() {
+        // Use routing-scale inflate so deflating by ε still leaves a blocker.
+        let square = vec![(40.0, 40.0), (60.0, 40.0), (60.0, 60.0), (40.0, 60.0)];
+        let obstacles = vec![Obstacle {
+            mol_id: "blocker".into(),
+            hull: inflate_convex(&square, ROUTING_CLEARANCE),
+        }];
+        let pad = pad_tolerant_obstacles(&obstacles, COSMETIC_SIMPLIFY_EPS);
+        let skip = HashSet::new();
+        let detour = vec![
+            (50.0, 10.0),
+            (38.0, 38.0),
+            (38.0, 62.0),
+            (50.0, 90.0),
+        ];
+        let pulled = cosmetic_douglas_peucker(
+            &detour,
+            &[],
+            &pad,
+            &skip,
+            COSMETIC_SIMPLIFY_EPS,
+        );
+        assert!(
+            pulled.len() >= 3,
+            "must not punch the blocker: {pulled:?}"
+        );
+        // Straight centroid chord is blocked; cosmetic DP must not invent it.
+        assert!(
+            segment_hits_convex((50.0, 10.0), (50.0, 90.0), &obstacles[0].hull),
+            "sanity: chord still hits routing hull"
+        );
+    }
+
+    #[test]
+    fn string_pull_drops_steiner_kinks_when_one_cross_unchanged() {
+        // Path already crosses a locked shaft once; Steiner elbows on either
+        // side must still collapse if the chord does not add crossings.
+        let empty: Vec<Obstacle> = Vec::new();
+        let skip = HashSet::new();
+        let committed = vec![Committed {
+            segs: vec![((40.0, 50.0), (60.0, 50.0))],
+        }];
+        // Down the left, zigzag, cross mid, zigzag, down the right — the
+        // vertical chord still crosses once.
+        let kinked = vec![
+            (50.0, 0.0),
+            (30.0, 20.0),
+            (50.0, 40.0),
+            (50.0, 60.0),
+            (70.0, 80.0),
+            (50.0, 100.0),
+        ];
+        assert_eq!(path_crosses_committed(&kinked, &committed), 1);
+        let pulled = string_pull(&kinked, &empty, &skip, &committed);
+        assert_eq!(
+            path_crosses_committed(&pulled, &committed),
+            1,
+            "must keep the single crossing: {pulled:?}"
+        );
+        assert!(
+            pulled.len() < kinked.len(),
+            "Steiner kinks should collapse: {pulled:?}"
+        );
+        assert!(
+            pulled.len() <= 3,
+            "expected a near-straight one-cross walk: {pulled:?}"
         );
     }
 

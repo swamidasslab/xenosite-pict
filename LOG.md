@@ -2,6 +2,13 @@
 
 ## 2026-11-05
 
+- Unnecessary kinks were inflate-pad stair-steps: visibility walks hull
+  corners, string-pull cannot chord through the pad, Catmull exaggerates the
+  micro-bends. Final simplify now Douglas–Peucker + string-pull against hulls
+  deflated by `0.35*BOND`, then prefers a tip–tip chord / single bow when
+  crossings do not rise. Epirubicin: 9/11 shafts straight; long left keep one
+  real elbow; one mild 12° pad hug remains.
+
 - Reopt is one-at-a-time (most crossings, then longest); skip zero-cross; refresh only pairs involving the changed arrow. Pathway crossings priced in Dijkstra via centroid hops.
 
 - Intersection scoring is centroid→centroid pathways only. Tip hug is a later
