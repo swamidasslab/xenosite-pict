@@ -61,6 +61,7 @@ class ViewportDict(TypedDict, total=False):
     """One molecule viewport in a diagram (after ELK/grid placement)."""
     height: Required[float]
     width: Required[float]
+    halo_filter_px: NotRequired[float]
     id: NotRequired[str]
     layers: NotRequired[list[LayerDict]]
     ox: NotRequired[float]

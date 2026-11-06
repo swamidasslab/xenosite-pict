@@ -1,21 +1,21 @@
 //! Single-molecule depiction: [`MoleculeIn`] → [`Scene`].
 //!
 //! Caller supplies SVG-space coords (+ optional shade / atom labels). Shade uses
-//! the xenosite rainbow LUT; halo knocks out white channels through shade for
-//! bond/label ink. Publication circles are [`crate::doc`] chrome on `MolNode`.
+//! the xenosite rainbow LUT; halo is an SVG feMorphology contrast filter on
+//! chem ink (see [`Viewport::halo_filter_px`]). Publication circles are
+//! [`crate::doc`] chrome on `MolNode`.
 
 use std::collections::HashMap;
 
-use crate::bonds::{bond_strokes, join_centered_multibonds, DrawnBond, StrokePath};
+use crate::bonds::{bond_strokes, join_centered_multibonds, DrawnBond};
 use crate::colormap::colormap_rgb;
 use crate::debug_align::paint_align_debug;
 use crate::debug_box::{label_debug_rect, mol_debug_rect, scene_debug_rect};
 use crate::font::FaceStyle;
 use crate::labels::{self, place_backbone};
 use crate::metrics::{
-    halo_gap_for_weight, halo_stroke_for_weight, label_weight_grow_px, stroke_px_for_weight,
-    BOND_PX, FONT_PX, HALO_OPACITY, PAD_PX, RADICAL_DOT_PX, RADICAL_OFFSET_PX, RADICAL_PAIR_PX,
-    SHADE_BOTH_FRAC, SHADE_FRAC,
+    halo_gap_for_weight, label_weight_grow_px, stroke_px_for_weight, BOND_PX, FONT_PX, PAD_PX,
+    RADICAL_DOT_PX, RADICAL_OFFSET_PX, RADICAL_PAIR_PX, SHADE_BOTH_FRAC, SHADE_FRAC,
 };
 use crate::plotdot::PlotDot;
 use crate::rings::{aromatic_ring_circles, bond_interior_normals, find_sssr, kekule_paint_orders};
@@ -25,9 +25,10 @@ use crate::scene::{
 
 /// Paint one molecule into a single-viewport [`Scene`].
 ///
-/// Layers (bottom → top): shading → halo → bonds → labels. Chrome annotations
-/// (regions, circles, callouts) join those layers on the same viewport so a
-/// mol-group transform applies to the whole tree. [`depict_molecule`] scales
+/// Layers (bottom → top): shading → bonds → labels. When `mol.halo`, SVG emit
+/// wraps chem ink in a white dilate filter for contrast on shade/regions.
+/// Chrome annotations (regions, circles, callouts) join those layers on the
+/// same viewport so a mol-group transform applies to the whole tree. [`depict_molecule`] scales
 /// after chem paint; the document path scales once after chrome + captions.
 pub fn frame_offset(mol: &MoleculeIn) -> (f64, f64) {
     let mut min_x = f64::INFINITY;
@@ -188,8 +189,6 @@ pub(crate) fn depict_chem(mol: &MoleculeIn) -> Scene {
     join_centered_multibonds(&mut prepared);
 
     let mut bond_prims: Vec<Primitive> = Vec::new();
-    let mut bond_strokes_for_halo: Vec<StrokePath> = Vec::new();
-    let want_halo = mol.halo;
     for bond in &prepared {
         let strokes = bond_strokes(
             bond.x1,
@@ -203,11 +202,6 @@ pub(crate) fn depict_chem(mol: &MoleculeIn) -> Scene {
             Some(stroke_px),
         );
         let tag = format!("bond-{} atom-{} atom-{}", bond.index, bond.begin, bond.end);
-        if want_halo {
-            for sp in strokes.paint_order() {
-                bond_strokes_for_halo.push((*sp).clone());
-            }
-        }
         for mut p in strokes.into_primitives(color) {
             if let Primitive::Path { ref mut class, .. } = p {
                 if let Some(c) = class.take() {
@@ -235,7 +229,7 @@ pub(crate) fn depict_chem(mol: &MoleculeIn) -> Scene {
     }
 
     let mut label_prims: Vec<Primitive> = Vec::new();
-    let mut label_ink_for_halo: Vec<crate::geom::Shape> = Vec::new();
+    let mut label_ink_for_debug: Vec<(i32, crate::geom::Shape)> = Vec::new();
     for (slot, pl) in placed.iter().enumerate() {
         let Some(pl) = pl else { continue };
         let atom_index = mol.atoms[slot].index;
@@ -253,8 +247,8 @@ pub(crate) fn depict_chem(mol: &MoleculeIn) -> Scene {
             ink = ink.buffer(label_grow);
         }
         let d = ink.to_svg_d();
-        if want_halo {
-            label_ink_for_halo.push(ink);
+        if mol.debug_box {
+            label_ink_for_debug.push((atom_index, ink));
         }
         if d.is_empty() {
             continue;
@@ -273,43 +267,17 @@ pub(crate) fn depict_chem(mol: &MoleculeIn) -> Scene {
     }
 
     let radical_dots = radical_dot_prims(mol, &by_index, dx, dy, color, &placed, face);
-    #[cfg(feature = "geom")]
-    if want_halo {
-        for p in &radical_dots {
-            if let Primitive::Circle { cx, cy, r, .. } = p {
-                label_ink_for_halo.push(crate::geom::Shape::disk(*cx, *cy, *r, 12));
-            }
-        }
-    }
 
     let shade_prims = paint_shade(mol, &by_index, dx, dy);
-    let halo_prims = if want_halo {
-        paint_halo(
-            &bond_strokes_for_halo,
-            &label_ink_for_halo,
-            stroke_px,
-            weight,
-        )
-    } else {
-        Vec::new()
-    };
+    // Contrast filter (SVG emit); no buffered knockout paths.
+    let halo_filter_px = mol.halo.then(|| halo_gap_for_weight(weight).max(0.5));
 
     let mut debug_prims: Vec<Primitive> = Vec::new();
     if mol.debug_box {
         // Label ink AABBs only — never wrap bond/atom stroke primitives.
-        // `label_ink_for_halo` is pushed in the same order as non-None `placed`.
-        let mut ink_i = 0usize;
-        for (slot, pl) in placed.iter().enumerate() {
-            if pl.is_none() {
-                continue;
-            }
-            if ink_i >= label_ink_for_halo.len() {
-                break;
-            }
-            let ink = &label_ink_for_halo[ink_i];
-            ink_i += 1;
+        for (atom_index, ink) in &label_ink_for_debug {
             if let Some((x0, y0, x1, y1)) = ink.bounds() {
-                debug_prims.push(label_debug_rect(x0, y0, x1, y1, mol.atoms[slot].index));
+                debug_prims.push(label_debug_rect(x0, y0, x1, y1, *atom_index));
             }
         }
         debug_prims.push(mol_debug_rect(width, height));
@@ -325,12 +293,6 @@ pub(crate) fn depict_chem(mol: &MoleculeIn) -> Scene {
         layers.push(Layer {
             name: LayerName::Shading,
             primitives: shade_prims,
-        });
-    }
-    if !halo_prims.is_empty() {
-        layers.push(Layer {
-            name: LayerName::Halo,
-            primitives: halo_prims,
         });
     }
     if !bond_prims.is_empty() {
@@ -378,6 +340,7 @@ pub(crate) fn depict_chem(mol: &MoleculeIn) -> Scene {
             width,
             height,
             layers,
+            halo_filter_px,
         }],
         overlays,
         halo: Vec::new(),
@@ -800,102 +763,6 @@ pub(crate) fn shade_outer_radius_px(norm_z: f64, base_r: f64) -> Option<f64> {
     }
 }
 
-/// White knockout under bonds/labels so shade disks don't cover ink.
-///
-/// xenopict: union of per-ink buffers at a weight-scaled gap (√weight vs linear
-/// ink), with a floor from halo stroke thickness. Requires the `geom` feature
-/// (WASM enables it via `font`).
-#[cfg(feature = "geom")]
-fn paint_halo(
-    bond_strokes: &[StrokePath],
-    label_ink: &[crate::geom::Shape],
-    stroke_px: f64,
-    weight: f64,
-) -> Vec<Primitive> {
-    use crate::geom::Shape;
-
-    let mut ink: Option<Shape> = None;
-    let mut absorb = |piece: Shape| {
-        if piece.is_empty() {
-            return;
-        }
-        ink = Some(match ink.take() {
-            Some(acc) => acc.union(&piece),
-            None => piece,
-        });
-    };
-
-    for sp in bond_strokes {
-        let pts = &sp.pts;
-        if pts.len() < 2 {
-            continue;
-        }
-        let ink_r = sp.stroke_width.max(stroke_px) * 0.5;
-        // Filled wedges: treat the polygon as ink; stroked lines → capsules.
-        if sp.fill.as_deref().is_some_and(|f| f != "none") && pts.len() >= 3 {
-            let poly = Shape::from_ring(&pts);
-            if !poly.is_empty() {
-                let grown = if ink_r > 0.0 {
-                    poly.buffer(ink_r)
-                } else {
-                    poly
-                };
-                absorb(grown);
-            }
-            continue;
-        }
-        for w in pts.windows(2) {
-            let (x1, y1) = w[0];
-            let (x2, y2) = w[1];
-            if (x1 - x2).hypot(y1 - y2) < 1e-6 {
-                continue;
-            }
-            absorb(Shape::capsule(x1, y1, x2, y2, ink_r));
-        }
-    }
-
-    for shape in label_ink {
-        absorb(shape.clone());
-    }
-
-    let Some(ink) = ink.filter(|s| !s.is_empty()) else {
-        return Vec::new();
-    };
-    // Match Python BondsDrawable: max(halo_gap(w), 0.25*halo_stroke(w) - ink_r).
-    let ink_r = stroke_px * 0.5;
-    let halo_stroke = halo_stroke_for_weight(weight);
-    let dist = halo_gap_for_weight(weight).max(0.25 * halo_stroke - ink_r);
-    let grown = ink.halo(dist);
-    if grown.is_empty() {
-        return Vec::new();
-    }
-    let d = grown.to_svg_d();
-    if d.is_empty() {
-        return Vec::new();
-    }
-    vec![Primitive::Path {
-        d,
-        stroke: Some("none".into()),
-        fill: Some("#fff".into()),
-        stroke_width: 0.0,
-        opacity: HALO_OPACITY,
-        stroke_dasharray: None,
-        stroke_linecap: None,
-        class: Some("halo".into()),
-        data_text: None,
-    }]
-}
-
-#[cfg(not(feature = "geom"))]
-fn paint_halo(
-    _bond_strokes: &[StrokePath],
-    _label_ink: &[crate::geom::Shape],
-    _stroke_px: f64,
-    _weight: f64,
-) -> Vec<Primitive> {
-    Vec::new()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1133,23 +1000,19 @@ mod tests {
     }
 
     #[test]
-    fn halo_false_omits_chem_halo_layer() {
+    fn halo_false_omits_contrast_filter() {
         let mut mol = ethanol();
         mol.halo = false;
         let scene = depict_molecule(&mol);
-        let has_halo = scene.viewports[0].layers.iter().any(|l| {
-            l.name == LayerName::Halo
-                && l.primitives.iter().any(|p| match p {
-                    Primitive::Path {
-                        class: Some(c), ..
-                    } => c.contains("halo"),
-                    Primitive::Circle {
-                        class: Some(c), ..
-                    } => c.contains("halo"),
-                    _ => false,
-                })
-        });
-        assert!(!has_halo, "halo:false must skip chem bond/label knockout");
+        assert!(
+            scene.viewports[0].halo_filter_px.is_none(),
+            "halo:false must skip contrast filter"
+        );
+        let svg = crate::scene_to_svg(&scene);
+        assert!(
+            !svg.contains("feMorphology") && !svg.contains("xpict-chem"),
+            "halo:false SVG must not emit filter markup"
+        );
         assert!(
             scene.viewports[0]
                 .layers
@@ -1159,11 +1022,36 @@ mod tests {
         );
     }
 
-    /// Halo + glyph outlines used to emit multi‑MB SVGs (0.02px stair-steps).
-    /// Export must Douglas–Peucker so a steroid-sized mol stays compact.
+    #[test]
+    fn halo_true_emits_filter_without_buffered_halo_paths() {
+        let mol = ethanol();
+        let scene = depict_molecule(&mol);
+        assert!(
+            scene.viewports[0]
+                .halo_filter_px
+                .is_some_and(|r| r > 0.0),
+            "default halo sets filter radius"
+        );
+        let has_halo_paths = scene.viewports[0].layers.iter().any(|l| {
+            l.name == LayerName::Halo
+                && l.primitives.iter().any(|p| match p {
+                    Primitive::Path {
+                        class: Some(c), ..
+                    } => c.split_whitespace().any(|t| t == "halo"),
+                    _ => false,
+                })
+        });
+        assert!(!has_halo_paths, "chem halo must not be buffered path geom");
+        let svg = crate::scene_to_svg(&scene);
+        assert!(
+            svg.contains("feMorphology") && svg.contains("class=\"xpict-chem\""),
+            "SVG must wrap chem ink in contrast filter"
+        );
+    }
+
+    /// Glyph/bond path data stays compact; contrast is a filter, not tessellation.
     #[test]
     fn steroid_svg_paths_are_not_over_tessellated() {
-        // Prasterone-like polycycle with several heteroatom labels + halo.
         let spec = crate::doc::DepictSpec::Mol(crate::doc::MolNode {
             smiles: Some(
                 "C[C@]12CCC(=O)C=C1CC[C@@H]1[C@@H]2CC[C@]2(C)[C@H](O)CC[C@@H]12".into(),
@@ -1180,19 +1068,18 @@ mod tests {
                 rest.find('"').unwrap_or(0)
             })
             .sum();
-        // Pre-fix Prasterone was ~2MB / ~2M d-chars. Compact house style
-        // should land well under a few hundred KB of path data.
+        // Pre-filter-halo Prasterone was ~2MB / ~2M d-chars.
         assert!(
-            d_chars < 200_000,
+            d_chars < 50_000,
             "path d still over-tessellated: {d_chars} chars (svg {} bytes)",
             svg.len()
         );
         assert!(
-            !svg.contains("204.78 L 35.63 204.76"),
-            "0.02px halo stair-steps still present"
+            svg.contains("feMorphology"),
+            "halo-on steroid should use contrast filter"
         );
         assert!(
-            svg.len() < 400_000,
+            svg.len() < 80_000,
             "SVG still huge: {} bytes",
             svg.len()
         );
@@ -1607,13 +1494,11 @@ mod tests {
                 f.starts_with("rgb(") && !f.starts_with("rgb(255,222"),
             _ => false,
         }));
-        let has_halo = scene.viewports[0]
-            .layers
-            .iter()
-            .any(|l| l.name == LayerName::Halo && !l.primitives.is_empty());
         assert!(
-            has_halo,
-            "expected bond/label halo knockout in mol Halo layer"
+            scene.viewports[0]
+                .halo_filter_px
+                .is_some_and(|r| r > 0.0),
+            "expected contrast filter radius for shaded mol"
         );
     }
 
@@ -2355,11 +2240,12 @@ mod tests {
             ..Default::default()
         };
         let scene = depict_molecule(&mol);
-        let has_halo = scene.viewports[0]
-            .layers
-            .iter()
-            .any(|l| l.name == LayerName::Halo && !l.primitives.is_empty());
-        assert!(has_halo, "expected mol Halo layer");
+        assert!(
+            scene.viewports[0]
+                .halo_filter_px
+                .is_some_and(|r| r > 0.0),
+            "expected contrast filter for wedge mol"
+        );
         let bonds = scene.viewports[0]
             .layers
             .iter()

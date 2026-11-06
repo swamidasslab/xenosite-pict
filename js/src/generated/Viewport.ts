@@ -14,4 +14,10 @@ export type Viewport = { id?: string, x: number, y: number,
  * Local leftover origin (fit). Nested inside the mol group, not baked
  * into path `d`.
  */
-ox: number, oy: number, width: number, height: number, layers: Array<Layer>, };
+ox: number, oy: number, width: number, height: number, layers: Array<Layer>, 
+/**
+ * When set, SVG emit wraps bonds/labels/marks in an feMorphology white
+ * contrast filter of this radius (px). Derived from mol `halo` + weight;
+ * not a DepictSpec knob. `None` = no filter (`halo: false`).
+ */
+halo_filter_px?: number, };

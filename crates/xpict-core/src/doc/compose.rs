@@ -255,6 +255,7 @@ fn placed_viewport(src: &Scene, id: &str, x: f64, y: f64, w: f64, h: f64) -> Vie
         width: w,
         height: h,
         layers: vec![],
+        halo_filter_px: None,
     });
     // Map this mol's viewBox origin onto the ELK/row box. `src.x`/`src.y` are
     // the crop; any prior group leftover on vp.x/y comes along.
@@ -959,6 +960,7 @@ mod tests {
                         name: LayerName::Bonds,
                         primitives: vec![],
                     }],
+                    halo_filter_px: None,
                 }],
                 overlays: vec![],
                 halo: vec![],

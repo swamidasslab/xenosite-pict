@@ -199,6 +199,12 @@ pub struct Viewport {
     pub height: f64,
     #[serde(default)]
     pub layers: Vec<Layer>,
+    /// When set, SVG emit wraps bonds/labels/marks in an feMorphology white
+    /// contrast filter of this radius (px). Derived from mol `halo` + weight;
+    /// not a DepictSpec knob. `None` = no filter (`halo: false`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub halo_filter_px: Option<f64>,
 }
 
 impl Viewport {
@@ -719,6 +725,7 @@ impl Viewport {
                         .collect(),
                 })
                 .collect(),
+            halo_filter_px: self.halo_filter_px.map(|r| r * s),
         }
     }
 }
@@ -790,6 +797,7 @@ mod tests {
                         data_text: None,
                     }],
                 }],
+                halo_filter_px: None,
             }],
             overlays: vec![],
             halo: vec![],
@@ -1047,6 +1055,7 @@ mod tests {
                 name: LayerName::Marks,
                 primitives: vec![circle.clone()],
             }],
+            halo_filter_px: None,
         };
         assert_eq!(vp.scale_uniform(1.0), vp);
         let vp2 = vp.scale_uniform(2.0);

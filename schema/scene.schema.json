@@ -285,6 +285,14 @@
         "width"
       ],
       "properties": {
+        "halo_filter_px": {
+          "description": "When set, SVG emit wraps bonds/labels/marks in an feMorphology white contrast filter of this radius (px). Derived from mol `halo` + weight; not a DepictSpec knob. `None` = no filter (`halo: false`).",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
         "height": {
           "type": "number",
           "format": "double"

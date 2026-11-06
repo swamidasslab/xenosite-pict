@@ -1,6 +1,8 @@
 //! Scene → SVG. Hosts call this; they do not reimplement markup.
 
+use crate::metrics::HALO_OPACITY;
 use crate::scene::{LayerName, Primitive, Scene, TextAnchor, Viewport};
+use std::collections::BTreeSet;
 
 fn esc(s: &str) -> String {
     s.replace('&', "&amp;")
@@ -177,6 +179,42 @@ fn layer_name(n: LayerName) -> &'static str {
     }
 }
 
+/// Chem ink layers that ride the contrast filter (bonds / labels / marks).
+fn is_chem_filter_layer(n: LayerName) -> bool {
+    matches!(n, LayerName::Bonds | LayerName::Labels | LayerName::Marks)
+}
+
+/// Quantize filter radius so mols with nearly the same weight share one def.
+fn halo_filter_id(radius_px: f64) -> String {
+    let q = (radius_px * 10.0).round() as i64;
+    format!("xpict-halo-{q}")
+}
+
+fn render_halo_filter_def(radius_px: f64) -> String {
+    let id = halo_filter_id(radius_px);
+    let r = fmt(radius_px);
+    let op = fmt(HALO_OPACITY);
+    // Pad the filter region so dilation is not clipped at the chem bbox.
+    format!(
+        "<filter id=\"{id}\" filterUnits=\"userSpaceOnUse\" \
+         x=\"-50%\" y=\"-50%\" width=\"200%\" height=\"200%\">\
+         <feMorphology in=\"SourceAlpha\" operator=\"dilate\" radius=\"{r}\" result=\"spread\"/>\
+         <feFlood flood-color=\"#fff\" flood-opacity=\"{op}\" result=\"white\"/>\
+         <feComposite in=\"white\" in2=\"spread\" operator=\"in\" result=\"halo\"/>\
+         <feMerge>\
+         <feMergeNode in=\"halo\"/>\
+         <feMergeNode in=\"SourceGraphic\"/>\
+         </feMerge>\
+         </filter>"
+    )
+}
+
+fn render_layer_group(layer: &crate::scene::Layer) -> String {
+    let name = layer_name(layer.name);
+    let body: String = layer.primitives.iter().map(render_primitive).collect();
+    format!("<g class=\"xpict-layer xpict-{name}\">{body}</g>")
+}
+
 fn render_viewport_layers(vp: &Viewport) -> String {
     let mut layers: Vec<&crate::scene::Layer> = vp
         .layers
@@ -184,11 +222,39 @@ fn render_viewport_layers(vp: &Viewport) -> String {
         .filter(|l| !l.primitives.is_empty())
         .collect();
     layers.sort_by_key(|l| l.name.paint_order());
+
+    let filter_url = vp.halo_filter_px.filter(|r| *r > 0.0 && r.is_finite()).map(|r| {
+        format!(" filter=\"url(#{})\"", halo_filter_id(r))
+    });
+
     let mut chunks = String::new();
+    let mut chem = String::new();
+    let mut chem_open = false;
     for layer in layers {
-        let name = layer_name(layer.name);
-        let body: String = layer.primitives.iter().map(render_primitive).collect();
-        chunks.push_str(&format!("<g class=\"xpict-layer xpict-{name}\">{body}</g>"));
+        let into_chem = filter_url.is_some() && is_chem_filter_layer(layer.name);
+        if into_chem {
+            if !chem_open {
+                chem.push_str(&format!(
+                    "<g class=\"xpict-chem\"{}>",
+                    filter_url.as_deref().unwrap_or("")
+                ));
+                chem_open = true;
+            }
+            chem.push_str(&render_layer_group(layer));
+        } else {
+            if chem_open {
+                chem.push_str("</g>");
+                chunks.push_str(&chem);
+                chem.clear();
+                chem_open = false;
+            }
+            // Legacy Halo path layers (if any) still emit under xpict-halo.
+            chunks.push_str(&render_layer_group(layer));
+        }
+    }
+    if chem_open {
+        chem.push_str("</g>");
+        chunks.push_str(&chem);
     }
     chunks
 }
@@ -218,12 +284,29 @@ fn render_viewport(vp: &Viewport) -> String {
 
 /// Serialize a [`Scene`] to inline SVG (no XML declaration).
 ///
-/// Each viewport is one `g.xpict-mol`. Layers (shading, halo, bonds, …) nest
-/// inside that group so a mol transform applies to regions and chem together.
+/// Each viewport is one `g.xpict-mol`. Layers (shading, bonds, …) nest inside
+/// that group; chem ink may ride a shared feMorphology contrast filter.
 pub fn scene_to_svg(scene: &Scene) -> String {
     let w = fmt(scene.width);
     let h = fmt(scene.height);
+    let mut radii = BTreeSet::new();
+    for vp in &scene.viewports {
+        if let Some(r) = vp.halo_filter_px {
+            if r > 0.0 && r.is_finite() {
+                // Store quantized key so defs match filter ids.
+                let q = (r * 10.0).round() as i64;
+                radii.insert(q);
+            }
+        }
+    }
     let mut parts = String::new();
+    if !radii.is_empty() {
+        parts.push_str("<defs>");
+        for q in radii {
+            parts.push_str(&render_halo_filter_def(q as f64 / 10.0));
+        }
+        parts.push_str("</defs>");
+    }
     if !scene.halo.is_empty() {
         let body: String = scene.halo.iter().map(render_primitive).collect();
         parts.push_str(&format!("<g class=\"xpict-halo\" id=\"halo\">{body}</g>"));
@@ -288,10 +371,33 @@ mod tests {
                     name: LayerName::Bonds,
                     primitives: vec![circle()],
                 }],
+                halo_filter_px: None,
             }],
             overlays: vec![],
             halo: vec![],
         }
+    }
+
+    #[test]
+    fn chem_filter_wraps_bonds_outside_shading() {
+        use crate::scene::Layer;
+        let mut scene = scene_with_id(Some("m0"), 0.0, 0.0);
+        scene.viewports[0].halo_filter_px = Some(1.5);
+        scene.viewports[0].layers.insert(
+            0,
+            Layer {
+                name: LayerName::Shading,
+                primitives: vec![circle()],
+            },
+        );
+        let svg = scene_to_svg(&scene);
+        assert!(svg.contains(r#"id="xpict-halo-15""#), "{svg}");
+        assert!(svg.contains("feMorphology"), "{svg}");
+        assert!(svg.contains(r#"class="xpict-chem" filter="url(#xpict-halo-15)""#), "{svg}");
+        let shade_i = svg.find(r#"class="xpict-layer xpict-shading""#).unwrap();
+        let chem_i = svg.find(r#"class="xpict-chem""#).unwrap();
+        let bonds_i = svg.find(r#"class="xpict-layer xpict-bonds""#).unwrap();
+        assert!(shade_i < chem_i && chem_i < bonds_i, "shading then filtered chem");
     }
 
     #[test]

@@ -2,6 +2,13 @@
 
 ## 2026-11-05
 
+- Halo contrast is now an SVG `feMorphology` dilate filter on
+  `g.xpict-chem` (bonds/labels/marks), not buffered white path geom.
+  `Viewport.halo_filter_px` carries the radius; `halo: false` omits it.
+  Dropped chrome-halo outline paths. Halo-on SVG path size ≈ halo-off.
+  (Pre-existing: `fused_ring_heads_sit_outside_the_skeleton` still fails
+  with a short thick-stroke shaft — unrelated to filter halos.)
+
 - `halo: false` was a no-op (`let _ = chrome.halo`). Wired onto
   `MoleculeIn.halo` (default true) → skip chem knockout + chrome outline
   halo. Release paint-only 42 steroids: 81→44 ms (~1.9×). Same net as a

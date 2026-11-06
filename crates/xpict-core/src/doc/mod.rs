@@ -1274,7 +1274,7 @@ mod tests {
     }
 
     #[test]
-    fn halo_false_on_mol_spec_skips_chem_halo_paint() {
+    fn halo_false_on_mol_spec_skips_contrast_filter() {
         let on: DepictSpec = serde_json::from_str(
             r##"{"type":"mol","smiles":"CCO","halo":true}"##,
         )
@@ -1287,29 +1287,31 @@ mod tests {
         let painted_off = crate::doc::render(&off).expect("halo off");
         assert!(painted_on[0].molecule.halo);
         assert!(!painted_off[0].molecule.halo);
-        let has = |scene: &crate::scene::Scene| {
-            scene.viewports.iter().any(|vp| {
-                vp.layers.iter().any(|l| {
-                    l.name == crate::scene::LayerName::Halo
-                        && l.primitives.iter().any(|prim| match prim {
-                            crate::scene::Primitive::Path {
-                                class: Some(c), ..
-                            }
-                            | crate::scene::Primitive::Circle {
-                                class: Some(c), ..
-                            } => c.split_whitespace().any(|t| t == "halo"),
-                            _ => false,
-                        })
-                })
-            })
-        };
         assert!(
-            has(&painted_on[0].scene),
-            "default/on still paints chem halo"
+            painted_on[0].scene.viewports[0]
+                .halo_filter_px
+                .is_some_and(|r| r > 0.0),
+            "halo:true sets filter radius"
         );
         assert!(
-            !has(&painted_off[0].scene),
+            painted_off[0].scene.viewports[0].halo_filter_px.is_none(),
             "halo:false must reach depict"
+        );
+        let svg_on = crate::scene_to_svg(&painted_on[0].scene);
+        let svg_off = crate::scene_to_svg(&painted_off[0].scene);
+        assert!(svg_on.contains("feMorphology") && svg_on.contains("xpict-chem"));
+        assert!(!svg_off.contains("feMorphology"));
+        // Filter halo must not inflate path data vs halo-off.
+        let d = |s: &str| {
+            s.match_indices(" d=\"")
+                .map(|(i, _)| s[i + 4..].find('"').unwrap_or(0))
+                .sum::<usize>()
+        };
+        assert!(
+            d(&svg_on) <= d(&svg_off) + 200,
+            "filter halo should not add path geom: on={} off={}",
+            d(&svg_on),
+            d(&svg_off)
         );
     }
 

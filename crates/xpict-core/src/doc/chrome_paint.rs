@@ -29,9 +29,7 @@ use crate::doc::spec::{LabelPos, MolNode};
 use crate::doc::text_paint::{markup_bounds_at_origin, outline_markup};
 use crate::font::FaceStyle;
 use crate::labels::{label_ink_shape, label_side, place_backbone, LabelSide};
-use crate::metrics::{
-    halo_gap_for_weight, halo_stroke_for_weight, BOND_PX, FONT_PX, HALO_OPACITY, STROKE_PX,
-};
+use crate::metrics::{BOND_PX, FONT_PX, STROKE_PX};
 use crate::rings::{aromatic_ring_circles, find_sssr};
 use crate::scene::{AromaticStyle, AtomIn, LayerName, MoleculeIn, Primitive, Scene};
 use std::collections::{HashMap, HashSet};
@@ -819,11 +817,9 @@ fn atom_label_primitive(
         .filter(|s| !s.is_empty())
         .unwrap_or("#444")
         .to_string();
-    let halo = if on_shade && mol.halo {
-        halo_for_markup(content, origin_x, origin_y, font_px, anchor, weight)
-    } else {
-        None
-    };
+    // Contrast comes from the mol SVG feMorphology filter on chem ink —
+    // no separate chrome-halo outline paths.
+    let _ = (on_shade, mol.halo, weight);
     Some((
         Primitive::Path {
             d,
@@ -837,7 +833,7 @@ fn atom_label_primitive(
             data_text: Some(data_text),
         },
         box_,
-        halo,
+        None,
     ))
 }
 
@@ -1680,11 +1676,8 @@ fn callout_primitives(
     }
     if let Some((d, data_text, _)) = outline_markup(content, placed_x, placed_y, font_px, anchor) {
         if !d.is_empty() {
-            let halo = if on_shade && mol.halo {
-                halo_for_markup(content, placed_x, placed_y, font_px, anchor, weight)
-            } else {
-                None
-            };
+            let halo = None;
+            let _ = (on_shade, mol.halo, weight);
             out.push((
                 Primitive::Path {
                     d,
@@ -2373,38 +2366,6 @@ fn aabb_hits_shade(box_: Aabb, shades: &[(usize, f64, f64, f64)]) -> bool {
         .any(|&(_, cx, cy, r)| box_.overlaps(Aabb::new(cx - r, cy - r, cx + r, cy + r)))
 }
 
-/// Paint-only text halo (like a shadow): same glyph path as the label, white
-/// fill + white stroke so the silhouette reads as an **outline** (shape +
-/// buffer). Never a layout constraint — call only after placement is fixed.
-fn halo_for_markup(
-    content: &str,
-    x: f64,
-    y: f64,
-    font_px: f64,
-    anchor: &str,
-    weight: f64,
-) -> Option<Primitive> {
-    let (d, _, _) = outline_markup(content, x, y, font_px, anchor)?;
-    if d.is_empty() {
-        return None;
-    }
-    // Outward buffer ≈ half the stroke; match chem halo-stroke metric.
-    let stroke_w = halo_stroke_for_weight(weight)
-        .max(2.0 * halo_gap_for_weight(weight))
-        .max(1.0);
-    Some(Primitive::Path {
-        d,
-        stroke: Some("#fff".into()),
-        fill: Some("#fff".into()),
-        stroke_width: stroke_w,
-        opacity: HALO_OPACITY,
-        stroke_dasharray: None,
-        stroke_linecap: Some("round".into()),
-        class: Some("halo chrome-halo".into()),
-        data_text: None,
-    })
-}
-
 /// Shade clash disks: **actual** outer painted radius (PlotDot), not the
 /// house-max `SHADE_FRAC` circle. Atom wash is parented by atom index; bond
 /// midpoints use `usize::MAX` so they install as unparented shade leaves.
@@ -3014,48 +2975,38 @@ mod tests {
     }
 
     #[test]
-    fn atom_number_on_shade_uses_outline_halo_not_box() {
+    fn atom_number_on_shade_uses_mol_filter_not_chrome_halo_paths() {
         let mut mol = ethanol();
         mol.atom_shade = Some(vec![1.0, 1.0, 1.0]);
         let scene = crate::depict::depict_molecule(&mol);
+        assert!(
+            scene.viewports[0].halo_filter_px.is_some(),
+            "shaded mol keeps SVG contrast filter"
+        );
         let node = MolNode {
             atom_number: Some(AtomNumberSpec::ByName(AtomNumberBy::Index)),
             ..Default::default()
         };
         let out = apply_mol_chrome(&node, &mol, scene);
-        // Chem depict also emits class="halo" (bond knockout). Chrome text uses
-        // "chrome-halo" — match that specifically.
-        let (halo_d, stroke, stroke_w) = out
+        let chrome_halo = out
             .viewports
             .iter()
             .flat_map(|vp| vp.layers.iter())
-            .filter(|l| l.name == LayerName::Halo)
             .flat_map(|l| l.primitives.iter())
-            .find_map(|p| match p {
+            .any(|p| match p {
                 Primitive::Path {
-                    d,
-                    stroke,
-                    stroke_width,
-                    class: Some(c),
-                    ..
-                } if c.contains("chrome-halo") => Some((d.as_str(), stroke.clone(), *stroke_width)),
-                _ => None,
-            })
-            .expect("chrome-halo for numbers on shade");
-        let n_coords = path_nums(halo_d).len() / 2;
+                    class: Some(c), ..
+                } => c.contains("chrome-halo"),
+                _ => false,
+            });
         assert!(
-            n_coords > 4,
-            "outline halo should follow the glyph, not a 4-corner AABB; got {n_coords} verts"
+            !chrome_halo,
+            "chrome text must not emit outline halo paths; filter covers contrast"
         );
+        let svg = crate::scene_to_svg(&out);
         assert!(
-            stroke
-                .as_deref()
-                .is_some_and(|s| s != "none" && !s.is_empty()),
-            "text halo must stroke the glyph outline (shape + buffer), got stroke={stroke:?}"
-        );
-        assert!(
-            stroke_w > 0.5,
-            "outline buffer stroke_width should be > 0; got {stroke_w}"
+            svg.contains("feMorphology") && svg.contains("xpict-chem"),
+            "numbers on shade ride the mol chem filter"
         );
     }
 

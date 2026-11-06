@@ -191,6 +191,7 @@ mod tests {
                         data_text: None,
                     }],
                 }],
+                halo_filter_px: None,
             }],
             overlays: vec![],
             halo: vec![],

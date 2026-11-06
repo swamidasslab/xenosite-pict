@@ -1935,6 +1935,7 @@ mod tests {
                         name: LayerName::Bonds,
                         primitives: vec![],
                     }],
+                    halo_filter_px: None,
                 }],
                 overlays: vec![],
                 halo: vec![],
