@@ -18,6 +18,7 @@ pub mod doc;
 pub mod edge;
 pub mod elements;
 pub mod elk;
+pub mod engine_config;
 pub mod font;
 pub mod geom;
 #[cfg(feature = "font")]
@@ -83,7 +84,8 @@ pub use doc::{
     AtomLabelSpec, AtomNumberBy, AtomNumberPolicy, AtomNumberSpec, CalloutField, CalloutSpec,
     CircleField, CircleSpec, CommonOpts, DepictSpec, DocPaint, EdgeArrow, EdgeNode, EdgeNodeKind,
     EdgeRouting, FillSpec, ForTypesPatch, Label, LabelItem, LabelLanes, LabelPlacement, LabelPos,
-    LabelRole, LayoutAlgorithm, LayoutDirection, LayoutOpts, MolIds, MolNode, MolNodeKind, MolOpts,
+    LabelRole, LayoutAlgorithm, LayoutDirection, LayoutOpts, LayoutQuality, MolIds, MolNode,
+    MolNodeKind, MolOpts,
     MolOverlayFields, MolText, MolTextSpec, Node, NodeType, Opts, OptsPatch, RegionField,
     RegionSpec, RegionStyle, RegionTextPlace, ShadeSpec, ShadeStyle, StrokeSpec, TextNode,
     TextNodeKind, TypedOptsPatch, Z_ATOMS, Z_ATOM_LABEL, Z_BACKGROUND, Z_BONDS, Z_CALLOUT,
@@ -101,6 +103,9 @@ pub use edge::{
 pub use elements::{atomic_number, element_symbol, SYMBOLS};
 pub use elk::{
     layout_json as elk_layout_json, scheme_layout_options, DiagramKind as ElkDiagramKind,
+};
+pub use engine_config::{
+    ArrowConfig, ElkPolicyConfig, EngineConfig, NudgeConfig, RouteConfig, SchemeConfig, SolveConfig,
 };
 pub use geom::{capsule_halo_path_d, disk_halo_path_d, polygon_to_svg_d};
 #[cfg(feature = "font")]

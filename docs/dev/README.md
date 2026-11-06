@@ -9,6 +9,8 @@ These pages are excluded from the public MkDocs site (`exclude_docs: dev/**`).
 | [`migration-xenosite.md`](migration-xenosite.md) | xenosite.org migration track |
 | [`typebridge.md`](typebridge.md) | Plan: Rust-first live types → TS + Pydantic |
 | [`review.md`](review.md) | Local JS/WASM depiction gallery (`make review`) |
+| [`engine-constants.md`](engine-constants.md) | Promote vs `EngineConfig` vs metrics rubric |
+| [`engine-constants.md`](engine-constants.md) | Promote vs `EngineConfig` vs metrics rubric |
 
 Root [`Makefile`](../../Makefile) (`make help`) is the front door for build /
 test / pages / version bump / publish dry-runs. CI and agent bootstrap use the

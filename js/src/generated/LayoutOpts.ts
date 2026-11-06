@@ -2,13 +2,14 @@
 import type { EdgeRouting } from "./EdgeRouting";
 import type { LayoutAlgorithm } from "./LayoutAlgorithm";
 import type { LayoutDirection } from "./LayoutDirection";
+import type { LayoutQuality } from "./LayoutQuality";
 
 /**
  * Layout for [`DepictSpec::ReactionScheme`].
  *
  * Backend-agnostic knobs — hosts map these onto ELK, Dagre, or another engine.
  * Defaults when omitted: [`LayoutDirection::Right`], [`EdgeRouting::Polyline`],
- * [`LayoutAlgorithm::Layered`].
+ * [`LayoutAlgorithm::Layered`], [`LayoutQuality::Pretty`].
  * Individual [`EdgeNode`]s may override [`Self::edge_routing`].
  *
  * Spacing (px, document space) controls packing tightness:
@@ -35,4 +36,9 @@ node_spacing?: number,
 /**
  * Between-layer gap along the flow axis (px). Smaller → tighter pack.
  */
-layer_spacing?: number, };
+layer_spacing?: number, 
+/**
+ * Engine preset (`pretty` / `fast`). Omit → pretty. Does not expose
+ * solver coefficients — see `docs/dev/engine-constants.md`.
+ */
+quality?: LayoutQuality, };

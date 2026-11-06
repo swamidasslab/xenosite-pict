@@ -5,7 +5,6 @@
 
 use std::collections::HashMap;
 
-use crate::arrows::min_shaft_px;
 use crate::metrics::BOND_PX;
 use crate::scene::{LayerName, MoleculeIn, Primitive, TextAnchor};
 
@@ -51,14 +50,16 @@ fn label_shaft_tether(stroke_width: Option<f64>) -> f64 {
 const POSE_STRENGTH: f64 = 0.35;
 /// Endpoints within this gap count as the same geometric terminal.
 const COTERMINAL_PX: f64 = 8.0;
+
 /// Graphs larger than a typical reaction skip the edge solver. Xenobase
 /// metabolite nets (dozens of mols/edges) were spending seconds in NM +
 /// ParallelClear; two-point hull hugs are enough once nodes are packed.
-const NETWORK_SOLVE_MOL_CAP: usize = 7;
-const NETWORK_SOLVE_EDGE_CAP: usize = 7;
-
-pub(crate) fn is_network_scheme(n_mols: usize, n_edges: usize) -> bool {
-    n_mols > NETWORK_SOLVE_MOL_CAP || n_edges > NETWORK_SOLVE_EDGE_CAP
+pub(crate) fn is_network_scheme(
+    n_mols: usize,
+    n_edges: usize,
+    engine: &crate::engine_config::EngineConfig,
+) -> bool {
+    n_mols > engine.scheme.network_solve_mol_cap || n_edges > engine.scheme.network_solve_edge_cap
 }
 
 /// Coterminal arrows (same unordered mol pair, or shared endpoints even if
@@ -273,9 +274,9 @@ pub fn refine_scheme_edges(
     }
     let mut out_labels = vec![None; spec.edges().len()];
 
-    let _ = layout;
+    let engine = layout.engine();
     // Soft mol nudge before routing: open clear chords when a small move helps.
-    let positions = super::scheme_nudge::propose_mol_nudges(spec, positions, sizes);
+    let positions = super::scheme_nudge::propose_mol_nudges(spec, positions, sizes, &engine);
     let mut world = LayoutWorld::rooted("scheme", ObjectType::Scheme);
     let size_of: HashMap<&str, (f64, f64)> = sizes
         .iter()
@@ -359,7 +360,13 @@ pub fn refine_scheme_edges(
     );
 
     let routed = super::scheme_route::route_scheme_edges(
-        spec, &positions, paints, sizes, &world, &mol_ids,
+        spec,
+        &positions,
+        paints,
+        sizes,
+        &world,
+        &mol_ids,
+        &engine,
     );
     for (i, path) in routed.paths.iter().enumerate() {
         let eid = format!("scheme/edges/e{i}");
@@ -398,11 +405,11 @@ pub fn refine_scheme_edges(
         group_centers.push(center);
     }
     let opts = SolveOpts {
-        max_iters: 40,
-        al_outer_max: 2,
+        max_iters: engine.solve.scheme_label_max_iters,
+        al_outer_max: engine.solve.scheme_label_al_outer_max,
         noise: 0.0,
-        epsilon_px: 1.0,
-        ..SolveOpts::default()
+        epsilon_px: engine.solve.scheme_label_epsilon_px,
+        ..SolveOpts::from_config(&engine.solve)
     };
 
     // Pose labels against the shared centerline, not a reverse member's
@@ -1114,6 +1121,7 @@ fn flip_upside_down(deg: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::arrows::min_shaft_px;
     use crate::doc::layout_constraints::Shape;
     use crate::doc::layout_constraints::{
         hard_g, HardConstraint, LAGRANGIAN_CLEAR, LAGRANGIAN_TETHER,
@@ -1865,6 +1873,7 @@ mod tests {
             text: text.into(),
             color: None,
             scale: None,
+            margin: None,
             opts: None,
         })
     }
@@ -2755,8 +2764,9 @@ mod tests {
 
     #[test]
     fn network_fan_roams_around_the_hull() {
-        assert!(is_network_scheme(8, 7));
-        assert!(!is_network_scheme(2, 1));
+        let eng = crate::engine_config::EngineConfig::pretty();
+        assert!(is_network_scheme(8, 7, &eng));
+        assert!(!is_network_scheme(2, 1, &eng));
         let mut children = vec![mol_node("src")];
         let mut positions = HashMap::from([("src".into(), (0.0, 200.0))]);
         let mut sizes = vec![("src".into(), 80.0, 80.0)];
@@ -2943,6 +2953,7 @@ mod tests {
                 text: "Glucuronidation".into(),
                 color: None,
                 scale: None,
+                margin: None,
                 opts: None,
             }),
             edge_node("A", "B", Some("lab")),
@@ -2988,6 +2999,7 @@ mod tests {
                 text: "ox".into(),
                 color: None,
                 scale: None,
+                margin: None,
                 opts: None,
             }),
             edge_node("A", "B", Some("lab")),
@@ -3055,6 +3067,7 @@ mod tests {
                 text: "Glutathionation".into(),
                 color: None,
                 scale: None,
+                margin: None,
                 opts: None,
             }),
             {
@@ -3190,6 +3203,7 @@ mod tests {
                 text: "Glutathionation".into(),
                 color: None,
                 scale: None,
+                margin: None,
                 opts: None,
             }),
             thick(Some("lab")),

@@ -17,4 +17,9 @@ id?: string,
 /**
  * Display text (markup-capable later).
  */
-text: string, color?: string, scale?: number, opts?: Opts, };
+text: string, color?: string, scale?: number, 
+/**
+ * Gap (px) between mol ink and this caption when referenced via mol
+ * `label`. Omit → house default (`CAPTION_MARGIN_DEFAULT`).
+ */
+margin?: number, opts?: Opts, };

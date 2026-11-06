@@ -1,6 +1,6 @@
 # TODO
 
-- Speed dense scheme visibility (ranolazine ~40 mols) so compose stays under budget; drop `should_panic` on `ranolazine_compose_under_budget`
+- Prefer `LayoutOpts.quality: fast` for huge schemes when pretty routing is too slow; keep coefficient tuning in `EngineConfig`
 - Chem tree still uses bond centerlines for stereo wedges and Kekulé offset strokes
 - Raise xpict-core llvm-cov back toward 97% (caption, chrome_paint, layout_constraints)
 - Spoke bonds: molfile ENDPTS / haptic CX `C:` (ATTACH=ALL); CX `m:` ring-center stems are in core

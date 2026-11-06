@@ -2,6 +2,12 @@
 
 ## 2026-11-05
 
+- Tiered constants policy: author-facing knobs stay on DepictSpec
+  (cascade / `LayoutOpts`); implementation knobs live in Rust-only
+  `EngineConfig` (not `make types`). Rubric + inventory in
+  `docs/dev/engine-constants.md`. No host `render(spec, engine_opts)`
+  side channel. `LayoutOpts.quality` (`pretty`|`fast`) maps to presets.
+
 - Ranolazine compose was ~22s release (draft+reopt Dijkstra on a dense
   visibility graph + per-route ink SDF). Sparse vis (K-nearest + frame
   highways), A* instead of Dijkstra, hull AABB cache, skip world SDF once

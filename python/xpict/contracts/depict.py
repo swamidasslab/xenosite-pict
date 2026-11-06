@@ -357,6 +357,7 @@ class TextNode(StrictModel):
     text: Annotated[str, Field(description='Display text (markup-capable later).')]
     color: str | None = None
     id: Annotated[str | None, Field(description='Stable id — required when other nodes [`MolNode::label`] / edge lanes ref it.')] = None
+    margin: Annotated[float | None, Field(description='Gap (px) between mol ink and this caption when referenced via mol `label`. Omit → house default (`CAPTION_MARGIN_DEFAULT`).')] = None
     opts: Opts | None = None
     scale: float | None = None
 
@@ -384,6 +385,9 @@ LayoutAlgorithm = Literal['layered', 'radial', 'force', 'stress']
 LayoutDirection = Literal['right', 'left', 'up', 'down']
 
 
+LayoutQuality = Literal['pretty', 'fast']
+
+
 class LayoutOpts(StrictModel):
     """Layout for [`DepictSpec::ReactionScheme`]."""
     algorithm: Annotated[LayoutAlgorithm | None, Field(description='Placement algorithm (`layered` / `radial` / `force` / `stress`).')] = None
@@ -391,6 +395,7 @@ class LayoutOpts(StrictModel):
     edge_routing: Annotated[EdgeRouting | None, Field(description='Shaft style (`polyline` / `orthogonal` / `splines`).')] = None
     layer_spacing: Annotated[float | None, Field(description='Between-layer gap along the flow axis (px). Smaller → tighter pack.')] = None
     node_spacing: Annotated[float | None, Field(description='Within-layer node gap (px). Smaller → tighter pack.')] = None
+    quality: Annotated[LayoutQuality | None, Field(description='Engine preset (`pretty` / `fast`). Omit → pretty. Does not expose solver coefficients — see `docs/dev/engine-constants.md`.')] = None
 
 
 class ReactionSchemeNode(StrictModel):

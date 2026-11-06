@@ -1800,7 +1800,7 @@
       ]
     },
     "LayoutOpts": {
-      "description": "Layout for [`DepictSpec::ReactionScheme`].\n\nBackend-agnostic knobs — hosts map these onto ELK, Dagre, or another engine. Defaults when omitted: [`LayoutDirection::Right`], [`EdgeRouting::Polyline`], [`LayoutAlgorithm::Layered`]. Individual [`EdgeNode`]s may override [`Self::edge_routing`].\n\nSpacing (px, document space) controls packing tightness: - [`Self::node_spacing`] — gap between nodes in the same layer (default ~20) - [`Self::layer_spacing`] — gap between reactant/product layers (default ~48)",
+      "description": "Layout for [`DepictSpec::ReactionScheme`].\n\nBackend-agnostic knobs — hosts map these onto ELK, Dagre, or another engine. Defaults when omitted: [`LayoutDirection::Right`], [`EdgeRouting::Polyline`], [`LayoutAlgorithm::Layered`], [`LayoutQuality::Pretty`]. Individual [`EdgeNode`]s may override [`Self::edge_routing`].\n\nSpacing (px, document space) controls packing tightness: - [`Self::node_spacing`] — gap between nodes in the same layer (default ~20) - [`Self::layer_spacing`] — gap between reactant/product layers (default ~48)",
       "type": "object",
       "properties": {
         "algorithm": {
@@ -1851,8 +1851,38 @@
             "null"
           ],
           "format": "double"
+        },
+        "quality": {
+          "description": "Engine preset (`pretty` / `fast`). Omit → pretty. Does not expose solver coefficients — see `docs/dev/engine-constants.md`.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/LayoutQuality"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       }
+    },
+    "LayoutQuality": {
+      "description": "Coarse scheme engine preset — maps to Rust-only `EngineConfig`, not raw coefficients. Omit → [`Self::Pretty`] (house defaults).",
+      "oneOf": [
+        {
+          "description": "Full routing / solve budgets (default publication look).",
+          "type": "string",
+          "enum": [
+            "pretty"
+          ]
+        },
+        {
+          "description": "Tighter search caps for dense schemes (same paint geometry).",
+          "type": "string",
+          "enum": [
+            "fast"
+          ]
+        }
+      ]
     },
     "MolIds": {
       "description": "One or more mol ids (reactants / products).\n\nWire: `\"a\"` or `[\"a\", \"b\"]` — reactions may have multiple reactants and products.",
@@ -2569,6 +2599,14 @@
             "string",
             "null"
           ]
+        },
+        "margin": {
+          "description": "Gap (px) between mol ink and this caption when referenced via mol `label`. Omit → house default (`CAPTION_MARGIN_DEFAULT`).",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
         },
         "opts": {
           "anyOf": [

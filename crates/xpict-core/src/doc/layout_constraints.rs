@@ -1746,18 +1746,25 @@ pub struct SolveOpts {
 
 impl Default for SolveOpts {
     fn default() -> Self {
+        Self::from_config(&crate::engine_config::SolveConfig::pretty())
+    }
+}
+
+impl SolveOpts {
+    /// Seed from Rust-only [`crate::engine_config::SolveConfig`].
+    pub fn from_config(cfg: &crate::engine_config::SolveConfig) -> Self {
         Self {
-            max_iters: 200,
-            drift_window: 4,
-            epsilon_px: 0.75,
-            w_travel: 0.02,
-            noise: 0.5,
-            initial_simplex_scale: 2.0,
-            al_outer_max: 6,
-            al_rho0: 8.0,
-            al_rho_grow: 2.5,
-            al_rho_max: 2.0e4,
-            al_tol: 0.25,
+            max_iters: cfg.max_iters,
+            drift_window: cfg.drift_window,
+            epsilon_px: cfg.epsilon_px,
+            w_travel: cfg.w_travel,
+            noise: cfg.noise,
+            initial_simplex_scale: cfg.initial_simplex_scale,
+            al_outer_max: cfg.al_outer_max,
+            al_rho0: cfg.al_rho0,
+            al_rho_grow: cfg.al_rho_grow,
+            al_rho_max: cfg.al_rho_max,
+            al_tol: cfg.al_tol,
         }
     }
 }

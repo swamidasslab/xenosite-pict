@@ -10,12 +10,14 @@
 use std::collections::{HashMap, HashSet};
 
 use pathfinding::directed::astar::astar;
+#[cfg(test)]
 use pathfinding::directed::dijkstra::dijkstra;
 
 use crate::arrows::{
     min_shaft_px, offset_polyline, prune_close_controls, reverse_source_inset,
     shorten_polyline_start, CLOSE_CTRL_PX,
 };
+use crate::engine_config::{EngineConfig, RouteConfig};
 use crate::metrics::BOND_PX;
 
 use super::layout_constraints::{convex_hull_pts, edge_signed_distance, LayoutWorld, Shape};
@@ -24,50 +26,23 @@ use super::{DepictSpec, DocPaint, EdgeNode};
 
 type Pt = (f64, f64);
 
-/// Soft costs (libavoid-ish scales in document px).
-const SEGMENT_PENALTY: f64 = 80.0;
-const ANGLE_PENALTY: f64 = 120.0;
-/// Final cosmetic Douglas–Peucker: drop hull-pad stair-steps whose deviation
-/// is well inside `ROUTING_CLEARANCE`, so Catmull does not kink near-straight
-/// shafts. Crossing count must not rise; chords are checked against hulls
-/// deflated by this ε so pad clipping is allowed but real blockers are not.
-const COSMETIC_SIMPLIFY_EPS: f64 = 0.35 * BOND_PX;
-/// Soft cost for collinear overlap with a locked pathway — must dominate a
-/// short shared run so two arrows do not paint as one thick shaft.
-const SHARED_PATH_PENALTY: f64 = 400.0;
-/// Soft cost per crossing with an already-routed shaft. Must dominate a long
-/// clean detour (length + bends); otherwise Dijkstra hugs the near silhouette
-/// and "crosses" locked shafts instead of taking the far free-space side.
-const CROSSING_PENALTY: f64 = 2_500.0;
-/// Extra margin outside each hull AABB for free-space Steiner corners so
-/// over-top / around-box corridors exist without hugging ink.
-const BOX_CORNER_MARGIN: f64 = BOND_PX;
-/// Padding outside the union of all obstacles for a scheme-wide Steiner
-/// frame — the corridor that goes over-top / around the whole net.
-const FRAME_MARGIN: f64 = BOND_PX * 4.0;
-/// After the sequential pass, re-route still-crossing shafts so crossings that
-/// only appear once both ends exist get priced. One pass over the crossers is
-/// enough in practice; denser nets were spending seconds in Dijkstra.
-const REOPT_PASSES: usize = 1;
-/// Hard cap on reopt A* calls for dense nets.
-const REOPT_MAX_STEPS: usize = 12;
-/// Inflate full-ink hulls by this before visibility (shapeBufferDistance).
-const ROUTING_CLEARANCE: f64 = SCHEME_INK_STANDOFF + 0.5 * 1.6;
-/// Cap how many nearby hull/box verts a terminal links to (plus all frame
-/// corners). Full fan-out to every vis node dominated dense routing.
-const TERMINAL_LINK_NEAR: usize = 40;
-/// Soft cap on inflated-hull verts kept for the visibility graph.
-const MAX_HULL_VERTS: usize = 24;
-/// Max clear links from each vis node to *other* obstacles (frame ports are
-/// always linked sparsely). Full O(V²) visibility made search ~200ms/arrow.
-const INTER_VIS_NEAR: usize = 10;
-/// Frame (scheme-box) ports only link to box-corners + this many nearest hull
-/// verts per mol — not every hull sample.
-const FRAME_HULL_NEAR: usize = 4;
-/// Parallel-track gap after shared corridors (idealNudgingDistance).
-const NUDGE_PX: f64 = 8.0;
-const COTERMINAL_LANE_PX: f64 = 8.0;
-const COTERMINAL_PX: f64 = 8.0;
+thread_local! {
+    /// Set for the duration of [`route_scheme_edges`] so helpers read the
+    /// active [`RouteConfig`] without threading it through every signature.
+    static ACTIVE_ROUTE: std::cell::RefCell<Option<RouteConfig>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+struct ActiveRouteGuard;
+impl Drop for ActiveRouteGuard {
+    fn drop(&mut self) {
+        ACTIVE_ROUTE.with(|c| *c.borrow_mut() = None);
+    }
+}
+
+fn route() -> RouteConfig {
+    ACTIVE_ROUTE.with(|c| c.borrow().clone().unwrap_or_else(RouteConfig::pretty))
+}
 struct ArrowGroup {
     members: Vec<usize>,
     reversed: Vec<bool>,
@@ -105,7 +80,10 @@ pub fn route_scheme_edges(
     sizes: &[(String, f64, f64)],
     world: &LayoutWorld,
     mol_ids: &[String],
+    engine: &EngineConfig,
 ) -> RouteResult {
+    ACTIVE_ROUTE.with(|c| *c.borrow_mut() = Some(engine.route.clone()));
+    let _route_guard = ActiveRouteGuard;
     let n_edges = spec.edges().len();
     let mut out = vec![None; n_edges];
     if n_edges == 0 {
@@ -128,7 +106,7 @@ pub fn route_scheme_edges(
         })
         .collect();
 
-    let obstacles = build_obstacles(mol_ids, world, ROUTING_CLEARANCE);
+    let obstacles = build_obstacles(mol_ids, world, route().routing_clearance);
 
     // Seed centroid chords for coterminal grouping (ELK paths discarded).
     let mut seeds: Vec<Vec<Pt>> = Vec::with_capacity(n_edges);
@@ -692,7 +670,7 @@ fn simplify_routed_centers(
     obstacles: &[Obstacle],
     skip: &HashSet<&str>,
 ) {
-    let pad = pad_tolerant_obstacles(obstacles, COSMETIC_SIMPLIFY_EPS);
+    let pad = pad_tolerant_obstacles(obstacles, route().cosmetic_simplify_eps);
     for gi in 0..centers.len() {
         let (src_c, tgt_c) = group_centroids[gi];
         let others: Vec<Committed> = centers
@@ -713,7 +691,7 @@ fn simplify_routed_centers(
             &others,
             &pad,
             skip,
-            COSMETIC_SIMPLIFY_EPS,
+            route().cosmetic_simplify_eps,
         );
         // Second pass against deflated hulls: drop leftover ~10° elbows that
         // only existed to walk the inflate pad.
@@ -860,9 +838,9 @@ fn reoptimize_crossing_routes(
         })
         .collect();
     let max_steps = n
-        .saturating_mul(REOPT_PASSES)
-        .max(REOPT_PASSES)
-        .min(REOPT_MAX_STEPS);
+        .saturating_mul(route().reopt_passes)
+        .max(route().reopt_passes)
+        .min(route().reopt_max_steps);
     let mut stuck: HashSet<usize> = HashSet::new();
     for _ in 0..max_steps {
         // Skip zero-cross; among the rest: most intersections, then longest.
@@ -1087,14 +1065,14 @@ fn build_visibility_graph(obstacles: &[Obstacle]) -> VisGraph {
     let mut box_ranges: Vec<(usize, usize)> = Vec::new();
     for o in obstacles {
         let start = pts.len();
-        let ports = subsample_convex_ring(&o.hull, MAX_HULL_VERTS);
+        let ports = subsample_convex_ring(&o.hull, route().max_hull_verts);
         for &p in &ports {
             pts.push(p);
             owner.push(Some(o.mol_id.clone()));
         }
         ranges.push((start, pts.len()));
         let (x0, y0, x1, y1) = o.aabb;
-        let m = BOX_CORNER_MARGIN;
+        let m = route().box_corner_margin;
         let corners = [
             (x0 - m, y0 - m),
             (x1 + m, y0 - m),
@@ -1114,7 +1092,7 @@ fn build_visibility_graph(obstacles: &[Obstacle]) -> VisGraph {
         None
     } else {
         let (gx0, gy0, gx1, gy1) = hull_aabb(&pts);
-        let m = FRAME_MARGIN;
+        let m = route().frame_margin;
         let corners = [
             (gx0 - m, gy0 - m),
             (gx1 + m, gy0 - m),
@@ -1219,7 +1197,7 @@ fn build_visibility_graph(obstacles: &[Obstacle]) -> VisGraph {
             cands.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
             let mut kept = 0usize;
             for (len, j) in cands {
-                if kept >= FRAME_HULL_NEAR {
+                if kept >= route().frame_hull_near {
                     break;
                 }
                 if segment_clears_obstacles(pts[fi], pts[j], obstacles, &empty_skip) {
@@ -1258,7 +1236,7 @@ fn build_visibility_graph(obstacles: &[Obstacle]) -> VisGraph {
         cands.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
         let mut kept = 0usize;
         for (len, j) in cands {
-            if kept >= INTER_VIS_NEAR {
+            if kept >= route().inter_vis_near {
                 break;
             }
             if segment_clears_obstacles(pts[i], pts[j], obstacles, &empty_skip) {
@@ -1674,7 +1652,7 @@ fn visibility_route(
                     let bend = if u == 0 || u == prev {
                         0.0
                     } else {
-                        angle_penalty(pp, pu, pv) + SEGMENT_PENALTY * 0.15
+                        angle_penalty(pp, pu, pv) + route().segment_penalty * 0.15
                     };
                     let share = shared_penalty(pu, pv, committed);
                     let cross = if u == 0 && v == 1 {
@@ -1739,7 +1717,7 @@ fn link_terminal_sparse(
     near.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
     let mut linked = 0usize;
     for (len, j) in near {
-        if linked >= TERMINAL_LINK_NEAR {
+        if linked >= route().terminal_link_near {
             break;
         }
         if segment_clears_obstacles(hub, pts[j], obstacles, &empty_skip) {
@@ -1818,7 +1796,7 @@ fn shared_penalty(a: Pt, b: Pt, committed: &[Committed]) -> f64 {
             }
         }
     }
-    n * SHARED_PATH_PENALTY
+    n * route().shared_path_penalty
 }
 
 fn crossing_penalty(a: Pt, b: Pt, committed: &[Committed]) -> f64 {
@@ -1841,7 +1819,7 @@ fn crossing_penalty(a: Pt, b: Pt, committed: &[Committed]) -> f64 {
             }
         }
     }
-    n * CROSSING_PENALTY
+    n * route().crossing_penalty
 }
 
 fn segments_collinear_overlap(a: Pt, b: Pt, c: Pt, d: Pt) -> bool {
@@ -1874,7 +1852,7 @@ fn angle_penalty(a: Pt, b: Pt, c: Pt) -> f64 {
     let v2 = unit((c.0 - b.0, c.1 - b.1));
     let dot = (v1.0 * v2.0 + v1.1 * v2.1).clamp(-1.0, 1.0);
     let turn = 1.0 - dot; // 0 = straight, 2 = reverse
-    turn * ANGLE_PENALTY
+    turn * route().angle_penalty
 }
 
 /// Separate remaining shared / near-collinear corridor runs into parallel tracks.
@@ -1897,7 +1875,7 @@ fn nudge_shared_corridors(centers: &mut [Vec<Pt>], group_centroids: &[(Pt, Pt)])
             }
             let before_x = count_pathway_crossings_with_peers(j, centers, group_centroids);
             let (px, py) = corridor_normal(&a);
-            let mut cand = offset_polyline(&b, NUDGE_PX);
+            let mut cand = offset_polyline(&b, route().nudge_px);
             // Flip if offset moved toward a.
             let mid_a = polyline_mid(&a);
             let mid_b = polyline_mid(&cand);
@@ -1905,7 +1883,7 @@ fn nudge_shared_corridors(centers: &mut [Vec<Pt>], group_centroids: &[(Pt, Pt)])
             let d0 = dist(mid_a, mid_b0);
             let d1 = dist(mid_a, mid_b);
             if d1 + 0.5 < d0 {
-                cand = offset_polyline(&b, -NUDGE_PX);
+                cand = offset_polyline(&b, -route().nudge_px);
             }
             let _ = (px, py);
             // Never reopen a pathway X just to parallel-track shared corridors.
@@ -1949,7 +1927,7 @@ fn lane_offsets(n: usize) -> Vec<f64> {
     }
     let mid = (n - 1) as f64 / 2.0;
     (0..n)
-        .map(|i| (i as f64 - mid) * COTERMINAL_LANE_PX)
+        .map(|i| (i as f64 - mid) * route().coterminal_lane_px)
         .collect()
 }
 
@@ -1957,7 +1935,7 @@ fn group_half_width(n: usize) -> f64 {
     if n <= 1 {
         0.0
     } else {
-        (n as f64 - 1.0) * 0.5 * COTERMINAL_LANE_PX
+        (n as f64 - 1.0) * 0.5 * route().coterminal_lane_px
     }
 }
 
@@ -2005,9 +1983,9 @@ fn seeds_coterminal(a: &[Pt], b: &[Pt]) -> Option<bool> {
     let (b0, b1) = path_ends(b)?;
     let fwd = dist(a0, b0) + dist(a1, b1);
     let rev = dist(a0, b1) + dist(a1, b0);
-    if fwd <= 2.0 * COTERMINAL_PX {
+    if fwd <= 2.0 * route().coterminal_px {
         Some(false)
-    } else if rev <= 2.0 * COTERMINAL_PX {
+    } else if rev <= 2.0 * route().coterminal_px {
         Some(true)
     } else {
         None
@@ -2194,7 +2172,7 @@ mod tests {
             &committed,
             &[],
             &skip,
-            COSMETIC_SIMPLIFY_EPS,
+            route().cosmetic_simplify_eps,
         );
         assert_eq!(pulled.len(), 2, "pad stairstep must collapse: {pulled:?}");
     }
@@ -2203,8 +2181,8 @@ mod tests {
     fn cosmetic_dp_keeps_real_blocker_detour() {
         // Use routing-scale inflate so deflating by ε still leaves a blocker.
         let square = vec![(40.0, 40.0), (60.0, 40.0), (60.0, 60.0), (40.0, 60.0)];
-        let obstacles = vec![obstacle_with_hull("blocker".into(), inflate_convex(&square, ROUTING_CLEARANCE))];
-        let pad = pad_tolerant_obstacles(&obstacles, COSMETIC_SIMPLIFY_EPS);
+        let obstacles = vec![obstacle_with_hull("blocker".into(), inflate_convex(&square, route().routing_clearance))];
+        let pad = pad_tolerant_obstacles(&obstacles, route().cosmetic_simplify_eps);
         let skip = HashSet::new();
         let detour = vec![
             (50.0, 10.0),
@@ -2217,7 +2195,7 @@ mod tests {
             &[],
             &pad,
             &skip,
-            COSMETIC_SIMPLIFY_EPS,
+            route().cosmetic_simplify_eps,
         );
         assert!(
             pulled.len() >= 3,
@@ -2394,7 +2372,7 @@ mod tests {
     fn higher_crossing_cost_takes_far_side_not_near_cross() {
         // Blocker in the middle; a locked shaft on the LEFT. The short walk
         // around the left crosses it; the far (right) walk does not. Raising
-        // CROSSING_PENALTY must force the clear side.
+        // route().crossing_penalty must force the clear side.
         let square = vec![(40.0, 40.0), (60.0, 40.0), (60.0, 60.0), (40.0, 60.0)];
         let obstacles = vec![obstacle_with_hull("blocker".into(), inflate_convex(&square, 2.0))];
         let vis = build_visibility_graph(&obstacles);

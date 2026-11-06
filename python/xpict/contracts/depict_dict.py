@@ -328,6 +328,7 @@ class TextNodeDict(TypedDict, total=False):
     text: Required[str]
     color: NotRequired[str]
     id: NotRequired[str]
+    margin: NotRequired[float]
     opts: NotRequired[OptsDict]
     scale: NotRequired[float]
 
@@ -355,6 +356,9 @@ LayoutAlgorithm = Literal['layered', 'radial', 'force', 'stress']
 LayoutDirection = Literal['right', 'left', 'up', 'down']
 
 
+LayoutQuality = Literal['pretty', 'fast']
+
+
 class LayoutOptsDict(TypedDict, total=False):
     """Layout for [`DepictSpec::ReactionScheme`]."""
     algorithm: NotRequired[LayoutAlgorithm]
@@ -362,6 +366,7 @@ class LayoutOptsDict(TypedDict, total=False):
     edge_routing: NotRequired[EdgeRouting]
     layer_spacing: NotRequired[float]
     node_spacing: NotRequired[float]
+    quality: NotRequired[LayoutQuality]
 
 
 class ReactionSchemeNodeDict(TypedDict, total=False):

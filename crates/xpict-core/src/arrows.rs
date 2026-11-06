@@ -4,8 +4,10 @@
 //! share one implementation (orthogonal stays axis-aligned; polyline fillets).
 
 use crate::doc::{EdgeArrow, EdgeRouting};
+use crate::engine_config::ArrowConfig;
 
 /// Flatten tiny orthogonal/polyline jogs under this length (px).
+/// Matches [`ArrowConfig::default`].
 pub const KINK_PX: f64 = 10.0;
 /// Drop Catmull controls closer than this. Orthogonal `KINK_PX` is too big:
 /// a short scheme corridor's last hinge can sit ~4px from the tip and is the
@@ -14,23 +16,22 @@ pub const CLOSE_CTRL_PX: f64 = 2.0;
 /// Corner fillet radius for non-orthogonal (polyline) bends (px).
 pub const TURN_RADIUS: f64 = 36.0;
 
-const DEFAULT_COLOR: &str = "#222";
-const DEFAULT_WIDTH: f64 = 1.6;
-/// Head length at [`DEFAULT_WIDTH`] (px). Thicker strokes scale this.
-const HEAD: f64 = 9.0;
+fn arrow_cfg() -> ArrowConfig {
+    ArrowConfig::default()
+}
 
 /// Filled/open head length for this stroke. House 1.6 px → 9 px.
 pub fn head_px(stroke_width: Option<f64>) -> f64 {
-    let w = stroke_width.unwrap_or(DEFAULT_WIDTH).max(0.5);
-    HEAD * (w / DEFAULT_WIDTH)
+    let ac = arrow_cfg();
+    let w = stroke_width.unwrap_or(ac.default_width).max(0.5);
+    ac.head * (w / ac.default_width)
 }
 
 /// Shortest painted shaft that still shows a head and a bit of stroke.
 pub fn min_shaft_px(stroke_width: Option<f64>) -> f64 {
     head_px(stroke_width) * 2.5
 }
-const DASH: &str = "6 4";
-const EQ_SEP: f64 = 3.2;
+
 /// Gap from molecule viewport edge to shaft anchors (document px).
 pub const ANCHOR_GAP: f64 = 6.0;
 
@@ -467,7 +468,7 @@ pub fn shorten_polyline_start(pts: &[Pt], amount: f64) -> Vec<Pt> {
 /// How far to pull a reverse-lane shaft off its source so it clears the
 /// opposing filled head (scales with stroke; thick heads need more).
 pub fn reverse_source_inset(stroke_width: Option<f64>) -> f64 {
-    let w = stroke_width.unwrap_or(DEFAULT_WIDTH).max(0.5);
+    let w = stroke_width.unwrap_or(arrow_cfg().default_width).max(0.5);
     head_px(stroke_width) + w * 0.5
 }
 
@@ -561,7 +562,7 @@ fn path_prim(
         stroke: stroke.to_string(),
         fill: fill.to_string(),
         stroke_width: width,
-        stroke_dasharray: if dashed { Some(DASH.to_string()) } else { None },
+        stroke_dasharray: if dashed { Some(arrow_cfg().dash.to_string()) } else { None },
         class: class.to_string(),
     }
 }
@@ -682,9 +683,9 @@ pub fn edge_primitives(edge: &EdgePaintIn) -> Vec<EdgePrim> {
     if polyline_length(&pts) < 4.0 {
         return Vec::new();
     }
-    let color = edge.color.as_deref().unwrap_or(DEFAULT_COLOR);
-    let width = edge.stroke_width.unwrap_or(DEFAULT_WIDTH);
-    let head = head_px(edge.stroke_width).min((polyline_length(&pts) * 0.45).max(HEAD * 0.5));
+    let color = edge.color.as_deref().unwrap_or(arrow_cfg().default_color);
+    let width = edge.stroke_width.unwrap_or(arrow_cfg().default_width);
+    let head = head_px(edge.stroke_width).min((polyline_length(&pts) * 0.45).max(arrow_cfg().head * 0.5));
     let dashed = edge.dashed;
     let routing = edge.routing;
     let cls = format!("edge edge-{}", edge.index);
@@ -692,8 +693,8 @@ pub fn edge_primitives(edge: &EdgePaintIn) -> Vec<EdgePrim> {
 
     match edge.arrow {
         EdgeArrow::Equilibrium => {
-            let fwd = offset_polyline(&pts, EQ_SEP);
-            let mut rev = offset_polyline(&pts, -EQ_SEP);
+            let fwd = offset_polyline(&pts, arrow_cfg().eq_sep);
+            let mut rev = offset_polyline(&pts, -arrow_cfg().eq_sep);
             rev.reverse();
             out.extend(harpoon_poly(
                 &fwd,
@@ -1168,7 +1169,7 @@ mod tests {
         let tip = *simplified.last().expect("route");
         let prev = simplified[simplified.len() - 2];
         let head_size =
-            head_px(edge.stroke_width).min((polyline_length(&simplified) * 0.45).max(HEAD * 0.5));
+            head_px(edge.stroke_width).min((polyline_length(&simplified) * 0.45).max(arrow_cfg().head * 0.5));
         let (expected_shaft, base) = if curve_catmull {
             let chord = (tip.0 - prev.0).hypot(tip.1 - prev.1).max(1e-9);
             let h = head_size.min(chord * 0.9);
@@ -1225,7 +1226,7 @@ mod tests {
         let tip = *simplified.last().unwrap();
         let prev = simplified[simplified.len() - 2];
         let head_size =
-            head_px(edge.stroke_width).min((polyline_length(&simplified) * 0.45).max(HEAD * 0.5));
+            head_px(edge.stroke_width).min((polyline_length(&simplified) * 0.45).max(arrow_cfg().head * 0.5));
         let chord = (tip.0 - prev.0).hypot(tip.1 - prev.1).max(1e-9);
         let h = head_size.min(chord * 0.9);
         let (ux, uy) = ((tip.0 - prev.0) / chord, (tip.1 - prev.1) / chord);

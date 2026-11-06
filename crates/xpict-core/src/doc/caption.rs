@@ -525,7 +525,7 @@ pub fn apply_mol_captions(spec: &DepictSpec, node: &MolNode, mut scene: Scene) -
                 pos,
                 font_px: caption_font_px(t.scale),
                 fill,
-                margin: CAPTION_MARGIN_DEFAULT,
+                margin: resolve_margin(t.margin),
             });
         }
     }
@@ -1457,6 +1457,65 @@ mod tests {
                 || caption.x0 >= region.x1 - 1e-6
                 || caption.x1 <= region.x0 + 1e-6,
             "name should sit outside the region box (pos=Below)"
+        );
+    }
+
+    #[test]
+    fn text_node_caption_respects_margin() {
+        use crate::doc::spec::{
+            Label, MolNode, Node, TextNode, TextNodeKind,
+        };
+        let mol = MolNode {
+            smiles: Some("CCO".into()),
+            label: Some(Label::Id("cap".into())),
+            ..Default::default()
+        };
+        let spec = DepictSpec::Group {
+            id: None,
+            align: false,
+            children: vec![
+                Node::Text(TextNode {
+                    type_: TextNodeKind::Text,
+                    id: Some("cap".into()),
+                    text: "Ethanol".into(),
+                    color: None,
+                    scale: None,
+                    margin: Some(40.0),
+                    opts: None,
+                }),
+                Node::Mol(mol.clone()),
+            ],
+            opts: None,
+            color: None,
+            scale: None,
+            aromatic: None,
+            debug_box: None,
+            debug_align: None,
+            pad: None,
+        };
+        let base = crate::depict::depict_molecule(&ethanol());
+        let (_x0, _y0, _x1, mol_y1) = structure_aabb(&base).expect("structure");
+        let out = apply_mol_captions(&spec, &mol, base);
+        let mut cap_y0 = f64::INFINITY;
+        for p in overlay_prims(&out) {
+            if let Primitive::Path {
+                d,
+                class: Some(c),
+                ..
+            } = p
+            {
+                if c.contains("mol-caption-metrics") {
+                    for (_x, y) in path_xy(d) {
+                        cap_y0 = cap_y0.min(y);
+                    }
+                }
+            }
+        }
+        assert!(cap_y0.is_finite(), "expected caption metrics");
+        assert!(
+            (cap_y0 - (mol_y1 + 40.0)).abs() < 2.0,
+            "TextNode.margin=40 must set below gap: cap_y0={cap_y0} expected≈{}",
+            mol_y1 + 40.0
         );
     }
 }

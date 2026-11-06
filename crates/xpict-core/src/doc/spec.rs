@@ -709,6 +709,11 @@ pub struct TextNode {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub scale: Option<f64>,
+    /// Gap (px) between mol ink and this caption when referenced via mol
+    /// `label`. Omit → house default (`CAPTION_MARGIN_DEFAULT`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub margin: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub opts: Option<Opts>,
@@ -1047,11 +1052,25 @@ pub enum LayoutAlgorithm {
     Stress,
 }
 
+/// Coarse scheme engine preset — maps to Rust-only `EngineConfig`, not raw
+/// coefficients. Omit → [`Self::Pretty`] (house defaults).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
+pub enum LayoutQuality {
+    /// Full routing / solve budgets (default publication look).
+    #[default]
+    Pretty,
+    /// Tighter search caps for dense schemes (same paint geometry).
+    Fast,
+}
+
 /// Layout for [`DepictSpec::ReactionScheme`].
 ///
 /// Backend-agnostic knobs — hosts map these onto ELK, Dagre, or another engine.
 /// Defaults when omitted: [`LayoutDirection::Right`], [`EdgeRouting::Polyline`],
-/// [`LayoutAlgorithm::Layered`].
+/// [`LayoutAlgorithm::Layered`], [`LayoutQuality::Pretty`].
 /// Individual [`EdgeNode`]s may override [`Self::edge_routing`].
 ///
 /// Spacing (px, document space) controls packing tightness:
@@ -1081,6 +1100,11 @@ pub struct LayoutOpts {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub layer_spacing: Option<f64>,
+    /// Engine preset (`pretty` / `fast`). Omit → pretty. Does not expose
+    /// solver coefficients — see `docs/dev/engine-constants.md`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub quality: Option<LayoutQuality>,
 }
 
 impl LayoutOpts {
@@ -1107,6 +1131,38 @@ impl LayoutOpts {
 
     pub fn layer_spacing_or_default(&self) -> f64 {
         self.layer_spacing.unwrap_or(Self::DEFAULT_LAYER_SPACING)
+    }
+
+    pub fn quality_or_default(&self) -> LayoutQuality {
+        self.quality.unwrap_or_default()
+    }
+
+    /// Rust-only engine bundle selected by [`Self::quality`].
+    pub fn engine(&self) -> crate::engine_config::EngineConfig {
+        match self.quality_or_default() {
+            LayoutQuality::Pretty => crate::engine_config::EngineConfig::pretty(),
+            LayoutQuality::Fast => crate::engine_config::EngineConfig::fast(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod layout_quality_tests {
+    use super::*;
+
+    #[test]
+    fn quality_maps_to_engine_presets() {
+        let pretty = LayoutOpts {
+            quality: Some(LayoutQuality::Pretty),
+            ..Default::default()
+        };
+        let fast = LayoutOpts {
+            quality: Some(LayoutQuality::Fast),
+            ..Default::default()
+        };
+        assert_eq!(pretty.engine(), crate::engine_config::EngineConfig::pretty());
+        assert_eq!(fast.engine(), crate::engine_config::EngineConfig::fast());
+        assert!(fast.engine().route.terminal_link_near < pretty.engine().route.terminal_link_near);
     }
 }
 

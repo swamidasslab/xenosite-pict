@@ -366,7 +366,11 @@ fn layout_scheme(
 }
 
 fn build_elk_graph(spec: &DepictSpec, layout: &LayoutOpts, sizes: &[(String, f64, f64)]) -> Value {
-    let kind = if super::scheme_layout::is_network_scheme(sizes.len(), spec.edges().len()) {
+    let kind = if super::scheme_layout::is_network_scheme(
+        sizes.len(),
+        spec.edges().len(),
+        &layout.engine(),
+    ) {
         crate::elk::DiagramKind::Network
     } else {
         crate::elk::DiagramKind::Reaction
@@ -978,6 +982,7 @@ mod tests {
                     text: "ox".into(),
                     color: None,
                     scale: None,
+                    margin: None,
                     opts: None,
                 }),
                 Node::Edge(EdgeNode {
@@ -1434,6 +1439,7 @@ mod tests {
                     text: "  ".into(), // empty after trim → no ELK label
                     color: None,
                     scale: None,
+                    margin: None,
                     opts: None,
                 }),
                 Node::Edge(EdgeNode {
@@ -1473,6 +1479,7 @@ mod tests {
                 direction: Some(crate::doc::LayoutDirection::Down),
                 node_spacing: Some(16.0),
                 layer_spacing: Some(8.0),
+                quality: None,
             }),
             opts: None,
             color: None,
@@ -1858,6 +1865,7 @@ mod tests {
                 text: "ox".into(),
                 color: None,
                 scale: None,
+                margin: None,
                 opts: None,
             }));
             children.push(Node::Text(TextNode {
@@ -1866,6 +1874,7 @@ mod tests {
                 text: "red".into(),
                 color: None,
                 scale: None,
+                margin: None,
                 opts: None,
             }));
         }

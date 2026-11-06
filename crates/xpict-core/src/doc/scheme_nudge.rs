@@ -3,19 +3,12 @@
 
 use std::collections::HashMap;
 
-use crate::metrics::BOND_PX;
+use crate::engine_config::EngineConfig;
 
 use super::scheme_layout::SCHEME_INK_STANDOFF;
 use super::{DepictSpec, EdgeNode};
 
 type Pt = (f64, f64);
-
-/// Max |Δ| per axis for a single mol (document px).
-const MAX_NUDGE: f64 = 3.0 * BOND_PX;
-/// Try these step sizes (prefer the smallest that works).
-const NUDGE_STEPS: [f64; 4] = [0.5 * BOND_PX, BOND_PX, 2.0 * BOND_PX, 3.0 * BOND_PX];
-/// Keep at least this gap between nudged mol AABBs.
-const MOL_GAP: f64 = SCHEME_INK_STANDOFF + 2.0;
 
 /// Propose small translations that turn blocked centroid chords into clear ones.
 ///
@@ -25,7 +18,10 @@ pub fn propose_mol_nudges(
     spec: &DepictSpec,
     positions: &HashMap<String, Pt>,
     sizes: &[(String, f64, f64)],
+    engine: &EngineConfig,
 ) -> HashMap<String, Pt> {
+    let nudge = &engine.nudge;
+    let mol_gap = SCHEME_INK_STANDOFF + nudge.mol_gap_extra;
     let size_of: HashMap<&str, (f64, f64)> = sizes
         .iter()
         .map(|(id, w, h)| (id.as_str(), (*w, *h)))
@@ -37,8 +33,10 @@ pub fn propose_mol_nudges(
     }
 
     // Greedy: unlock one blocked chord at a time with the cheapest safe nudge.
-    for _pass in 0..size_of.len().min(8) {
-        let Some((blocker, dx, dy)) = best_nudge_for_any_blocked(&edges, &pos, &size_of) else {
+    for _pass in 0..size_of.len().min(nudge.max_passes) {
+        let Some((blocker, dx, dy)) =
+            best_nudge_for_any_blocked(&edges, &pos, &size_of, nudge, mol_gap)
+        else {
             break;
         };
         if let Some(p) = pos.get_mut(&blocker) {
@@ -53,6 +51,8 @@ fn best_nudge_for_any_blocked(
     edges: &[&EdgeNode],
     pos: &HashMap<String, Pt>,
     size_of: &HashMap<&str, (f64, f64)>,
+    nudge: &crate::engine_config::NudgeConfig,
+    mol_gap: f64,
 ) -> Option<(String, f64, f64)> {
     let mut best: Option<(f64, String, f64, f64)> = None; // (cost, id, dx, dy)
     for edge in edges {
@@ -68,8 +68,8 @@ fn best_nudge_for_any_blocked(
         }
         let (px, py) = unit_perp(a, b);
         for blocker in blockers {
-            for &step in &NUDGE_STEPS {
-                if step > MAX_NUDGE + 1e-9 {
+            for &step in &nudge.steps {
+                if step > nudge.max_nudge + 1e-9 {
                     continue;
                 }
                 for sign in [1.0_f64, -1.0] {
@@ -82,7 +82,7 @@ fn best_nudge_for_any_blocked(
                     } else {
                         continue;
                     }
-                    if boxes_overlap_any(&trial, size_of) {
+                    if boxes_overlap_any(&trial, size_of, mol_gap) {
                         continue;
                     }
                     // Must clear *this* chord; do not create new overlaps.
@@ -138,7 +138,11 @@ fn chord_clear(
     chord_blockers(pos, size_of, a, b, src, tgt).is_empty()
 }
 
-fn boxes_overlap_any(pos: &HashMap<String, Pt>, size_of: &HashMap<&str, (f64, f64)>) -> bool {
+fn boxes_overlap_any(
+    pos: &HashMap<String, Pt>,
+    size_of: &HashMap<&str, (f64, f64)>,
+    mol_gap: f64,
+) -> bool {
     let ids: Vec<&str> = size_of.keys().copied().collect();
     for i in 0..ids.len() {
         let Some(ai) = mol_aabb(pos, size_of, ids[i]) else {
@@ -148,7 +152,7 @@ fn boxes_overlap_any(pos: &HashMap<String, Pt>, size_of: &HashMap<&str, (f64, f6
             let Some(aj) = mol_aabb(pos, size_of, ids[j]) else {
                 continue;
             };
-            if aabb_overlap_gap(ai, aj, MOL_GAP) {
+            if aabb_overlap_gap(ai, aj, mol_gap) {
                 return true;
             }
         }
@@ -221,6 +225,7 @@ mod tests {
     use crate::doc::spec::{
         DepictSpec, EdgeArrow, EdgeNode, EdgeNodeKind, MolIds, MolNode, Node,
     };
+    use crate::metrics::BOND_PX;
 
     fn mol(id: &str) -> Node {
         Node::Mol(MolNode {
@@ -274,7 +279,8 @@ mod tests {
             ("B".into(), 80.0, 80.0),
             ("C".into(), 80.0, 80.0),
         ];
-        let nudged = propose_mol_nudges(&spec, &positions, &sizes);
+        let eng = EngineConfig::pretty();
+        let nudged = propose_mol_nudges(&spec, &positions, &sizes, &eng);
         let b0 = positions["B"];
         let b1 = nudged["B"];
         let dy = (b1.1 - b0.1).abs();
@@ -304,12 +310,14 @@ mod tests {
             mol("D"),
             edge("A", "C"),
         ]);
+        let eng = EngineConfig::pretty();
+        let mol_gap = SCHEME_INK_STANDOFF + eng.nudge.mol_gap_extra;
         let positions = HashMap::from([
             ("A".into(), (0.0, 100.0)),
             ("B".into(), (100.0, 100.0)),
             ("C".into(), (200.0, 100.0)),
-            ("U".into(), (100.0, 100.0 - 80.0 - MOL_GAP + 1.0)),
-            ("D".into(), (100.0, 100.0 + 80.0 + MOL_GAP - 1.0)),
+            ("U".into(), (100.0, 100.0 - 80.0 - mol_gap + 1.0)),
+            ("D".into(), (100.0, 100.0 + 80.0 + mol_gap - 1.0)),
         ]);
         let sizes = vec![
             ("A".into(), 80.0, 80.0),
@@ -318,7 +326,7 @@ mod tests {
             ("U".into(), 80.0, 80.0),
             ("D".into(), 80.0, 80.0),
         ];
-        let nudged = propose_mol_nudges(&spec, &positions, &sizes);
+        let nudged = propose_mol_nudges(&spec, &positions, &sizes, &eng);
         assert_eq!(
             nudged["B"], positions["B"],
             "must not nudge into U/D: {:?} vs {:?}",

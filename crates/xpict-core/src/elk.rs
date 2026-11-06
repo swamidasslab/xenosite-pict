@@ -44,15 +44,29 @@ fn algorithm_elk(a: LayoutAlgorithm) -> &'static str {
 /// Reaction diagrams pack tightly (node spacing ~20, layer spacing ~48) and pin
 /// `unnecessaryBendpoints=false` so shafts only bend where they turn.
 pub fn scheme_layout_options(kind: DiagramKind, opts: &LayoutOpts) -> BTreeMap<String, String> {
+    let pol = &opts.engine().elk;
     let mut base: BTreeMap<String, String> = BTreeMap::from([
         ("elk.algorithm".into(), "layered".into()),
         ("elk.direction".into(), "RIGHT".into()),
         ("elk.edgeRouting".into(), "POLYLINE".into()),
         // Keep shafts simple: only bend where the edge actually turns.
-        ("elk.layered.unnecessaryBendpoints".into(), "false".into()),
+        (
+            "elk.layered.unnecessaryBendpoints".into(),
+            if pol.unnecessary_bendpoints {
+                "true".into()
+            } else {
+                "false".into()
+            },
+        ),
         ("elk.spacing.nodeNode".into(), "40".into()),
-        ("elk.spacing.edgeEdge".into(), "16".into()),
-        ("elk.spacing.edgeNode".into(), "20".into()),
+        (
+            "elk.spacing.edgeEdge".into(),
+            pol.edge_edge_spacing.to_string(),
+        ),
+        (
+            "elk.spacing.edgeNode".into(),
+            pol.edge_node_spacing.to_string(),
+        ),
         (
             "elk.layered.spacing.nodeNodeBetweenLayers".into(),
             "48".into(),
@@ -63,22 +77,22 @@ pub fn scheme_layout_options(kind: DiagramKind, opts: &LayoutOpts) -> BTreeMap<S
         ),
         (
             "elk.layered.crossingMinimization.strategy".into(),
-            "LAYER_SWEEP".into(),
+            pol.crossing_strategy.into(),
         ),
         (
             "elk.layered.nodePlacement.strategy".into(),
-            "NETWORK_SIMPLEX".into(),
+            pol.node_placement.into(),
         ),
         // Attach anywhere on the node. FIXED_SIDE pinned every dummy port to
         // the flow face, so fans left one box edge instead of the facing hull.
-        ("elk.portConstraints".into(), "FREE".into()),
+        ("elk.portConstraints".into(), pol.port_constraints.into()),
     ]);
 
     if kind == DiagramKind::Reaction {
         // Depth-first cycle breaking keeps the real sources on top; greedy can lift a cycle member there.
         base.insert(
             "elk.layered.cycleBreaking.strategy".into(),
-            "DEPTH_FIRST".into(),
+            pol.cycle_breaking.into(),
         );
         base.insert(
             "elk.spacing.nodeNode".into(),
@@ -92,7 +106,10 @@ pub fn scheme_layout_options(kind: DiagramKind, opts: &LayoutOpts) -> BTreeMap<S
             "elk.layered.spacing.edgeNodeBetweenLayers".into(),
             LayoutOpts::DEFAULT_LAYER_SPACING.to_string(),
         );
-        base.insert("elk.spacing.edgeEdge".into(), "16".into());
+        base.insert(
+            "elk.spacing.edgeEdge".into(),
+            pol.edge_edge_spacing.to_string(),
+        );
         base.insert(
             "elk.layered.crossingMinimization.forceNodeModelOrder".into(),
             "false".into(),
@@ -135,7 +152,8 @@ pub fn scheme_layout_options(kind: DiagramKind, opts: &LayoutOpts) -> BTreeMap<S
 
 /// Per-child options: dummy ports may sit on any side of the node.
 pub fn scheme_node_layout_options() -> BTreeMap<String, String> {
-    BTreeMap::from([("elk.portConstraints".into(), "FREE".into())])
+    let pol = crate::engine_config::ElkPolicyConfig::default();
+    BTreeMap::from([("elk.portConstraints".into(), pol.port_constraints.into())])
 }
 
 /// Lay out an ELK JSON graph string; returns laid-out JSON.
