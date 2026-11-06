@@ -1492,6 +1492,7 @@ mod tests {
             debug_box: None,
             debug_align: None,
             pad: None,
+        svg: None,
         };
         let base = crate::depict::depict_molecule(&ethanol());
         let (_x0, _y0, _x1, mol_y1) = structure_aabb(&base).expect("structure");

@@ -1017,6 +1017,7 @@ mod tests {
             debug_box: None,
             debug_align: None,
             pad: None,
+        svg: None,
         };
         let paints = vec![paint("A", 80.0, 60.0), paint("B", 80.0, 60.0)];
         let scene = compose_scheme(&spec, &paints).expect("compose");
@@ -1090,6 +1091,7 @@ mod tests {
             debug_box: None,
             debug_align: None,
             pad: None,
+        svg: None,
         };
         let scene = compose_scheme(&spec, &[a, b]).expect("compose");
         let vp = &scene.viewports[0];
@@ -1171,6 +1173,7 @@ mod tests {
             debug_box: None,
             debug_align: None,
             pad: None,
+        svg: None,
         };
         let out = crate::doc::render(&spec).expect("render");
         assert_eq!(out.len(), 1);
@@ -1231,6 +1234,7 @@ mod tests {
                 debug_box: None,
                 debug_align: None,
                 pad: None,
+            svg: None,
             },
             &[],
         )
@@ -1259,6 +1263,7 @@ mod tests {
             debug_box: None,
             debug_align: None,
             pad: None,
+        svg: None,
         };
         let scene =
             compose_scheme(&group, &[paint("a", 40.0, 30.0), paint("b", 50.0, 30.0)]).unwrap();
@@ -1490,6 +1495,7 @@ mod tests {
             debug_box: None,
             debug_align: None,
             pad: None,
+        svg: None,
         };
         let scene = compose_scheme(&spec, &[a, paint("B", 50.0, 40.0)]).unwrap();
         assert!(
@@ -1663,6 +1669,7 @@ mod tests {
                 debug_box: None,
                 debug_align: None,
                 pad: None,
+            svg: None,
             },
             &EdgeNode {
                 type_: EdgeNodeKind::Edge,
@@ -1761,6 +1768,7 @@ mod tests {
             debug_box: None,
             debug_align: None,
             pad: None,
+        svg: None,
         };
         let paints = vec![paint("A", 120.0, 80.0), paint("B", 120.0, 80.0)];
         let scene = compose_scheme(&spec, &paints).expect("compose");
@@ -1823,6 +1831,7 @@ mod tests {
             debug_box: None,
             debug_align: None,
             pad: None,
+        svg: None,
         };
         let paints = vec![paint("A", 120.0, 80.0), paint("B", 120.0, 80.0)];
         let sizes: Vec<(String, f64, f64)> = paints
@@ -1923,6 +1932,7 @@ mod tests {
             debug_box: None,
             debug_align: None,
             pad: None,
+        svg: None,
         }
     }
 
@@ -2000,6 +2010,7 @@ mod tests {
             debug_box: None,
             debug_align: None,
             pad: None,
+        svg: None,
         };
         let paints = vec![paint("A", 80.0, 60.0), paint("B", 80.0, 60.0)];
         let sizes: Vec<(String, f64, f64)> = paints
@@ -2067,6 +2078,7 @@ mod tests {
             debug_box: None,
             debug_align: None,
             pad: None,
+        svg: None,
         };
         let paints = vec![paint("A", 80.0, 60.0), paint("B", 80.0, 60.0)];
         let sizes: Vec<(String, f64, f64)> = paints
@@ -2107,6 +2119,7 @@ mod tests {
             debug_box: None,
             debug_align: None,
             pad: None,
+        svg: None,
         };
         let paints = vec![
             paint("A", 80.0, 60.0),

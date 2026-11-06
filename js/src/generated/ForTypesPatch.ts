@@ -2,6 +2,7 @@
 import type { AromaticStyle } from "./AromaticStyle";
 import type { NodeType } from "./NodeType";
 import type { ShadeStyle } from "./ShadeStyle";
+import type { SvgTarget } from "./SvgTarget";
 
 /**
  * Multi-kind patch: `{ "for_types": ["mol","group"], …mol opts }`.
@@ -25,4 +26,8 @@ debug_align?: boolean,
 /**
  * Post-layout SVG viewBox pad (px). Omit → small house default (rarely override).
  */
-pad?: number, };
+pad?: number, 
+/**
+ * SVG medium: ``web`` (filter halo) or ``print`` (path halo). Omit → web.
+ */
+svg?: SvgTarget, };

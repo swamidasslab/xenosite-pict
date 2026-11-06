@@ -90,6 +90,9 @@ class SpokeInDict(TypedDict, total=False):
     dummy: NotRequired[int]
 
 
+SvgTarget = Literal['web', 'print']
+
+
 class MoleculeInDict(TypedDict, total=False):
     """One molecule ready to paint (coords already in SVG / ``SCALE`` space)."""
     atoms: Required[list[AtomInDict]]
@@ -107,6 +110,7 @@ class MoleculeInDict(TypedDict, total=False):
     shade_vmax: NotRequired[float]
     shade_vmin: NotRequired[float]
     spokes: NotRequired[list[SpokeInDict]]
+    svg: NotRequired[SvgTarget]
     weight: NotRequired[float]
 
 

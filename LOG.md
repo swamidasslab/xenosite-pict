@@ -1,5 +1,14 @@
 # Lab log
 
+## 2026-11-06
+
+- DepictSpec cascading `svg: "web" | "print"` (default web). Web keeps
+  feMorphology chem contrast; print restores buffered path halos + chrome
+  outlines for PDF/PNG pipelines that drop filters. Hosts stamp
+  `svg: print` when format is png/pdf and the author left `svg` unset
+  (`apply_output_svg_default` / `applyOutputSvgDefault`). Raster encoding
+  itself is not in-core yet.
+
 ## 2026-11-05
 
 - Halo contrast is now an SVG `feMorphology` dilate filter on

@@ -137,6 +137,9 @@ class ShadeStyleDict(TypedDict, total=False):
     vmin: NotRequired[float]
 
 
+SvgTarget = Literal['web', 'print']
+
+
 class MolOptsPatchDict(TypedDict, total=False):
     """Mol cascading paint opts — what a mol leaf consumes from the cascade."""
     type: Required[Literal['mol']]
@@ -148,6 +151,7 @@ class MolOptsPatchDict(TypedDict, total=False):
     pad: NotRequired[float]
     scale: NotRequired[float]
     shade: NotRequired[ShadeStyleDict]
+    svg: NotRequired[SvgTarget]
     weight: NotRequired[float]
 
 
@@ -160,6 +164,7 @@ class GroupOptsPatchDict(TypedDict, total=False):
     debug_box: NotRequired[bool]
     pad: NotRequired[float]
     scale: NotRequired[float]
+    svg: NotRequired[SvgTarget]
 
 
 class ReactionSchemeOptsPatchDict(TypedDict, total=False):
@@ -171,6 +176,7 @@ class ReactionSchemeOptsPatchDict(TypedDict, total=False):
     debug_box: NotRequired[bool]
     pad: NotRequired[float]
     scale: NotRequired[float]
+    svg: NotRequired[SvgTarget]
 
 
 class EdgeOptsPatchDict(TypedDict, total=False):
@@ -182,6 +188,7 @@ class EdgeOptsPatchDict(TypedDict, total=False):
     debug_box: NotRequired[bool]
     pad: NotRequired[float]
     scale: NotRequired[float]
+    svg: NotRequired[SvgTarget]
 
 
 class TextOptsPatchDict(TypedDict, total=False):
@@ -193,6 +200,7 @@ class TextOptsPatchDict(TypedDict, total=False):
     debug_box: NotRequired[bool]
     pad: NotRequired[float]
     scale: NotRequired[float]
+    svg: NotRequired[SvgTarget]
 
 
 TypedOptsPatchDict = MolOptsPatchDict | GroupOptsPatchDict | ReactionSchemeOptsPatchDict | EdgeOptsPatchDict | TextOptsPatchDict
@@ -212,6 +220,7 @@ class ForTypesPatchDict(TypedDict, total=False):
     pad: NotRequired[float]
     scale: NotRequired[float]
     shade: NotRequired[ShadeStyleDict]
+    svg: NotRequired[SvgTarget]
     weight: NotRequired[float]
 
 
@@ -225,6 +234,7 @@ class MolOptsDict(TypedDict, total=False):
     pad: NotRequired[float]
     scale: NotRequired[float]
     shade: NotRequired[ShadeStyleDict]
+    svg: NotRequired[SvgTarget]
     weight: NotRequired[float]
 
 
@@ -289,6 +299,7 @@ class MolNodeDict(TypedDict, total=False):
     shade: NotRequired[ShadeSpecDict]
     smiles: NotRequired[str]
     star_labels: NotRequired[list[str | None]]
+    svg: NotRequired[SvgTarget]
     weight: NotRequired[float]
 
 
@@ -348,6 +359,7 @@ class GroupNodeDict(TypedDict, total=False):
     opts: NotRequired[OptsDict]
     pad: NotRequired[float]
     scale: NotRequired[float]
+    svg: NotRequired[SvgTarget]
 
 
 LayoutAlgorithm = Literal['layered', 'radial', 'force', 'stress']
@@ -382,6 +394,7 @@ class ReactionSchemeNodeDict(TypedDict, total=False):
     opts: NotRequired[OptsDict]
     pad: NotRequired[float]
     scale: NotRequired[float]
+    svg: NotRequired[SvgTarget]
 
 
 class GridNodeDict(TypedDict, total=False):
@@ -396,6 +409,7 @@ class GridNodeDict(TypedDict, total=False):
     opts: NotRequired[OptsDict]
     pad: NotRequired[float]
     scale: NotRequired[float]
+    svg: NotRequired[SvgTarget]
 
 
 DepictSpecDict = MolNodeDict | GroupNodeDict | ReactionSchemeNodeDict | GridNodeDict

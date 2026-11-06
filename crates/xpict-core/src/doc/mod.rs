@@ -380,6 +380,9 @@ fn apply_doc_chrome(mut mol: MoleculeIn, node: &MolNode, id: &str, chrome: &MolO
     if let Some(h) = chrome.halo {
         mol.halo = h;
     }
+    if let Some(s) = chrome.svg {
+        mol.svg = s;
+    }
     if let Some(ref labels) = node.star_labels {
         apply_star_labels(&mut mol, labels);
     } else if let Some(src) = cx_source(node.cxsmiles.as_deref(), node.smiles.as_deref()) {
@@ -574,6 +577,7 @@ mod tests {
             debug_box: None,
             debug_align: None,
             pad: None,
+        svg: None,
         };
         let plan = plan_edge(&spec).unwrap().unwrap();
         match &plan.tasks[0] {
@@ -615,6 +619,7 @@ mod tests {
             debug_box: None,
             debug_align: None,
             pad: None,
+        svg: None,
         };
         let plan = plan_edge(&spec).unwrap().unwrap();
         match &plan.tasks[0] {
@@ -838,6 +843,7 @@ mod tests {
             debug_box: None,
             debug_align: None,
             pad: None,
+        svg: None,
         };
         assert!(plan_edge(&spec).unwrap().is_none());
     }
@@ -866,6 +872,7 @@ mod tests {
             debug_box: None,
             debug_align: None,
             pad: None,
+        svg: None,
         };
         assert!(plan_edge(&unknown).unwrap_err().contains("unknown id"));
 
@@ -892,6 +899,7 @@ mod tests {
             debug_box: None,
             debug_align: None,
             pad: None,
+        svg: None,
         };
         assert!(plan_edge(&self_align).unwrap_err().contains("itself"));
     }
@@ -926,6 +934,7 @@ mod tests {
             debug_box: None,
             debug_align: None,
             pad: None,
+        svg: None,
         };
         let plan = plan_edge(&spec).unwrap().unwrap();
         match &plan.tasks[0] {
@@ -1186,6 +1195,7 @@ mod tests {
             debug_box: None,
             debug_align: None,
             pad: None,
+        svg: None,
         };
         assert!(g.align_enabled());
         assert!(g.mols().is_empty());
@@ -1287,11 +1297,12 @@ mod tests {
         let painted_off = crate::doc::render(&off).expect("halo off");
         assert!(painted_on[0].molecule.halo);
         assert!(!painted_off[0].molecule.halo);
+        assert_eq!(painted_on[0].molecule.svg, crate::scene::SvgTarget::Web);
         assert!(
             painted_on[0].scene.viewports[0]
                 .halo_filter_px
                 .is_some_and(|r| r > 0.0),
-            "halo:true sets filter radius"
+            "halo:true (web default) sets filter radius"
         );
         assert!(
             painted_off[0].scene.viewports[0].halo_filter_px.is_none(),
@@ -1313,6 +1324,33 @@ mod tests {
             d(&svg_on),
             d(&svg_off)
         );
+    }
+
+    #[test]
+    fn svg_print_cascades_and_paints_path_halo() {
+        let spec: DepictSpec = serde_json::from_str(
+            r##"{"type":"group","svg":"print","children":[{"type":"mol","smiles":"CCO"}]}"##,
+        )
+        .unwrap();
+        assert_eq!(
+            spec.resolve_mol_chrome(0).svg,
+            Some(crate::scene::SvgTarget::Print)
+        );
+        let painted = crate::doc::render(&spec).expect("print");
+        assert_eq!(painted[0].molecule.svg, crate::scene::SvgTarget::Print);
+        assert!(painted[0].scene.viewports[0].halo_filter_px.is_none());
+        let has_halo = painted[0].scene.viewports[0].layers.iter().any(|l| {
+            l.name == crate::scene::LayerName::Halo
+                && l.primitives.iter().any(|p| match p {
+                    crate::scene::Primitive::Path {
+                        class: Some(c), ..
+                    } => c.split_whitespace().any(|t| t == "halo"),
+                    _ => false,
+                })
+        });
+        assert!(has_halo, "print cascade must paint path halo");
+        let svg = crate::scene_to_svg(&painted[0].scene);
+        assert!(!svg.contains("feMorphology"));
     }
 
     /// Release timings for a Prasterone-sized scheme (print with --nocapture).

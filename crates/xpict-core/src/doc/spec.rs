@@ -27,7 +27,7 @@ use crate::doc::chrome::{
     CalloutField, CircleField, MolOverlayFields, MolText, RegionField,
 };
 use crate::edge::{AlignMode, AlignOpts};
-use crate::scene::AromaticStyle;
+use crate::scene::{AromaticStyle, SvgTarget};
 
 // ---------------------------------------------------------------------------
 // Shade: scores (non-cascading, on mol) vs style window (cascading, in opts)
@@ -247,6 +247,10 @@ pub struct CommonOpts {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub pad: Option<f64>,
+    /// SVG medium: ``web`` (filter halo) or ``print`` (path halo). Omit → web.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub svg: Option<SvgTarget>,
 }
 
 /// Copy each ``Option`` field from ``$src`` onto ``$dst`` when ``Some``.
@@ -271,7 +275,8 @@ impl CommonOpts {
             aromatic,
             debug_box,
             debug_align,
-            pad
+            pad,
+            svg
         );
     }
 }
@@ -315,6 +320,10 @@ pub struct MolOpts {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub pad: Option<f64>,
+    /// SVG medium: ``web`` (filter halo) or ``print`` (path halo). Omit → web.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub svg: Option<SvgTarget>,
 }
 
 impl MolOpts {
@@ -329,7 +338,8 @@ impl MolOpts {
             aromatic,
             debug_box,
             debug_align,
-            pad
+            pad,
+            svg
         );
         if let Some(ref s) = other.shade {
             self.shade
@@ -348,7 +358,8 @@ impl MolOpts {
             aromatic,
             debug_box,
             debug_align,
-            pad
+            pad,
+            svg
         );
     }
 }
@@ -591,6 +602,10 @@ pub struct MolNode {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub pad: Option<f64>,
+    /// SVG medium: ``web`` (filter halo) or ``print`` (path halo). Omit → web.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub svg: Option<SvgTarget>,
     /// Cascade patches for this node (list or singleton).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
@@ -610,6 +625,7 @@ impl MolNode {
             debug_box: self.debug_box,
             debug_align: self.debug_align,
             pad: self.pad,
+            svg: self.svg,
         };
         if let Some(ref shade) = self.shade {
             o.shade = Some(shade.style());
@@ -1218,6 +1234,10 @@ pub enum DepictSpec {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[cfg_attr(feature = "codegen", ts(optional))]
         pad: Option<f64>,
+        /// SVG medium: ``web`` (filter halo) or ``print`` (path halo). Omit → web.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        svg: Option<SvgTarget>,
     },
     /// Reaction / pathway scheme: mixed **node** children (`mol` | `edge` | `text`).
     ReactionScheme {
@@ -1255,6 +1275,10 @@ pub enum DepictSpec {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[cfg_attr(feature = "codegen", ts(optional))]
         pad: Option<f64>,
+        /// SVG medium: ``web`` (filter halo) or ``print`` (path halo). Omit → web.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        svg: Option<SvgTarget>,
     },
     /// Grid root — each child is one row (`mol` / `group` / `reaction_scheme` / nested `grid`).
     Grid {
@@ -1288,6 +1312,10 @@ pub enum DepictSpec {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[cfg_attr(feature = "codegen", ts(optional))]
         pad: Option<f64>,
+        /// SVG medium: ``web`` (filter halo) or ``print`` (path halo). Omit → web.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional))]
+        svg: Option<SvgTarget>,
     },
 }
 
@@ -1303,6 +1331,7 @@ impl DepictSpec {
                 debug_box,
                 debug_align,
                 pad,
+                svg,
                 ..
             }
             | DepictSpec::ReactionScheme {
@@ -1313,6 +1342,7 @@ impl DepictSpec {
                 debug_box,
                 debug_align,
                 pad,
+                svg,
                 ..
             }
             | DepictSpec::Grid {
@@ -1323,6 +1353,7 @@ impl DepictSpec {
                 debug_box,
                 debug_align,
                 pad,
+                svg,
                 ..
             } => Some(CascadeLayer {
                 opts: opts.clone(),
@@ -1333,6 +1364,7 @@ impl DepictSpec {
                     debug_box: *debug_box,
                     debug_align: *debug_align,
                     pad: *pad,
+                    svg: *svg,
                 },
             }),
         }

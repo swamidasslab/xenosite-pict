@@ -127,7 +127,7 @@ pub use rings::{
 };
 pub use scene::{
     AlignDebug, AlignDebugRole, AromaticStyle, Attach, Layer, LayerName, MoleculeIn, Primitive,
-    Scene, SpokeIn, TextAnchor, Viewport,
+    Scene, SpokeIn, SvgTarget, TextAnchor, Viewport,
 };
 pub use svg::{scene_to_svg, scene_to_svg_json};
 // MoleculeIn atoms/bonds are scene::AtomIn / scene::BondIn (JSON ABI).

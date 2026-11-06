@@ -570,6 +570,7 @@ mod tests {
             debug_box: None,
             debug_align: None,
             pad: None,
+        svg: None,
         };
         let painted = depict(&spec).unwrap();
         assert_eq!(painted.len(), 2);
@@ -677,6 +678,7 @@ mod tests {
             debug_box: None,
             debug_align: None,
             pad: None,
+        svg: None,
         };
         let painted = render(&spec).unwrap();
         assert_eq!(painted.len(), 1);
@@ -716,6 +718,7 @@ mod tests {
             debug_box: None,
             debug_align: None,
             pad: None,
+        svg: None,
         };
         let painted = render(&spec).unwrap();
         assert_eq!(painted.len(), 1);
@@ -894,6 +897,7 @@ mod tests {
             debug_box: None,
             debug_align: None,
             pad: None,
+        svg: None,
         };
         let painted = render(&spec).unwrap();
         let scene = &painted[0].scene;

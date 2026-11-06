@@ -71,6 +71,22 @@ pub enum AromaticStyle {
     Kekule,
 }
 
+/// SVG medium for contrast / filter support.
+///
+/// ``web`` (default): white chem contrast via SVG ``feMorphology`` (browser /
+/// IPython). ``print``: buffered path halos for PDF/PNG pipelines that drop
+/// filters. Author-facing DepictSpec key ``svg``; PNG/PDF hosts default to
+/// ``print`` when unset.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
+pub enum SvgTarget {
+    #[default]
+    Web,
+    Print,
+}
+
 /// One drawable primitive in SVG space (+Y down).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
@@ -200,8 +216,8 @@ pub struct Viewport {
     #[serde(default)]
     pub layers: Vec<Layer>,
     /// When set, SVG emit wraps bonds/labels/marks in an feMorphology white
-    /// contrast filter of this radius (px). Derived from mol `halo` + weight;
-    /// not a DepictSpec knob. `None` = no filter (`halo: false`).
+    /// contrast filter of this radius (px). Set for ``svg: web`` + ``halo``;
+    /// ``svg: print`` uses Halo-layer path geom instead. `None` = no filter.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub halo_filter_px: Option<f64>,
@@ -434,6 +450,10 @@ pub struct MoleculeIn {
     /// page background.
     #[serde(default = "default_mol_halo", skip_serializing_if = "is_default_mol_halo")]
     pub halo: bool,
+    /// SVG medium: ``web`` uses feMorphology contrast; ``print`` uses path geom.
+    /// Default ``web``. Cascaded from DepictSpec ``svg``.
+    #[serde(default, skip_serializing_if = "is_default_svg_target")]
+    pub svg: SvgTarget,
     /// When true, paint dashed debug rectangles for label / mol / scene boxes.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub debug_box: bool,
@@ -502,6 +522,10 @@ fn is_default_mol_halo(h: &bool) -> bool {
     *h
 }
 
+fn is_default_svg_target(t: &SvgTarget) -> bool {
+    *t == SvgTarget::Web
+}
+
 impl Default for MoleculeIn {
     fn default() -> Self {
         Self {
@@ -517,6 +541,7 @@ impl Default for MoleculeIn {
             weight: 1.0,
             aromatic: AromaticStyle::default(),
             halo: true,
+            svg: SvgTarget::Web,
             debug_box: false,
             debug_align: false,
             align_debug: None,

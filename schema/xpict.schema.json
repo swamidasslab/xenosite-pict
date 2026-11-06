@@ -208,6 +208,17 @@
             ]
           }
         },
+        "svg": {
+          "description": "SVG medium: ``web`` (filter halo) or ``print`` (path halo). Omit → web.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/SvgTarget"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "type": {
           "default": "mol",
           "allOf": [
@@ -305,6 +316,17 @@
           ],
           "format": "double"
         },
+        "svg": {
+          "description": "SVG medium: ``web`` (filter halo) or ``print`` (path halo). Omit → web.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/SvgTarget"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "type": {
           "type": "string",
           "enum": [
@@ -400,6 +422,17 @@
           ],
           "format": "double"
         },
+        "svg": {
+          "description": "SVG medium: ``web`` (filter halo) or ``print`` (path halo). Omit → web.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/SvgTarget"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "type": {
           "type": "string",
           "enum": [
@@ -483,6 +516,17 @@
             "null"
           ],
           "format": "double"
+        },
+        "svg": {
+          "description": "SVG medium: ``web`` (filter halo) or ``print`` (path halo). Omit → web.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/SvgTarget"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "type": {
           "type": "string",
@@ -1132,6 +1176,17 @@
                 ]
               }
             },
+            "svg": {
+              "description": "SVG medium: ``web`` (filter halo) or ``print`` (path halo). Omit → web.",
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/SvgTarget"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "type": {
               "default": "mol",
               "allOf": [
@@ -1229,6 +1284,17 @@
               ],
               "format": "double"
             },
+            "svg": {
+              "description": "SVG medium: ``web`` (filter halo) or ``print`` (path halo). Omit → web.",
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/SvgTarget"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "type": {
               "type": "string",
               "enum": [
@@ -1324,6 +1390,17 @@
               ],
               "format": "double"
             },
+            "svg": {
+              "description": "SVG medium: ``web`` (filter halo) or ``print`` (path halo). Omit → web.",
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/SvgTarget"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "type": {
               "type": "string",
               "enum": [
@@ -1407,6 +1484,17 @@
                 "null"
               ],
               "format": "double"
+            },
+            "svg": {
+              "description": "SVG medium: ``web`` (filter halo) or ``print`` (path halo). Omit → web.",
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/SvgTarget"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "type": {
               "type": "string",
@@ -1651,6 +1739,17 @@
           "anyOf": [
             {
               "$ref": "#/definitions/ShadeStyle"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "svg": {
+          "description": "SVG medium: ``web`` (filter halo) or ``print`` (path halo). Omit → web.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/SvgTarget"
             },
             {
               "type": "null"
@@ -2100,6 +2199,17 @@
             ]
           }
         },
+        "svg": {
+          "description": "SVG medium: ``web`` (filter halo) or ``print`` (path halo). Omit → web.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/SvgTarget"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "type": {
           "default": "mol",
           "allOf": [
@@ -2184,6 +2294,17 @@
           "anyOf": [
             {
               "$ref": "#/definitions/ShadeStyle"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "svg": {
+          "description": "SVG medium: ``web`` (filter halo) or ``print`` (path halo). Omit → web.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/SvgTarget"
             },
             {
               "type": "null"
@@ -2579,6 +2700,14 @@
         }
       }
     },
+    "SvgTarget": {
+      "description": "SVG medium for contrast / filter support.\n\n``web`` (default): white chem contrast via SVG ``feMorphology`` (browser / IPython). ``print``: buffered path halos for PDF/PNG pipelines that drop filters. Author-facing DepictSpec key ``svg``; PNG/PDF hosts default to ``print`` when unset.",
+      "type": "string",
+      "enum": [
+        "web",
+        "print"
+      ]
+    },
     "TextNode": {
       "description": "Text **node** — caption / chrome referenced by mols and edges via id.\n\n```json { \"type\": \"text\", \"id\": \"adh\", \"text\": \"ADH\" } ```",
       "type": "object",
@@ -2713,6 +2842,17 @@
                 }
               ]
             },
+            "svg": {
+              "description": "SVG medium: ``web`` (filter halo) or ``print`` (path halo). Omit → web.",
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/SvgTarget"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "type": {
               "type": "string",
               "enum": [
@@ -2781,6 +2921,17 @@
               ],
               "format": "double"
             },
+            "svg": {
+              "description": "SVG medium: ``web`` (filter halo) or ``print`` (path halo). Omit → web.",
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/SvgTarget"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "type": {
               "type": "string",
               "enum": [
@@ -2841,6 +2992,17 @@
                 "null"
               ],
               "format": "double"
+            },
+            "svg": {
+              "description": "SVG medium: ``web`` (filter halo) or ``print`` (path halo). Omit → web.",
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/SvgTarget"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "type": {
               "type": "string",
@@ -2903,6 +3065,17 @@
               ],
               "format": "double"
             },
+            "svg": {
+              "description": "SVG medium: ``web`` (filter halo) or ``print`` (path halo). Omit → web.",
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/SvgTarget"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "type": {
               "type": "string",
               "enum": [
@@ -2963,6 +3136,17 @@
                 "null"
               ],
               "format": "double"
+            },
+            "svg": {
+              "description": "SVG medium: ``web`` (filter halo) or ``print`` (path halo). Omit → web.",
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/SvgTarget"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "type": {
               "type": "string",

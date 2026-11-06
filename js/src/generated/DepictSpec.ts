@@ -4,6 +4,7 @@ import type { LayoutOpts } from "./LayoutOpts";
 import type { MolNode } from "./MolNode";
 import type { Node } from "./Node";
 import type { Opts } from "./Opts";
+import type { SvgTarget } from "./SvgTarget";
 
 /**
  * Declarative document (`mol`, `group`, `reaction_scheme`, or `grid` root).
@@ -32,7 +33,11 @@ debug_align?: boolean,
 /**
  * Post-layout SVG viewBox pad (px). Omit → small house default.
  */
-pad?: number, } | { "type": "reaction_scheme", id?: string, 
+pad?: number, 
+/**
+ * SVG medium: ``web`` (filter halo) or ``print`` (path halo). Omit → web.
+ */
+svg?: SvgTarget, } | { "type": "reaction_scheme", id?: string, 
 /**
  * Child **nodes** — mols, edges, and text (any order).
  */
@@ -52,7 +57,11 @@ debug_align?: boolean,
 /**
  * Post-layout SVG viewBox pad (px). Omit → small house default.
  */
-pad?: number, } | { "type": "grid", id?: string, 
+pad?: number, 
+/**
+ * SVG medium: ``web`` (filter halo) or ``print`` (path halo). Omit → web.
+ */
+svg?: SvgTarget, } | { "type": "grid", id?: string, 
 /**
  * Row roots (nested grids flatten in document order when walking mols).
  */
@@ -68,4 +77,8 @@ debug_align?: boolean,
 /**
  * Post-layout SVG viewBox pad (px). Omit → small house default.
  */
-pad?: number, };
+pad?: number, 
+/**
+ * SVG medium: ``web`` (filter halo) or ``print`` (path halo). Omit → web.
+ */
+svg?: SvgTarget, };

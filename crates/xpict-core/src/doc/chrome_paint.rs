@@ -29,9 +29,11 @@ use crate::doc::spec::{LabelPos, MolNode};
 use crate::doc::text_paint::{markup_bounds_at_origin, outline_markup};
 use crate::font::FaceStyle;
 use crate::labels::{label_ink_shape, label_side, place_backbone, LabelSide};
-use crate::metrics::{BOND_PX, FONT_PX, STROKE_PX};
+use crate::metrics::{
+    halo_gap_for_weight, halo_stroke_for_weight, BOND_PX, FONT_PX, HALO_OPACITY, STROKE_PX,
+};
 use crate::rings::{aromatic_ring_circles, find_sssr};
-use crate::scene::{AromaticStyle, AtomIn, LayerName, MoleculeIn, Primitive, Scene};
+use crate::scene::{AromaticStyle, AtomIn, LayerName, MoleculeIn, Primitive, Scene, SvgTarget};
 use std::collections::{HashMap, HashSet};
 
 const NUMBER_FONT_FRAC: f64 = 0.72;
@@ -817,9 +819,12 @@ fn atom_label_primitive(
         .filter(|s| !s.is_empty())
         .unwrap_or("#444")
         .to_string();
-    // Contrast comes from the mol SVG feMorphology filter on chem ink —
-    // no separate chrome-halo outline paths.
-    let _ = (on_shade, mol.halo, weight);
+    // Web: mol feMorphology covers contrast. Print: outline paths on shade.
+    let halo = if on_shade && mol.halo && mol.svg == SvgTarget::Print {
+        halo_for_markup(content, origin_x, origin_y, font_px, anchor, weight)
+    } else {
+        None
+    };
     Some((
         Primitive::Path {
             d,
@@ -833,7 +838,7 @@ fn atom_label_primitive(
             data_text: Some(data_text),
         },
         box_,
-        None,
+        halo,
     ))
 }
 
@@ -1676,8 +1681,11 @@ fn callout_primitives(
     }
     if let Some((d, data_text, _)) = outline_markup(content, placed_x, placed_y, font_px, anchor) {
         if !d.is_empty() {
-            let halo = None;
-            let _ = (on_shade, mol.halo, weight);
+            let halo = if on_shade && mol.halo && mol.svg == SvgTarget::Print {
+                halo_for_markup(content, placed_x, placed_y, font_px, anchor, weight)
+            } else {
+                None
+            };
             out.push((
                 Primitive::Path {
                     d,
@@ -2360,6 +2368,35 @@ pub(crate) fn path_aabb(d: &str) -> Option<Aabb> {
     Some(Aabb::new(x0, y0, x1, y1))
 }
 
+/// White outline under chrome text on shade (print SVG only).
+fn halo_for_markup(
+    content: &str,
+    x: f64,
+    y: f64,
+    font_px: f64,
+    anchor: &str,
+    weight: f64,
+) -> Option<Primitive> {
+    let (d, _, _) = outline_markup(content, x, y, font_px, anchor)?;
+    if d.is_empty() {
+        return None;
+    }
+    let stroke_w = halo_stroke_for_weight(weight)
+        .max(2.0 * halo_gap_for_weight(weight))
+        .max(1.0);
+    Some(Primitive::Path {
+        d,
+        stroke: Some("#fff".into()),
+        fill: Some("#fff".into()),
+        stroke_width: stroke_w,
+        opacity: HALO_OPACITY,
+        stroke_dasharray: None,
+        stroke_linecap: Some("round".into()),
+        class: Some("halo chrome-halo".into()),
+        data_text: None,
+    })
+}
+
 fn aabb_hits_shade(box_: Aabb, shades: &[(usize, f64, f64, f64)]) -> bool {
     shades
         .iter()
@@ -2690,7 +2727,7 @@ mod tests {
     };
     use crate::doc::layout_constraints::REGION_TEXT_TETHER_PX;
     use crate::doc::spec::LabelPos;
-    use crate::scene::{AtomIn, BondIn};
+    use crate::scene::{AtomIn, BondIn, SvgTarget};
 
     #[test]
     fn stroke_none_with_fill_means_no_stroke() {
@@ -2975,13 +3012,13 @@ mod tests {
     }
 
     #[test]
-    fn atom_number_on_shade_uses_mol_filter_not_chrome_halo_paths() {
+    fn atom_number_on_shade_web_uses_mol_filter_not_chrome_halo_paths() {
         let mut mol = ethanol();
         mol.atom_shade = Some(vec![1.0, 1.0, 1.0]);
         let scene = crate::depict::depict_molecule(&mol);
         assert!(
             scene.viewports[0].halo_filter_px.is_some(),
-            "shaded mol keeps SVG contrast filter"
+            "shaded web mol keeps SVG contrast filter"
         );
         let node = MolNode {
             atom_number: Some(AtomNumberSpec::ByName(AtomNumberBy::Index)),
@@ -3001,13 +3038,44 @@ mod tests {
             });
         assert!(
             !chrome_halo,
-            "chrome text must not emit outline halo paths; filter covers contrast"
+            "web chrome text must not emit outline halo paths; filter covers contrast"
         );
         let svg = crate::scene_to_svg(&out);
         assert!(
             svg.contains("feMorphology") && svg.contains("xpict-chem"),
             "numbers on shade ride the mol chem filter"
         );
+    }
+
+    #[test]
+    fn atom_number_on_shade_print_emits_chrome_halo_paths() {
+        let mut mol = ethanol();
+        mol.svg = SvgTarget::Print;
+        mol.atom_shade = Some(vec![1.0, 1.0, 1.0]);
+        let scene = crate::depict::depict_molecule(&mol);
+        assert!(scene.viewports[0].halo_filter_px.is_none());
+        let node = MolNode {
+            atom_number: Some(AtomNumberSpec::ByName(AtomNumberBy::Index)),
+            ..Default::default()
+        };
+        let out = apply_mol_chrome(&node, &mol, scene);
+        let chrome_halo = out
+            .viewports
+            .iter()
+            .flat_map(|vp| vp.layers.iter())
+            .flat_map(|l| l.primitives.iter())
+            .any(|p| match p {
+                Primitive::Path {
+                    class: Some(c), ..
+                } => c.contains("chrome-halo"),
+                _ => false,
+            });
+        assert!(
+            chrome_halo,
+            "print chrome on shade must emit outline halo paths"
+        );
+        let svg = crate::scene_to_svg(&out);
+        assert!(!svg.contains("feMorphology"));
     }
 
     #[test]

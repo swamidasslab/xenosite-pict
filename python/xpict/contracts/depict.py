@@ -151,6 +151,9 @@ class ShadeStyle(StrictModel):
     vmin: float | None = None
 
 
+SvgTarget = Literal['web', 'print']
+
+
 class MolOptsPatch(StrictModel):
     """Mol cascading paint opts — what a mol leaf consumes from the cascade."""
     type: Literal['mol'] = 'mol'
@@ -162,6 +165,7 @@ class MolOptsPatch(StrictModel):
     pad: Annotated[float | None, Field(description='Post-layout SVG viewBox pad (px). Omit → small house default (rarely override).')] = None
     scale: float | None = None
     shade: ShadeStyle | None = None
+    svg: Annotated[SvgTarget | None, Field(description='SVG medium: ``web`` (filter halo) or ``print`` (path halo). Omit → web.')] = None
     weight: float | None = None
 
 
@@ -174,6 +178,7 @@ class GroupOptsPatch(StrictModel):
     debug_box: Annotated[bool | None, Field(description='Paint dashed debug rectangles for layout boxes (labels / mol / scene).')] = None
     pad: Annotated[float | None, Field(description='Post-layout SVG viewBox pad (px). Omit → small house default (rarely override).')] = None
     scale: float | None = None
+    svg: Annotated[SvgTarget | None, Field(description='SVG medium: ``web`` (filter halo) or ``print`` (path halo). Omit → web.')] = None
 
 
 class ReactionSchemeOptsPatch(StrictModel):
@@ -185,6 +190,7 @@ class ReactionSchemeOptsPatch(StrictModel):
     debug_box: Annotated[bool | None, Field(description='Paint dashed debug rectangles for layout boxes (labels / mol / scene).')] = None
     pad: Annotated[float | None, Field(description='Post-layout SVG viewBox pad (px). Omit → small house default (rarely override).')] = None
     scale: float | None = None
+    svg: Annotated[SvgTarget | None, Field(description='SVG medium: ``web`` (filter halo) or ``print`` (path halo). Omit → web.')] = None
 
 
 class EdgeOptsPatch(StrictModel):
@@ -196,6 +202,7 @@ class EdgeOptsPatch(StrictModel):
     debug_box: Annotated[bool | None, Field(description='Paint dashed debug rectangles for layout boxes (labels / mol / scene).')] = None
     pad: Annotated[float | None, Field(description='Post-layout SVG viewBox pad (px). Omit → small house default (rarely override).')] = None
     scale: float | None = None
+    svg: Annotated[SvgTarget | None, Field(description='SVG medium: ``web`` (filter halo) or ``print`` (path halo). Omit → web.')] = None
 
 
 class TextOptsPatch(StrictModel):
@@ -207,6 +214,7 @@ class TextOptsPatch(StrictModel):
     debug_box: Annotated[bool | None, Field(description='Paint dashed debug rectangles for layout boxes (labels / mol / scene).')] = None
     pad: Annotated[float | None, Field(description='Post-layout SVG viewBox pad (px). Omit → small house default (rarely override).')] = None
     scale: float | None = None
+    svg: Annotated[SvgTarget | None, Field(description='SVG medium: ``web`` (filter halo) or ``print`` (path halo). Omit → web.')] = None
 
 
 TypedOptsPatch = Annotated[MolOptsPatch | GroupOptsPatch | ReactionSchemeOptsPatch | EdgeOptsPatch | TextOptsPatch, Field(discriminator='type')]
@@ -226,6 +234,7 @@ class ForTypesPatch(StrictModel):
     pad: Annotated[float | None, Field(description='Post-layout SVG viewBox pad (px). Omit → small house default (rarely override).')] = None
     scale: float | None = None
     shade: ShadeStyle | None = None
+    svg: Annotated[SvgTarget | None, Field(description='SVG medium: ``web`` (filter halo) or ``print`` (path halo). Omit → web.')] = None
     weight: float | None = None
 
 
@@ -239,6 +248,7 @@ class MolOpts(StrictModel):
     pad: Annotated[float | None, Field(description='Post-layout SVG viewBox pad (px). Omit → small house default (rarely override).')] = None
     scale: float | None = None
     shade: ShadeStyle | None = None
+    svg: Annotated[SvgTarget | None, Field(description='SVG medium: ``web`` (filter halo) or ``print`` (path halo). Omit → web.')] = None
     weight: float | None = None
 
 
@@ -303,6 +313,7 @@ class MolNode(StrictModel):
     shade: Annotated[ShadeSpec | None, Field(description='Shade **scores** (+ legacy window); window also cascades via [`Opts`].')] = None
     smiles: str | None = None
     star_labels: list[str | None] | None = None
+    svg: Annotated[SvgTarget | None, Field(description='SVG medium: ``web`` (filter halo) or ``print`` (path halo). Omit → web.')] = None
     weight: float | None = None
 
 
@@ -377,6 +388,7 @@ class GroupNode(StrictModel):
     opts: Annotated[Opts | None, Field(description='Group-level cascade bag (list container for child inheritance).')] = None
     pad: Annotated[float | None, Field(description='Post-layout SVG viewBox pad (px). Omit → small house default.')] = None
     scale: float | None = None
+    svg: Annotated[SvgTarget | None, Field(description='SVG medium: ``web`` (filter halo) or ``print`` (path halo). Omit → web.')] = None
 
 
 LayoutAlgorithm = Literal['layered', 'radial', 'force', 'stress']
@@ -411,6 +423,7 @@ class ReactionSchemeNode(StrictModel):
     opts: Annotated[Opts | None, Field(description='Scheme-level cascade bag for child mol inheritance.')] = None
     pad: Annotated[float | None, Field(description='Post-layout SVG viewBox pad (px). Omit → small house default.')] = None
     scale: float | None = None
+    svg: Annotated[SvgTarget | None, Field(description='SVG medium: ``web`` (filter halo) or ``print`` (path halo). Omit → web.')] = None
 
 
 class GridNode(StrictModel):
@@ -425,6 +438,7 @@ class GridNode(StrictModel):
     opts: Annotated[Opts | None, Field(description='Grid-level cascade bag (inherits onto every row / mol).')] = None
     pad: Annotated[float | None, Field(description='Post-layout SVG viewBox pad (px). Omit → small house default.')] = None
     scale: float | None = None
+    svg: Annotated[SvgTarget | None, Field(description='SVG medium: ``web`` (filter halo) or ``print`` (path halo). Omit → web.')] = None
 
 
 DepictSpecRoot = Annotated[MolNode | GroupNode | ReactionSchemeNode | GridNode, Field(discriminator='type')]

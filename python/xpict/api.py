@@ -9,8 +9,11 @@ from xpict.depict_spec import as_depict_spec, depict, depict_svg, is_live_depict
 from xpict.future.nodes import PictSpec, expand_pict
 from xpict.future.spec import DiagramKind, LegacyPictSpec
 from xpict.rendered import scene_to_html
+from xpict.svg_target import apply_output_svg_default
 
-OutputFormat = Literal["svg", "html"]
+# ``png`` / ``pdf`` default the DepictSpec to ``svg: print`` (path halos).
+# Raster encoding is not in-core yet — those formats raise after the stamp.
+OutputFormat = Literal["svg", "html", "png", "pdf"]
 
 DepictInput = PictSpec | LegacyPictSpec | dict[str, Any]
 
@@ -146,8 +149,8 @@ class Pict:
         *,
         format: OutputFormat | None = None,
     ) -> str:
-        live = to_live_depict(spec)
         out = format or self.format
+        live = apply_output_svg_default(to_live_depict(spec), out)
         if out == "svg":
             return depict_svg(live)
         if out == "html":
@@ -155,6 +158,12 @@ class Pict:
             if not rows:
                 raise RuntimeError("depict returned no molecules")
             return scene_to_html(rows[0].scene)
+        if out in ("png", "pdf"):
+            raise ValueError(
+                f"{out!r} raster export is not implemented yet; "
+                "root svg was set to 'print' for a portable SVG — "
+                "use format='svg' with svg='print' until raster ships"
+            )
         raise ValueError(f"unsupported format: {out!r}")
 
     def layout(self, spec: DepictInput) -> list[MoleculeIn]:

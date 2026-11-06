@@ -17,7 +17,7 @@ export type Viewport = { id?: string, x: number, y: number,
 ox: number, oy: number, width: number, height: number, layers: Array<Layer>, 
 /**
  * When set, SVG emit wraps bonds/labels/marks in an feMorphology white
- * contrast filter of this radius (px). Derived from mol `halo` + weight;
- * not a DepictSpec knob. `None` = no filter (`halo: false`).
+ * contrast filter of this radius (px). Set for ``svg: web`` + ``halo``;
+ * ``svg: print`` uses Halo-layer path geom instead. `None` = no filter.
  */
 halo_filter_px?: number, };

@@ -140,6 +140,7 @@ fn to_molecule_in(id: &str, parsed: &Parsed, coords: &LayoutResult, source: &str
         weight: 1.0,
         aromatic: crate::scene::AromaticStyle::default(),
         halo: true,
+        svg: crate::scene::SvgTarget::Web,
         debug_box: false,
         debug_align: false,
         align_debug: None,

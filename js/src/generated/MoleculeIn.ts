@@ -4,6 +4,7 @@ import type { AromaticStyle } from "./AromaticStyle";
 import type { AtomIn } from "./AtomIn";
 import type { BondIn } from "./BondIn";
 import type { SpokeIn } from "./SpokeIn";
+import type { SvgTarget } from "./SvgTarget";
 
 /**
  * One molecule ready to paint (coords already in SVG / ``SCALE`` space).
@@ -50,6 +51,11 @@ aromatic: AromaticStyle,
  * page background.
  */
 halo: boolean, 
+/**
+ * SVG medium: ``web`` uses feMorphology contrast; ``print`` uses path geom.
+ * Default ``web``. Cascaded from DepictSpec ``svg``.
+ */
+svg: SvgTarget, 
 /**
  * When true, paint dashed debug rectangles for label / mol / scene boxes.
  */

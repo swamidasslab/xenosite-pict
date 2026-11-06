@@ -23,6 +23,7 @@
 import { initNative, isNativeReady, renderJson } from "./native.js";
 import type { SvgAtom, SvgBond } from "./frame.js";
 import { sceneToSvg, type Scene } from "./draw/scene-svg.js";
+import { applyOutputSvgDefault } from "./svg-target.js";
 import type { MoleculeIn } from "./generated/edge.js";
 import type { AtomLabelSpec } from "./generated/AtomLabelSpec.js";
 import type { AtomNumberSpec } from "./generated/AtomNumberSpec.js";
@@ -377,6 +378,8 @@ async function depict(
   return rows.map((row) => asRendered(row));
 }
 
+export { applyOutputSvgDefault, PRINT_SVG_FORMATS } from "./svg-target.js";
+
 /** Public lib namespace. */
 export const xpict = {
   mol,
@@ -385,4 +388,9 @@ export const xpict = {
   toSvg: sceneToSvg,
   /** Single mol or declarative document → ``Rendered[]``. */
   depict,
+  /**
+   * Stamp ``svg: "print"`` when ``format`` is png/pdf and the author omitted
+   * ``svg``. Call before ``depict`` / ``render`` for portable export.
+   */
+  applyOutputSvgDefault,
 } as const;

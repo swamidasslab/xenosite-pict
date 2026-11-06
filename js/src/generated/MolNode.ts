@@ -11,6 +11,7 @@ import type { MolText } from "./MolText";
 import type { Opts } from "./Opts";
 import type { RegionField } from "./RegionField";
 import type { ShadeSpec } from "./ShadeSpec";
+import type { SvgTarget } from "./SvgTarget";
 
 /**
  * Mol node — [`MolOpts`] fields + non-cascading identity / scores / align.
@@ -76,6 +77,10 @@ debug_align?: boolean,
  * Post-layout SVG viewBox pad (px). Omit → small house default (rarely override).
  */
 pad?: number, 
+/**
+ * SVG medium: ``web`` (filter halo) or ``print`` (path halo). Omit → web.
+ */
+svg?: SvgTarget, 
 /**
  * Cascade patches for this node (list or singleton).
  */

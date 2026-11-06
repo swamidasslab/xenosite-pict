@@ -75,7 +75,7 @@ class Viewport(StrictModel):
     """One molecule viewport in a diagram (after ELK/grid placement)."""
     height: float
     width: float
-    halo_filter_px: Annotated[float | None, Field(description='When set, SVG emit wraps bonds/labels/marks in an feMorphology white contrast filter of this radius (px). Derived from mol `halo` + weight; not a DepictSpec knob. `None` = no filter (`halo: false`).')] = None
+    halo_filter_px: Annotated[float | None, Field(description='When set, SVG emit wraps bonds/labels/marks in an feMorphology white contrast filter of this radius (px). Set for ``svg: web`` + ``halo``; ``svg: print`` uses Halo-layer path geom instead. `None` = no filter.')] = None
     id: str | None = None
     layers: list[Layer] = Field(default_factory=list)
     ox: Annotated[float | None, Field(description='Local leftover origin (fit). Nested inside the mol group, not baked into path `d`.')] = None
