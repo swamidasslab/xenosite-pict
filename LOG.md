@@ -1,5 +1,11 @@
 # Lab log
 
+## 2026-11-07
+
+- Dropped `vendor/canonaut` and the crates.io `[patch]`. Upstream
+  `canonaut` 1.1.0 derives word size from `usize::BITS` (wasm32-safe) and
+  takes read-only automorphism callbacks. Bumped xpict-core to 1.1.0.
+
 ## 2026-11-06
 
 - DepictSpec cascading `svg: "web" | "print"` (default web). Web keeps

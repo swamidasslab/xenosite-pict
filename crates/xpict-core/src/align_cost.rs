@@ -1191,7 +1191,7 @@ thread_local! {
         const { std::cell::RefCell::new(Vec::new()) };
 }
 
-fn collect_generator(_n: u32, perm: &mut [u32], _: &mut [u32], _: u32, _: u32, _: u32) {
+fn collect_generator(_n: u32, perm: &[u32], _: &[u32], _: u32, _: u32, _: u32) {
     CANONAUT_GENERATORS.with(|g| g.borrow_mut().push(perm.to_vec()));
 }
 
