@@ -496,7 +496,7 @@ pub(crate) fn paint_laid_mols(
         // `atom_label` — that is `star_labels` on `*` atoms only.
         let scene = depict_chem(&molecule);
         let scene = chrome_paint::apply_mol_chrome(&node_paint, &molecule, scene);
-        let scene = caption::apply_mol_captions(spec, &node_paint, scene);
+        let scene = caption::apply_mol_captions(spec, &node_paint, scene, molecule.weight);
         let scene = scene.scale_uniform(molecule.diagram_scale());
         // House pad scales with mol.scale so the fitted SVG doubles; an
         // explicit `pad` is output pixels and stays as given.
@@ -616,7 +616,8 @@ fn paint_mf_delta_formula_only(
     // Same face size as chem atom text.
     let font_px = FONT_PX * scale;
     let content = if text.is_empty() { "·" } else { text };
-    let (d, data_text, _) = outline_markup(content, 0.0, 0.0, font_px, "middle").ok_or_else(
+    let weight = chrome.weight.unwrap_or(1.0);
+    let (d, data_text, _) = outline_markup(content, 0.0, 0.0, font_px, "middle", weight).ok_or_else(
         || format!("mf_delta formula paint failed for {content:?}"),
     )?;
     let scene = Scene {

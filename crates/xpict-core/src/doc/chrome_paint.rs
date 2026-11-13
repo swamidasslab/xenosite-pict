@@ -695,7 +695,7 @@ fn atom_label_primitive(
         LabelRole::Text => ATOM_TEXT_TETHER_PX,
     };
     let anchor = "middle";
-    let (bx0, by0, bx1, by1) = markup_bounds_at_origin(content, font_px, anchor)?;
+    let (bx0, by0, bx1, by1) = markup_bounds_at_origin(content, font_px, anchor, weight)?;
     let glyph = InkAtOrigin {
         x0: bx0,
         y0: by0,
@@ -808,7 +808,7 @@ fn atom_label_primitive(
     let origin_x = greedy.x + dtx + nudge_x;
     let origin_y = greedy.y + dty + nudge_y;
 
-    let (d, data_text, _) = outline_markup(content, origin_x, origin_y, font_px, anchor)?;
+    let (d, data_text, _) = outline_markup(content, origin_x, origin_y, font_px, anchor, weight)?;
     if d.is_empty() {
         return None;
     }
@@ -1054,7 +1054,7 @@ fn region_primitives(
                 .filter(|s| !s.is_empty())
                 .unwrap_or("#333")
                 .to_string();
-            if let Some((bx0, by0, bx1, by1)) = markup_bounds_at_origin(content, font_px, "middle")
+            if let Some((bx0, by0, bx1, by1)) = markup_bounds_at_origin(content, font_px, "middle", mol.weight)
             {
                 let raw = InkAtOrigin {
                     x0: bx0,
@@ -1244,7 +1244,7 @@ fn region_primitives(
                     }
                 }
                 if let Some((d, data_text, _)) =
-                    outline_markup(content, placed.x, placed.y, font_px, "middle")
+                    outline_markup(content, placed.x, placed.y, font_px, "middle", mol.weight)
                 {
                     if !d.is_empty() {
                         label_prim = Some(Primitive::Path {
@@ -1463,7 +1463,7 @@ fn callout_primitives(
         side => Some(label_pos_side(side)),
     };
     let anchor = "middle";
-    let Some((bx0, by0, bx1, by1)) = markup_bounds_at_origin(content, font_px, anchor) else {
+    let Some((bx0, by0, bx1, by1)) = markup_bounds_at_origin(content, font_px, anchor, weight) else {
         return Vec::new();
     };
     let ink = padded_label_ink(InkAtOrigin {
@@ -1679,7 +1679,7 @@ fn callout_primitives(
             ));
         }
     }
-    if let Some((d, data_text, _)) = outline_markup(content, placed_x, placed_y, font_px, anchor) {
+    if let Some((d, data_text, _)) = outline_markup(content, placed_x, placed_y, font_px, anchor, weight) {
         if !d.is_empty() {
             let halo = if on_shade && mol.halo && mol.svg == SvgTarget::Print {
                 halo_for_markup(content, placed_x, placed_y, font_px, anchor, weight)
@@ -2377,7 +2377,7 @@ fn halo_for_markup(
     anchor: &str,
     weight: f64,
 ) -> Option<Primitive> {
-    let (d, _, _) = outline_markup(content, x, y, font_px, anchor)?;
+    let (d, _, _) = outline_markup(content, x, y, font_px, anchor, weight)?;
     if d.is_empty() {
         return None;
     }
@@ -2492,7 +2492,7 @@ fn atom_circle_radius(text: Option<&str>, r_scale: f64) -> f64 {
     let Some(text) = text.map(str::trim).filter(|s| !s.is_empty()) else {
         return floor;
     };
-    let Some((x0, y0, x1, y1)) = markup_bounds_at_origin(text, FONT_PX, "middle") else {
+    let Some((x0, y0, x1, y1)) = markup_bounds_at_origin(text, FONT_PX, "middle", 1.0) else {
         return floor.max(FONT_PX * 0.75 * r_scale);
     };
     let hw = (x1 - x0) * 0.5;

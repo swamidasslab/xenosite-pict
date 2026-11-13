@@ -496,7 +496,12 @@ struct PlacedCaption {
 /// Call **after** chrome constraints are solved — the name is not a layout
 /// DOF. Placement snugs to structure, then nudges clear of regions and other
 /// annotations so they do not overlap the label.
-pub fn apply_mol_captions(spec: &DepictSpec, node: &MolNode, mut scene: Scene) -> Scene {
+pub fn apply_mol_captions(
+    spec: &DepictSpec,
+    node: &MolNode,
+    mut scene: Scene,
+    weight: f64,
+) -> Scene {
     let default_pos = scheme_caption_pos(spec);
     let mut resolved: Vec<CaptionInk> = Vec::new();
     if let Some(ref name) = node.name {
@@ -576,7 +581,7 @@ pub fn apply_mol_captions(spec: &DepictSpec, node: &MolNode, mut scene: Scene) -
     let mut below_first = true;
     for ink in below {
         let anchor = "middle";
-        let Some((tx0, _ty0, tx1, _ty1)) = markup_bounds_at_origin(&ink.text, ink.font_px, anchor)
+        let Some((tx0, _ty0, tx1, _ty1)) = markup_bounds_at_origin(&ink.text, ink.font_px, anchor, weight)
         else {
             continue;
         };
@@ -636,7 +641,7 @@ pub fn apply_mol_captions(spec: &DepictSpec, node: &MolNode, mut scene: Scene) -
     let mut above_first = true;
     for ink in above {
         let anchor = "middle";
-        let Some((tx0, _ty0, tx1, _ty1)) = markup_bounds_at_origin(&ink.text, ink.font_px, anchor)
+        let Some((tx0, _ty0, tx1, _ty1)) = markup_bounds_at_origin(&ink.text, ink.font_px, anchor, weight)
         else {
             continue;
         };
@@ -668,7 +673,7 @@ pub fn apply_mol_captions(spec: &DepictSpec, node: &MolNode, mut scene: Scene) -
     // Left / right: snug to local silhouette along the em-box height.
     for ink in left {
         let anchor = "end";
-        let Some((tx0, _ty0, tx1, _ty1)) = markup_bounds_at_origin(&ink.text, ink.font_px, anchor)
+        let Some((tx0, _ty0, tx1, _ty1)) = markup_bounds_at_origin(&ink.text, ink.font_px, anchor, weight)
         else {
             continue;
         };
@@ -696,7 +701,7 @@ pub fn apply_mol_captions(spec: &DepictSpec, node: &MolNode, mut scene: Scene) -
     }
     for ink in right {
         let anchor = "start";
-        let Some((tx0, _ty0, tx1, _ty1)) = markup_bounds_at_origin(&ink.text, ink.font_px, anchor)
+        let Some((tx0, _ty0, tx1, _ty1)) = markup_bounds_at_origin(&ink.text, ink.font_px, anchor, weight)
         else {
             continue;
         };
@@ -727,7 +732,7 @@ pub fn apply_mol_captions(spec: &DepictSpec, node: &MolNode, mut scene: Scene) -
     let structure = Aabb::new(mol_x0, mol_y0, mol_x1, mol_y1);
     let ann_occ_auto = annotation_occupancy_from_scene(&scene);
     for ink in corner {
-        let Some((tx0, ty0, tx1, ty1)) = markup_bounds_at_origin(&ink.text, ink.font_px, "middle")
+        let Some((tx0, ty0, tx1, ty1)) = markup_bounds_at_origin(&ink.text, ink.font_px, "middle", weight)
         else {
             continue;
         };
@@ -772,7 +777,7 @@ pub fn apply_mol_captions(spec: &DepictSpec, node: &MolNode, mut scene: Scene) -
 
     // Auto: sit outside the structure AABB on the side farthest from other chrome.
     for ink in auto {
-        let Some((tx0, ty0, tx1, ty1)) = markup_bounds_at_origin(&ink.text, ink.font_px, "middle")
+        let Some((tx0, ty0, tx1, ty1)) = markup_bounds_at_origin(&ink.text, ink.font_px, "middle", weight)
         else {
             continue;
         };
@@ -872,7 +877,7 @@ pub fn apply_mol_captions(spec: &DepictSpec, node: &MolNode, mut scene: Scene) -
     let mut prims: Vec<Primitive> = Vec::new();
     for p in &placed {
         let Some((d, data_text, _)) =
-            outline_markup(&p.ink.text, p.x, p.y, p.ink.font_px, p.anchor)
+            outline_markup(&p.ink.text, p.x, p.y, p.ink.font_px, p.anchor, weight)
         else {
             continue;
         };
@@ -1025,7 +1030,7 @@ mod tests {
         .unwrap();
         let node = spec.mols()[0].clone();
         let base = crate::depict::depict_molecule(&ethanol());
-        let out = apply_mol_captions(&spec, &node, base);
+        let out = apply_mol_captions(&spec, &node, base, 1.0);
         // Caption snugs into house PAD below ink — height may stay flat.
         let hit = overlay_prims(&out).iter().any(|p| {
             matches!(
@@ -1062,7 +1067,7 @@ mod tests {
         let node = spec.mols()[0].clone();
         let base = crate::depict::depict_molecule(&ethanol());
         let (_sx0, _sy0, _sx1, sy1) = structure_aabb(&base).expect("structure");
-        let out = apply_mol_captions(&spec, &node, base);
+        let out = apply_mol_captions(&spec, &node, base, 1.0);
         let mut cap_y0 = f64::INFINITY;
         for p in overlay_prims(&out) {
             if let Primitive::Path {
@@ -1096,7 +1101,7 @@ mod tests {
         let node = spec.mols()[0].clone();
         assert!(node.name.is_some());
         let base = crate::depict::depict_molecule(&ethanol());
-        let out = apply_mol_captions(&spec, &node, base);
+        let out = apply_mol_captions(&spec, &node, base, 1.0);
         let hit = overlay_prims(&out).iter().any(|p| {
             matches!(
                 p,
@@ -1121,7 +1126,12 @@ mod tests {
         )
         .unwrap();
         let node = spec.mols()[0].clone();
-        let out = apply_mol_captions(&spec, &node, crate::depict::depict_molecule(&ethanol()));
+        let out = apply_mol_captions(
+            &spec,
+            &node,
+            crate::depict::depict_molecule(&ethanol()),
+            1.0,
+        );
         let data: Vec<_> = overlay_prims(&out)
             .iter()
             .filter_map(|p| match p {
@@ -1248,7 +1258,7 @@ mod tests {
         assert!(descent_bottom > ascent_top);
         // Glyph ink top is at/above ascent; gap is defined on ascent, not ink.
         let (_tx0, ty0, _tx1, ty1) =
-            markup_bounds_at_origin("EtOH", font_px, "middle").expect("bounds");
+            markup_bounds_at_origin("EtOH", font_px, "middle", 1.0).expect("bounds");
         let glyph_top = ty0 + baseline;
         let glyph_bottom = ty1 + baseline;
         assert!(
@@ -1284,7 +1294,7 @@ mod tests {
             "fixture expects padded canvas below ink: canvas={canvas_h} ink_bottom={}",
             ink.3
         );
-        let out = apply_mol_captions(&spec, &node, base);
+        let out = apply_mol_captions(&spec, &node, base, 1.0);
         let mut metric_top = f64::INFINITY;
         let mut metric_bottom = f64::NEG_INFINITY;
         for p in overlay_prims(&out) {
@@ -1331,7 +1341,12 @@ mod tests {
                 r#"{{"type":"mol","smiles":"CCO","name":"{name}"}}"#
             ))
             .unwrap();
-            let out = apply_mol_captions(&spec, &node, crate::depict::depict_molecule(&ethanol()));
+            let out = apply_mol_captions(
+            &spec,
+            &node,
+            crate::depict::depict_molecule(&ethanol()),
+            1.0,
+        );
             let mut bottom = f64::NEG_INFINITY;
             let mut baseline = f64::NAN;
             for p in overlay_prims(&out) {
@@ -1399,7 +1414,7 @@ mod tests {
         let scene = apply_mol_chrome(&node, &mol, scene);
         let spec: DepictSpec =
             serde_json::from_str(r#"{"type":"mol","smiles":"CCO","name":"ethanol"}"#).unwrap();
-        let out = apply_mol_captions(&spec, &node, scene);
+        let out = apply_mol_captions(&spec, &node, scene, 1.0);
 
         let region = out
             .viewports
@@ -1496,7 +1511,7 @@ mod tests {
         };
         let base = crate::depict::depict_molecule(&ethanol());
         let (_x0, _y0, _x1, mol_y1) = structure_aabb(&base).expect("structure");
-        let out = apply_mol_captions(&spec, &mol, base);
+        let out = apply_mol_captions(&spec, &mol, base, 1.0);
         let mut cap_y0 = f64::INFINITY;
         for p in overlay_prims(&out) {
             if let Primitive::Path {

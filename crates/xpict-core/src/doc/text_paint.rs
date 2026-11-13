@@ -6,6 +6,7 @@
 use crate::font::{compile_chem_shapes, face_metrics, FaceStyle};
 use crate::labels::{compose_label, split_label, LabelSide};
 use crate::markup::parse_label_markup;
+use crate::metrics::label_weight_grow_px;
 
 /// Typographic ascent (above baseline) and descent (below) in SVG px (+Y down).
 ///
@@ -22,13 +23,15 @@ pub fn markup_ascent_descent_px(font_px: f64) -> (f64, f64) {
 /// Glyph ink [`crate::geom::Shape`] for markup at baseline `(x, y)`.
 ///
 /// Same Liberation outline path as [`outline_markup`] — use this for buffered
-/// halos (not an AABB box).
+/// halos (not an AABB box). ``weight`` is the mol diagram weight (house ``1``);
+/// stems are buffered like chem atom labels via [`label_weight_grow_px`].
 pub fn markup_ink_shape(
     raw: &str,
     x: f64,
     y: f64,
     font_px: f64,
     anchor: &str,
+    weight: f64,
 ) -> Option<crate::geom::Shape> {
     let text = raw.trim();
     if text.is_empty() {
@@ -39,21 +42,28 @@ pub fn markup_ink_shape(
     if glyphs.is_empty() {
         return None;
     }
-    compile_chem_shapes(&glyphs, x, y, font_px, anchor, style)
+    let mut shape = compile_chem_shapes(&glyphs, x, y, font_px, anchor, style)?;
+    let grow = label_weight_grow_px(weight);
+    if grow > 1e-9 {
+        shape = shape.buffer(grow);
+    }
+    Some(shape)
 }
 
 /// Outline markup-capable text at `(x, y)` (baseline).
 ///
 /// Returns `(path_d, data_text, bounds)` where `data_text` uses unicode
-/// sub/superscripts (same as atom labels).
+/// sub/superscripts (same as atom labels). ``weight`` matches chem label stem
+/// thickening (house ``1``).
 pub fn outline_markup(
     raw: &str,
     x: f64,
     y: f64,
     font_px: f64,
     anchor: &str,
+    weight: f64,
 ) -> Option<(String, String, (f64, f64, f64, f64))> {
-    let shape = markup_ink_shape(raw, x, y, font_px, anchor)?;
+    let shape = markup_ink_shape(raw, x, y, font_px, anchor, weight)?;
     let d = shape.to_svg_d();
     if d.is_empty() {
         return None;
@@ -68,8 +78,9 @@ pub fn markup_bounds_at_origin(
     raw: &str,
     font_px: f64,
     anchor: &str,
+    weight: f64,
 ) -> Option<(f64, f64, f64, f64)> {
-    outline_markup(raw, 0.0, 0.0, font_px, anchor).map(|(_, _, b)| b)
+    outline_markup(raw, 0.0, 0.0, font_px, anchor, weight).map(|(_, _, b)| b)
 }
 
 #[cfg(test)]
@@ -78,7 +89,8 @@ mod tests {
 
     #[test]
     fn markup_subscript_in_data_text() {
-        let (_d, data, _b) = outline_markup("$R_1$", 0.0, 0.0, 14.0, "middle").expect("outline");
+        let (_d, data, _b) =
+            outline_markup("$R_1$", 0.0, 0.0, 14.0, "middle", 1.0).expect("outline");
         assert!(
             data.contains('₁') || data.contains("R"),
             "expected subscripted data_text, got {data:?}"
@@ -89,7 +101,7 @@ mod tests {
     #[test]
     fn markup_plain_text_outlines() {
         let (d, data, (x0, y0, x1, y1)) =
-            outline_markup("ethanol", 10.0, 20.0, 18.0, "middle").expect("outline");
+            outline_markup("ethanol", 10.0, 20.0, 18.0, "middle", 1.0).expect("outline");
         assert!(!d.is_empty());
         assert_eq!(data, "ethanol");
         assert!(x1 > x0 && y1 > y0);
@@ -108,10 +120,22 @@ mod tests {
 
     #[test]
     fn markup_superscript_charge() {
-        let (_d, data, _) = outline_markup("$N^+$", 0.0, 0.0, 14.0, "start").expect("outline");
+        let (_d, data, _) =
+            outline_markup("$N^+$", 0.0, 0.0, 14.0, "start", 1.0).expect("outline");
         assert!(
             data.contains('⁺') || data.contains('+'),
             "expected charge in data_text, got {data:?}"
+        );
+    }
+
+    #[test]
+    fn house_weight_thickens_markup_vs_min() {
+        use crate::metrics::WEIGHT_MIN;
+        let thin = markup_ink_shape("O", 0.0, 0.0, 14.0, "middle", WEIGHT_MIN).expect("thin");
+        let house = markup_ink_shape("O", 0.0, 0.0, 14.0, "middle", 1.0).expect("house");
+        assert!(
+            house.area() > thin.area() * 1.05,
+            "house weight should thicken stem vs WEIGHT_MIN"
         );
     }
 }
