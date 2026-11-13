@@ -118,7 +118,26 @@ fn compose_reaction(
         .collect();
     let placement = match layout_scheme(spec, layout, &sizes, paints) {
         Ok(p) => p,
-        Err(_) => row_placement(&sizes),
+        Err(_) => {
+            // ELK can still fail on exotic graphs; keep a row pack but run the
+            // same refine/router so multi-endpoint tips are not first→first.
+            let row = row_placement(&sizes);
+            let refined = super::scheme_layout::refine_scheme_edges(
+                spec,
+                layout,
+                &row.positions,
+                &row.edge_paths,
+                paints,
+                &sizes,
+            );
+            Placement {
+                positions: refined.positions,
+                edge_paths: refined.edge_paths,
+                edge_labels: refined.edge_labels,
+                width: row.width,
+                height: row.height,
+            }
+        }
     };
 
     let mut viewports = Vec::with_capacity(paints.len());
@@ -405,25 +424,45 @@ fn build_elk_graph(spec: &DepictSpec, layout: &LayoutOpts, sizes: &[(String, f64
         // Count every coterminal member (including paint-only) so a reverse
         // with layout:false still keeps labels off the ELK corridor.
         let n_members = reps.iter().filter(|&&r| r == i).count();
-        let eid = format!("e{i}");
-        let mut entry = json!({
-            "id": eid,
-            "sources": e.sources.as_slice(),
-            "targets": e.targets.as_slice(),
-        });
-        // Group labels belong to the refine pass. One ELK label still widens
-        // the pack and bends the shared corridor.
-        if n_members <= 1 {
-            if let Some(labels) = elk_edge_labels(spec, e, &format!("e{i}")) {
-                entry["labels"] = labels;
-            }
-        }
-        if let Some(r) = e.edge_routing {
-            entry["layoutOptions"] = json!({
-                "elk.edgeRouting": routing_name(r),
+        // ELK rejects hyperedges (A+B→C). Expand to binary edges so every
+        // endpoint participates in layering; facing tips + scheme-plus still
+        // come from the single author edge in refine/paint.
+        let sources = e.sources.as_slice();
+        let targets = e.targets.as_slice();
+        let pairs: Vec<(&str, &str)> = if sources.len() <= 1 && targets.len() <= 1 {
+            let (s, t) = edge_src_tgt(e);
+            vec![(s, t)]
+        } else {
+            sources
+                .iter()
+                .flat_map(|s| targets.iter().map(move |t| (s.as_str(), t.as_str())))
+                .collect()
+        };
+        for (pi, &(elk_src, elk_tgt)) in pairs.iter().enumerate() {
+            let eid = if pi == 0 {
+                format!("e{i}")
+            } else {
+                format!("e{i}_{pi}")
+            };
+            let mut entry = json!({
+                "id": eid,
+                "sources": [elk_src],
+                "targets": [elk_tgt],
             });
+            // Group labels belong to the refine pass. One ELK label still widens
+            // the pack and bends the shared corridor. Attach only to the rep pair.
+            if pi == 0 && n_members <= 1 {
+                if let Some(labels) = elk_edge_labels(spec, e, &format!("e{i}")) {
+                    entry["labels"] = labels;
+                }
+            }
+            if let Some(r) = e.edge_routing {
+                entry["layoutOptions"] = json!({
+                    "elk.edgeRouting": routing_name(r),
+                });
+            }
+            edges.push(entry);
         }
-        edges.push(entry);
     }
 
     json!({

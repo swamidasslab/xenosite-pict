@@ -111,9 +111,11 @@ pub fn route_scheme_edges(
     // Seed centroid chords for coterminal grouping (ELK paths discarded).
     let mut seeds: Vec<Vec<Pt>> = Vec::with_capacity(n_edges);
     for edge in spec.edges() {
-        let (src, tgt) = edge_src_tgt(edge);
-        let a = centroids.get(&src).copied().unwrap_or((0.0, 0.0));
-        let b = centroids.get(&tgt).copied().unwrap_or((0.0, 0.0));
+        let (src, tgt) = edge_facing_src_tgt(edge, &centroids);
+        let a = mean_centroid(edge.sources.as_slice(), &centroids)
+            .unwrap_or_else(|| centroids.get(&src).copied().unwrap_or((0.0, 0.0)));
+        let b = mean_centroid(edge.targets.as_slice(), &centroids)
+            .unwrap_or_else(|| centroids.get(&tgt).copied().unwrap_or((0.0, 0.0)));
         seeds.push(vec![a, b]);
     }
     let groups = coterminal_groups(&spec.edges(), &seeds);
@@ -134,9 +136,13 @@ pub fn route_scheme_edges(
     for group in &groups {
         let rep = group.members[0];
         let edge = &spec.edges()[rep];
-        let (src, tgt) = edge_src_tgt(edge);
-        let src_c = centroids.get(&src).copied().unwrap_or((0.0, 0.0));
-        let tgt_c = centroids.get(&tgt).copied().unwrap_or((0.0, 0.0));
+        let (src, tgt) = edge_facing_src_tgt(edge, &centroids);
+        // Multi-endpoint: pathway + tips use the *group* centroid so the shaft
+        // leaves the middle of A+B (not only the nearer mol's latitude).
+        let src_c = mean_centroid(edge.sources.as_slice(), &centroids)
+            .unwrap_or_else(|| centroids.get(&src).copied().unwrap_or((0.0, 0.0)));
+        let tgt_c = mean_centroid(edge.targets.as_slice(), &centroids)
+            .unwrap_or_else(|| centroids.get(&tgt).copied().unwrap_or((0.0, 0.0)));
         let min_shaft = min_shaft_px(edge.stroke_width);
         let clash = shaft_chem_clash(edge.stroke_width, group.members.len());
         // Free-space terminals for the geometric router (outside inflated hulls).
@@ -144,19 +150,39 @@ pub fn route_scheme_edges(
         let start = tip_outside_hull(
             &obstacles,
             &src,
-            tip_pose(world, &src, src_c, tgt_c, clash, min_shaft),
+            tip_pose_group(
+                world,
+                edge.sources.as_slice(),
+                &centroids,
+                src_c,
+                tgt_c,
+                clash,
+                min_shaft,
+            ),
             src_c,
             tgt_c,
         );
         let goal = tip_outside_hull(
             &obstacles,
             &tgt,
-            tip_pose(world, &tgt, tgt_c, src_c, clash, min_shaft),
+            tip_pose_group(
+                world,
+                edge.targets.as_slice(),
+                &centroids,
+                tgt_c,
+                src_c,
+                clash,
+                min_shaft,
+            ),
             tgt_c,
             src_c,
         );
-        let skip_owned: HashSet<String> = [src.clone(), tgt.clone()].into_iter().collect();
-
+        // Skip every co-endpoint mol so sibling sources/targets are not treated
+        // as obstacles for the facing-tip chord (A+B→C tips on B→C).
+        let mut skip_owned: HashSet<String> = HashSet::new();
+        for id in edge.sources.as_slice().iter().chain(edge.targets.as_slice()) {
+            skip_owned.insert(id.clone());
+        }
         tips.push((start, goal));
         skips.push(skip_owned);
         clashes.push(clash);
@@ -263,6 +289,7 @@ pub fn route_scheme_edges(
     resnap_tips_to_approach_rays(
         &mut group_centers,
         &group_ends,
+        &group_centroids,
         &centroids,
         world,
         &obstacles,
@@ -948,6 +975,7 @@ fn count_pathway_crossings_with_peers(
 fn resnap_tips_to_approach_rays(
     centers: &mut [Vec<Pt>],
     ends: &[(String, String)],
+    group_centroids: &[(Pt, Pt)],
     centroids: &HashMap<String, Pt>,
     world: &LayoutWorld,
     obstacles: &[Obstacle],
@@ -961,31 +989,36 @@ fn resnap_tips_to_approach_rays(
             continue;
         }
         let (ref src, ref tgt) = ends[gi];
-        let src_c = centroids.get(src).copied().unwrap_or(centers[gi][0]);
-        let last_i = centers[gi].len() - 1;
-        let tgt_c = centroids
-            .get(tgt)
-            .copied()
-            .unwrap_or(centers[gi][last_i]);
-        let clash = clashes.get(gi).copied().unwrap_or(SCHEME_INK_STANDOFF);
-        let min_shaft = groups
+        let (src_c, tgt_c) = group_centroids
             .get(gi)
-            .and_then(|g| edges.get(g.members[0]))
+            .copied()
+            .unwrap_or((centers[gi][0], centers[gi][centers[gi].len() - 1]));
+        let clash = clashes.get(gi).copied().unwrap_or(SCHEME_INK_STANDOFF);
+        let edge = groups
+            .get(gi)
+            .and_then(|g| edges.get(g.members[0]));
+        let min_shaft = edge
             .map(|e| min_shaft_px(e.stroke_width))
             .unwrap_or_else(|| min_shaft_px(None));
+        let src_ids = edge
+            .map(|e| e.sources.as_slice())
+            .unwrap_or(std::slice::from_ref(src));
+        let tgt_ids = edge
+            .map(|e| e.targets.as_slice())
+            .unwrap_or(std::slice::from_ref(tgt));
         let next = centers[gi][1];
         let prev = centers[gi][centers[gi].len() - 2];
         let start = tip_outside_hull(
             obstacles,
             src,
-            tip_pose(world, src, src_c, next, clash, min_shaft),
+            tip_pose_group(world, src_ids, centroids, src_c, next, clash, min_shaft),
             src_c,
             next,
         );
         let goal = tip_outside_hull(
             obstacles,
             tgt,
-            tip_pose(world, tgt, tgt_c, prev, clash, min_shaft),
+            tip_pose_group(world, tgt_ids, centroids, tgt_c, prev, clash, min_shaft),
             tgt_c,
             prev,
         );
@@ -1947,6 +1980,95 @@ fn edge_src_tgt(edge: &EdgeNode) -> (String, String) {
     let src = edge.sources.as_slice().first().cloned().unwrap_or_default();
     let tgt = edge.targets.as_slice().first().cloned().unwrap_or_default();
     (src, tgt)
+}
+
+fn mean_centroid(ids: &[String], centroids: &HashMap<String, Pt>) -> Option<Pt> {
+    let mut sx = 0.0;
+    let mut sy = 0.0;
+    let mut n = 0.0;
+    for id in ids {
+        if let Some(&(x, y)) = centroids.get(id) {
+            sx += x;
+            sy += y;
+            n += 1.0;
+        }
+    }
+    (n >= 1.0).then_some((sx / n, sy / n))
+}
+
+/// Source/target mols that face each other across a (possibly multi-endpoint) edge.
+///
+/// Author lists may order sources/targets arbitrarily. A shaft from the *first*
+/// source to the *first* target pierces co-endpoint siblings (A+B→C drew A→C
+/// through B). Pick each side's mol closest to the opposite group's centroid so
+/// tip_outside_hull knows which inflated hull to clear.
+fn edge_facing_src_tgt(edge: &EdgeNode, centroids: &HashMap<String, Pt>) -> (String, String) {
+    let sources = edge.sources.as_slice();
+    let targets = edge.targets.as_slice();
+    if sources.is_empty() || targets.is_empty() {
+        return (String::new(), String::new());
+    }
+    if sources.len() == 1 && targets.len() == 1 {
+        return (sources[0].clone(), targets[0].clone());
+    }
+    let closest = |ids: &[String], to: Pt| -> String {
+        ids.iter()
+            .min_by(|a, b| {
+                let da = centroids
+                    .get(a.as_str())
+                    .map(|&c| dist(c, to))
+                    .unwrap_or(f64::INFINITY);
+                let db = centroids
+                    .get(b.as_str())
+                    .map(|&c| dist(c, to))
+                    .unwrap_or(f64::INFINITY);
+                da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .cloned()
+            .unwrap_or_default()
+    };
+    let src_g = mean_centroid(sources, centroids).unwrap_or((0.0, 0.0));
+    let tgt_g = mean_centroid(targets, centroids).unwrap_or((0.0, 0.0));
+    (closest(sources, tgt_g), closest(targets, src_g))
+}
+
+/// Far side of a multi-mol endpoint group along `centroid → toward`.
+///
+/// Stacked co-endpoints put the group centroid in the `+` gap, so a walk that
+/// requires ink occupancy never leaves the corridor. Pose each member from its
+/// own chem centroid, then keep the tip with the largest projection onto the
+/// group ray (and snap onto that ray so the shaft stays centered).
+fn tip_pose_group(
+    world: &LayoutWorld,
+    mols: &[String],
+    centroids: &HashMap<String, Pt>,
+    centroid: Pt,
+    toward: Pt,
+    clash: f64,
+    min_shaft: f64,
+) -> Pt {
+    if mols.len() <= 1 {
+        let id = mols.first().map(String::as_str).unwrap_or("");
+        let mol_c = centroids.get(id).copied().unwrap_or(centroid);
+        return tip_pose(world, id, mol_c, toward, clash, min_shaft);
+    }
+    let dx = toward.0 - centroid.0;
+    let dy = toward.1 - centroid.1;
+    let span = dx.hypot(dy).max(min_shaft);
+    let l = dx.hypot(dy).max(1e-9);
+    let ux = dx / l;
+    let uy = dy / l;
+    let at = |t: f64| (centroid.0 + ux * t, centroid.1 + uy * t);
+    let mut best_t = clash.min(span);
+    for id in mols {
+        let mol_c = centroids.get(id).copied().unwrap_or(centroid);
+        let tip = tip_pose(world, id, mol_c, toward, clash, min_shaft);
+        let t = (tip.0 - centroid.0) * ux + (tip.1 - centroid.1) * uy;
+        if t > best_t {
+            best_t = t;
+        }
+    }
+    at(best_t.clamp(clash.min(span), span.max(clash)))
 }
 
 fn unordered_mol_pair(src: &str, tgt: &str) -> (String, String) {

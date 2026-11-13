@@ -570,12 +570,41 @@ fn multi_product_shafts_clear_chem() {
 
 #[test]
 fn multi_reactant_shafts_clear_chem() {
-    shaft_interior_clear_of_mols(&render_json(multi_reactant_spec()), -1.5);
+    let scene = render_json(multi_reactant_spec());
+    shaft_interior_clear_of_mols(&scene, -1.5);
+    // Hyperedge ELK failure used to fall back to first→first (A→C through B).
+    assert_shaft_starts_past_source_group(&scene, &["A", "B"], "C");
 }
 
 #[test]
 fn multi_both_shafts_clear_chem() {
-    shaft_interior_clear_of_mols(&render_json(multi_both_spec()), -1.5);
+    let scene = render_json(multi_both_spec());
+    shaft_interior_clear_of_mols(&scene, -1.5);
+    assert_shaft_starts_past_source_group(&scene, &["A", "B"], "C");
+}
+
+/// Shaft tip must leave the source *group*, not the first listed source's box.
+fn assert_shaft_starts_past_source_group(scene: &Scene, sources: &[&str], _tgt: &str) {
+    let mut group_right = f64::NEG_INFINITY;
+    for id in sources {
+        let vp = scene
+            .viewports
+            .iter()
+            .find(|v| v.id.as_deref() == Some(*id))
+            .unwrap_or_else(|| panic!("missing viewport {id}"));
+        group_right = group_right.max(vp.x + vp.width);
+    }
+    let paths = overlay_edge_paths(scene);
+    assert!(!paths.is_empty(), "expected a painted shaft");
+    for d in paths {
+        let pts = sample_path(&d);
+        assert!(pts.len() >= 2, "short path {d}");
+        let (x0, _) = pts[0];
+        assert!(
+            x0 >= group_right - 2.0,
+            "shaft starts inside source group (x0={x0:.1} group_right={group_right:.1}) path={d}"
+        );
+    }
 }
 
 #[test]

@@ -1,7 +1,7 @@
 //! Soft mol translation after ELK: open a clear shaft corridor when a small
 //! move helps, without packing mols into each other.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::engine_config::EngineConfig;
 
@@ -56,13 +56,18 @@ fn best_nudge_for_any_blocked(
 ) -> Option<(String, f64, f64)> {
     let mut best: Option<(f64, String, f64, f64)> = None; // (cost, id, dx, dy)
     for edge in edges {
-        let (src, tgt) = edge_src_tgt(edge);
+        let (src, tgt) = edge_facing_src_tgt(edge, pos, size_of);
         if src.is_empty() || tgt.is_empty() || src == tgt {
             continue;
         }
         let a = box_center(pos, size_of, &src)?;
         let b = box_center(pos, size_of, &tgt)?;
-        let blockers = chord_blockers(pos, size_of, a, b, &src, &tgt);
+        // Sibling co-endpoints are intentional neighbors (+), not blockers.
+        let mut owned: HashSet<String> = HashSet::new();
+        for id in edge.sources.as_slice().iter().chain(edge.targets.as_slice()) {
+            owned.insert(id.clone());
+        }
+        let blockers = chord_blockers_except(pos, size_of, a, b, &owned);
         if blockers.is_empty() {
             continue;
         }
@@ -86,7 +91,7 @@ fn best_nudge_for_any_blocked(
                         continue;
                     }
                     // Must clear *this* chord; do not create new overlaps.
-                    if !chord_clear(&trial, size_of, a, b, &src, &tgt) {
+                    if !chord_clear_except(&trial, size_of, a, b, &owned) {
                         continue;
                     }
                     let cost = step; // prefer smaller moves
@@ -104,17 +109,16 @@ fn best_nudge_for_any_blocked(
     best.map(|(_, id, dx, dy)| (id, dx, dy))
 }
 
-fn chord_blockers(
+fn chord_blockers_except(
     pos: &HashMap<String, Pt>,
     size_of: &HashMap<&str, (f64, f64)>,
     a: Pt,
     b: Pt,
-    src: &str,
-    tgt: &str,
+    owned: &HashSet<String>,
 ) -> Vec<String> {
     let mut out = Vec::new();
     for &id in size_of.keys() {
-        if id == src || id == tgt {
+        if owned.contains(id) {
             continue;
         }
         let Some(aabb) = mol_aabb(pos, size_of, id) else {
@@ -127,15 +131,14 @@ fn chord_blockers(
     out
 }
 
-fn chord_clear(
+fn chord_clear_except(
     pos: &HashMap<String, Pt>,
     size_of: &HashMap<&str, (f64, f64)>,
     a: Pt,
     b: Pt,
-    src: &str,
-    tgt: &str,
+    owned: &HashSet<String>,
 ) -> bool {
-    chord_blockers(pos, size_of, a, b, src, tgt).is_empty()
+    chord_blockers_except(pos, size_of, a, b, owned).is_empty()
 }
 
 fn boxes_overlap_any(
@@ -217,6 +220,58 @@ fn edge_src_tgt(edge: &EdgeNode) -> (String, String) {
     let src = edge.sources.as_slice().first().cloned().unwrap_or_default();
     let tgt = edge.targets.as_slice().first().cloned().unwrap_or_default();
     (src, tgt)
+}
+
+/// Near-side source/target for multi-endpoint edges (same rule as scheme_route).
+fn edge_facing_src_tgt(
+    edge: &EdgeNode,
+    pos: &HashMap<String, Pt>,
+    size_of: &HashMap<&str, (f64, f64)>,
+) -> (String, String) {
+    let sources = edge.sources.as_slice();
+    let targets = edge.targets.as_slice();
+    if sources.is_empty() || targets.is_empty() {
+        return (String::new(), String::new());
+    }
+    if sources.len() == 1 && targets.len() == 1 {
+        return (sources[0].clone(), targets[0].clone());
+    }
+    let center = |id: &str| -> Option<Pt> { box_center(pos, size_of, id) };
+    let mean = |ids: &[String]| -> Option<Pt> {
+        let mut sx = 0.0;
+        let mut sy = 0.0;
+        let mut n = 0.0;
+        for id in ids {
+            let Some((x, y)) = center(id) else {
+                continue;
+            };
+            sx += x;
+            sy += y;
+            n += 1.0;
+        }
+        (n >= 1.0).then_some((sx / n, sy / n))
+    };
+    let Some(src_g) = mean(sources) else {
+        return edge_src_tgt(edge);
+    };
+    let Some(tgt_g) = mean(targets) else {
+        return edge_src_tgt(edge);
+    };
+    let closest = |ids: &[String], to: Pt| -> String {
+        ids.iter()
+            .min_by(|a, b| {
+                let da = center(a)
+                    .map(|c| (c.0 - to.0).hypot(c.1 - to.1))
+                    .unwrap_or(f64::INFINITY);
+                let db = center(b)
+                    .map(|c| (c.0 - to.0).hypot(c.1 - to.1))
+                    .unwrap_or(f64::INFINITY);
+                da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .cloned()
+            .unwrap_or_default()
+    };
+    (closest(sources, tgt_g), closest(targets, src_g))
 }
 
 #[cfg(test)]
