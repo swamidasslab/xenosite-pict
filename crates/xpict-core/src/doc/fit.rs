@@ -3,7 +3,10 @@
 use crate::scene::{Primitive, Scene};
 
 /// Default gap (px) between content AABB and SVG viewBox edge (small house pad).
-pub const VIEWPORT_MARGIN_DEFAULT: f64 = 4.0;
+///
+/// Keep ≥ ~½ bond so west HO / north =O / tall GlcA labels do not look
+/// flush-clipped against the SVG edge in the review gallery.
+pub const VIEWPORT_MARGIN_DEFAULT: f64 = 8.0;
 
 /// Resolve a viewport margin: finite ≥ 0, else house default.
 pub fn resolve_viewport_margin(pad: Option<f64>) -> f64 {
@@ -57,9 +60,21 @@ fn content_aabb(scene: &Scene) -> Option<(f64, f64, f64, f64)> {
     for vp in &scene.viewports {
         let mut layer_ink = false;
         let (ox, oy) = vp.local_origin();
+        // feMorphology chem halo can extend past path AABBs; grow the fit box
+        // so dilated ink is not clipped by the SVG viewBox.
+        let halo_grow = vp.halo_filter_px.unwrap_or(0.0).max(0.0);
         for layer in &vp.layers {
             for p in &layer.primitives {
-                expand_prim(p, ox, oy, &mut min_x, &mut min_y, &mut max_x, &mut max_y);
+                expand_prim(
+                    p,
+                    ox,
+                    oy,
+                    &mut min_x,
+                    &mut min_y,
+                    &mut max_x,
+                    &mut max_y,
+                    halo_grow,
+                );
                 layer_ink = true;
                 any = true;
             }
@@ -75,7 +90,16 @@ fn content_aabb(scene: &Scene) -> Option<(f64, f64, f64, f64)> {
         }
     }
     for p in scene.halo.iter().chain(scene.overlays.iter()) {
-        expand_prim(p, 0.0, 0.0, &mut min_x, &mut min_y, &mut max_x, &mut max_y);
+        expand_prim(
+            p,
+            0.0,
+            0.0,
+            &mut min_x,
+            &mut min_y,
+            &mut max_x,
+            &mut max_y,
+            0.0,
+        );
         any = true;
     }
 
@@ -93,6 +117,7 @@ fn expand_prim(
     min_y: &mut f64,
     max_x: &mut f64,
     max_y: &mut f64,
+    extra_grow: f64,
 ) {
     match p {
         Primitive::Circle {
@@ -102,7 +127,7 @@ fn expand_prim(
             stroke_width,
             ..
         } => {
-            let grow = r + stroke_width.max(0.0) * 0.5;
+            let grow = r + stroke_width.max(0.0) * 0.5 + extra_grow;
             *min_x = min_x.min(ox + cx - grow);
             *min_y = min_y.min(oy + cy - grow);
             *max_x = max_x.max(ox + cx + grow);
@@ -113,15 +138,15 @@ fn expand_prim(
         } => {
             // Conservative ink box around baseline.
             let em = font_size.max(1.0);
-            *min_x = min_x.min(ox + x - em);
-            *min_y = min_y.min(oy + y - em);
-            *max_x = max_x.max(ox + x + em * 2.0);
-            *max_y = max_y.max(oy + y + em * 0.4);
+            *min_x = min_x.min(ox + x - em - extra_grow);
+            *min_y = min_y.min(oy + y - em - extra_grow);
+            *max_x = max_x.max(ox + x + em * 2.0 + extra_grow);
+            *max_y = max_y.max(oy + y + em * 0.4 + extra_grow);
         }
         Primitive::Path {
             d, stroke_width, ..
         } => {
-            let grow = stroke_width.max(0.0) * 0.5;
+            let grow = stroke_width.max(0.0) * 0.5 + extra_grow;
             for (x, y) in path_coords(d) {
                 *min_x = min_x.min(ox + x - grow);
                 *min_y = min_y.min(oy + y - grow);

@@ -2,14 +2,16 @@
 
 ## 2026-11-13
 
+- House SVG pad `VIEWPORT_MARGIN_DEFAULT` 4→8px and grow fit AABB by
+  `halo_filter_px` so west HO / north =O / GlcA labels are not flush-clipped
+  against the viewBox (gallery line/network/GlcA “clipped” notes).
 - Multi-endpoint scheme arrows (gallery multi-reactant / multi-product /
   multi-both): ELK rejects hyperedges, so A+B→C fell back to a row pack and
   paint used first→first (shaft through co-endpoint mols). Fix: expand
   hyperedges to binary ELK pairs for packing; route tips from group
   centroids with facing hull hug (`tip_pose_group`). Regression asserts
   shaft starts past the source *group*, not the first listed source.
-- Fan lowermost-arrow overlap and GlcA “clipped” notes still open (GlcA
-  viewBox margins look fine; may be gallery crop / stale note).
+- Fan lowermost-arrow overlap still open.
 
 ## 2026-11-12
 
