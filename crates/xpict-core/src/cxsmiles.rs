@@ -406,7 +406,30 @@ fn parse_delta_counts(body: &str) -> Result<std::collections::BTreeMap<String, i
 }
 
 /// Absolute Hill (C, H, then A–Z); count `1` omitted; `n>1` → `El_{n}`.
+///
+/// Special case: O plus exactly one other element → that element first, O last
+/// (`O3P` → `PO_{3}`, `O4S` → `SO_{4}`, `H2O` → `H_{2}O`).
 fn hill_absolute_display(f: &std::collections::BTreeMap<String, i32>) -> String {
+    let pos: Vec<(&str, i32)> = f
+        .iter()
+        .filter(|(_, &n)| n > 0)
+        .map(|(el, &n)| (el.as_str(), n))
+        .collect();
+    let fmt = |el: &str, n: i32| -> String {
+        if n == 1 {
+            el.to_string()
+        } else {
+            format!("{el}_{{{}}}", n)
+        }
+    };
+    // O + one other → other then O (oxide / oxoanion spelling).
+    if pos.len() == 2 {
+        if let Some(&(other, on)) = pos.iter().find(|(el, _)| *el != "O") {
+            if let Some(&(_, o_n)) = pos.iter().find(|(el, _)| *el == "O") {
+                return format!("{}{}", fmt(other, on), fmt("O", o_n));
+            }
+        }
+    }
     let mut parts = Vec::new();
     let mut push = |el: &str| {
         let Some(&n) = f.get(el) else {
@@ -415,11 +438,7 @@ fn hill_absolute_display(f: &std::collections::BTreeMap<String, i32>) -> String 
         if n <= 0 {
             return;
         }
-        if n == 1 {
-            parts.push(el.to_string());
-        } else {
-            parts.push(format!("{el}_{{{}}}", n));
-        }
+        parts.push(fmt(el, n));
     };
     let rest: Vec<_> = f
         .keys()
@@ -555,10 +574,13 @@ mod tests {
         assert_eq!(format_mf_delta_display("O-H"), "+O-H");
         assert_eq!(format_mf_delta_display("C/O"), "+C or +O");
         assert_eq!(format_mf_delta_display("O/-H2-O"), "+O or -H_{2}O");
-        assert_eq!(format_mf_delta_display("O3P"), "+O_{3}P");
+        assert_eq!(format_mf_delta_display("O3P"), "+PO_{3}");
+        assert_eq!(format_mf_delta_display("O4S"), "+SO_{4}");
         assert_eq!(format_mf_delta_display("O{+1}"), "+O^{+}");
         assert_eq!(format_mf_delta_display("O{+1}/Na{+1}"), "+O^{+} or +Na^{+}");
         assert_eq!(format_mf_delta_display("CHO-C2-H5"), "+O-CH_{4}");
+        assert_eq!(format_mf_absolute_display("H2O"), "H_{2}O");
+        assert_eq!(format_mf_absolute_display("O3P"), "PO_{3}");
         // Star stub: all-nonneg after sum ⇒ absolute formula (no +).
         assert!(is_formula_only_constraint("O"));
         assert!(is_formula_only_constraint("C6H6O"));

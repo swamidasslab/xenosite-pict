@@ -1,5 +1,5 @@
 title: MF_DELTA O3P on pentane
-expect: Pentane in a box region with inside label "+O_{3}P".
+expect: Pentane in a box region with inside label "+PO_{3}".
 spec:
   type: mol
   cxsmiles: "CCCCC |MOLPROP:MF_DELTA=O3P|"
