@@ -41,5 +41,6 @@ def test_scale_two_doubles_intrinsic_size():
     scaled = render({"type": "mol", "smiles": "CCO", "scale": 2.0})
     bw, bh = _root_wh(base)
     sw, sh = _root_wh(scaled)
-    assert sw == pytest.approx(2.0 * bw, rel=1e-4)
-    assert sh == pytest.approx(2.0 * bh, rel=1e-4)
+    # SVG root attrs are hundredths of a px; 2× rounded base can be ±0.01 off.
+    assert sw == pytest.approx(2.0 * bw, abs=0.02)
+    assert sh == pytest.approx(2.0 * bh, abs=0.02)

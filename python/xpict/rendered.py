@@ -262,6 +262,32 @@ class Rendered(PictBase):
             **_extra,
         )
 
+    def to_spec(self):
+        from xpict.spec import Mol
+
+        if self.mol is not None:
+            return self.mol.to_spec()
+        return Mol(source=self.source, id=self.molecule.id).to_spec()
+
+    def _repr_html_(self) -> str:
+        svg = self.to_svg()
+        return f'<div style="display:inline-block;line-height:0">{svg}</div>'
+
+    def _repr_svg_(self) -> str:
+        return self.to_svg()
+
+    def _repr_mimebundle_(
+        self,
+        include: list[str] | None = None,
+        exclude: list[str] | None = None,
+    ) -> dict[str, str]:
+        _ = include, exclude
+        return {
+            "text/html": self._repr_html_(),
+            "image/svg+xml": self.to_svg(),
+            "text/plain": f"Rendered({self.width:.0f}×{self.height:.0f}, {self.source!r})",
+        }
+
 
 def align_from(
     rows: Rendered | Sequence[Rendered],
@@ -293,29 +319,3 @@ def align_from(
         mode=mode,
         timeout_ms=timeout_ms,
     )
-
-    def to_spec(self):
-        from xpict.spec import Mol
-
-        if self.mol is not None:
-            return self.mol.to_spec()
-        return Mol(source=self.source, id=self.molecule.id).to_spec()
-
-    def _repr_html_(self) -> str:
-        svg = self.to_svg()
-        return f'<div style="display:inline-block;line-height:0">{svg}</div>'
-
-    def _repr_svg_(self) -> str:
-        return self.to_svg()
-
-    def _repr_mimebundle_(
-        self,
-        include: list[str] | None = None,
-        exclude: list[str] | None = None,
-    ) -> dict[str, str]:
-        _ = include, exclude
-        return {
-            "text/html": self._repr_html_(),
-            "image/svg+xml": self.to_svg(),
-            "text/plain": f"Rendered({self.width:.0f}×{self.height:.0f}, {self.source!r})",
-        }

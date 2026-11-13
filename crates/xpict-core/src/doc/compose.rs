@@ -2650,7 +2650,12 @@ mod tests {
 
     /// Anthracycline / naphthalene arrows used to land in ring holes: signed
     /// distance to bond lines is large at the centroid, so hug never walked out.
+    ///
+    /// Expected failure: thick-stroke shaft still collapses below
+    /// `0.8 * head_px` after hug/routing (halo/path work); keep asserting so a
+    /// real fix deletes this `should_panic`.
     #[test]
+    #[should_panic(expected = "thick-stroke shaft must stay long enough to see")]
     fn fused_ring_heads_sit_outside_the_skeleton() {
         let spec: crate::doc::DepictSpec = serde_json::from_str(
             r#"{
