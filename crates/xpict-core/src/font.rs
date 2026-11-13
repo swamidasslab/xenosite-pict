@@ -574,10 +574,10 @@ mod tests {
         let shape = compile_text_shapes("O", 0.0, 0.0, FONT_PX, "middle", FaceStyle::Regular)
             .expect("O");
         let d = shape.to_svg_d();
-        // Outer+inner rings: ½ px export used to leave ~a dozen segs (faceted).
+        // Outer+inner rings: ½ px export + 30° buffer joins left ~a dozen segs.
         let n_l = d.matches(" L ").count();
         assert!(
-            n_l >= 28,
+            n_l >= 32,
             "O path too coarse after export decimate ({n_l} L segs): {d}"
         );
     }

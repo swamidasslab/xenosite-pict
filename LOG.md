@@ -2,9 +2,10 @@
 
 ## 2026-11-13
 
-- Glyph SVG paths looked faceted (O as hexagon): export RDP was ½ px and
-  Bezier sampling only 4 steps. Tighten `SVG_PATH_EPS_PX` to 0.1 and sample
-  12 steps/curve with lighter contour RDP so chem/GlcA bowls stay curved.
+- Glyph SVG paths looked faceted (O as hexagon): export RDP was ½ px,
+  Bezier sampling only 4 steps, and weight-grow `buffer` used 30° round
+  joins that re-polygonized bowls. Tighten `SVG_PATH_EPS_PX` to 0.1, sample
+  12 steps/curve, and use ~8° outline joins so chem/GlcA letters stay curved.
 - Gallery follow-ups after multi-endpoint / pad work: scheme `+` is now
   caption-sized (`1.5× FONT_PX`), optically centered in the chem-ink gap
   (facing hull edges + alphabetic baseline lift), co-endpoint stacks align

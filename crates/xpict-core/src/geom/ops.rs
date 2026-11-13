@@ -14,6 +14,12 @@ use super::{
 };
 use std::f64::consts::FRAC_PI_6;
 
+/// Max turn (radians) for outline/`buffer` round joins.
+///
+/// `π/6` (30°) left chem-label bowls faceted after weight grow; ~8° keeps O/C/G
+/// curved without ballooning path size the way sub-degree joins do.
+const OUTLINE_ROUND_RAD: f64 = 0.14;
+
 type Contour = Vec<[f64; 2]>;
 type OverlayShape = Vec<Contour>;
 type Shapes = Vec<OverlayShape>;
@@ -146,8 +152,9 @@ impl Shape {
         if self.is_empty() || dist.abs() < 1e-15 {
             return self.clone();
         }
-        // Angle (radians), not px — coarser than the old dist×0.35 mis-read.
-        let join = LineJoin::Round(FRAC_PI_6);
+        // Angle (radians), not px. Finer than stroke joins: label weight-grow
+        // buffers glyph outlines, and 30° turns painted O as a polygon.
+        let join = LineJoin::Round(OUTLINE_ROUND_RAD);
         Self::wrap(
             self.shapes
                 .outline(&OutlineStyle::new(dist).line_join(join)),
