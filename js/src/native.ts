@@ -11,6 +11,8 @@ import { XPICT_WASM_REV } from "./wasm/rev.js";
 let module_: XpictWasm | null = null;
 let ready = false;
 let initPromise: Promise<void> | null = null;
+/** Rev of the wasm blob currently loaded (HMR can bump `XPICT_WASM_REV`). */
+let loadedRev: string | null = null;
 
 function wasmCall(fn: (ptr: number) => number, specJson: string): string {
   if (!module_) throw new Error("xpict wasm not initialized");
@@ -41,6 +43,14 @@ function wasmRender(specJson: string): string {
 
 /** Load the wasm module (idempotent). Works in browser and Node. */
 export async function initNative(optsIn?: InitInput | BufferSource): Promise<void> {
+  // Vite HMR updates `rev.ts` without remounting this module — drop the
+  // stale Emscripten instance so the next paint fetches the new blob.
+  if (ready && loadedRev !== XPICT_WASM_REV) {
+    module_ = null;
+    ready = false;
+    initPromise = null;
+    loadedRev = null;
+  }
   if (ready) return;
   if (!initPromise) {
     initPromise = (async () => {
@@ -74,6 +84,7 @@ export async function initNative(optsIn?: InitInput | BufferSource): Promise<voi
         opts.locateFile = (p) => (p.endsWith(".wasm") ? wasmUrl.href : p);
       }
       module_ = await createXpict(opts);
+      loadedRev = XPICT_WASM_REV;
       ready = true;
     })();
   }
