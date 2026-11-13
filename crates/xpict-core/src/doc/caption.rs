@@ -13,11 +13,11 @@ use crate::scene::{LayerName, Primitive, Scene};
 
 /// Caption em size vs atom-label [`FONT_PX`] (1.5× house atom labels).
 pub const CAPTION_FONT_FRAC: f64 = 1.5;
-/// Default gap (px) between mol **structure** and caption: half a CC-bond.
+/// Default gap (px) between mol **structure** and caption.
 ///
-/// Three-quarters looked airy under long names (Doxorubicin) but pushed
-/// short scheme labels (diamond A/B/C/D) too far from the ink.
-pub const CAPTION_MARGIN_DEFAULT: f64 = 0.5 * BOND_PX;
+/// Half/¾-bond air helped long names (Doxorubicin) but left short scheme
+/// labels (diamond A/B/C/D) floating; ~¼ bond keeps names snug.
+pub const CAPTION_MARGIN_DEFAULT: f64 = 0.25 * BOND_PX;
 
 /// Chem structure only: bonds + heteroatom labels. Skips shade, regions,
 /// callouts, circles, and chrome atom numbers/labels.
@@ -1276,7 +1276,7 @@ mod tests {
 
     #[test]
     fn mol_name_snugs_to_ink_via_ascent_metrics() {
-        assert!((CAPTION_MARGIN_DEFAULT - 0.5 * BOND_PX).abs() < 1e-12);
+        assert!((CAPTION_MARGIN_DEFAULT - 0.25 * BOND_PX).abs() < 1e-12);
         let node = MolNode {
             name: Some(MolText::Styled(MolTextSpec {
                 content: "EtOH".into(),

@@ -6,7 +6,7 @@
   caption-sized (`1.5× FONT_PX`), optically centered in the chem-ink gap
   (facing hull edges + alphabetic baseline lift), co-endpoint stacks align
   opposite-side group midpoints (not tops), within-layer `nodeNode` 20→32,
-  caption default margin back to ½ bond (diamond A/B/C/D), viewBox pad
+  caption default margin to ¼ bond (diamond A/B/C/D), viewBox pad
   8→½ bond. Fan marked fixed in review notes.
 - House SVG pad `VIEWPORT_MARGIN_DEFAULT` 4→8px and grow fit AABB by
   `halo_filter_px` so west HO / north =O / GlcA labels are not flush-clipped
