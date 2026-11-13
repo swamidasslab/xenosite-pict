@@ -570,6 +570,8 @@ fn with_mf_delta_region(node: &MolNode, molecule: &MoleculeIn) -> MolNode {
         return node.clone();
     }
     let atoms: Vec<u32> = molecule.atoms.iter().map(|a| a.index as u32).collect();
+    // Region labels paint at `FONT_PX * scale * 0.95`; scale so ink matches atoms.
+    let atom_match_scale = 1.0 / 0.95;
     let region = RegionSpec {
         style: RegionStyle::Box,
         atoms,
@@ -587,9 +589,11 @@ fn with_mf_delta_region(node: &MolNode, molecule: &MoleculeIn) -> MolNode {
             content: text,
             place: Some(RegionTextPlace::Inside),
             pos: Some(crate::doc::LabelPos::Auto),
+            scale: Some(atom_match_scale),
             ..Default::default()
         })),
-        padding: None,
+        // Extra pad so the box clears structure + inside formula.
+        padding: Some(6.0),
         z: None,
     };
     let mut out = node.clone();
@@ -608,7 +612,8 @@ fn paint_mf_delta_formula_only(
     use crate::scene::{Layer, LayerName, Primitive, Viewport};
 
     let scale = chrome.scale.unwrap_or(1.0).max(1e-6);
-    let font_px = FONT_PX * 1.5 * scale;
+    // Same face size as chem atom text.
+    let font_px = FONT_PX * scale;
     let content = if text.is_empty() { "·" } else { text };
     let (d, data_text, _) = outline_markup(content, 0.0, 0.0, font_px, "middle").ok_or_else(
         || format!("mf_delta formula paint failed for {content:?}"),

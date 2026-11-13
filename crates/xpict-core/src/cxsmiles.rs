@@ -222,7 +222,7 @@ pub fn format_star_mf_display(constraint: &str) -> String {
     }
 }
 
-/// Absolute Hill spelling (no `+`, no losses). Examples: `O`, `C6H6O`, `O or N`.
+/// Absolute Hill spelling (chem markup). Examples: `O`, `C_{6}H_{6}O`, `O^+`.
 pub fn format_mf_absolute_display(constraint: &str) -> String {
     let parts = constraint_parts(constraint);
     if parts.is_empty() {
@@ -237,7 +237,9 @@ pub fn format_mf_absolute_display(constraint: &str) -> String {
 
 /// Display spelling for a formula-delta constraint (no Δ glyph).
 ///
-/// Examples: `+O`, `+O-H`, `+C or +O`, `+O or -H2-O`.
+/// One `+` / `-` per gain / loss group; counts are subscripts; charges are
+/// superscripts (`^+`, `^{++}`). Examples: `+O`, `+O-H`, `+C_{6}H_{6}O`,
+/// `+O or -H_{2}O`, `+O^+`.
 pub fn format_mf_delta_display(constraint: &str) -> String {
     let parts = constraint_parts(constraint);
     if parts.is_empty() {
@@ -258,18 +260,30 @@ fn constraint_parts(constraint: &str) -> Vec<&str> {
         .collect()
 }
 
-fn append_charge(mut s: String, charge: i32) -> String {
-    if charge != 0 {
-        if s.is_empty() {
-            s = format!("{{{:+}}}", charge);
-        } else {
-            s.push_str(&format!("{{{:+}}}", charge));
-        }
+/// Charge as chem superscript: `^+`, `^-`, `^{++}`, `^{3+}`, …
+fn format_charge_super(charge: i32) -> String {
+    if charge == 0 {
+        return String::new();
     }
+    let plus = charge > 0;
+    let mag = charge.unsigned_abs();
+    let body = if mag <= 3 {
+        let ch = if plus { '+' } else { '-' };
+        std::iter::repeat(ch).take(mag as usize).collect::<String>()
+    } else if plus {
+        format!("{mag}+")
+    } else {
+        format!("{mag}-")
+    };
+    format!("^{{{}}}", body)
+}
+
+fn append_charge(mut s: String, charge: i32) -> String {
+    s.push_str(&format_charge_super(charge));
     s
 }
 
-/// One absolute Hill option (`O` → `O`, `C6H6O` → `C6H6O`).
+/// One absolute Hill option (`O` → `O`, `C6H6O` → `C_{6}H_{6}O`).
 fn format_mf_absolute_option(raw: &str) -> String {
     let (body, charge) = split_charge_suffix(raw.trim());
     let Ok(counts) = parse_delta_counts(body) else {
@@ -278,7 +292,7 @@ fn format_mf_absolute_option(raw: &str) -> String {
     append_charge(hill_absolute_display(&counts), charge)
 }
 
-/// One signed-Hill option with explicit `+` on gains (`O-H` → `+O-H`).
+/// One signed option: one `+` gain group and/or one `-` loss group.
 fn format_mf_delta_option(raw: &str) -> String {
     let (body, charge) = split_charge_suffix(raw.trim());
     let Ok(counts) = parse_delta_counts(body) else {
@@ -391,7 +405,7 @@ fn parse_delta_counts(body: &str) -> Result<std::collections::BTreeMap<String, i
     Ok(out)
 }
 
-/// Absolute Hill (C, H, then A–Z); count `1` omitted; no signs.
+/// Absolute Hill (C, H, then A–Z); count `1` omitted; `n>1` → `El_{n}`.
 fn hill_absolute_display(f: &std::collections::BTreeMap<String, i32>) -> String {
     let mut parts = Vec::new();
     let mut push = |el: &str| {
@@ -404,7 +418,7 @@ fn hill_absolute_display(f: &std::collections::BTreeMap<String, i32>) -> String 
         if n == 1 {
             parts.push(el.to_string());
         } else {
-            parts.push(format!("{el}{n}"));
+            parts.push(format!("{el}_{{{}}}", n));
         }
     };
     let rest: Vec<_> = f
@@ -420,43 +434,29 @@ fn hill_absolute_display(f: &std::collections::BTreeMap<String, i32>) -> String 
     parts.concat()
 }
 
-/// Signed Hill display with explicit `+` on gains (`O` → `+O`, `O-H` → `+O-H`).
+/// Signed Hill: one `+` gain group then one `-` loss group (Hill within each).
 ///
-/// Gains first (C, H, then A–Z), then losses — so `O-H` reads `+O-H`.
+/// `O` → `+O`, `O-H` → `+O-H`, `C6H6O` → `+C_{6}H_{6}O`, `-H2-O` → `-H_{2}O`.
 fn hill_delta_display(f: &std::collections::BTreeMap<String, i32>) -> String {
-    let mut parts = Vec::new();
-    let mut push = |el: &str, want_pos: bool| {
-        let Some(&n) = f.get(el) else {
-            return;
-        };
-        if n == 0 || (want_pos && n < 0) || (!want_pos && n > 0) {
-            return;
-        }
-        if n < 0 {
-            if n == -1 {
-                parts.push(format!("-{el}"));
-            } else {
-                parts.push(format!("-{el}{}", n.unsigned_abs()));
-            }
-        } else if n == 1 {
-            parts.push(format!("+{el}"));
-        } else {
-            parts.push(format!("+{el}{n}"));
-        }
-    };
-    let rest: Vec<_> = f
-        .keys()
-        .filter(|k| *k != "C" && *k != "H")
-        .cloned()
-        .collect();
-    for want_pos in [true, false] {
-        push("C", want_pos);
-        push("H", want_pos);
-        for el in &rest {
-            push(el, want_pos);
+    let mut pos = std::collections::BTreeMap::new();
+    let mut neg = std::collections::BTreeMap::new();
+    for (el, &n) in f {
+        if n > 0 {
+            pos.insert(el.clone(), n);
+        } else if n < 0 {
+            neg.insert(el.clone(), -n);
         }
     }
-    parts.concat()
+    let mut s = String::new();
+    if !pos.is_empty() {
+        s.push('+');
+        s.push_str(&hill_absolute_display(&pos));
+    }
+    if !neg.is_empty() {
+        s.push('-');
+        s.push_str(&hill_absolute_display(&neg));
+    }
+    s
 }
 
 /// Apply Lark-parsed CX / inline aliases onto atoms by index.
@@ -554,7 +554,11 @@ mod tests {
         assert_eq!(format_mf_delta_display("O"), "+O");
         assert_eq!(format_mf_delta_display("O-H"), "+O-H");
         assert_eq!(format_mf_delta_display("C/O"), "+C or +O");
-        assert_eq!(format_mf_delta_display("O/-H2-O"), "+O or -H2-O");
+        assert_eq!(format_mf_delta_display("O/-H2-O"), "+O or -H_{2}O");
+        assert_eq!(format_mf_delta_display("O3P"), "+O_{3}P");
+        assert_eq!(format_mf_delta_display("O{+1}"), "+O^{+}");
+        assert_eq!(format_mf_delta_display("O{+1}/Na{+1}"), "+O^{+} or +Na^{+}");
+        assert_eq!(format_mf_delta_display("CHO-C2-H5"), "+O-CH_{4}");
         // Star stub: all-nonneg after sum ⇒ absolute formula (no +).
         assert!(is_formula_only_constraint("O"));
         assert!(is_formula_only_constraint("C6H6O"));
@@ -567,12 +571,13 @@ mod tests {
         assert!(!is_formula_only_constraint("C6H6O/-H2"));
         assert!(!is_formula_only_constraint("-H2/O"));
         assert_eq!(format_star_mf_display("O"), "O");
-        assert_eq!(format_star_mf_display("C6H6O"), "C6H6O");
+        assert_eq!(format_star_mf_display("C6H6O"), "C_{6}H_{6}O");
         assert_eq!(format_star_mf_display("O/N"), "O or N");
-        assert_eq!(format_star_mf_display("C6H6O/O"), "C6H6O or O");
-        assert_eq!(format_star_mf_display("O/-H2-O"), "+O or -H2-O");
-        assert_eq!(format_star_mf_display("-H2/O"), "-H2 or +O");
-        assert_eq!(format_star_mf_display("C6H6O/-H2"), "+C6+H6+O or -H2");
+        assert_eq!(format_star_mf_display("C6H6O/O"), "C_{6}H_{6}O or O");
+        assert_eq!(format_star_mf_display("O/-H2-O"), "+O or -H_{2}O");
+        assert_eq!(format_star_mf_display("-H2/O"), "-H_{2} or +O");
+        assert_eq!(format_star_mf_display("C6H6O/-H2"), "+C_{6}H_{6}O or -H_{2}");
+        assert_eq!(format_star_mf_display("O{+1}/Na{+1}"), "O^{+} or Na^{+}");
     }
 
     #[test]
