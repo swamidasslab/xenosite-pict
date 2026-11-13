@@ -1,10 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { xpict, type DepictSpec } from "@xenosite/xpict"; // workspace file:.. → js/src
+import { XPICT_WASM_REV } from "../src/wasm/rev";
 
 const svgCache = new Map<string, string>();
 
 export function Depict({ spec }: { spec: DepictSpec }) {
-  const key = useMemo(() => JSON.stringify(spec), [spec]);
+  // Include wasm rev so a rebuild invalidates painted cells (same spec JSON).
+  const key = useMemo(
+    () => `${XPICT_WASM_REV}:${JSON.stringify(spec)}`,
+    [spec],
+  );
   const [html, setHtml] = useState<string | null>(() => svgCache.get(key) ?? null);
   const [error, setError] = useState<string | null>(null);
 
