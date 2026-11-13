@@ -576,12 +576,13 @@ fn with_mf_delta_region(node: &MolNode, molecule: &MoleculeIn) -> MolNode {
         style: RegionStyle::Box,
         atoms,
         exclude: vec![],
+        // Zero saturation — neutral gray, not house blue.
         fill: Some(FillSpec {
-            color: Some("#48a".into()),
+            color: Some("#888".into()),
             opacity: Some(0.12),
         }),
         stroke: Some(StrokeSpec {
-            color: Some("#48a".into()),
+            color: Some("#888".into()),
             width: None,
             dash: None,
         }),
