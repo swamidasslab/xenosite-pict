@@ -192,25 +192,28 @@ pub fn is_mf_delta_star_stub(smiles_or_cx: &str) -> bool {
     matches!(smiles_base(smiles_or_cx).as_str(), "*" | "[*]")
 }
 
-/// Star stub whose constraint nets to only non-negative counts (absolute
-/// formula-only mol). Any negative after summing signed terms ⇒ delta.
+/// Star stub whose **every** OR option nets to only non-negative counts
+/// (absolute formula-only). If **any** option has a loss after summing, the
+/// whole constraint is a delta — all options paint with ±.
 pub fn is_formula_only_constraint(constraint: &str) -> bool {
     let parts = constraint_parts(constraint);
     if parts.is_empty() {
         return false;
     }
-    parts.iter().all(|p| {
-        let (body, _) = split_charge_suffix(p.trim());
-        match parse_delta_counts(body) {
-            Ok(counts) => counts.values().all(|&n| n >= 0),
-            // Unparsed body with an explicit `-` is treated as a delta.
-            Err(_) => !body.contains('-'),
-        }
-    })
+    parts.iter().all(|p| option_is_nonneg(p))
 }
 
-/// Paint text for a star + `MF_DELTA` stub: absolute Hill when formula-only,
-/// signed delta display otherwise.
+fn option_is_nonneg(raw: &str) -> bool {
+    let (body, _) = split_charge_suffix(raw.trim());
+    match parse_delta_counts(body) {
+        Ok(counts) => counts.values().all(|&n| n >= 0),
+        // Unparsed body with an explicit `-` is treated as a delta.
+        Err(_) => !body.contains('-'),
+    }
+}
+
+/// Paint text for a star + `MF_DELTA` stub: absolute Hill only when *all*
+/// OR options are nonneg; otherwise every option uses signed delta display.
 pub fn format_star_mf_display(constraint: &str) -> String {
     if is_formula_only_constraint(constraint) {
         format_mf_absolute_display(constraint)
@@ -556,13 +559,20 @@ mod tests {
         assert!(is_formula_only_constraint("O"));
         assert!(is_formula_only_constraint("C6H6O"));
         assert!(is_formula_only_constraint("O/N"));
+        assert!(is_formula_only_constraint("C6H6O/O"));
         assert!(!is_formula_only_constraint("O-H"));
         assert!(!is_formula_only_constraint("O/-H2-O"));
         assert!(!is_formula_only_constraint("CHO-C2-H5/N"));
+        // OR: any loss ⇒ whole constraint is delta (every option gets ±).
+        assert!(!is_formula_only_constraint("C6H6O/-H2"));
+        assert!(!is_formula_only_constraint("-H2/O"));
         assert_eq!(format_star_mf_display("O"), "O");
         assert_eq!(format_star_mf_display("C6H6O"), "C6H6O");
         assert_eq!(format_star_mf_display("O/N"), "O or N");
+        assert_eq!(format_star_mf_display("C6H6O/O"), "C6H6O or O");
         assert_eq!(format_star_mf_display("O/-H2-O"), "+O or -H2-O");
+        assert_eq!(format_star_mf_display("-H2/O"), "-H2 or +O");
+        assert_eq!(format_star_mf_display("C6H6O/-H2"), "+C6+H6+O or -H2");
     }
 
     #[test]

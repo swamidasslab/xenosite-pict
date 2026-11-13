@@ -1,0 +1,5 @@
+title: MF_DELTA mixed OR (absolute-looking + loss)
+expect: Empty graph. One loss flips all options to deltas — "+C6+H6+O or -H2".
+spec:
+  type: mol
+  cxsmiles: "* |MOLPROP:MF_DELTA=C6H6O/-H2|"
