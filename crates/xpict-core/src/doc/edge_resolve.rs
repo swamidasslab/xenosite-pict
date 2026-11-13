@@ -6,12 +6,12 @@ use std::collections::HashMap;
 
 use crate::cxsmiles::cx_multicenters;
 use crate::edge::{
-    AlignMode, AlignOpts, CoordGenMoleculeResult, CoordMethod, EdgePlan, EdgeResult, EdgeTask,
-    EdgeTaskResult, MolTemplate, MIN_MCS_ATOMS,
+    AlignCoords, AlignMode, AlignOpts, CoordGenMoleculeResult, CoordMethod, EdgePlan, EdgeResult,
+    EdgeTask, EdgeTaskResult, MolTemplate, MIN_MCS_ATOMS,
 };
 use crate::elements::element_symbol;
 use crate::labels::atom_display_label;
-use crate::layout_coordgen::{LayoutMolecule, LayoutResult};
+use crate::layout_coordgen::{generate_2d_coordinates, LayoutMolecule, LayoutResult};
 use crate::layout_spoke::layout_or_align_with_spokes;
 use crate::metrics::SCALE;
 use crate::scene::{AtomIn, Attach, BondIn, MoleculeIn, SpokeIn};
@@ -192,17 +192,61 @@ struct Pose {
 
 fn free_layout(source: &str, id: &str) -> Result<Pose, String> {
     let parsed = parse_source(source)?;
-    let (coords, _) = layout_or_align_with_spokes(
-        &parsed.layout,
-        &parsed.atom_indices,
-        source,
-        None,
-        None,
-        None,
-        None,
-        None,
-    )
-    .map_err(|e| e.to_string())?;
+    // Molblock with usable CTAB 2D coords: use as the pose (align template).
+    let coords = if let (Some(x), Some(y)) = (&parsed.layout.input_x, &parsed.layout.input_y) {
+        LayoutResult {
+            x: x.clone(),
+            y: y.clone(),
+        }
+    } else {
+        layout_or_align_with_spokes(
+            &parsed.layout,
+            &parsed.atom_indices,
+            source,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .map_err(|e| e.to_string())?
+        .0
+    };
+    let molecule = to_molecule_in(id, &parsed, &coords, source);
+    let frame = frame_json(&parsed, &coords);
+    let layout_ref = with_coords(parsed.layout.clone(), &coords);
+    Ok(Pose {
+        parsed,
+        layout_ref,
+        molecule,
+        frame,
+    })
+}
+
+fn seeded_layout(source: &str, id: &str, seed: &AlignCoords) -> Result<Pose, String> {
+    seed.validate()?;
+    let mut parsed = parse_source(source)?;
+    // SMILES roots must not keep unrelated CTAB input coords.
+    parsed.layout.input_x = None;
+    parsed.layout.input_y = None;
+    parsed.layout.has_template_match = None;
+    let n = parsed.layout.n_atoms();
+    let mut has = vec![0i32; n];
+    let mut ix = vec![0.0f32; n];
+    let mut iy = vec![0.0f32; n];
+    for (i, &atom) in seed.atom.iter().enumerate() {
+        let ai = atom as usize;
+        if ai >= n {
+            return Err(format!("align coords atom {atom} out of range (n={n})"));
+        }
+        has[ai] = 1;
+        ix[ai] = seed.x[i] as f32;
+        iy[ai] = seed.y[i] as f32;
+    }
+    parsed.layout.has_template_match = Some(has);
+    parsed.layout.input_x = Some(ix);
+    parsed.layout.input_y = Some(iy);
+    let coords = generate_2d_coordinates(&parsed.layout).map_err(|e| e.to_string())?;
     let molecule = to_molecule_in(id, &parsed, &coords, source);
     let frame = frame_json(&parsed, &coords);
     let layout_ref = with_coords(parsed.layout.clone(), &coords);
@@ -316,30 +360,37 @@ fn visit(
         .unwrap_or(AlignMode::Exact);
 
     match parent_id {
-        None => match free_layout(source, &node.id) {
-            Ok(pose) => {
-                rows.push(CoordGenMoleculeResult {
-                    id: node.id.clone(),
-                    ok: true,
-                    method: CoordMethod::Free,
-                    used_map: None,
-                    molecule: Some(pose.molecule.clone()),
-                    error: None,
-                });
-                poses.insert(node.id.clone(), pose);
+        None => {
+            let laid = if let Some(seed) = &node.seed_coords {
+                seeded_layout(source, &node.id, seed)
+            } else {
+                free_layout(source, &node.id)
+            };
+            match laid {
+                Ok(pose) => {
+                    rows.push(CoordGenMoleculeResult {
+                        id: node.id.clone(),
+                        ok: true,
+                        method: CoordMethod::Free,
+                        used_map: None,
+                        molecule: Some(pose.molecule.clone()),
+                        error: None,
+                    });
+                    poses.insert(node.id.clone(), pose);
+                }
+                Err(e) => {
+                    rows.push(CoordGenMoleculeResult {
+                        id: node.id.clone(),
+                        ok: false,
+                        method: CoordMethod::None,
+                        used_map: None,
+                        molecule: None,
+                        error: Some(e),
+                    });
+                    return Ok(());
+                }
             }
-            Err(e) => {
-                rows.push(CoordGenMoleculeResult {
-                    id: node.id.clone(),
-                    ok: false,
-                    method: CoordMethod::None,
-                    used_map: None,
-                    molecule: None,
-                    error: Some(e),
-                });
-                return Ok(());
-            }
-        },
+        }
         Some(_) if mode == AlignMode::Skip => match free_layout(source, &node.id) {
             Ok(pose) => {
                 rows.push(CoordGenMoleculeResult {
@@ -580,6 +631,7 @@ mod tests {
                 smiles: Some("CCO".into()),
                 cxsmiles: None,
                 molfile: None,
+                seed_coords: None,
                 align: None,
                 template_for: vec![],
             }],
@@ -720,6 +772,7 @@ M  END
             smiles: Some(smiles.into()),
             cxsmiles: None,
             molfile: None,
+            seed_coords: None,
             align,
             template_for: kids,
         }

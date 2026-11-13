@@ -26,7 +26,7 @@ pub mod labels;
 #[cfg(feature = "font")]
 pub mod markup;
 pub mod metrics;
-pub(crate) mod molfile;
+pub mod molfile;
 pub mod plotdot;
 pub mod rings;
 pub mod scene;
@@ -97,7 +97,8 @@ pub use doc::{
     SvgAtom as DepictSvgAtom, SvgBond as DepictSvgBond,
 };
 pub use edge::{
-    AlignMode, AlignOpts, CoordGenMoleculeResult, CoordMethod, EdgePlan, EdgeResult, EdgeTask,
+    AlignCoords, AlignMode, AlignOpts, CoordGenMoleculeResult, CoordMethod, EdgePlan, EdgeResult,
+    EdgeTask,
     EdgeTaskResult, MolTemplate, MIN_MCS_ATOMS as EDGE_MIN_MCS_ATOMS,
 };
 pub use elements::{atomic_number, element_symbol, SYMBOLS};

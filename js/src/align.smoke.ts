@@ -91,4 +91,53 @@ function assertTags(query: Rendered, min: number, label: string) {
   }
 }
 
+{
+  // Pose carry via alignFrom (Rendered) and Mol-with-frame.
+  const a = await xpict.render(xpict.mol("CCO"));
+  const fromRendered = xpict.alignFrom(a, { timeout_ms: 50 });
+  if (!fromRendered.molblock || !fromRendered.molblock.includes("V2000")) {
+    throw new Error("alignFrom(Rendered) missing molblock");
+  }
+  if (fromRendered.timeout_ms !== 50) {
+    throw new Error("alignFrom timeout_ms not echoed");
+  }
+  const remapped = xpict.alignFrom(a, {
+    atom_map: [
+      [0, 0],
+      [1, 1],
+      [2, 2],
+    ],
+  });
+  if (!remapped.coords || remapped.molblock) {
+    throw new Error("alignFrom(atom_map) should return coords only");
+  }
+  if (remapped.coords.atom.join(",") !== "0,1,2") {
+    throw new Error(`expected query indices, got ${remapped.coords.atom}`);
+  }
+
+  const tmpl = xpict.mol("c1ccccc1O");
+  await xpict.render(tmpl);
+  const b3 = await xpict.depict({
+    type: "group",
+    children: [
+      { type: "mol", id: "t", smiles: "c1ccccc1O", visible: false },
+      { type: "mol", smiles: "Cc1ccccc1O", align_to: "t" },
+    ],
+  });
+  if (b3.length !== 1) {
+    throw new Error(`visible:false should omit template, got ${b3.length}`);
+  }
+
+  const viaMol = await xpict.render(xpict.mol("Cc1ccccc1O"), { align_to: tmpl });
+  if (viaMol.coords.length < 7) {
+    throw new Error("Mol-with-frame align failed");
+  }
+  const viaRendered = await xpict.render(xpict.mol("Cc1ccccc1O"), {
+    align_to: a,
+  });
+  if (!viaRendered.source) {
+    throw new Error("Rendered wrap align failed");
+  }
+}
+
 console.log("align smoke ok");

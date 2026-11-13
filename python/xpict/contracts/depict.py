@@ -19,15 +19,24 @@ class StrictModel(BaseModel):
         kwargs.setdefault("exclude_none", True)
         return super().model_dump_json(*args, **kwargs)
 
+class AlignCoords(StrictModel):
+    """Terse CoordGen-space pose seed: parallel `x[i]`, `y[i]` for `atom[i]`."""
+    atom: Annotated[list[int], Field(description='Atom indices (required; same length as `x` / `y`).')]
+    x: list[float]
+    y: list[float]
+
+
 AlignMode = Literal['exact', 'greedy', 'skip']
 
 
 class AlignToSpec(StrictModel):
-    """Object form of document ``align_to`` (template ref + EdgePlan-style opts)."""
-    ref: Annotated[str, Field(description='Id of the template mol in this group.')]
+    """Object form of document ``align_to`` (template ref, coords seed, or molblock)."""
     atom_map: Annotated[list[tuple[int, int]] | None, Field(description='Pairs `(query, template)` vs the template; skips MCS when set.')] = None
+    coords: Annotated[AlignCoords | None, Field(description='Soft-constrain listed query atoms (CoordGen-space); no MCS.')] = None
     min_atoms: Annotated[int | None, Field(description='Override [`crate::edge::MIN_MCS_ATOMS`] when set.')] = None
     mode: Annotated[AlignMode | None, Field(description='`exact` (default) / `greedy` / `skip`. Omit = exact with house timeout.')] = None
+    molblock: Annotated[str | None, Field(description='External template graph + CTAB 2D pose for MCS when there is no `ref`.')] = None
+    ref: Annotated[str | None, Field(description='Id of the template mol in this document.')] = None
     timeout_ms: Annotated[int | None, Field(description='MCS budget in milliseconds. `None` = house 100 ms; `0` = unbounded.')] = None
 
 
@@ -291,7 +300,7 @@ MolNodeKind = Literal['mol']
 class MolNode(StrictModel):
     """Mol node — [`MolOpts`] fields + non-cascading identity / scores / align."""
     type: Literal['mol'] = 'mol'
-    align_to: Annotated[AlignTo | None, Field(description='Template id string, or `{ "ref", "atom_map"?, "min_atoms"?, "mode"?, "timeout_ms"? }`.')] = None
+    align_to: Annotated[AlignTo | None, Field(description='Template id string, or `{ "ref" | "coords" | "molblock", … }`.')] = None
     aromatic: Annotated[AromaticStyle | None, Field(description='Aromatic ring paint: ``circle`` (default) or ``kekule``.')] = None
     atom_label: Annotated[AtomLabelSpec | None, Field(description='Per-atom arbitrary text map (`{ "1": "α" }` or `{ "labels": {…}, "scale"? }`).')] = None
     atom_number: Annotated[AtomNumberSpec | None, Field(description='Atom index / map-number labels (`"index"` | `"mapno"` | policy object).')] = None
@@ -314,6 +323,7 @@ class MolNode(StrictModel):
     smiles: str | None = None
     star_labels: list[str | None] | None = None
     svg: Annotated[SvgTarget | None, Field(description='SVG medium: ``web`` (filter halo) or ``print`` (path halo). Omit → web.')] = None
+    visible: Annotated[bool | None, Field(description='When `false`, mol stays in the align forest but is omitted from `Rendered[]`. Omit / `null` / `true` → visible (default).')] = None
     weight: float | None = None
 
 

@@ -16,6 +16,7 @@ pub fn depict(spec: &DepictSpec) -> Result<Vec<Rendered>, Error> {
     Ok(painted
         .into_iter()
         .map(|r| Rendered {
+            id: r.id,
             width: r.width,
             height: r.height,
             scene: r.scene,

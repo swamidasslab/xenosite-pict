@@ -1,5 +1,16 @@
 # Lab log
 
+## 2026-11-12
+
+- Align pose carry-over: `AlignToSpec.coords` (`{x,y,atom}` required) and
+  `molblock` (MCS without in-doc ref); XOR with `ref`. `MolNode.visible: false`
+  keeps the mol in the align forest but omits it from `Rendered[]`.
+- Host `align_from` / `alignFrom` builds drop-in `align_to` from a prior cell
+  (default CoordGen-space molblock; with `atom_map` → query-index coords).
+  Legacy `align_to: Rendered` / Mol-with-frame wraps use that path instead of
+  source-only re-embed. Rust core tests + `tests/test_align_pose.py` + JS align
+  smoke cover B1–B3 / C1–C2 / remap / reject.
+
 ## 2026-11-07
 
 - Dropped `vendor/canonaut` and the crates.io `[patch]`. Upstream

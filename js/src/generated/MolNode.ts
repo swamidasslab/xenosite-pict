@@ -22,9 +22,14 @@ export type MolNode = { type: MolNodeKind, smiles?: string, cxsmiles?: string, m
  */
 shade?: ShadeSpec, star_labels?: Array<string | null>, 
 /**
- * Template id string, or `{ "ref", "atom_map"?, "min_atoms"?, "mode"?, "timeout_ms"? }`.
+ * Template id string, or `{ "ref" | "coords" | "molblock", … }`.
  */
 align_to?: AlignTo, 
+/**
+ * When `false`, mol stays in the align forest but is omitted from
+ * `Rendered[]`. Omit / `null` / `true` → visible (default).
+ */
+visible?: boolean, 
 /**
  * Caption: [`Label`] (string id, list, or `{id, pos?}` — text-node refs).
  *

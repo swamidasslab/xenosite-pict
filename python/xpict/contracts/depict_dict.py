@@ -5,15 +5,24 @@ from __future__ import annotations
 
 from typing import Mapping, Literal, NotRequired, Required, TypedDict
 
+class AlignCoordsDict(TypedDict, total=False):
+    """Terse CoordGen-space pose seed: parallel `x[i]`, `y[i]` for `atom[i]`."""
+    atom: Required[list[int]]
+    x: Required[list[float]]
+    y: Required[list[float]]
+
+
 AlignMode = Literal['exact', 'greedy', 'skip']
 
 
 class AlignToSpecDict(TypedDict, total=False):
-    """Object form of document ``align_to`` (template ref + EdgePlan-style opts)."""
-    ref: Required[str]
+    """Object form of document ``align_to`` (template ref, coords seed, or molblock)."""
     atom_map: NotRequired[list[tuple[int, int]]]
+    coords: NotRequired[AlignCoordsDict]
     min_atoms: NotRequired[int]
     mode: NotRequired[AlignMode]
+    molblock: NotRequired[str]
+    ref: NotRequired[str]
     timeout_ms: NotRequired[int]
 
 
@@ -300,6 +309,7 @@ class MolNodeDict(TypedDict, total=False):
     smiles: NotRequired[str]
     star_labels: NotRequired[list[str | None]]
     svg: NotRequired[SvgTarget]
+    visible: NotRequired[bool]
     weight: NotRequired[float]
 
 

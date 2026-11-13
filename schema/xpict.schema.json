@@ -11,7 +11,7 @@
       ],
       "properties": {
         "align_to": {
-          "description": "Template id string, or `{ \"ref\", \"atom_map\"?, \"min_atoms\"?, \"mode\"?, \"timeout_ms\"? }`.",
+          "description": "Template id string, or `{ \"ref\" | \"coords\" | \"molblock\", … }`.",
           "anyOf": [
             {
               "$ref": "#/definitions/AlignTo"
@@ -225,6 +225,13 @@
             {
               "$ref": "#/definitions/MolNodeKind"
             }
+          ]
+        },
+        "visible": {
+          "description": "When `false`, mol stays in the align forest but is omitted from `Rendered[]`. Omit / `null` / `true` → visible (default).",
+          "type": [
+            "boolean",
+            "null"
           ]
         },
         "weight": {
@@ -538,6 +545,40 @@
     }
   ],
   "definitions": {
+    "AlignCoords": {
+      "description": "Terse CoordGen-space pose seed: parallel `x[i]`, `y[i]` for `atom[i]`.",
+      "type": "object",
+      "required": [
+        "atom",
+        "x",
+        "y"
+      ],
+      "properties": {
+        "atom": {
+          "description": "Atom indices (required; same length as `x` / `y`).",
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0.0
+          }
+        },
+        "x": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "y": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      }
+    },
     "AlignMode": {
       "description": "MCS search style for [`AlignOpts::mode`].",
       "oneOf": [
@@ -565,7 +606,7 @@
       ]
     },
     "AlignTo": {
-      "description": "Document align target: id string or `{ \"ref\", \"atom_map\"?, \"min_atoms\"?, \"mode\"?, \"timeout_ms\"? }`.",
+      "description": "Document align target: id string or object (`ref` / `coords` / `molblock` + opts).",
       "anyOf": [
         {
           "description": "Shorthand for `{ \"ref\": \"…\" }`.",
@@ -577,11 +618,8 @@
       ]
     },
     "AlignToSpec": {
-      "description": "Object form of document ``align_to`` (template ref + EdgePlan-style opts).",
+      "description": "Object form of document ``align_to`` (template ref, coords seed, or molblock).\n\nExactly one of `ref` / `coords` / `molblock` must be set.",
       "type": "object",
-      "required": [
-        "ref"
-      ],
       "properties": {
         "atom_map": {
           "description": "Pairs `(query, template)` vs the template; skips MCS when set.",
@@ -607,6 +645,17 @@
             "minItems": 2
           }
         },
+        "coords": {
+          "description": "Soft-constrain listed query atoms (CoordGen-space); no MCS.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AlignCoords"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "min_atoms": {
           "description": "Override [`crate::edge::MIN_MCS_ATOMS`] when set.",
           "type": [
@@ -627,9 +676,19 @@
             }
           ]
         },
+        "molblock": {
+          "description": "External template graph + CTAB 2D pose for MCS when there is no `ref`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "ref": {
-          "description": "Id of the template mol in this group.",
-          "type": "string"
+          "description": "Id of the template mol in this document.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "timeout_ms": {
           "description": "MCS budget in milliseconds. `None` = house 100 ms; `0` = unbounded.",
@@ -979,7 +1038,7 @@
           ],
           "properties": {
             "align_to": {
-              "description": "Template id string, or `{ \"ref\", \"atom_map\"?, \"min_atoms\"?, \"mode\"?, \"timeout_ms\"? }`.",
+              "description": "Template id string, or `{ \"ref\" | \"coords\" | \"molblock\", … }`.",
               "anyOf": [
                 {
                   "$ref": "#/definitions/AlignTo"
@@ -1193,6 +1252,13 @@
                 {
                   "$ref": "#/definitions/MolNodeKind"
                 }
+              ]
+            },
+            "visible": {
+              "description": "When `false`, mol stays in the align forest but is omitted from `Rendered[]`. Omit / `null` / `true` → visible (default).",
+              "type": [
+                "boolean",
+                "null"
               ]
             },
             "weight": {
@@ -2002,7 +2068,7 @@
       "type": "object",
       "properties": {
         "align_to": {
-          "description": "Template id string, or `{ \"ref\", \"atom_map\"?, \"min_atoms\"?, \"mode\"?, \"timeout_ms\"? }`.",
+          "description": "Template id string, or `{ \"ref\" | \"coords\" | \"molblock\", … }`.",
           "anyOf": [
             {
               "$ref": "#/definitions/AlignTo"
@@ -2216,6 +2282,13 @@
             {
               "$ref": "#/definitions/MolNodeKind"
             }
+          ]
+        },
+        "visible": {
+          "description": "When `false`, mol stays in the align forest but is omitted from `Rendered[]`. Omit / `null` / `true` → visible (default).",
+          "type": [
+            "boolean",
+            "null"
           ]
         },
         "weight": {

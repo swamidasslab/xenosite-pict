@@ -56,7 +56,11 @@ def _cell_count(row: DepictSpecRoot | WireDepictSpec) -> int:
     if isinstance(root, GridNode):
         return sum(_cell_count(child) for child in root.children)
     if isinstance(root, GroupNode):
-        return sum(1 for child in root.children if isinstance(child, MolNode))
+        return sum(
+            1
+            for child in root.children
+            if isinstance(child, MolNode) and child.visible is not False
+        )
     return 0
 
 

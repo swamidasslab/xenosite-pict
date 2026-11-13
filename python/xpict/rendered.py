@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import html
+import json
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Sequence
 from urllib.parse import quote
 
 from xpict.base import PictBase
+from xpict.contracts.depict import AlignCoords, AlignMode, AlignToSpec
 from xpict.contracts.edge import MoleculeIn
 from xpict.contracts.scene import Scene
 from xpict.contracts.scene_dict import SceneDict
@@ -135,6 +137,85 @@ class SvgBond:
     stereo: str | None = None
 
 
+def _frame_json_to_molblock(frame: str) -> str:
+    """CoordGen-space frame JSON → V2000 CTAB (pose carrier for ``align_to.molblock``)."""
+    data = json.loads(frame)
+    atoms = sorted(data["atoms"], key=lambda a: int(a.get("index", 0)))
+    bonds = data.get("bonds") or []
+    n = len(atoms)
+    nb = len(bonds)
+    lines = ["", "  xpict", "", f"{n:>3}{nb:>3}  0  0  0  0  0  0  0  0999 V2000"]
+    for a in atoms:
+        sym = str(a.get("element") or "C")
+        if len(sym) > 3:
+            sym = sym[:3]
+        lines.append(
+            f"{float(a.get('x', 0)):10.4f}{float(a.get('y', 0)):10.4f}"
+            f"{0.0:10.4f} {sym:<3} 0  0  0  0  0  0  0  0  0  0  0  0"
+        )
+    for b in bonds:
+        order = int(round(float(b.get("order", 1))))
+        order = max(1, min(4, order))
+        lines.append(
+            f"{int(b.get('begin', 0)) + 1:>3}{int(b.get('end', 0)) + 1:>3}{order:>3}  0  0  0  0"
+        )
+    chg = [
+        (i + 1, int(a.get("charge", 0)))
+        for i, a in enumerate(atoms)
+        if int(a.get("charge", 0)) != 0
+    ]
+    for i in range(0, len(chg), 8):
+        chunk = chg[i : i + 8]
+        parts = [f"M  CHG{len(chunk):>3}"]
+        for idx, c in chunk:
+            parts.append(f"{idx:>4}{c:>4}")
+        lines.append("".join(parts))
+    lines.append("M  END")
+    return "\n".join(lines) + "\n"
+
+
+def align_from_frame(
+    frame_molblock: str,
+    *,
+    atom_map: Sequence[tuple[int, int]] | None = None,
+    min_atoms: int | None = None,
+    mode: AlignMode | None = None,
+    timeout_ms: int | None = None,
+    **_extra: Any,
+) -> AlignToSpec:
+    """``AlignToSpec`` from CoordGen-space frame JSON (host helper core)."""
+    if _extra:
+        raise TypeError(f"align_from_frame() unexpected kwargs: {sorted(_extra)}")
+    if atom_map is None:
+        return AlignToSpec(
+            molblock=_frame_json_to_molblock(frame_molblock),
+            min_atoms=min_atoms,
+            mode=mode,
+            timeout_ms=timeout_ms,
+        )
+    # Remap: atom_map pairs are (query, template); coords use query indices
+    # with CoordGen-space positions from frame (not paint coords).
+    frame = json.loads(frame_molblock)
+    by_index = {int(a["index"]): a for a in frame["atoms"]}
+    xs: list[float] = []
+    ys: list[float] = []
+    atoms: list[int] = []
+    for q, t in atom_map:
+        tmpl = by_index.get(int(t))
+        if tmpl is None:
+            raise ValueError(f"align_from atom_map: template atom {t} missing on cell")
+        atoms.append(int(q))
+        xs.append(float(tmpl["x"]))
+        ys.append(float(tmpl["y"]))
+    return AlignToSpec(
+        coords=AlignCoords(x=xs, y=ys, atom=atoms),
+        atom_map=[(int(q), int(t)) for q, t in atom_map],
+        min_atoms=min_atoms,
+        mode=mode,
+        timeout_ms=timeout_ms,
+    )
+
+
 @dataclass
 class Rendered(PictBase):
     """Painted depiction — editable ``scene`` plus alignment frame."""
@@ -149,12 +230,69 @@ class Rendered(PictBase):
     svg_coords: list[SvgAtom]
     bonds: list[SvgBond]
     mol: Mol | None = None
+    id: str | None = None
 
     def to_svg(self) -> str:
         return scene_to_svg(self.scene)
 
     def frame(self) -> str:
         return self.frame_molblock
+
+    def align_from(
+        self,
+        *,
+        atom_map: Sequence[tuple[int, int]] | None = None,
+        min_atoms: int | None = None,
+        mode: AlignMode | None = None,
+        timeout_ms: int | None = None,
+        **_extra: Any,
+    ) -> AlignToSpec:
+        """``AlignToSpec`` constructor from this cell's CoordGen pose.
+
+        Default (no ``atom_map``): ``{ molblock, … }`` for MCS.
+        With ``atom_map``: ``{ coords, atom_map, … }`` remapped to **query**
+        indices (soft-seed; no MCS).
+        """
+        return align_from_frame(
+            self.frame_molblock,
+            atom_map=atom_map,
+            min_atoms=min_atoms,
+            mode=mode,
+            timeout_ms=timeout_ms,
+            **_extra,
+        )
+
+
+def align_from(
+    rows: Rendered | Sequence[Rendered],
+    id: str | None = None,
+    *,
+    atom_map: Sequence[tuple[int, int]] | None = None,
+    min_atoms: int | None = None,
+    mode: AlignMode | None = None,
+    timeout_ms: int | None = None,
+) -> AlignToSpec:
+    """Build a drop-in ``align_to`` from a prior cell (module sugar for list+id)."""
+    row: Rendered
+    if isinstance(rows, Rendered):
+        row = rows
+    else:
+        seq = list(rows)
+        if id is None:
+            if len(seq) != 1:
+                raise ValueError("align_from(rows) needs id= when len(rows) != 1")
+            row = seq[0]
+        else:
+            matched = [r for r in seq if (r.id or r.molecule.id) == id]
+            if len(matched) != 1:
+                raise ValueError(f"align_from: expected one row with id={id!r}, got {len(matched)}")
+            row = matched[0]
+    return row.align_from(
+        atom_map=atom_map,
+        min_atoms=min_atoms,
+        mode=mode,
+        timeout_ms=timeout_ms,
+    )
 
     def to_spec(self):
         from xpict.spec import Mol

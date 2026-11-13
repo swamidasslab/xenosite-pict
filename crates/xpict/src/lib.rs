@@ -48,8 +48,8 @@ pub use edge_plan::{build_align_plan, process_edge_plan, process_edge_plan_with_
 pub use xpict_core::{cx_atom_labels, smiles_base};
 
 pub use xpict_core::edge::{
-    AlignOpts as EdgeAlignOpts, CoordGenMoleculeResult, CoordMethod, EdgePlan, EdgeResult,
-    EdgeTask, EdgeTaskResult, MolTemplate, MIN_MCS_ATOMS,
+    AlignCoords, AlignMode, AlignOpts as EdgeAlignOpts, CoordGenMoleculeResult, CoordMethod,
+    EdgePlan, EdgeResult, EdgeTask, EdgeTaskResult, MolTemplate, MIN_MCS_ATOMS,
 };
 pub use xpict_core::scene::{AtomIn, BondIn, MoleculeIn, Scene};
 pub use xpict_core::scene_to_svg;
@@ -115,6 +115,7 @@ impl Mol {
 /// Painted depiction — editable ``scene`` plus alignment frame.
 #[derive(Debug, Clone)]
 pub struct Rendered {
+    pub id: String,
     pub width: f64,
     pub height: f64,
     pub scene: Scene,
@@ -126,24 +127,76 @@ pub struct Rendered {
     pub bonds: Vec<SvgBond>,
 }
 
+/// Opts for [`Rendered::align_from`] (mirrors ``AlignToSpec`` keywords).
+#[derive(Debug, Clone, Default)]
+pub struct AlignFromOpts {
+    pub atom_map: Option<Vec<(u32, u32)>>,
+    pub min_atoms: Option<u32>,
+    pub mode: Option<AlignMode>,
+    pub timeout_ms: Option<u32>,
+}
+
 impl Rendered {
     pub fn to_svg(&self) -> String {
         scene_to_svg(&self.scene)
     }
 
-    /// Pose molblock (CoordGen) — usable as ``MolRenderOptions::align_to``.
+    /// CoordGen pose frame JSON.
     pub fn frame(&self) -> &str {
         &self.frame_molblock
     }
 
-    /// Render ``other`` aligned onto this pose.
+    /// ``AlignTo`` constructor from this cell's pose (default molblock; coords when ``atom_map``).
+    pub fn align_from(&self, opts: AlignFromOpts) -> Result<AlignTo, Error> {
+        if let Some(map) = &opts.atom_map {
+            let coords = xpict_core::molfile::align_coords_from_frame_map(
+                &self.frame_molblock,
+                map,
+            )
+            .map_err(Error::Parse)?;
+            Ok(AlignTo::Spec(AlignToSpec {
+                coords: Some(coords),
+                atom_map: Some(map.clone()),
+                min_atoms: opts.min_atoms,
+                mode: opts.mode,
+                timeout_ms: opts.timeout_ms,
+                ..Default::default()
+            }))
+        } else {
+            let mb = xpict_core::molfile::molblock_from_frame_json(&self.frame_molblock)
+                .map_err(Error::Parse)?;
+            Ok(AlignTo::Spec(AlignToSpec {
+                molblock: Some(mb),
+                min_atoms: opts.min_atoms,
+                mode: opts.mode,
+                timeout_ms: opts.timeout_ms,
+                ..Default::default()
+            }))
+        }
+    }
+
+    /// Render ``other`` aligned onto this pose (molblock / coords — not source re-layout).
     pub fn render_aligned(
         &self,
         other: &mut Mol,
-        mut opts: MolRenderOptions,
+        opts: MolRenderOptions,
     ) -> Result<Rendered, Error> {
-        opts.align_to = Some(self.source.clone());
-        render(other, opts)
+        let align = self.align_from(AlignFromOpts {
+            atom_map: opts.atom_map.clone(),
+            min_atoms: None,
+            mode: None,
+            timeout_ms: None,
+        })?;
+        let mut query = mol_node_from(&other.source, &opts, opts.id.clone());
+        query.align_to = Some(align);
+        let mut rows = crate::depict(&DepictSpec::Mol(query))?;
+        let painted = rows
+            .pop()
+            .ok_or_else(|| Error::Parse("render returned no molecules".into()))?;
+        if other.frame_molblock.is_none() {
+            other.frame_molblock = Some(painted.frame_molblock.clone());
+        }
+        Ok(painted)
     }
 }
 
@@ -269,7 +322,7 @@ fn spec_from_mol(source: &str, opts: &MolRenderOptions) -> Result<DepictSpec, Er
     let mut query = mol_node_from(source, opts, Some(qid));
     query.align_to = Some(match &opts.atom_map {
         Some(map) => AlignTo::Spec(AlignToSpec {
-            ref_id: ref_id.clone(),
+            ref_id: Some(ref_id.clone()),
             atom_map: Some(map.clone()),
             ..Default::default()
         }),
@@ -293,6 +346,7 @@ fn spec_from_mol(source: &str, opts: &MolRenderOptions) -> Result<DepictSpec, Er
         debug_box: None,
         debug_align: None,
         pad: None,
+        svg: None,
     })
 }
 

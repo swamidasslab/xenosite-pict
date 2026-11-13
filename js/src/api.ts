@@ -62,6 +62,8 @@ export type Mol = {
  * ``xpict.toSvg(scene)`` when you want a string.
  */
 export type Rendered = {
+  /** Document mol id (from DepictSpec / auto-assigned). */
+  id?: string;
   width: number;
   height: number;
   /** ViewBox / SCALE positions — match scene / SVG ink. */
@@ -73,7 +75,7 @@ export type Rendered = {
   scene: Scene;
   molecule: MoleculeIn;
   source: string;
-  /** Pose molblock from CoordGen (debug / hosts). */
+  /** Pose frame JSON from CoordGen (CoordGen-space; input to alignFrom). */
   frame_molblock: string;
   mol?: Mol;
 };
@@ -129,6 +131,7 @@ export type MolRenderOptions = {
 export type {
   AlignTo,
   AlignToSpec,
+  AlignCoords,
   MolNode,
   ShadeSpec,
   ShadeStyle,
@@ -162,6 +165,7 @@ export type { RegionField } from "./generated/RegionField.js";
 export type { MolText } from "./generated/MolText.js";
 
 import type {
+  AlignToSpec,
   DepictSpec as GeneratedDepictSpec,
   MolNode,
 } from "./generated/depict-abi.js";
@@ -273,13 +277,129 @@ function molNodeFrom(source: string, opts: MolRenderOptions, id?: string): MolNo
 
 function alignRefId(target: AlignTarget): string {
   if (isRendered(target)) {
-    return target.mol?.id || target.molecule.id || "m_0";
+    return target.id || target.mol?.id || target.molecule.id || "m_0";
   }
   return target.id || "m_0";
 }
 
 function alignSource(target: AlignTarget): string {
   return isRendered(target) ? target.source : target.source;
+}
+
+function frameJsonToMolblock(frame: string): string {
+  const data = JSON.parse(frame) as {
+    atoms: Array<{ index?: number; element?: string; x?: number; y?: number; charge?: number }>;
+    bonds?: Array<{ begin?: number; end?: number; order?: number }>;
+  };
+  const atoms = [...(data.atoms || [])].sort(
+    (a, b) => (a.index ?? 0) - (b.index ?? 0)
+  );
+  const bonds = data.bonds || [];
+  const lines: string[] = ["", "  xpict", "", ""];
+  lines[3] = `${String(atoms.length).padStart(3)}${String(bonds.length).padStart(3)}  0  0  0  0  0  0  0  0999 V2000`;
+  for (const a of atoms) {
+    const sym = (a.element || "C").slice(0, 3);
+    const x = Number(a.x ?? 0).toFixed(4).padStart(10);
+    const y = Number(a.y ?? 0).toFixed(4).padStart(10);
+    const z = (0).toFixed(4).padStart(10);
+    lines.push(`${x}${y}${z} ${sym.padEnd(3)} 0  0  0  0  0  0  0  0  0  0  0  0`);
+  }
+  for (const b of bonds) {
+    const order = Math.max(1, Math.min(4, Math.round(Number(b.order ?? 1))));
+    lines.push(
+      `${String((b.begin ?? 0) + 1).padStart(3)}${String((b.end ?? 0) + 1).padStart(3)}${String(order).padStart(3)}  0  0  0  0`
+    );
+  }
+  const chg: Array<[number, number]> = [];
+  atoms.forEach((a, i) => {
+    const c = Number(a.charge ?? 0);
+    if (c !== 0) chg.push([i + 1, c]);
+  });
+  for (let i = 0; i < chg.length; i += 8) {
+    const chunk = chg.slice(i, i + 8);
+    let line = `M  CHG${String(chunk.length).padStart(3)}`;
+    for (const [idx, c] of chunk) {
+      line += `${String(idx).padStart(4)}${String(c).padStart(4)}`;
+    }
+    lines.push(line);
+  }
+  lines.push("M  END");
+  return lines.join("\n") + "\n";
+}
+
+export type AlignFromOpts = {
+  atom_map?: Array<[number, number]>;
+  min_atoms?: number;
+  mode?: "exact" | "greedy" | "skip";
+  timeout_ms?: number;
+};
+
+/** Build AlignToSpec from CoordGen-space frame JSON (host helper core). */
+export function alignFromFrame(frame: string, opts: AlignFromOpts = {}): AlignToSpec {
+  if (!opts.atom_map) {
+    const out: AlignToSpec = { molblock: frameJsonToMolblock(frame) };
+    if (opts.min_atoms !== undefined) out.min_atoms = opts.min_atoms;
+    if (opts.mode !== undefined) out.mode = opts.mode;
+    if (opts.timeout_ms !== undefined) out.timeout_ms = opts.timeout_ms;
+    return out;
+  }
+  const data = JSON.parse(frame) as {
+    atoms: Array<{ index: number; x: number; y: number }>;
+  };
+  const byIndex = new Map(data.atoms.map((a) => [a.index, a]));
+  const x: number[] = [];
+  const y: number[] = [];
+  const atom: number[] = [];
+  for (const [q, t] of opts.atom_map) {
+    const tmpl = byIndex.get(t);
+    if (!tmpl) throw new Error(`alignFrom atom_map: template atom ${t} missing`);
+    atom.push(q);
+    x.push(tmpl.x);
+    y.push(tmpl.y);
+  }
+  const out: AlignToSpec = {
+    coords: { x, y, atom },
+    atom_map: opts.atom_map.map(([q, r]) => [q, r] as [number, number]),
+  };
+  if (opts.min_atoms !== undefined) out.min_atoms = opts.min_atoms;
+  if (opts.mode !== undefined) out.mode = opts.mode;
+  if (opts.timeout_ms !== undefined) out.timeout_ms = opts.timeout_ms;
+  return out;
+}
+
+/**
+ * AlignToSpec constructor from a prior cell.
+ * Default → `{ molblock }` (MCS). With `atom_map` → `{ coords, atom_map }` (query indices).
+ */
+export function alignFrom(
+  rowOrRows: Rendered | Rendered[],
+  idOrOpts?: string | AlignFromOpts,
+  maybeOpts?: AlignFromOpts
+): AlignToSpec {
+  let row: Rendered;
+  let opts: AlignFromOpts = {};
+  if (Array.isArray(rowOrRows)) {
+    const id = typeof idOrOpts === "string" ? idOrOpts : undefined;
+    opts = (typeof idOrOpts === "string" ? maybeOpts : idOrOpts) ?? {};
+    if (id === undefined) {
+      if (rowOrRows.length !== 1) {
+        throw new Error("alignFrom(rows) needs id when length !== 1");
+      }
+      row = rowOrRows[0]!;
+    } else {
+      const matched = rowOrRows.filter(
+        (r) => (r.id || r.mol?.id || r.molecule.id) === id
+      );
+      if (matched.length !== 1) {
+        throw new Error(`alignFrom: expected one row with id=${id}, got ${matched.length}`);
+      }
+      row = matched[0]!;
+    }
+  } else {
+    row = rowOrRows;
+    opts = (typeof idOrOpts === "string" ? maybeOpts : idOrOpts) ?? {};
+  }
+  return alignFromFrame(row.frame_molblock, opts);
 }
 
 function specFromMol(input: Mol | string, opts: MolRenderOptions): DepictSpec {
@@ -290,6 +410,16 @@ function specFromMol(input: Mol | string, opts: MolRenderOptions): DepictSpec {
   if (!opts.align_to) {
     return molNodeFrom(m.source, opts, opts.id || m.id);
   }
+  // Pose-preserving: Rendered, or Mol that already has a CoordGen frame.
+  const frame = isRendered(opts.align_to)
+    ? opts.align_to.frame_molblock
+    : opts.align_to.frame_molblock;
+  if (frame) {
+    const query = molNodeFrom(m.source, opts, opts.id || m.id);
+    query.align_to = alignFromFrame(frame, { atom_map: opts.atom_map });
+    return query;
+  }
+  // Unrendered Mol — same-doc group (no prior pose yet).
   const refId = alignRefId(opts.align_to);
   let qid = opts.id || m.id || "m_1";
   if (qid === refId) qid = "m_1";
@@ -324,6 +454,7 @@ type NativeRendered = {
 
 function asRendered(row: NativeRendered, m?: Mol): Rendered {
   const out: Rendered = {
+    id: row.id || row.molecule.id || undefined,
     width: row.width,
     height: row.height,
     scene: row.scene,
@@ -388,6 +519,10 @@ export const xpict = {
   toSvg: sceneToSvg,
   /** Single mol or declarative document → ``Rendered[]``. */
   depict,
+  /** AlignToSpec from a prior ``Rendered`` (default molblock; coords when atom_map). */
+  alignFrom,
+  /** AlignToSpec from CoordGen-space frame JSON. */
+  alignFromFrame,
   /**
    * Stamp ``svg: "print"`` when ``format`` is png/pdf and the author omitted
    * ``svg``. Call before ``depict`` / ``render`` for portable export.

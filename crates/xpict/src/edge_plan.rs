@@ -18,12 +18,14 @@ pub fn build_align_plan(
             smiles: Some(template_source.into()),
             cxsmiles: None,
             molfile: None,
+                seed_coords: None,
             align: None,
             template_for: vec![MolTemplate {
                 id: "m_1".into(),
                 smiles: Some(query_source.into()),
                 cxsmiles: None,
                 molfile: None,
+                seed_coords: None,
                 align: Some(AlignOpts {
                     atom_map,
                     ..Default::default()

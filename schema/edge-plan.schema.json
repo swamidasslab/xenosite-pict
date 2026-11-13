@@ -21,6 +21,40 @@
     }
   },
   "definitions": {
+    "AlignCoords": {
+      "description": "Terse CoordGen-space pose seed: parallel `x[i]`, `y[i]` for `atom[i]`.",
+      "type": "object",
+      "required": [
+        "atom",
+        "x",
+        "y"
+      ],
+      "properties": {
+        "atom": {
+          "description": "Atom indices (required; same length as `x` / `y`).",
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0.0
+          }
+        },
+        "x": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "y": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      }
+    },
     "AlignMode": {
       "description": "MCS search style for [`AlignOpts::mode`].",
       "oneOf": [
@@ -164,6 +198,17 @@
           "type": [
             "string",
             "null"
+          ]
+        },
+        "seed_coords": {
+          "description": "Soft-constrain this mol's atoms (CoordGen-space); roots only; no MCS.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AlignCoords"
+            },
+            {
+              "type": "null"
+            }
           ]
         },
         "smiles": {

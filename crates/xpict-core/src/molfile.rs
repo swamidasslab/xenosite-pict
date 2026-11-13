@@ -1,13 +1,26 @@
-//! Tiny MDL CTAB reader (V2000 / V3000).
+//! Tiny MDL CTAB reader / writer (V2000 / V3000).
 //!
 //! Atoms (Z, charge), bonds (order; type 4 = aromatic), `M  CHG` / `M  RAD`.
-//! Coordinates are ignored — CoordGen lays the graph out. Kitchen-sink
-//! formats (MOL2, MolJSON, SDF extras) are out of scope.
+//! Usable 2D coordinates (not all-zero) are returned for pose seeding;
+//! otherwise CoordGen lays the graph out. Kitchen-sink formats (MOL2,
+//! MolJSON, SDF extras) are out of scope.
 
-use crate::elements::atomic_number;
+use crate::elements::{atomic_number, element_symbol};
 use crate::structure::{AtomRec, BondKind, BondRec, MolGraph};
 
+/// Parsed CTAB graph plus optional CoordGen-space 2D coords.
+#[derive(Debug, Clone)]
+pub struct MolfilePose {
+    pub graph: MolGraph,
+    pub x: Option<Vec<f32>>,
+    pub y: Option<Vec<f32>>,
+}
+
 pub fn parse_molfile(text: &str) -> Result<MolGraph, String> {
+    Ok(parse_molfile_pose(text)?.graph)
+}
+
+pub fn parse_molfile_pose(text: &str) -> Result<MolfilePose, String> {
     if text.contains("V3000") {
         parse_v3000(text).map_err(|e| format!("molfile V3000: {e}"))
     } else {
@@ -15,7 +28,164 @@ pub fn parse_molfile(text: &str) -> Result<MolGraph, String> {
     }
 }
 
-fn parse_v2000(text: &str) -> Result<MolGraph, String> {
+/// True when coords are present and not an all-zero placeholder.
+pub fn coords_usable(x: &[f32], y: &[f32]) -> bool {
+    x.len() == y.len()
+        && !x.is_empty()
+        && x.iter().zip(y.iter()).any(|(&a, &b)| a != 0.0 || b != 0.0)
+}
+
+/// Write a minimal V2000 molblock from graph tables + CoordGen-space coords.
+pub fn write_v2000(
+    atomic_numbers: &[i32],
+    formal_charges: &[i32],
+    bond_from: &[i32],
+    bond_to: &[i32],
+    bond_orders: &[i32],
+    xs: &[f32],
+    ys: &[f32],
+) -> Result<String, String> {
+    let n = atomic_numbers.len();
+    if formal_charges.len() != n || xs.len() != n || ys.len() != n {
+        return Err("write_v2000: atom table length mismatch".into());
+    }
+    let nb = bond_from.len();
+    if bond_to.len() != nb || bond_orders.len() != nb {
+        return Err("write_v2000: bond table length mismatch".into());
+    }
+    let mut out = String::from("\n  xpict\n\n");
+    out.push_str(&format!("{n:>3}{nb:>3}  0  0  0  0  0  0  0  0999 V2000\n"));
+    for i in 0..n {
+        let sym = element_symbol(atomic_numbers[i].clamp(0, 255) as u32);
+        let sym = if sym.is_empty() { "*" } else { sym };
+        out.push_str(&format!(
+            "{:10.4}{:10.4}{:10.4} {:<3} 0  0  0  0  0  0  0  0  0  0  0  0\n",
+            xs[i], ys[i], 0.0, sym
+        ));
+    }
+    for i in 0..nb {
+        let a = bond_from[i] + 1;
+        let b = bond_to[i] + 1;
+        let order = bond_orders[i].clamp(1, 4);
+        out.push_str(&format!("{a:>3}{b:>3}{order:>3}  0  0  0  0\n"));
+    }
+    let chg: Vec<(usize, i32)> = formal_charges
+        .iter()
+        .enumerate()
+        .filter(|(_, &c)| c != 0)
+        .map(|(i, &c)| (i + 1, c))
+        .collect();
+    if !chg.is_empty() {
+        // M  CHG entries are counted in groups of up to 8.
+        for chunk in chg.chunks(8) {
+            out.push_str(&format!("M  CHG{:>3}", chunk.len()));
+            for &(idx, c) in chunk {
+                out.push_str(&format!("{idx:>4}{c:>4}"));
+            }
+            out.push('\n');
+        }
+    }
+    out.push_str("M  END\n");
+    Ok(out)
+}
+
+/// Remap `(query, template)` pairs onto CoordGen-space coords from a frame JSON.
+pub fn align_coords_from_frame_map(
+    frame: &str,
+    atom_map: &[(u32, u32)],
+) -> Result<crate::edge::AlignCoords, String> {
+    let v: serde_json::Value =
+        serde_json::from_str(frame).map_err(|e| format!("frame json: {e}"))?;
+    let atoms = v
+        .get("atoms")
+        .and_then(|a| a.as_array())
+        .ok_or("frame json missing atoms")?;
+    let mut by_index = std::collections::HashMap::new();
+    for a in atoms {
+        let idx = a.get("index").and_then(|x| x.as_i64()).unwrap_or(0) as u32;
+        let x = a.get("x").and_then(|x| x.as_f64()).unwrap_or(0.0);
+        let y = a.get("y").and_then(|x| x.as_f64()).unwrap_or(0.0);
+        by_index.insert(idx, (x, y));
+    }
+    let mut xs = Vec::new();
+    let mut ys = Vec::new();
+    let mut atom = Vec::new();
+    for &(q, t) in atom_map {
+        let (x, y) = by_index
+            .get(&t)
+            .copied()
+            .ok_or_else(|| format!("align coords: template atom {t} missing on frame"))?;
+        atom.push(q);
+        xs.push(x);
+        ys.push(y);
+    }
+    let coords = crate::edge::AlignCoords {
+        x: xs,
+        y: ys,
+        atom,
+    };
+    coords.validate()?;
+    Ok(coords)
+}
+
+/// Convert a CoordGen pose `frame_molblock` JSON string to a V2000 CTAB.
+pub fn molblock_from_frame_json(frame: &str) -> Result<String, String> {
+    let v: serde_json::Value =
+        serde_json::from_str(frame).map_err(|e| format!("frame json: {e}"))?;
+    let atoms = v
+        .get("atoms")
+        .and_then(|a| a.as_array())
+        .ok_or("frame json missing atoms")?;
+    let bonds = v
+        .get("bonds")
+        .and_then(|a| a.as_array())
+        .ok_or("frame json missing bonds")?;
+    let mut atomic_numbers = Vec::with_capacity(atoms.len());
+    let mut formal_charges = Vec::with_capacity(atoms.len());
+    let mut xs = Vec::with_capacity(atoms.len());
+    let mut ys = Vec::with_capacity(atoms.len());
+    // Frame atoms may not be dense by index — sort by index.
+    let mut rows: Vec<(i32, u32, i32, f32, f32)> = Vec::new();
+    for a in atoms {
+        let index = a.get("index").and_then(|x| x.as_i64()).unwrap_or(0) as i32;
+        let element = a
+            .get("element")
+            .and_then(|x| x.as_str())
+            .unwrap_or("C");
+        let z = atomic_number(element).unwrap_or(6) as i32;
+        let charge = a.get("charge").and_then(|x| x.as_i64()).unwrap_or(0) as i32;
+        let x = a.get("x").and_then(|x| x.as_f64()).unwrap_or(0.0) as f32;
+        let y = a.get("y").and_then(|x| x.as_f64()).unwrap_or(0.0) as f32;
+        rows.push((index, z as u32, charge, x, y));
+    }
+    rows.sort_by_key(|(i, ..)| *i);
+    for (_, z, charge, x, y) in rows {
+        atomic_numbers.push(z as i32);
+        formal_charges.push(charge);
+        xs.push(x);
+        ys.push(y);
+    }
+    let mut bond_from = Vec::new();
+    let mut bond_to = Vec::new();
+    let mut bond_orders = Vec::new();
+    for b in bonds {
+        bond_from.push(b.get("begin").and_then(|x| x.as_i64()).unwrap_or(0) as i32);
+        bond_to.push(b.get("end").and_then(|x| x.as_i64()).unwrap_or(0) as i32);
+        let order = b.get("order").and_then(|x| x.as_f64()).unwrap_or(1.0);
+        bond_orders.push(order.round().clamp(1.0, 4.0) as i32);
+    }
+    write_v2000(
+        &atomic_numbers,
+        &formal_charges,
+        &bond_from,
+        &bond_to,
+        &bond_orders,
+        &xs,
+        &ys,
+    )
+}
+
+fn parse_v2000(text: &str) -> Result<MolfilePose, String> {
     let lines: Vec<&str> = text.lines().collect();
     let counts_i = lines
         .iter()
@@ -32,8 +202,13 @@ fn parse_v2000(text: &str) -> Result<MolGraph, String> {
         return Err("truncated atom/bond block".into());
     }
     let mut atoms = Vec::with_capacity(na);
+    let mut xs = Vec::with_capacity(na);
+    let mut ys = Vec::with_capacity(na);
     for line in &lines[atom0..atom0 + na] {
-        atoms.push(parse_v2000_atom(line)?);
+        let (atom, x, y) = parse_v2000_atom(line)?;
+        atoms.push(atom);
+        xs.push(x);
+        ys.push(y);
     }
     let mut bonds = Vec::with_capacity(nb);
     for line in &lines[atom0 + na..atom0 + na + nb] {
@@ -46,13 +221,24 @@ fn parse_v2000(text: &str) -> Result<MolGraph, String> {
         }
     }
     apply_properties(&lines[atom0 + na + nb..], &mut atoms)?;
-    Ok(MolGraph { atoms, bonds })
+    let (x, y) = if coords_usable(&xs, &ys) {
+        (Some(xs), Some(ys))
+    } else {
+        (None, None)
+    };
+    Ok(MolfilePose {
+        graph: MolGraph { atoms, bonds },
+        x,
+        y,
+    })
 }
 
-fn parse_v2000_atom(line: &str) -> Result<AtomRec, String> {
+fn parse_v2000_atom(line: &str) -> Result<(AtomRec, f32, f32), String> {
     if line.len() < 34 {
         return Err("short atom line".into());
     }
+    let x = line.get(0..10).and_then(|s| s.trim().parse().ok()).unwrap_or(0.0);
+    let y = line.get(10..20).and_then(|s| s.trim().parse().ok()).unwrap_or(0.0);
     let sym = line.get(31..34).unwrap_or("").trim();
     let z = if sym.is_empty() || sym == "*" || sym == "R" || sym == "A" {
         0
@@ -73,15 +259,19 @@ fn parse_v2000_atom(line: &str) -> Result<AtomRec, String> {
             _ => {}
         }
     }
-    Ok(AtomRec {
-        z,
-        charge,
-        aromatic: false,
-        hcount: None,
-        radical,
-        mapno: None,
-        isotope: None,
-    })
+    Ok((
+        AtomRec {
+            z,
+            charge,
+            aromatic: false,
+            hcount: None,
+            radical,
+            mapno: None,
+            isotope: None,
+        },
+        x,
+        y,
+    ))
 }
 
 fn parse_v2000_bond(line: &str, na: usize) -> Result<BondRec, String> {
@@ -150,7 +340,7 @@ fn pairs(rest: &str) -> Result<Vec<(usize, i32)>, String> {
     Ok(out)
 }
 
-fn parse_v3000(text: &str) -> Result<MolGraph, String> {
+fn parse_v3000(text: &str) -> Result<MolfilePose, String> {
     let joined = join_v30(text);
     let mut na = 0usize;
     let mut nb = 0usize;
@@ -176,6 +366,8 @@ fn parse_v3000(text: &str) -> Result<MolGraph, String> {
         };
         na
     ];
+    let mut xs = vec![0.0f32; na];
+    let mut ys = vec![0.0f32; na];
     let mut seen_atom = vec![false; na];
     let mut bonds = Vec::with_capacity(nb);
     let mut in_atom = false;
@@ -203,7 +395,7 @@ fn parse_v3000(text: &str) -> Result<MolGraph, String> {
             _ => {}
         }
         if in_atom {
-            parse_v3000_atom(line, &mut atoms, &mut seen_atom)?;
+            parse_v3000_atom(line, &mut atoms, &mut xs, &mut ys, &mut seen_atom)?;
         } else if in_bond {
             bonds.push(parse_v3000_bond(line, na)?);
         }
@@ -217,7 +409,16 @@ fn parse_v3000(text: &str) -> Result<MolGraph, String> {
             atoms[b.b].aromatic = true;
         }
     }
-    Ok(MolGraph { atoms, bonds })
+    let (x, y) = if coords_usable(&xs, &ys) {
+        (Some(xs), Some(ys))
+    } else {
+        (None, None)
+    };
+    Ok(MolfilePose {
+        graph: MolGraph { atoms, bonds },
+        x,
+        y,
+    })
 }
 
 fn join_v30(text: &str) -> Vec<String> {
@@ -244,7 +445,13 @@ fn join_v30(text: &str) -> Vec<String> {
     out
 }
 
-fn parse_v3000_atom(line: &str, atoms: &mut [AtomRec], seen: &mut [bool]) -> Result<(), String> {
+fn parse_v3000_atom(
+    line: &str,
+    atoms: &mut [AtomRec],
+    xs: &mut [f32],
+    ys: &mut [f32],
+    seen: &mut [bool],
+) -> Result<(), String> {
     let mut parts = line.split_whitespace();
     let idx: usize = parts
         .next()
@@ -260,8 +467,8 @@ fn parse_v3000_atom(line: &str, atoms: &mut [AtomRec], seen: &mut [bool]) -> Res
     } else {
         atomic_number(sym).ok_or_else(|| format!("unknown element {sym}"))? as i32
     };
-    let _x = parts.next();
-    let _y = parts.next();
+    let x = parts.next().and_then(|t| t.parse().ok()).unwrap_or(0.0);
+    let y = parts.next().and_then(|t| t.parse().ok()).unwrap_or(0.0);
     let _z = parts.next();
     let map = parts.next().and_then(|t| t.parse::<u32>().ok());
     let mut charge = 0i32;
@@ -288,6 +495,8 @@ fn parse_v3000_atom(line: &str, atoms: &mut [AtomRec], seen: &mut [bool]) -> Res
         mapno: map.filter(|&m| m > 0),
         isotope: None,
     };
+    xs[i] = x;
+    ys[i] = y;
     seen[i] = true;
     Ok(())
 }

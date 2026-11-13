@@ -28,7 +28,7 @@ from xpict.contracts import DepictSpecDict, MolSpec
 from xpict.contracts.scene import Scene
 from xpict.depict_spec import depict, depict_svg, is_live_depict_spec
 from xpict.future import PictSpec
-from xpict.rendered import Rendered, SvgAtom, SvgBond, to_svg
+from xpict.rendered import Rendered, SvgAtom, SvgBond, align_from, to_svg
 from xpict.spec import DepictSpec, Mol, MolRenderOptions, mol, render_mol
 
 __version__ = "0.8.5"
@@ -46,6 +46,7 @@ __all__ = [
     "Scene",
     "SvgAtom",
     "SvgBond",
+    "align_from",
     "depict",
     "depict_svg",
     "mol",

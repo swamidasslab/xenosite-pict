@@ -16,6 +16,8 @@ mod fit;
 pub(crate) mod layout_constraints;
 mod layout_items;
 #[cfg(test)]
+mod align_pose_tests;
+#[cfg(test)]
 mod review_regress;
 mod scheme_layout;
 mod scheme_nudge;
@@ -182,6 +184,8 @@ pub fn validate_edges(spec: &DepictSpec) -> Result<(), String> {
 ///
 /// - No align: each mol is its own free-layout root.
 /// - `align: true`: forest — default parent = previous mol; `align_to` overrides.
+/// - `align_to.coords`: soft-seed root (no parent).
+/// - `align_to.molblock`: synthetic molfile root (not a document mol) as parent.
 ///
 /// Returns `None` only when the document has no molecules.
 pub fn plan_edge(spec: &DepictSpec) -> Result<Option<EdgePlan>, String> {
@@ -198,22 +202,48 @@ pub fn plan_edge(spec: &DepictSpec) -> Result<Option<EdgePlan>, String> {
         .collect();
 
     let align = spec.align_enabled();
+    let n = mols.len();
 
-    // parent_of[i] = None → root; Some(j) → align onto j.
-    // Explicit ``align_to`` always wins; ``align: true`` defaults others to previous.
-    let mut parent_of: Vec<Option<usize>> = vec![None; mols.len()];
-    for i in 0..mols.len() {
+    // parent_of[i] = None → root; Some(Doc(j)) → align onto document mol j;
+    // Some(Synthetic(k)) → align onto synthetic molblock root k.
+    #[derive(Clone, Copy)]
+    enum Parent {
+        Doc(usize),
+        Synthetic(usize),
+    }
+    let mut parent_of: Vec<Option<Parent>> = vec![None; n];
+    let mut seed_coords: Vec<Option<crate::edge::AlignCoords>> = vec![None; n];
+    let mut synthetic: Vec<MolTemplate> = Vec::new();
+
+    for i in 0..n {
         if let Some(ref target) = mols[i].align_to {
-            let name = target.ref_id();
-            let j = *id_to_idx
-                .get(name)
-                .ok_or_else(|| format!("align_to unknown id {name}"))?;
-            if j == i {
-                return Err(format!("mol {} cannot align_to itself", ids[i]));
+            target.validate()?;
+            if let Some(coords) = target.coords() {
+                seed_coords[i] = Some(coords.clone());
+            } else if let Some(mb) = target.molblock() {
+                let syn_id = format!("__xpict_mb_{}", ids[i]);
+                let syn_idx = synthetic.len();
+                synthetic.push(MolTemplate {
+                    id: syn_id,
+                    smiles: None,
+                    cxsmiles: None,
+                    molfile: Some(mb.to_string()),
+                    seed_coords: None,
+                    align: None,
+                    template_for: vec![],
+                });
+                parent_of[i] = Some(Parent::Synthetic(syn_idx));
+            } else if let Some(name) = target.ref_id() {
+                let j = *id_to_idx
+                    .get(name)
+                    .ok_or_else(|| format!("align_to unknown id {name}"))?;
+                if j == i {
+                    return Err(format!("mol {} cannot align_to itself", ids[i]));
+                }
+                parent_of[i] = Some(Parent::Doc(j));
             }
-            parent_of[i] = Some(j);
         } else if align && i > 0 {
-            parent_of[i] = Some(i - 1);
+            parent_of[i] = Some(Parent::Doc(i - 1));
         }
     }
 
@@ -230,20 +260,23 @@ pub fn plan_edge(spec: &DepictSpec) -> Result<Option<EdgePlan>, String> {
                 smiles: m.smiles.clone(),
                 cxsmiles: m.cxsmiles.clone(),
                 molfile: m.molfile.clone(),
+                seed_coords: seed_coords[i].clone(),
                 align: align_opts,
                 template_for: vec![],
             }
         })
         .collect();
 
-    // Attach children (drain from leaves upward by building ownership via indices).
-    // Collect children indices per parent, then move nodes into place.
-    let mut children_of: Vec<Vec<usize>> = vec![vec![]; mols.len()];
+    // Document-mol children of document parents.
+    let mut children_of: Vec<Vec<usize>> = vec![vec![]; n];
+    // Document-mol children of each synthetic root.
+    let mut syn_children: Vec<Vec<usize>> = vec![vec![]; synthetic.len()];
     let mut roots_idx: Vec<usize> = Vec::new();
     for (i, p) in parent_of.iter().enumerate() {
         match p {
             None => roots_idx.push(i),
-            Some(j) => children_of[*j].push(i),
+            Some(Parent::Doc(j)) => children_of[*j].push(i),
+            Some(Parent::Synthetic(k)) => syn_children[*k].push(i),
         }
     }
 
@@ -260,10 +293,19 @@ pub fn plan_edge(spec: &DepictSpec) -> Result<Option<EdgePlan>, String> {
     }
 
     let mut slots: Vec<Option<MolTemplate>> = nodes.drain(..).map(Some).collect();
-    let roots: Vec<MolTemplate> = roots_idx
+    let mut roots: Vec<MolTemplate> = roots_idx
         .iter()
         .map(|&i| build_tree(i, &mut slots, &children_of))
         .collect();
+
+    // Attach document children under synthetic molblock roots.
+    for (k, mut syn) in synthetic.into_iter().enumerate() {
+        for &c in &syn_children[k] {
+            syn.template_for
+                .push(build_tree(c, &mut slots, &children_of));
+        }
+        roots.push(syn);
+    }
 
     let plan = EdgePlan::new_v1(vec![EdgeTask::CoordGen { roots }]);
     plan.validate()?;
@@ -603,11 +645,9 @@ mod tests {
                 Node::Mol(MolNode {
                     smiles: Some("Cc1ccccc1".into()),
                     align_to: Some(AlignTo::Spec(AlignToSpec {
-                        ref_id: "ref".into(),
+                        ref_id: Some("ref".into()),
                         atom_map: Some(vec![(1, 0), (2, 1), (3, 2)]),
-                        min_atoms: None,
-                        mode: None,
-                        timeout_ms: None,
+                        ..Default::default()
                     })),
                     ..Default::default()
                 }),
@@ -1204,11 +1244,11 @@ mod tests {
     #[test]
     fn align_to_json_string_or_object() {
         let s: AlignTo = serde_json::from_str(r#""ref""#).unwrap();
-        assert_eq!(s.ref_id(), "ref");
+        assert_eq!(s.ref_id(), Some("ref"));
         let o: AlignTo =
             serde_json::from_str(r#"{"ref":"mid","atom_map":[[1,0],[2,1]],"min_atoms":4}"#)
                 .unwrap();
-        assert_eq!(o.ref_id(), "mid");
+        assert_eq!(o.ref_id(), Some("mid"));
         let opts = o.align_opts();
         assert_eq!(opts.atom_map.as_ref().unwrap().len(), 2);
         assert_eq!(opts.min_atoms, Some(4));

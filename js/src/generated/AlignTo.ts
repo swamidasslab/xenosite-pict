@@ -2,6 +2,6 @@
 import type { AlignToSpec } from "./AlignToSpec";
 
 /**
- * Document align target: id string or `{ "ref", "atom_map"?, "min_atoms"?, "mode"?, "timeout_ms"? }`.
+ * Document align target: id string or object (`ref` / `coords` / `molblock` + opts).
  */
 export type AlignTo = string | AlignToSpec;

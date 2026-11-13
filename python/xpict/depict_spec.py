@@ -20,11 +20,14 @@ def as_depict_spec(spec: DepictSpecLike) -> WireDepictSpec:
 def as_rendered(row: RenderedDict, *, scene: SceneDict | None = None) -> Rendered:
     """Bind a Rust ``Rendered`` JSON object — packing already happened in core."""
     sc: SceneDict = scene if scene is not None else row["scene"]
+    mol = MoleculeIn.model_validate(row["molecule"])
+    rid = str(row.get("id") or mol.id or "") or None
     return Rendered(
+        id=rid,
         width=float(sc.get("width", row["width"])),
         height=float(sc.get("height", row["height"])),
         scene=Scene.model_validate(sc),
-        molecule=MoleculeIn.model_validate(row["molecule"]),
+        molecule=mol,
         source=str(row["source"]),
         frame_molblock=str(row.get("frame_molblock") or ""),
         coords=[SvgAtom(**a) for a in row["coords"]],

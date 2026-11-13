@@ -16,12 +16,20 @@ class AlignOptsDict(TypedDict, total=False):
     timeout_ms: NotRequired[int]
 
 
+class AlignCoordsDict(TypedDict, total=False):
+    """Terse CoordGen-space pose seed: parallel `x[i]`, `y[i]` for `atom[i]`."""
+    atom: Required[list[int]]
+    x: Required[list[float]]
+    y: Required[list[float]]
+
+
 class MolTemplateDict(TypedDict, total=False):
     """One node in a coord_gen forest (root = free layout; children align to parent)."""
     id: Required[str]
     align: NotRequired[AlignOptsDict]
     cxsmiles: NotRequired[str]
     molfile: NotRequired[str]
+    seed_coords: NotRequired[AlignCoordsDict]
     smiles: NotRequired[str]
     template_for: NotRequired[list[MolTemplateDict]]
 

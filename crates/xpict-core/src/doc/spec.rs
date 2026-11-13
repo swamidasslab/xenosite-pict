@@ -26,7 +26,7 @@ use crate::doc::chrome::{
     annotations_from_overlay, overlay_from_mol, Annotation, AtomLabelSpec, AtomNumberSpec,
     CalloutField, CircleField, MolOverlayFields, MolText, RegionField,
 };
-use crate::edge::{AlignMode, AlignOpts};
+use crate::edge::{AlignCoords, AlignMode, AlignOpts};
 use crate::scene::{AromaticStyle, SvgTarget};
 
 // ---------------------------------------------------------------------------
@@ -129,15 +129,25 @@ impl ShadeSpec {
 // Align (non-cascading topology)
 // ---------------------------------------------------------------------------
 
-/// Object form of document ``align_to`` (template ref + EdgePlan-style opts).
+/// Object form of document ``align_to`` (template ref, coords seed, or molblock).
+///
+/// Exactly one of `ref` / `coords` / `molblock` must be set.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
 #[cfg_attr(feature = "codegen", ts(export))]
 pub struct AlignToSpec {
-    /// Id of the template mol in this group.
-    #[serde(rename = "ref")]
-    #[cfg_attr(feature = "codegen", ts(rename = "ref"))]
-    pub ref_id: String,
+    /// Id of the template mol in this document.
+    #[serde(rename = "ref", default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(rename = "ref", optional))]
+    pub ref_id: Option<String>,
+    /// Soft-constrain listed query atoms (CoordGen-space); no MCS.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub coords: Option<AlignCoords>,
+    /// External template graph + CTAB 2D pose for MCS when there is no `ref`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub molblock: Option<String>,
     /// Pairs `(query, template)` vs the template; skips MCS when set.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
@@ -156,7 +166,28 @@ pub struct AlignToSpec {
     pub timeout_ms: Option<u32>,
 }
 
-/// Document align target: id string or `{ "ref", "atom_map"?, "min_atoms"?, "mode"?, "timeout_ms"? }`.
+impl AlignToSpec {
+    /// Exactly one of `ref` / `coords` / `molblock`.
+    pub fn validate_source(&self) -> Result<(), String> {
+        let n = self.ref_id.as_ref().is_some_and(|s| !s.is_empty()) as u8
+            + self.coords.is_some() as u8
+            + self
+                .molblock
+                .as_ref()
+                .is_some_and(|s| !s.trim().is_empty()) as u8;
+        if n != 1 {
+            return Err(
+                "align_to object needs exactly one of ref, coords, or molblock".into(),
+            );
+        }
+        if let Some(c) = &self.coords {
+            c.validate()?;
+        }
+        Ok(())
+    }
+}
+
+/// Document align target: id string or object (`ref` / `coords` / `molblock` + opts).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 #[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
@@ -168,10 +199,32 @@ pub enum AlignTo {
 }
 
 impl AlignTo {
-    pub fn ref_id(&self) -> &str {
+    pub fn ref_id(&self) -> Option<&str> {
         match self {
-            AlignTo::Ref(s) => s.as_str(),
-            AlignTo::Spec(s) => s.ref_id.as_str(),
+            AlignTo::Ref(s) => Some(s.as_str()),
+            AlignTo::Spec(s) => s.ref_id.as_deref().filter(|t| !t.is_empty()),
+        }
+    }
+
+    pub fn coords(&self) -> Option<&AlignCoords> {
+        match self {
+            AlignTo::Spec(s) => s.coords.as_ref(),
+            AlignTo::Ref(_) => None,
+        }
+    }
+
+    pub fn molblock(&self) -> Option<&str> {
+        match self {
+            AlignTo::Spec(s) => s.molblock.as_deref().filter(|t| !t.trim().is_empty()),
+            AlignTo::Ref(_) => None,
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        match self {
+            AlignTo::Ref(s) if s.is_empty() => Err("align_to ref is empty".into()),
+            AlignTo::Ref(_) => Ok(()),
+            AlignTo::Spec(s) => s.validate_source(),
         }
     }
 
@@ -533,10 +586,15 @@ pub struct MolNode {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub star_labels: Option<Vec<Option<String>>>,
-    /// Template id string, or `{ "ref", "atom_map"?, "min_atoms"?, "mode"?, "timeout_ms"? }`.
+    /// Template id string, or `{ "ref" | "coords" | "molblock", … }`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub align_to: Option<AlignTo>,
+    /// When `false`, mol stays in the align forest but is omitted from
+    /// `Rendered[]`. Omit / `null` / `true` → visible (default).
+    #[serde(default, skip_serializing_if = "visible_omitted_or_true")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub visible: Option<bool>,
     /// Caption: [`Label`] (string id, list, or `{id, pos?}` — text-node refs).
     ///
     /// Prefer privileged [`Self::name`] for inline mol captions. `label` id-refs
@@ -612,7 +670,16 @@ pub struct MolNode {
     pub opts: Option<Opts>,
 }
 
+fn visible_omitted_or_true(v: &Option<bool>) -> bool {
+    matches!(v, None | Some(true))
+}
+
 impl MolNode {
+    /// Whether this mol should appear in `Rendered[]` (default true).
+    pub fn is_visible(&self) -> bool {
+        self.visible.unwrap_or(true)
+    }
+
     /// Local leaf opts from flat fields (+ legacy shade window).
     pub fn local_opts(&self) -> MolOpts {
         let mut o = MolOpts {

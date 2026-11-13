@@ -127,7 +127,26 @@ class Mol(PictBase):
             if overlay:
                 node = node.model_copy(update=overlay)
             doc = DepictSpec(node)
+        elif isinstance(opts.align_to, Rendered) or (
+            isinstance(opts.align_to, Mol) and opts.align_to.frame_molblock
+        ):
+            # Pose-preserving: AlignToSpec from prior CoordGen frame.
+            from xpict.rendered import align_from_frame
+
+            if isinstance(opts.align_to, Rendered):
+                frame = opts.align_to.frame_molblock
+            else:
+                frame = opts.align_to.frame_molblock or ""
+            qid = opts.id or self.id
+            query = self.to_node(id=qid).model_copy(
+                update={
+                    "align_to": align_from_frame(frame, atom_map=opts.atom_map),
+                    **overlay,
+                }
+            )
+            doc = DepictSpec(query)
         else:
+            # Unrendered Mol — same-doc group (no prior pose yet).
             ref = opts.reference_mol()
             ref_id = ref.id or "m_0"
             qid = opts.id or self.id or "m_1"

@@ -152,24 +152,30 @@ fn take_cells(
     i: &mut usize,
 ) -> Result<Vec<Rendered>, String> {
     match spec {
-        DepictSpec::Mol(_) => {
+        DepictSpec::Mol(m) => {
             let row = painted
                 .get(*i)
                 .ok_or_else(|| "render paint underflow".to_string())?
                 .clone();
             *i += 1;
-            Ok(vec![row])
+            if m.is_visible() {
+                Ok(vec![row])
+            } else {
+                Ok(vec![])
+            }
         }
         DepictSpec::Group { children, .. } => {
             let mut out = Vec::new();
             for n in children {
-                if matches!(n, Node::Mol(_)) {
+                if let Node::Mol(m) = n {
                     let row = painted
                         .get(*i)
                         .ok_or_else(|| "render paint underflow".to_string())?
                         .clone();
                     *i += 1;
-                    out.push(row);
+                    if m.is_visible() {
+                        out.push(row);
+                    }
                 }
             }
             Ok(out)

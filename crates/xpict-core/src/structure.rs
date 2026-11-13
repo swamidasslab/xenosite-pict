@@ -4,7 +4,7 @@
 //! No Chematic; no re-perception.
 
 use crate::layout_coordgen::LayoutMolecule;
-use crate::molfile::parse_molfile;
+use crate::molfile::{coords_usable, parse_molfile_pose};
 use crate::smiles::parse_smiles;
 use crate::valence::{implicit_hcount, unpaired_electrons};
 
@@ -62,12 +62,20 @@ pub fn parse_source(source: &str) -> Result<Parsed, String> {
     if text.is_empty() {
         return Err("empty structure".into());
     }
-    let g = if text.contains("V2000") || text.contains("V3000") || text.lines().count() >= 4 {
-        parse_molfile(text)?
+    if text.contains("V2000") || text.contains("V3000") || text.lines().count() >= 4 {
+        let pose = parse_molfile_pose(text)?;
+        let mut parsed = graph_to_parsed(&pose.graph)?;
+        if let (Some(x), Some(y)) = (pose.x, pose.y) {
+            if coords_usable(&x, &y) && x.len() == parsed.layout.n_atoms() {
+                parsed.layout.input_x = Some(x);
+                parsed.layout.input_y = Some(y);
+            }
+        }
+        Ok(parsed)
     } else {
-        parse_smiles(text).map_err(|e| format!("smiles: {e}"))?
-    };
-    graph_to_parsed(&g)
+        let g = parse_smiles(text).map_err(|e| format!("smiles: {e}"))?;
+        graph_to_parsed(&g)
+    }
 }
 
 pub fn graph_to_parsed(g: &MolGraph) -> Result<Parsed, String> {

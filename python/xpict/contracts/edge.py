@@ -30,12 +30,20 @@ class AlignOpts(StrictModel):
     timeout_ms: Annotated[int | None, Field(description='MCS budget in milliseconds. `None` = house 100 ms; `0` = unbounded.')] = None
 
 
+class AlignCoords(StrictModel):
+    """Terse CoordGen-space pose seed: parallel `x[i]`, `y[i]` for `atom[i]`."""
+    atom: Annotated[list[int], Field(description='Atom indices (required; same length as `x` / `y`).')]
+    x: list[float]
+    y: list[float]
+
+
 class MolTemplate(StrictModel):
     """One node in a coord_gen forest (root = free layout; children align to parent)."""
     id: Annotated[str, Field(description='Rust-assigned unique id; round-trips to the document node.')]
     align: Annotated[AlignOpts | None, Field(description='Opts for aligning onto the parent; `None` on roots.')] = None
     cxsmiles: str | None = None
     molfile: str | None = None
+    seed_coords: Annotated[AlignCoords | None, Field(description="Soft-constrain this mol's atoms (CoordGen-space); roots only; no MCS.")] = None
     smiles: str | None = None
     template_for: list[MolTemplate] = Field(default_factory=list, description='Children that use this node as their align template.')
 

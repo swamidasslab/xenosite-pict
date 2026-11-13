@@ -30,6 +30,31 @@ pub enum AlignMode {
     Skip,
 }
 
+/// Terse CoordGen-space pose seed: parallel `x[i]`, `y[i]` for `atom[i]`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
+pub struct AlignCoords {
+    pub x: Vec<f64>,
+    pub y: Vec<f64>,
+    /// Atom indices (required; same length as `x` / `y`).
+    pub atom: Vec<u32>,
+}
+
+impl AlignCoords {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.x.len() != self.y.len() || self.x.len() != self.atom.len() {
+            return Err(format!(
+                "align coords length mismatch: x={}, y={}, atom={}",
+                self.x.len(),
+                self.y.len(),
+                self.atom.len()
+            ));
+        }
+        Ok(())
+    }
+}
+
 /// Align this mol onto its parent template.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
@@ -83,6 +108,10 @@ pub struct MolTemplate {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub molfile: Option<String>,
+    /// Soft-constrain this mol's atoms (CoordGen-space); roots only; no MCS.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub seed_coords: Option<AlignCoords>,
     /// Opts for aligning onto the parent; `None` on roots.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
@@ -282,12 +311,14 @@ mod tests {
                 smiles: Some("c1ccccc1".into()),
                 cxsmiles: None,
                 molfile: None,
+                seed_coords: None,
                 align: None,
                 template_for: vec![MolTemplate {
                     id: "m_1".into(),
                     smiles: Some("Cc1ccccc1".into()),
                     cxsmiles: None,
                     molfile: None,
+                    seed_coords: None,
                     align: Some(AlignOpts {
                         atom_map: Some(vec![(1, 0), (2, 1), (3, 2), (4, 3), (5, 4), (6, 5)]),
                         ..Default::default()
@@ -326,6 +357,7 @@ mod tests {
                 smiles: Some("CCO".into()),
                 cxsmiles: None,
                 molfile: None,
+                seed_coords: None,
                 align: Some(AlignOpts::default()),
                 template_for: vec![],
             }],
@@ -340,6 +372,7 @@ mod tests {
             smiles: None,
             cxsmiles: Some("*C |$R;$|".into()),
             molfile: None,
+            seed_coords: None,
             align: None,
             template_for: vec![],
         };
@@ -349,6 +382,7 @@ mod tests {
             smiles: None,
             cxsmiles: None,
             molfile: Some("molblock".into()),
+            seed_coords: None,
             align: None,
             template_for: vec![],
         };
@@ -358,6 +392,7 @@ mod tests {
             smiles: Some("C".into()),
             cxsmiles: Some("CC".into()),
             molfile: None,
+            seed_coords: None,
             align: None,
             template_for: vec![],
         };
