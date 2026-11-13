@@ -1,0 +1,5 @@
+title: GlcA conjugate (bracket)
+expect: Same molecule as trailer form — inline [*"GlcA"] paints GlcA on the dummy.
+spec:
+  type: mol
+  cxsmiles: 'CCO[*"GlcA"]'

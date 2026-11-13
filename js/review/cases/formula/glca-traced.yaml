@@ -1,0 +1,5 @@
+title: GlcA traced CX
+expect: GlcA atom label still paints when $_AV / atomProp tracing fields follow the $…$ block.
+spec:
+  type: mol
+  cxsmiles: "C(C)O[*] |$;;;GlcA$,$_AV:1;0;2;3$,atomProp:0.nextTag.4|"

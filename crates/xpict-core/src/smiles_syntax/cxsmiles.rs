@@ -242,6 +242,45 @@ impl CxSmiles {
         format!("|{}|", body.join(","))
     }
 
+    /// Value of `MOLPROP:MF_DELTA=…` if present (first match).
+    ///
+    /// Same spelling as xenosmarts `CxSmiles::mf_delta` (Lark-parsed
+    /// `MOLPROP` keyword + `MF_DELTA=` payload pairs).
+    pub fn mf_delta(&self) -> Option<&str> {
+        for f in &self.fields {
+            let CxField::Other {
+                keyword, payload, ..
+            } = f
+            else {
+                continue;
+            };
+            if !keyword.eq_ignore_ascii_case("MOLPROP") {
+                continue;
+            }
+            for pair in payload.split(';') {
+                let pair = pair.trim();
+                if let Some(v) = pair.strip_prefix("MF_DELTA=") {
+                    return Some(v);
+                }
+                if let Some((k, v)) = pair.split_once('=') {
+                    if k.eq_ignore_ascii_case("MF_DELTA") {
+                        return Some(v);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// CX field for a parent-relative formula constraint.
+    pub fn molprop_mf_delta(delta: &str) -> CxField {
+        CxField::Other {
+            kind: CxKind::Unknown,
+            keyword: "MOLPROP".into(),
+            payload: format!("MF_DELTA={delta}"),
+        }
+    }
+
     /// Classify a keyword + payload (internal commas already joined).
     pub fn classify(kw: &str, payload: String) -> CxField {
         match kw {
@@ -508,5 +547,22 @@ mod tests {
         assert_eq!(cx.fields.len(), 1);
         assert_eq!(cx.dropped(), vec![CxKind::DataSGroup]);
         assert_eq!(cx.write(), "|SgD:0,1,2:name:data|");
+    }
+
+    #[test]
+    fn molprop_mf_delta_extract_and_write() {
+        let cx = CxSmiles {
+            fields: vec![CxSmiles::molprop_mf_delta("O/-H2-O")],
+        };
+        assert_eq!(cx.write(), "|MOLPROP:MF_DELTA=O/-H2-O|");
+        assert_eq!(cx.mf_delta(), Some("O/-H2-O"));
+        let with_labels = CxSmiles {
+            fields: vec![
+                CxField::AtomLabels(vec![None, None, Some("GlcA".into())]),
+                CxSmiles::molprop_mf_delta("O"),
+            ],
+        };
+        assert_eq!(with_labels.write(), "|$;;GlcA$,MOLPROP:MF_DELTA=O|");
+        assert_eq!(with_labels.mf_delta(), Some("O"));
     }
 }

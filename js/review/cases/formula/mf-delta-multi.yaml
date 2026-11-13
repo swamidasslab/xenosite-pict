@@ -1,0 +1,5 @@
+title: MF_DELTA multi-option stub
+expect: Empty graph. Formula OR text only (e.g. "+O-C-H4 or +N or +Cl") — no star.
+spec:
+  type: mol
+  cxsmiles: "* |MOLPROP:MF_DELTA=CHO-C2-H5/N/Cl2-Cl|"

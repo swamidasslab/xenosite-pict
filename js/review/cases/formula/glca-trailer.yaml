@@ -1,0 +1,5 @@
+title: GlcA conjugate (CX $…$)
+expect: Ethanol stub with dummy * labeled GlcA from CX atom-value trailer (not MOLPROP).
+spec:
+  type: mol
+  cxsmiles: "CCO* |$;;;GlcA$|"

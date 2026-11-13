@@ -50,7 +50,10 @@ pub use spec::*;
 
 use std::collections::HashMap;
 
-use crate::cxsmiles::{apply_cx_by_index, cx_source};
+use crate::cxsmiles::{
+    apply_cx_by_index, cx_mf_delta, cx_source, format_mf_delta_display, format_star_mf_display,
+    is_mf_delta_star_stub,
+};
 use crate::depict::depict_chem;
 use crate::edge::{
     AlignOpts, CoordGenMoleculeResult, EdgePlan, EdgeResult, EdgeTask, EdgeTaskResult, MolTemplate,
@@ -273,6 +276,10 @@ pub fn plan_edge(spec: &DepictSpec) -> Result<Option<EdgePlan>, String> {
     let mut syn_children: Vec<Vec<usize>> = vec![vec![]; synthetic.len()];
     let mut roots_idx: Vec<usize> = Vec::new();
     for (i, p) in parent_of.iter().enumerate() {
+        // `* |MOLPROP:MF_DELTA=…|` is a formula stub — empty graph, no CoordGen.
+        if mol_is_mf_delta_star_stub(&mols[i]) {
+            continue;
+        }
         match p {
             None => roots_idx.push(i),
             Some(Parent::Doc(j)) => children_of[*j].push(i),
@@ -461,13 +468,26 @@ pub(crate) fn paint_laid_mols(
 
     for (i, node) in mols.iter().enumerate() {
         let id = &ids[i];
+        let chrome = spec.resolve_mol_chrome(i);
+        validate_mol_shade_colormap(node, &chrome)?;
+
+        // Star + MF_DELTA → empty graph; paint formula text only (never `*`).
+        // All-nonneg nets ⇒ absolute Hill; any loss ⇒ signed delta display.
+        if mol_is_mf_delta_star_stub(node) {
+            let src = mol_cx_source(node).unwrap_or("");
+            let delta = cx_mf_delta(src).unwrap_or_default();
+            let text = format_star_mf_display(&delta);
+            out.push(paint_mf_delta_formula_only(id, &text, &chrome)?);
+            continue;
+        }
+
         let base = laid
             .get(id)
             .cloned()
             .ok_or_else(|| format!("missing laid molecule id {id}"))?;
-        let chrome = spec.resolve_mol_chrome(i);
-        validate_mol_shade_colormap(node, &chrome)?;
         let molecule = apply_doc_chrome(base, node, id, &chrome);
+        // Auto region for real structure + MF_DELTA (author region wins).
+        let node_paint = with_mf_delta_region(node, &molecule);
         // Chrome constraints first (regions/callouts/labels) in the same
         // unscaled chem space. Then one mol-tree scale so hub `scale` applies
         // to regions, aromatic circles, and bonds together. Mol `name` is
@@ -475,8 +495,8 @@ pub(crate) fn paint_laid_mols(
         // (including regions). Fit last. Do **not** mutate chem atom text for
         // `atom_label` — that is `star_labels` on `*` atoms only.
         let scene = depict_chem(&molecule);
-        let scene = chrome_paint::apply_mol_chrome(node, &molecule, scene);
-        let scene = caption::apply_mol_captions(spec, node, scene);
+        let scene = chrome_paint::apply_mol_chrome(&node_paint, &molecule, scene);
+        let scene = caption::apply_mol_captions(spec, &node_paint, scene);
         let scene = scene.scale_uniform(molecule.diagram_scale());
         // House pad scales with mol.scale so the fitted SVG doubles; an
         // explicit `pad` is output pixels and stays as given.
@@ -501,7 +521,10 @@ pub fn render_doc(spec: &DepictSpec, edge: &EdgeResult) -> Result<Vec<DocPaint>,
     let ids = assign_mol_ids(&mols)?;
     let by_id = edge_molecules(edge);
     let mut laid = HashMap::new();
-    for id in &ids {
+    for (node, id) in mols.iter().zip(ids.iter()) {
+        if mol_is_mf_delta_star_stub(node) {
+            continue;
+        }
         let row = by_id
             .get(id.as_str())
             .ok_or_else(|| format!("EdgeResult missing molecule id {id}"))?;
@@ -518,6 +541,124 @@ pub fn render_doc(spec: &DepictSpec, edge: &EdgeResult) -> Result<Vec<DocPaint>,
         laid.insert(id.clone(), mol);
     }
     paint_laid_mols(spec, &laid)
+}
+
+fn mol_cx_source(node: &MolNode) -> Option<&str> {
+    cx_source(node.cxsmiles.as_deref(), node.smiles.as_deref())
+}
+
+fn mol_is_mf_delta_star_stub(node: &MolNode) -> bool {
+    mol_cx_source(node).is_some_and(is_mf_delta_star_stub)
+}
+
+/// Clone node with a default box region labeled by MF_DELTA when unset.
+fn with_mf_delta_region(node: &MolNode, molecule: &MoleculeIn) -> MolNode {
+    if node.region.is_some() {
+        return node.clone();
+    }
+    let Some(src) = mol_cx_source(node) else {
+        return node.clone();
+    };
+    let Some(raw) = cx_mf_delta(src) else {
+        return node.clone();
+    };
+    if molecule.atoms.is_empty() {
+        return node.clone();
+    }
+    let text = format_mf_delta_display(&raw);
+    if text.is_empty() {
+        return node.clone();
+    }
+    let atoms: Vec<u32> = molecule.atoms.iter().map(|a| a.index as u32).collect();
+    let region = RegionSpec {
+        style: RegionStyle::Box,
+        atoms,
+        exclude: vec![],
+        fill: Some(FillSpec {
+            color: Some("#48a".into()),
+            opacity: Some(0.12),
+        }),
+        stroke: Some(StrokeSpec {
+            color: Some("#48a".into()),
+            width: None,
+            dash: None,
+        }),
+        text: Some(MolText::Styled(MolTextSpec {
+            content: text,
+            place: Some(RegionTextPlace::Inside),
+            pos: Some(crate::doc::LabelPos::Auto),
+            ..Default::default()
+        })),
+        padding: None,
+        z: None,
+    };
+    let mut out = node.clone();
+    out.region = Some(RegionField::One(region));
+    out
+}
+
+/// Empty-graph cell: formula-delta text only (no star glyph).
+fn paint_mf_delta_formula_only(
+    id: &str,
+    text: &str,
+    chrome: &crate::doc::MolOpts,
+) -> Result<DocPaint, String> {
+    use crate::doc::text_paint::outline_markup;
+    use crate::metrics::FONT_PX;
+    use crate::scene::{Layer, LayerName, Primitive, Viewport};
+
+    let scale = chrome.scale.unwrap_or(1.0).max(1e-6);
+    let font_px = FONT_PX * 1.5 * scale;
+    let content = if text.is_empty() { "·" } else { text };
+    let (d, data_text, _) = outline_markup(content, 0.0, 0.0, font_px, "middle").ok_or_else(
+        || format!("mf_delta formula paint failed for {content:?}"),
+    )?;
+    let scene = Scene {
+        width: 1.0,
+        height: 1.0,
+        x: 0.0,
+        y: 0.0,
+        viewports: vec![Viewport {
+            id: Some(id.to_string()),
+            x: 0.0,
+            y: 0.0,
+            ox: 0.0,
+            oy: 0.0,
+            width: 1.0,
+            height: 1.0,
+            layers: vec![Layer {
+                name: LayerName::Labels,
+                primitives: vec![Primitive::Path {
+                    d,
+                    stroke: None,
+                    fill: Some("#111".into()),
+                    stroke_width: 0.0,
+                    opacity: 1.0,
+                    stroke_dasharray: None,
+                    stroke_linecap: None,
+                    class: Some("mf-delta formula".into()),
+                    data_text: Some(data_text),
+                }],
+            }],
+            halo_filter_px: None,
+        }],
+        overlays: vec![],
+        halo: vec![],
+    };
+    let margin = match chrome.pad {
+        Some(p) if p.is_finite() && p >= 0.0 => p,
+        _ => fit::VIEWPORT_MARGIN_DEFAULT * scale,
+    };
+    let scene = fit::fit_scene(scene, margin);
+    Ok(DocPaint {
+        id: id.to_string(),
+        molecule: MoleculeIn {
+            id: Some(id.to_string()),
+            ..Default::default()
+        },
+        scene,
+        frame_json: String::new(),
+    })
 }
 
 #[cfg(test)]

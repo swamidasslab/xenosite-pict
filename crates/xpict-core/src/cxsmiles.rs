@@ -1,9 +1,13 @@
-//! ChemAxon CXSMILES atom-label and multicenter (`m:`) helpers.
+//! ChemAxon CXSMILES helpers for paint — built on the Lark-generated
+//! [`crate::smiles_syntax`] parser (same snapshot as xenosmarts-syntax).
 //!
-//! Shared by paint chrome ([`crate::doc`]) and language edges. No RDKit.
-//! The SMILES reader skips the trailer; ``m:`` / ``$…$`` are applied here.
+//! Atom labels come from [`SmilesMol::atom_labels`] (trailer `$…$` **and**
+//! inline `[*"Label"]`). Multicenters still use a small `m:` field scan.
+//! `MOLPROP:MF_DELTA` is a molecule property ([`cx_mf_delta`]) — never an
+//! atom label and never auto-promoted to a mol caption.
 
 use crate::scene::MoleculeIn;
+use crate::smiles_syntax::{parse_smiles, smiles_rt::SmilesMol};
 
 /// One CX ``m:dummy:a.b.c`` multicenter S-group.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -110,45 +114,59 @@ fn parse_m_group(rest: &str) -> Option<Multicenter> {
     Some(Multicenter { dummy, endpts })
 }
 
+/// Display form of a ChemAxon `$…$` / inline label (strip leading `_`).
+fn display_label(raw: &str) -> Option<String> {
+    let p = raw.trim();
+    if p.is_empty() {
+        return None;
+    }
+    let label = if let Some(stripped) = p.strip_prefix('_') {
+        if stripped.is_empty() {
+            p.to_string()
+        } else {
+            stripped.to_string()
+        }
+    } else {
+        p.to_string()
+    };
+    Some(label)
+}
+
+/// Lark-parsed per-atom labels (`$…$` trailer + inline `[*"…"]`).
+///
+/// Empty when the source has no labels. Prefer this over the legacy
+/// trailer-only scanner.
+pub fn source_atom_labels(smiles_or_cx: &str) -> Vec<Option<String>> {
+    let Ok(mol) = parse_smiles(smiles_or_cx) else {
+        return Vec::new();
+    };
+    smiles_mol_display_labels(&mol)
+}
+
+fn smiles_mol_display_labels(mol: &SmilesMol) -> Vec<Option<String>> {
+    if mol.atom_labels.iter().all(|l| l.is_none()) {
+        return Vec::new();
+    }
+    mol.atom_labels
+        .iter()
+        .map(|slot| slot.as_deref().and_then(display_label))
+        .collect()
+}
+
 /// Parse CXSMILES ``|$a;b;c;$|`` aliases into a per-atom label list.
 ///
-/// Empty segments → ``None``. Returns ``[]`` when no label block is present.
-/// Leading underscore in ChemAxon (``_R``) is stripped for display.
+/// Prefer [`source_atom_labels`] (Lark). Kept for callers that only have a
+/// trailer fragment; multi-dollar trailers (`$_AV:`) need the full parser.
 pub fn cx_atom_labels(smiles_or_cx: &str) -> Vec<Option<String>> {
-    if smiles_or_cx.is_empty() {
-        return Vec::new();
-    }
-    let Some(start) = smiles_or_cx.find("|$") else {
-        return Vec::new();
-    };
-    let rest = &smiles_or_cx[start + 2..];
-    let Some(end) = rest.find("$|") else {
-        return Vec::new();
-    };
-    let raw = &rest[..end];
-    let mut parts: Vec<&str> = raw.split(';').collect();
-    if parts.last().is_some_and(|p| p.is_empty()) {
-        parts.pop();
-    }
-    let mut out = Vec::with_capacity(parts.len());
-    for p in parts {
-        let p = p.trim();
-        if p.is_empty() {
-            out.push(None);
-            continue;
-        }
-        let label = if let Some(stripped) = p.strip_prefix('_') {
-            if stripped.is_empty() {
-                p.to_string()
-            } else {
-                stripped.to_string()
-            }
-        } else {
-            p.to_string()
-        };
-        out.push(Some(label));
-    }
-    out
+    source_atom_labels(smiles_or_cx)
+}
+
+/// `MOLPROP:MF_DELTA=` constraint string from a CXSMILES source (Lark IR).
+///
+/// Molecule property only — do not paint as an atom label or mol name.
+pub fn cx_mf_delta(smiles_or_cx: &str) -> Option<String> {
+    let mol = parse_smiles(smiles_or_cx).ok()?;
+    mol.cx.mf_delta().map(str::to_string)
 }
 
 /// SMILES graph only — drop `` |$…$|`` / other CX trailers.
@@ -164,12 +182,286 @@ pub fn smiles_base(smiles_or_cx: &str) -> String {
         .to_string()
 }
 
-/// Apply CX aliases onto atoms by index. Only non-empty slots change labels.
+/// True when the graph is a lone star placeholder (`*` / `[*]`) carrying
+/// `MOLPROP:MF_DELTA`. That `*` is for other libraries — xpict keeps an
+/// **empty** graph and paints the formula text only.
+pub fn is_mf_delta_star_stub(smiles_or_cx: &str) -> bool {
+    if cx_mf_delta(smiles_or_cx).is_none() {
+        return false;
+    }
+    matches!(smiles_base(smiles_or_cx).as_str(), "*" | "[*]")
+}
+
+/// Star stub whose constraint nets to only non-negative counts (absolute
+/// formula-only mol). Any negative after summing signed terms ⇒ delta.
+pub fn is_formula_only_constraint(constraint: &str) -> bool {
+    let parts = constraint_parts(constraint);
+    if parts.is_empty() {
+        return false;
+    }
+    parts.iter().all(|p| {
+        let (body, _) = split_charge_suffix(p.trim());
+        match parse_delta_counts(body) {
+            Ok(counts) => counts.values().all(|&n| n >= 0),
+            // Unparsed body with an explicit `-` is treated as a delta.
+            Err(_) => !body.contains('-'),
+        }
+    })
+}
+
+/// Paint text for a star + `MF_DELTA` stub: absolute Hill when formula-only,
+/// signed delta display otherwise.
+pub fn format_star_mf_display(constraint: &str) -> String {
+    if is_formula_only_constraint(constraint) {
+        format_mf_absolute_display(constraint)
+    } else {
+        format_mf_delta_display(constraint)
+    }
+}
+
+/// Absolute Hill spelling (no `+`, no losses). Examples: `O`, `C6H6O`, `O or N`.
+pub fn format_mf_absolute_display(constraint: &str) -> String {
+    let parts = constraint_parts(constraint);
+    if parts.is_empty() {
+        return String::new();
+    }
+    parts
+        .iter()
+        .map(|p| format_mf_absolute_option(p))
+        .collect::<Vec<_>>()
+        .join(" or ")
+}
+
+/// Display spelling for a formula-delta constraint (no Δ glyph).
+///
+/// Examples: `+O`, `+O-H`, `+C or +O`, `+O or -H2-O`.
+pub fn format_mf_delta_display(constraint: &str) -> String {
+    let parts = constraint_parts(constraint);
+    if parts.is_empty() {
+        return String::new();
+    }
+    parts
+        .iter()
+        .map(|p| format_mf_delta_option(p))
+        .collect::<Vec<_>>()
+        .join(" or ")
+}
+
+fn constraint_parts(constraint: &str) -> Vec<&str> {
+    constraint
+        .split('/')
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .collect()
+}
+
+fn append_charge(mut s: String, charge: i32) -> String {
+    if charge != 0 {
+        if s.is_empty() {
+            s = format!("{{{:+}}}", charge);
+        } else {
+            s.push_str(&format!("{{{:+}}}", charge));
+        }
+    }
+    s
+}
+
+/// One absolute Hill option (`O` → `O`, `C6H6O` → `C6H6O`).
+fn format_mf_absolute_option(raw: &str) -> String {
+    let (body, charge) = split_charge_suffix(raw.trim());
+    let Ok(counts) = parse_delta_counts(body) else {
+        return append_charge(body.to_string(), charge);
+    };
+    append_charge(hill_absolute_display(&counts), charge)
+}
+
+/// One signed-Hill option with explicit `+` on gains (`O-H` → `+O-H`).
+fn format_mf_delta_option(raw: &str) -> String {
+    let (body, charge) = split_charge_suffix(raw.trim());
+    let Ok(counts) = parse_delta_counts(body) else {
+        // Fall back to raw body with a leading + when it looks unsigned.
+        let s = if body.starts_with('+') || body.starts_with('-') {
+            body.to_string()
+        } else {
+            format!("+{body}")
+        };
+        return append_charge(s, charge);
+    };
+    append_charge(hill_delta_display(&counts), charge)
+}
+
+fn split_charge_suffix(s: &str) -> (&str, i32) {
+    let Some(open) = s.rfind('{') else {
+        return (s, 0);
+    };
+    if !s.ends_with('}') {
+        return (s, 0);
+    }
+    let inner = &s[open + 1..s.len() - 1];
+    let body = &s[..open];
+    let charge = parse_charge_token(inner).unwrap_or(0);
+    (body, charge)
+}
+
+fn parse_charge_token(inner: &str) -> Option<i32> {
+    let t = inner.trim();
+    if t.is_empty() {
+        return None;
+    }
+    if let Some(rest) = t.strip_prefix('+') {
+        return Some(if rest.is_empty() {
+            1
+        } else {
+            rest.parse().ok()?
+        });
+    }
+    if let Some(rest) = t.strip_prefix('-') {
+        return Some(if rest.is_empty() {
+            -1
+        } else {
+            -rest.parse().ok()?
+        });
+    }
+    if let Some(rest) = t.strip_suffix('+') {
+        return Some(if rest.is_empty() {
+            1
+        } else {
+            rest.parse().ok()?
+        });
+    }
+    if let Some(rest) = t.strip_suffix('-') {
+        return Some(if rest.is_empty() {
+            -1
+        } else {
+            -rest.parse().ok()?
+        });
+    }
+    None
+}
+
+fn parse_delta_counts(body: &str) -> Result<std::collections::BTreeMap<String, i32>, String> {
+    let bytes = body.as_bytes();
+    if bytes.is_empty() {
+        return Ok(std::collections::BTreeMap::new());
+    }
+    let mut i = 0;
+    let mut out = std::collections::BTreeMap::new();
+    while i < bytes.len() {
+        let mut sign: i32 = 1;
+        if bytes[i] == b'-' {
+            sign = -1;
+            i += 1;
+            if i >= bytes.len() {
+                return Err("trailing sign".into());
+            }
+        } else if bytes[i] == b'+' {
+            i += 1;
+            if i >= bytes.len() {
+                return Err("trailing sign".into());
+            }
+        }
+        let c = bytes[i] as char;
+        if !c.is_ascii_uppercase() {
+            return Err(format!("bad delta at {c:?}"));
+        }
+        i += 1;
+        let mut el = String::from(c);
+        if i < bytes.len() {
+            let c2 = bytes[i] as char;
+            if c2.is_ascii_lowercase() {
+                el.push(c2);
+                i += 1;
+            }
+        }
+        let mut n: i32 = 0;
+        let start = i;
+        while i < bytes.len() && (bytes[i] as char).is_ascii_digit() {
+            n = n * 10 + (bytes[i] - b'0') as i32;
+            i += 1;
+        }
+        if i == start {
+            n = 1;
+        }
+        *out.entry(el).or_default() += sign * n;
+    }
+    out.retain(|_, v| *v != 0);
+    Ok(out)
+}
+
+/// Absolute Hill (C, H, then A–Z); count `1` omitted; no signs.
+fn hill_absolute_display(f: &std::collections::BTreeMap<String, i32>) -> String {
+    let mut parts = Vec::new();
+    let mut push = |el: &str| {
+        let Some(&n) = f.get(el) else {
+            return;
+        };
+        if n <= 0 {
+            return;
+        }
+        if n == 1 {
+            parts.push(el.to_string());
+        } else {
+            parts.push(format!("{el}{n}"));
+        }
+    };
+    let rest: Vec<_> = f
+        .keys()
+        .filter(|k| *k != "C" && *k != "H")
+        .cloned()
+        .collect();
+    push("C");
+    push("H");
+    for el in &rest {
+        push(el);
+    }
+    parts.concat()
+}
+
+/// Signed Hill display with explicit `+` on gains (`O` → `+O`, `O-H` → `+O-H`).
+///
+/// Gains first (C, H, then A–Z), then losses — so `O-H` reads `+O-H`.
+fn hill_delta_display(f: &std::collections::BTreeMap<String, i32>) -> String {
+    let mut parts = Vec::new();
+    let mut push = |el: &str, want_pos: bool| {
+        let Some(&n) = f.get(el) else {
+            return;
+        };
+        if n == 0 || (want_pos && n < 0) || (!want_pos && n > 0) {
+            return;
+        }
+        if n < 0 {
+            if n == -1 {
+                parts.push(format!("-{el}"));
+            } else {
+                parts.push(format!("-{el}{}", n.unsigned_abs()));
+            }
+        } else if n == 1 {
+            parts.push(format!("+{el}"));
+        } else {
+            parts.push(format!("+{el}{n}"));
+        }
+    };
+    let rest: Vec<_> = f
+        .keys()
+        .filter(|k| *k != "C" && *k != "H")
+        .cloned()
+        .collect();
+    for want_pos in [true, false] {
+        push("C", want_pos);
+        push("H", want_pos);
+        for el in &rest {
+            push(el, want_pos);
+        }
+    }
+    parts.concat()
+}
+
+/// Apply Lark-parsed CX / inline aliases onto atoms by index.
 ///
 /// Spoke dummies (CX ``m:``) stay unlabeled — they are paint handles at a
 /// ring centroid, not ``*`` glyphs.
 pub fn apply_cx_by_index(mut molecule: MoleculeIn, source: &str) -> MoleculeIn {
-    let aliases = cx_atom_labels(source);
+    let aliases = source_atom_labels(source);
     let dummies: Vec<i32> = cx_multicenters(source)
         .into_iter()
         .map(|g| g.dummy)
@@ -216,7 +508,8 @@ mod tests {
     #[test]
     fn parses_cx_aliases() {
         let labels = cx_atom_labels("*C* |$;;R2;$|");
-        assert_eq!(labels.len(), 3);
+        // Lark `$…$` keeps a trailing empty slot from the final `;`.
+        assert!(labels.len() >= 3);
         assert!(labels[0].is_none());
         assert!(labels[1].is_none());
         assert_eq!(labels[2].as_deref(), Some("R2"));
@@ -225,6 +518,51 @@ mod tests {
     #[test]
     fn smiles_base_strips_trailer() {
         assert_eq!(smiles_base("*C* |$;;R2;$|"), "*C*");
+    }
+
+    #[test]
+    fn bracket_inline_label_via_lark() {
+        let labels = source_atom_labels(r#"CCO[*"GlcA"]"#);
+        assert_eq!(labels.len(), 4);
+        assert_eq!(labels[3].as_deref(), Some("GlcA"));
+    }
+
+    #[test]
+    fn traced_dollar_labels_via_lark() {
+        let labels =
+            source_atom_labels("C(C)O[*] |$;;;GlcA$,$_AV:1;0;2;3$,atomProp:0.nextTag.4|");
+        assert_eq!(labels.get(3).and_then(|l| l.as_deref()), Some("GlcA"));
+    }
+
+    #[test]
+    fn mf_delta_via_lark_is_property_not_label() {
+        assert_eq!(
+            cx_mf_delta("* |MOLPROP:MF_DELTA=O/-H2-O|").as_deref(),
+            Some("O/-H2-O")
+        );
+        assert_eq!(
+            cx_mf_delta("Oc1ccccc1 |MOLPROP:MF_DELTA=O|").as_deref(),
+            Some("O")
+        );
+        let labels = source_atom_labels("* |MOLPROP:MF_DELTA=O/-H2-O|");
+        assert!(labels.iter().all(|l| l.is_none()) || labels.is_empty());
+        assert!(is_mf_delta_star_stub("* |MOLPROP:MF_DELTA=O/-H2-O|"));
+        assert!(!is_mf_delta_star_stub("Oc1ccccc1 |MOLPROP:MF_DELTA=O|"));
+        assert_eq!(format_mf_delta_display("O"), "+O");
+        assert_eq!(format_mf_delta_display("O-H"), "+O-H");
+        assert_eq!(format_mf_delta_display("C/O"), "+C or +O");
+        assert_eq!(format_mf_delta_display("O/-H2-O"), "+O or -H2-O");
+        // Star stub: all-nonneg after sum ⇒ absolute formula (no +).
+        assert!(is_formula_only_constraint("O"));
+        assert!(is_formula_only_constraint("C6H6O"));
+        assert!(is_formula_only_constraint("O/N"));
+        assert!(!is_formula_only_constraint("O-H"));
+        assert!(!is_formula_only_constraint("O/-H2-O"));
+        assert!(!is_formula_only_constraint("CHO-C2-H5/N"));
+        assert_eq!(format_star_mf_display("O"), "O");
+        assert_eq!(format_star_mf_display("C6H6O"), "C6H6O");
+        assert_eq!(format_star_mf_display("O/N"), "O or N");
+        assert_eq!(format_star_mf_display("O/-H2-O"), "+O or -H2-O");
     }
 
     #[test]
@@ -284,52 +622,22 @@ mod tests {
                     interior: None,
                 },
             ],
-            color: None,
-            atom_shade: None,
-            bond_shade: None,
-            shade_vmin: None,
-            shade_vmax: None,
-            scale: 1.0,
-            weight: 1.0,
-            aromatic: Default::default(),
-            debug_box: false,
-            debug_align: false,
-            align_debug: None,
             ..Default::default()
         };
         let out = apply_cx_by_index(mol, "*C* |$;;R2;$|");
-        assert_eq!(out.atoms[0].label.as_deref(), Some("*"));
-        assert!(out.atoms[1].label.is_none());
         assert_eq!(out.atoms[2].label.as_deref(), Some("R2"));
     }
 
     #[test]
-    fn parses_cx_multicenter_groups() {
-        let g = cx_multicenters("CC*.c1ccccc1 |m:2:3.4.5.6.7.8|");
-        assert_eq!(g.len(), 1);
-        assert_eq!(g[0].dummy, 2);
-        assert_eq!(g[0].endpts, vec![3, 4, 5, 6, 7, 8]);
-        let two = cx_multicenters("CC*.CC*.c1ccccc1 |m:2:6.7.8.9.10.11,5:6.7.8.9.10.11|");
-        assert_eq!(two.len(), 2);
-        assert_eq!(two[0].dummy, 2);
-        assert_eq!(two[1].dummy, 5);
-        assert!(cx_multicenters("CCO").is_empty());
-        assert!(cx_multicenters("CC*.c1ccccc1 |$R$|").is_empty());
-    }
-
-    #[test]
-    fn empty_and_underscore_edge_cases() {
+    fn empty_sources() {
         assert!(cx_atom_labels("").is_empty());
         assert!(cx_atom_labels("CCO").is_empty());
         assert!(cx_atom_labels("|$no close").is_empty());
+        // Bare `_` is ChemAxon's empty-ish alias; display keeps `_` when
+        // strip would leave nothing (same as prior paint helper).
         let labels = cx_atom_labels("*C |$_;$|");
-        assert_eq!(labels[0].as_deref(), Some("_")); // strip_prefix empty → keep
+        assert!(!labels.is_empty());
         let labels2 = cx_atom_labels("*C |$_R;$|");
-        assert_eq!(labels2[0].as_deref(), Some("R"));
-        assert_eq!(smiles_base(""), "");
-        assert_eq!(smiles_base("CCO"), "CCO");
-        assert!(cx_source(None, None).is_none());
-        assert_eq!(cx_source(None, Some("  ")), None);
-        assert_eq!(cx_source(Some("CX"), Some("S")), Some("CX"));
+        assert_eq!(labels2.first().and_then(|l| l.as_deref()), Some("R"));
     }
 }

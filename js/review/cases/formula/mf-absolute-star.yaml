@@ -1,0 +1,5 @@
+title: Absolute formula-only star stub
+expect: Empty graph (no *). Hill formula only — "C6H6O" (no +).
+spec:
+  type: mol
+  cxsmiles: "* |MOLPROP:MF_DELTA=C6H6O|"

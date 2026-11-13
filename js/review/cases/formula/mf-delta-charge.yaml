@@ -1,0 +1,5 @@
+title: MF_DELTA charged options
+expect: Phenol in a box region; inside label "+O{+1} or +Na{+1}".
+spec:
+  type: mol
+  cxsmiles: "c1ccccc1O |MOLPROP:MF_DELTA=O{+1}/Na{+1}|"

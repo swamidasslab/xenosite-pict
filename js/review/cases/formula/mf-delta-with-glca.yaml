@@ -1,0 +1,5 @@
+title: Labels + MF_DELTA together
+expect: GlcA on the dummy; box region with inside "+O". MF_DELTA is never an atom label.
+spec:
+  type: mol
+  cxsmiles: "CCO* |$;;;GlcA$,MOLPROP:MF_DELTA=O|"

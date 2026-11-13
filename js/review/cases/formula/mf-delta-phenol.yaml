@@ -1,0 +1,5 @@
+title: MF_DELTA on phenol
+expect: Phenol with default box region; inside label "+O" (auto place). Not an atom label.
+spec:
+  type: mol
+  cxsmiles: "Oc1ccccc1 |MOLPROP:MF_DELTA=O|"

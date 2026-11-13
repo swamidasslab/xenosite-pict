@@ -1,0 +1,5 @@
+title: MF_DELTA on star stub
+expect: Empty graph (no * glyph). Formula text only — "+O or -H2-O".
+spec:
+  type: mol
+  cxsmiles: "* |MOLPROP:MF_DELTA=O/-H2-O|"

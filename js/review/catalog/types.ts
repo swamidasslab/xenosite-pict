@@ -9,6 +9,7 @@ export type ReviewGroup =
   | "ink"
   | "shade"
   | "markush"
+  | "formula"
   | "chrome"
   | "region"
   | "align"
@@ -23,6 +24,7 @@ export const GROUP_TITLE: Record<ReviewGroup, string> = {
   ink: "Ink (color, weight, scale)",
   shade: "Shade",
   markush: "Markush & markup",
+  formula: "Formula CX (labels / MF_DELTA)",
   chrome: "Chrome",
   region: "Region annotation",
   align: "Align",
@@ -38,6 +40,7 @@ export const GROUP_ORDER: ReviewGroup[] = [
   "ink",
   "shade",
   "markush",
+  "formula",
   "chrome",
   "region",
   "align",

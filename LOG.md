@@ -2,6 +2,13 @@
 
 ## 2026-11-12
 
+- Formula CX gallery (`js/review/cases/formula/`): Lark-parsed `$…$` /
+  `[*"GlcA"]` atom labels (incl. traced `$_AV`). `MOLPROP:MF_DELTA` is
+  never an atom label: star stubs → empty graph + formula text; real
+  SMILES → default box region with inside formula label. Star + all-
+  nonneg nets after summing ⇒ absolute Hill (`C6H6O`, no `+`); any
+  negative ⇒ signed delta (`+O or -H2-O`).
+
 - Align pose carry-over: `AlignToSpec.coords` (`{x,y,atom}` required) and
   `molblock` (MCS without in-doc ref); XOR with `ref`. `MolNode.visible: false`
   keeps the mol in the align forest but omits it from `Rendered[]`.
