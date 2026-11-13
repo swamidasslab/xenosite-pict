@@ -123,6 +123,7 @@ fn align_pair(template: &str, query: &str) -> (xpict::Rendered, xpict::Rendered)
         debug_box: None,
         debug_align: None,
         pad: None,
+        svg: None,
     })
     .unwrap();
     assert_eq!(out.len(), 2, "expected template + query");
@@ -271,6 +272,7 @@ fn depict_nested_group() {
         debug_box: None,
         debug_align: None,
         pad: None,
+        svg: None,
     })
     .unwrap();
     assert_eq!(out.len(), 2);

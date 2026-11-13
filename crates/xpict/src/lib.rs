@@ -32,6 +32,7 @@
 //!     debug_box: None,
 //!     debug_align: None,
 //!     pad: None,
+//!     svg: None,
 //! })?;
 //! ```
 
