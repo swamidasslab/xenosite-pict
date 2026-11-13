@@ -275,8 +275,11 @@ pub fn refine_scheme_edges(
     let mut out_labels = vec![None; spec.edges().len()];
 
     let engine = layout.engine();
-    // Soft mol nudge before routing: open clear chords when a small move helps.
-    let positions = super::scheme_nudge::propose_mol_nudges(spec, positions, sizes, &engine);
+    // Multi-endpoint stacks: align opposite-side group midpoints (not tops),
+    // then soft-nudge blockers to open clear chords.
+    let positions =
+        super::scheme_nudge::align_co_endpoint_group_mids(spec, positions, sizes, layout);
+    let positions = super::scheme_nudge::propose_mol_nudges(spec, &positions, sizes, &engine);
     let mut world = LayoutWorld::rooted("scheme", ObjectType::Scheme);
     let size_of: HashMap<&str, (f64, f64)> = sizes
         .iter()

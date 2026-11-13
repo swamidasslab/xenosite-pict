@@ -2,6 +2,12 @@
 
 ## 2026-11-13
 
+- Gallery follow-ups after multi-endpoint / pad work: scheme `+` is now
+  caption-sized (`1.5× FONT_PX`), optically centered in the chem-ink gap
+  (facing hull edges + alphabetic baseline lift), co-endpoint stacks align
+  opposite-side group midpoints (not tops), within-layer `nodeNode` 20→32,
+  caption default margin back to ½ bond (diamond A/B/C/D), viewBox pad
+  8→½ bond. Fan marked fixed in review notes.
 - House SVG pad `VIEWPORT_MARGIN_DEFAULT` 4→8px and grow fit AABB by
   `halo_filter_px` so west HO / north =O / GlcA labels are not flush-clipped
   against the viewBox (gallery line/network/GlcA “clipped” notes).
@@ -11,7 +17,6 @@
   hyperedges to binary ELK pairs for packing; route tips from group
   centroids with facing hull hug (`tip_pose_group`). Regression asserts
   shaft starts past the source *group*, not the first listed source.
-- Fan lowermost-arrow overlap still open.
 
 ## 2026-11-12
 

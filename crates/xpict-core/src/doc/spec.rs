@@ -1192,7 +1192,9 @@ pub struct LayoutOpts {
 
 impl LayoutOpts {
     /// Default within-layer gap for reaction schemes (px).
-    pub const DEFAULT_NODE_SPACING: f64 = 20.0;
+    /// Within-layer gap (px). Room for a caption-sized scheme `+` between
+    /// stacked co-endpoints without kissing arrowheads.
+    pub const DEFAULT_NODE_SPACING: f64 = 32.0;
     /// Default between-layer gap for reaction schemes (px).
     pub const DEFAULT_LAYER_SPACING: f64 = 48.0;
 

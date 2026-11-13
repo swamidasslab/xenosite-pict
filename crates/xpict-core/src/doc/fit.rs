@@ -1,12 +1,13 @@
 //! Post-layout scene fit — AABB of all ink + configurable viewport margin.
 
+use crate::metrics::BOND_PX;
 use crate::scene::{Primitive, Scene};
 
-/// Default gap (px) between content AABB and SVG viewBox edge (small house pad).
+/// Default gap (px) between content AABB and SVG viewBox edge (house pad).
 ///
-/// Keep ≥ ~½ bond so west HO / north =O / tall GlcA labels do not look
-/// flush-clipped against the SVG edge in the review gallery.
-pub const VIEWPORT_MARGIN_DEFAULT: f64 = 8.0;
+/// Half a CC-bond so west HO / north =O / tall GlcA / MF_DELTA formula tops
+/// do not look flush-clipped against the SVG edge in the review gallery.
+pub const VIEWPORT_MARGIN_DEFAULT: f64 = 0.5 * BOND_PX;
 
 /// Resolve a viewport margin: finite ≥ 0, else house default.
 pub fn resolve_viewport_margin(pad: Option<f64>) -> f64 {

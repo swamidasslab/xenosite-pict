@@ -245,7 +245,7 @@ fn compose_reaction(
             overlays.push(scene_prim);
         }
     }
-    for plus in scheme_plus_overlays(spec, &vp_boxes) {
+    for plus in scheme_plus_overlays(spec, &viewports) {
         expand_bounds_prim(&plus, &mut max_r, &mut max_b);
         overlays.push(plus);
     }
@@ -737,11 +737,21 @@ fn resolve_edge_label(spec: &DepictSpec, edge: &EdgeNode) -> (Option<String>, Op
     (text, pos)
 }
 
-/// `+` between consecutive co-endpoint mols on a multi-source / multi-target edge.
-fn scheme_plus_overlays(
-    spec: &DepictSpec,
-    vp_boxes: &HashMap<&str, (f64, f64, f64, f64)>,
-) -> Vec<Primitive> {
+/// Caption-sized `+` between consecutive co-endpoint mols, optically centered
+/// in the gap between their chem ink (not viewport-box centers / alphabetic mid).
+fn scheme_plus_overlays(spec: &DepictSpec, viewports: &[Viewport]) -> Vec<Primitive> {
+    use super::caption::CAPTION_FONT_FRAC;
+    use super::text_paint::markup_ascent_descent_px;
+    use crate::metrics::FONT_PX;
+
+    let by_id: HashMap<&str, &Viewport> = viewports
+        .iter()
+        .filter_map(|vp| vp.id.as_deref().map(|id| (id, vp)))
+        .collect();
+    let font_size = CAPTION_FONT_FRAC * FONT_PX;
+    let (asc, desc) = markup_ascent_descent_px(font_size);
+    // Alphabetic baseline so the glyph's ink center sits on `(mx, my)`.
+    let baseline_lift = (asc - desc) * 0.5;
     let mut out = Vec::new();
     for edge in spec.edges() {
         for ids in [edge.sources.as_slice(), edge.targets.as_slice()] {
@@ -749,28 +759,123 @@ fn scheme_plus_overlays(
                 continue;
             }
             for w in ids.windows(2) {
-                let Some(&(x0, y0, w0, h0)) = vp_boxes.get(w[0].as_str()) else {
+                let Some(va) = by_id.get(w[0].as_str()) else {
                     continue;
                 };
-                let Some(&(x1, y1, w1, h1)) = vp_boxes.get(w[1].as_str()) else {
+                let Some(vb) = by_id.get(w[1].as_str()) else {
                     continue;
                 };
-                let ax = x0 + w0 * 0.5;
-                let ay = y0 + h0 * 0.5;
-                let bx = x1 + w1 * 0.5;
-                let by = y1 + h1 * 0.5;
+                let a = viewport_ink_aabb(va);
+                let b = viewport_ink_aabb(vb);
+                let (ax, ay) = ((a.0 + a.2) * 0.5, (a.1 + a.3) * 0.5);
+                let (bx, by) = ((b.0 + b.2) * 0.5, (b.1 + b.3) * 0.5);
+                let (mx, my) = if (by - ay).abs() >= (bx - ax).abs() {
+                    // Vertical stack: mid of facing top/bottom ink edges.
+                    let (top, bot) = if ay <= by { (a, b) } else { (b, a) };
+                    ((ax + bx) * 0.5, (top.3 + bot.1) * 0.5)
+                } else {
+                    // Horizontal: mid of facing left/right ink edges.
+                    let (left, right) = if ax <= bx { (a, b) } else { (b, a) };
+                    ((left.2 + right.0) * 0.5, (ay + by) * 0.5)
+                };
                 out.push(Primitive::Text {
-                    x: (ax + bx) * 0.5,
-                    y: (ay + by) * 0.5,
+                    x: mx,
+                    y: my + baseline_lift,
                     text: "+".into(),
                     fill: "#222".into(),
-                    font_size: crate::metrics::FONT_PX,
+                    font_size,
                     anchor: TextAnchor::Middle,
                     class: Some("scheme-plus".into()),
                     rotate: None,
                 });
             }
         }
+    }
+    out
+}
+
+/// Document-space chem ink AABB for a placed mol viewport (fallback: frame).
+fn viewport_ink_aabb(vp: &Viewport) -> (f64, f64, f64, f64) {
+    let (ox, oy) = vp.local_origin();
+    let mut min_x = f64::INFINITY;
+    let mut min_y = f64::INFINITY;
+    let mut max_x = f64::NEG_INFINITY;
+    let mut max_y = f64::NEG_INFINITY;
+    let mut any = false;
+    for layer in &vp.layers {
+        // Captions / debug live on Overlay; + should clear chem only.
+        if matches!(layer.name, LayerName::Overlay | LayerName::Halo) {
+            continue;
+        }
+        for p in &layer.primitives {
+            match p {
+                Primitive::Path { d, stroke_width, .. } => {
+                    let grow = stroke_width.max(0.0) * 0.5;
+                    for (x, y) in path_xy_pairs(d) {
+                        min_x = min_x.min(ox + x - grow);
+                        min_y = min_y.min(oy + y - grow);
+                        max_x = max_x.max(ox + x + grow);
+                        max_y = max_y.max(oy + y + grow);
+                        any = true;
+                    }
+                }
+                Primitive::Circle {
+                    cx,
+                    cy,
+                    r,
+                    stroke_width,
+                    ..
+                } => {
+                    let grow = r + stroke_width.max(0.0) * 0.5;
+                    min_x = min_x.min(ox + cx - grow);
+                    min_y = min_y.min(oy + cy - grow);
+                    max_x = max_x.max(ox + cx + grow);
+                    max_y = max_y.max(oy + cy + grow);
+                    any = true;
+                }
+                Primitive::Text {
+                    x, y, font_size, ..
+                } => {
+                    let em = font_size.max(1.0);
+                    min_x = min_x.min(ox + x - em);
+                    min_y = min_y.min(oy + y - em);
+                    max_x = max_x.max(ox + x + em * 2.0);
+                    max_y = max_y.max(oy + y + em * 0.4);
+                    any = true;
+                }
+            }
+        }
+    }
+    if any {
+        (min_x, min_y, max_x, max_y)
+    } else {
+        (vp.x, vp.y, vp.x + vp.width, vp.y + vp.height)
+    }
+}
+
+fn path_xy_pairs(d: &str) -> Vec<(f64, f64)> {
+    let mut nums = Vec::new();
+    let mut cur = String::new();
+    for c in d.chars() {
+        if c.is_ascii_digit() || c == '.' || c == '-' || c == '+' || c == 'e' || c == 'E' {
+            cur.push(c);
+        } else if !cur.is_empty() {
+            if let Ok(v) = cur.parse::<f64>() {
+                nums.push(v);
+            }
+            cur.clear();
+        }
+    }
+    if !cur.is_empty() {
+        if let Ok(v) = cur.parse::<f64>() {
+            nums.push(v);
+        }
+    }
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i + 1 < nums.len() {
+        out.push((nums[i], nums[i + 1]));
+        i += 2;
     }
     out
 }

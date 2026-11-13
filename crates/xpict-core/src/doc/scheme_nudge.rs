@@ -6,9 +6,92 @@ use std::collections::{HashMap, HashSet};
 use crate::engine_config::EngineConfig;
 
 use super::scheme_layout::SCHEME_INK_STANDOFF;
-use super::{DepictSpec, EdgeNode};
+use super::{DepictSpec, EdgeNode, LayoutDirection, LayoutOpts};
 
 type Pt = (f64, f64);
+
+/// Align multi-endpoint groups so opposite sides share a cross-axis midpoint.
+///
+/// ELK often parks the singleton (or the other stack) near the top of a
+/// co-endpoint column. Default packing should line up the midpoints of the
+/// left/right (or top/bottom) group boxes — not their tops — unless label
+/// text is being aligned deliberately.
+pub fn align_co_endpoint_group_mids(
+    spec: &DepictSpec,
+    positions: &HashMap<String, Pt>,
+    sizes: &[(String, f64, f64)],
+    layout: &LayoutOpts,
+) -> HashMap<String, Pt> {
+    let size_of: HashMap<&str, (f64, f64)> = sizes
+        .iter()
+        .map(|(id, w, h)| (id.as_str(), (*w, *h)))
+        .collect();
+    let mut pos = positions.clone();
+    let vertical_flow = matches!(
+        layout.direction_or_default(),
+        LayoutDirection::Up | LayoutDirection::Down
+    );
+    for edge in spec.edges() {
+        if !edge.participates_in_layout() {
+            continue;
+        }
+        let sources = edge.sources.as_slice();
+        let targets = edge.targets.as_slice();
+        if sources.len() < 2 && targets.len() < 2 {
+            continue;
+        }
+        let Some(src_mid) = group_cross_mid(sources, &pos, &size_of, vertical_flow) else {
+            continue;
+        };
+        let Some(tgt_mid) = group_cross_mid(targets, &pos, &size_of, vertical_flow) else {
+            continue;
+        };
+        let delta = src_mid - tgt_mid;
+        if delta.abs() < 0.5 {
+            continue;
+        }
+        // Keep the multi-mol stack planted; slide the other side onto its mid.
+        // When both sides are multi, slide targets onto the source mid.
+        let move_targets = sources.len() >= 2;
+        let ids = if move_targets { targets } else { sources };
+        let signed = if move_targets { delta } else { -delta };
+        for id in ids {
+            if let Some(p) = pos.get_mut(id) {
+                if vertical_flow {
+                    p.0 += signed;
+                } else {
+                    p.1 += signed;
+                }
+            }
+        }
+    }
+    pos
+}
+
+fn group_cross_mid(
+    ids: &[String],
+    pos: &HashMap<String, Pt>,
+    size_of: &HashMap<&str, (f64, f64)>,
+    vertical_flow: bool,
+) -> Option<f64> {
+    let mut lo = f64::INFINITY;
+    let mut hi = f64::NEG_INFINITY;
+    let mut any = false;
+    for id in ids {
+        let Some((x0, y0, x1, y1)) = mol_aabb(pos, size_of, id) else {
+            continue;
+        };
+        if vertical_flow {
+            lo = lo.min(x0);
+            hi = hi.max(x1);
+        } else {
+            lo = lo.min(y0);
+            hi = hi.max(y1);
+        }
+        any = true;
+    }
+    any.then_some(0.5 * (lo + hi))
+}
 
 /// Propose small translations that turn blocked centroid chords into clear ones.
 ///

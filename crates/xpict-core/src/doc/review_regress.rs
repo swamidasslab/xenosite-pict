@@ -1,9 +1,11 @@
 //! Gallery cases marked as problems. These tests name the failure mode so a
 //! regression cannot slip back to "H—H" / pentagram / flush nested boxes.
 
+use crate::doc::caption::CAPTION_FONT_FRAC;
 use crate::doc::depict;
 use crate::doc::layout_constraints::{edge_signed_distance, Shape};
 use crate::doc::spec::DepictSpec;
+use crate::doc::text_paint::markup_ascent_descent_px;
 use crate::metrics::FONT_PX;
 use crate::scene::{LayerName, Primitive, Scene};
 
@@ -561,6 +563,88 @@ fn multi_endpoint_schemes_paint_plus() {
             "{name} must show a + between co-endpoint mols"
         );
     }
+}
+
+#[test]
+fn multi_endpoint_plus_is_caption_sized_and_gap_centered() {
+    let want = CAPTION_FONT_FRAC * FONT_PX;
+    let (asc, desc) = markup_ascent_descent_px(want);
+    let lift = (asc - desc) * 0.5;
+    let scene = render_json(multi_reactant_spec());
+    let plus = scene
+        .overlays
+        .iter()
+        .find_map(|p| match p {
+            Primitive::Text {
+                text,
+                class: Some(c),
+                x,
+                y,
+                font_size,
+                ..
+            } if text.trim() == "+" && c.contains("scheme-plus") => {
+                Some((*x, *y, *font_size))
+            }
+            _ => None,
+        })
+        .expect("scheme-plus");
+    assert!(
+        (plus.2 - want).abs() < 1e-9,
+        "plus font_size {} want {}",
+        plus.2,
+        want
+    );
+    let a = scene
+        .viewports
+        .iter()
+        .find(|v| v.id.as_deref() == Some("A"))
+        .expect("A");
+    let b = scene
+        .viewports
+        .iter()
+        .find(|v| v.id.as_deref() == Some("B"))
+        .expect("B");
+    let (top, bot) = if a.y <= b.y { (a, b) } else { (b, a) };
+    let gap_lo = top.y + top.height;
+    let gap_hi = bot.y;
+    let gap_mid = 0.5 * (gap_lo + gap_hi);
+    let ink_mid_y = plus.1 - lift;
+    assert!(
+        (ink_mid_y - gap_mid).abs() < 6.0,
+        "plus ink center y={ink_mid_y:.1} should sit near gap mid {gap_mid:.1} (baseline {})",
+        plus.1
+    );
+    assert!(
+        ink_mid_y > gap_lo + 2.0 && ink_mid_y < gap_hi - 2.0,
+        "plus should sit inside the A/B gap ({gap_lo:.1}..{gap_hi:.1}), got {ink_mid_y:.1}"
+    );
+}
+
+#[test]
+fn multi_reactant_product_aligns_to_source_group_mid() {
+    let scene = render_json(multi_reactant_spec());
+    let mut lo = f64::INFINITY;
+    let mut hi = f64::NEG_INFINITY;
+    for id in ["A", "B"] {
+        let vp = scene
+            .viewports
+            .iter()
+            .find(|v| v.id.as_deref() == Some(id))
+            .unwrap_or_else(|| panic!("missing {id}"));
+        lo = lo.min(vp.y);
+        hi = hi.max(vp.y + vp.height);
+    }
+    let group_mid = 0.5 * (lo + hi);
+    let c = scene
+        .viewports
+        .iter()
+        .find(|v| v.id.as_deref() == Some("C"))
+        .expect("C");
+    let c_mid = c.y + c.height * 0.5;
+    assert!(
+        (c_mid - group_mid).abs() < 2.0,
+        "product mid {c_mid:.1} should match source-group mid {group_mid:.1}"
+    );
 }
 
 #[test]
