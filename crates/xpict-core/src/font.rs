@@ -1,7 +1,7 @@
 //! Bundled Liberation Sans outlines (`ttf-parser`).
 //!
 //! Replaces Python fontTools for advances, ink bounds, and glyph contours.
-//! Contours are sampled (4 steps per curve) then RDP-decimated, then
+//! Contours are sampled (12 steps per curve) then lightly RDP-decimated, then
 //! assembled with even-odd fill into [`crate::geom::Shape`].
 //!
 //! Chem scripts (H-counts, charges) are **fake** sub/superscripts: scale by
@@ -19,11 +19,12 @@ use ttf_parser::{Face, GlyphId, OutlineBuilder, Rect};
 use crate::geom::Shape;
 use crate::metrics::{STAR_FRAC, SUBSCRIPT_SCALE, SUPERSCRIPT_SCALE};
 
-/// Quadratic/cubic samples per font curve. 4 is visually smooth at chem
-/// label sizes; 8 made glyph SVG paths hundreds of L segments each.
-const BEZIER_STEPS: usize = 4;
-/// Douglas–Peucker in em units after curve sampling (~0.5% of em).
-const CONTOUR_RDP_EM: f64 = 0.005;
+/// Quadratic/cubic samples per font curve. 4 left O/C/G looking faceted at
+/// chem label sizes; 12 keeps bowls curved. Light RDP below still caps path
+/// size on flatter stems.
+const BEZIER_STEPS: usize = 12;
+/// Douglas–Peucker in em units after curve sampling (~0.15% of em).
+const CONTOUR_RDP_EM: f64 = 0.0015;
 
 const FONT_REGULAR: &[u8] = include_bytes!("../fonts/LiberationSans-Regular.ttf");
 const FONT_BOLD: &[u8] = include_bytes!("../fonts/LiberationSans-Bold.ttf");
@@ -565,6 +566,20 @@ mod tests {
         assert!(shape.has_holes());
         assert!(adv > 0.0);
         assert!(!shape.contains(shape.centroid().unwrap().0, shape.centroid().unwrap().1));
+    }
+
+    #[test]
+    fn chem_label_o_svg_keeps_curved_bowl() {
+        // House export used to RDP at ½ px and paint O as a hexagon.
+        let shape = compile_text_shapes("O", 0.0, 0.0, FONT_PX, "middle", FaceStyle::Regular)
+            .expect("O");
+        let d = shape.to_svg_d();
+        // Outer+inner rings: ½ px export used to leave ~a dozen segs (faceted).
+        let n_l = d.matches(" L ").count();
+        assert!(
+            n_l >= 28,
+            "O path too coarse after export decimate ({n_l} L segs): {d}"
+        );
     }
 
     #[test]

@@ -21,9 +21,9 @@ pub fn polygon_to_svg_d(ring: &[(f64, f64)]) -> String {
 
 /// House SVG export tolerance (px): drop vertices within this of the chord.
 ///
-/// ~½ px is invisible under bond/halo strokes and chem labels, and collapses
-/// the 0.02‑px stair-steps `i_overlay` round joins used to emit.
-pub const SVG_PATH_EPS_PX: f64 = 0.5;
+/// ~0.1 px still collapses the 0.02‑px stair-steps `i_overlay` round joins
+/// emit, but ½ px was faceting chem-label bowls (O/C/G) into visible polygons.
+pub const SVG_PATH_EPS_PX: f64 = 0.1;
 
 /// Douglas–Peucker for an open polyline. Keeps endpoints.
 pub fn douglas_peucker(pts: &[(f64, f64)], eps: f64) -> Vec<(f64, f64)> {
