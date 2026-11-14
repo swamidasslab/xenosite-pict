@@ -152,6 +152,81 @@ fn skeleton_signed(scene: &Scene, mol_id: &str, p: (f64, f64)) -> f64 {
     best
 }
 
+/// Interior shaft samples must stay outside *foreign* viewport boxes (dense
+/// xenobase fans look wrong when a shaft skims whitespace inside a mol tile
+/// even if it misses the bond skeleton). Endpoint tiles are skipped — tips
+/// hug ink inside those boxes, so the shaft must enter them.
+pub(super) fn shaft_interior_clear_of_viewport_boxes(scene: &Scene, inset: f64) {
+    let mols: Vec<(String, f64, f64, f64, f64)> = scene
+        .viewports
+        .iter()
+        .filter_map(|v| {
+            let id = v.id.clone()?;
+            Some((id, v.x, v.y, v.width, v.height))
+        })
+        .collect();
+    let in_box = |p: (f64, f64), x: f64, y: f64, w: f64, h: f64| {
+        p.0 >= x && p.0 <= x + w && p.1 >= y && p.1 <= y + h
+    };
+    for d in overlay_edge_paths(scene) {
+        let pts = sample_path(&d);
+        if pts.len() < 2 {
+            continue;
+        }
+        let start = pts[0];
+        let end = pts[pts.len() - 1];
+        let mut endpoint_ids = std::collections::HashSet::new();
+        for (id, x, y, w, h) in &mols {
+            if in_box(start, *x, *y, *w, *h) || in_box(end, *x, *y, *w, *h) {
+                endpoint_ids.insert(id.clone());
+            }
+        }
+        let mut acc = 0.0_f64;
+        let mut segs: Vec<((f64, f64), (f64, f64), f64)> = Vec::new();
+        for w in pts.windows(2) {
+            let len = (w[1].0 - w[0].0).hypot(w[1].1 - w[0].1);
+            segs.push((w[0], w[1], len));
+            acc += len;
+        }
+        if acc < 8.0 {
+            continue;
+        }
+        // Tile-whitespace check targets straight tip chords (Morphine fans).
+        // Bowed visibility walks may skim tile padding while clearing ink.
+        let chord = (start.0 - end.0).hypot(start.1 - end.1).max(1e-9);
+        if acc > chord * 1.08 {
+            continue;
+        }
+        let skip = (acc * 0.18).max(6.0);
+        let mut along = 0.0;
+        for (a, b, len) in segs {
+            let n = ((len / 3.0).ceil() as usize).max(1);
+            for i in 0..=n {
+                let t = i as f64 / n as f64;
+                let p = (a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t);
+                let s = along + len * t;
+                if s < skip || s > acc - skip {
+                    continue;
+                }
+                for (id, x, y, w, h) in &mols {
+                    if endpoint_ids.contains(id) {
+                        continue;
+                    }
+                    let inside = p.0 > *x + inset
+                        && p.0 < *x + *w - inset
+                        && p.1 > *y + inset
+                        && p.1 < *y + *h - inset;
+                    assert!(
+                        !inside,
+                        "shaft interior {p:?} sits in viewport {id} ({x},{y} {w}x{h}) path={d}"
+                    );
+                }
+            }
+            along += len;
+        }
+    }
+}
+
 /// Interior shaft samples must not sit inside another molecule's skeleton.
 pub(super) fn shaft_interior_clear_of_mols(scene: &Scene, clash: f64) {
     let mol_ids: Vec<String> = scene

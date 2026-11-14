@@ -51,15 +51,34 @@ struct ArrowGroup {
 /// One convex obstacle per mol (inflated full-node ink).
 struct Obstacle {
     mol_id: String,
-    /// Inflated hull vertices (CCW).
+    /// Blocking hull (CCW): inflated ink ∪ mol tile AABB.
     hull: Vec<Pt>,
+    /// Inflated ink-only hull for tip pose — tips hug chem/captions, not the
+    /// ELK tile edge (AABB hugging collapsed short shafts between neighbors).
+    tip_hull: Vec<Pt>,
     /// Cached AABB of `hull` for fast segment reject.
     aabb: (f64, f64, f64, f64),
 }
 
 fn obstacle_with_hull(mol_id: String, hull: Vec<Pt>) -> Obstacle {
     let aabb = hull_aabb(&hull);
-    Obstacle { mol_id, hull, aabb }
+    let tip_hull = hull.clone();
+    Obstacle {
+        mol_id,
+        hull,
+        tip_hull,
+        aabb,
+    }
+}
+
+fn obstacle_with_hulls(mol_id: String, hull: Vec<Pt>, tip_hull: Vec<Pt>) -> Obstacle {
+    let aabb = hull_aabb(&hull);
+    Obstacle {
+        mol_id,
+        hull,
+        tip_hull,
+        aabb,
+    }
 }
 
 /// Committed route for soft share/cross penalties.
@@ -106,7 +125,13 @@ pub fn route_scheme_edges(
         })
         .collect();
 
-    let obstacles = build_obstacles(mol_ids, world, route().routing_clearance);
+    let (obstacles, tile_obstacles) = build_obstacles(
+        mol_ids,
+        world,
+        positions,
+        &size_of,
+        route().routing_clearance,
+    );
 
     // Seed centroid chords for coterminal grouping (ELK paths discarded).
     let mut seeds: Vec<Vec<Pt>> = Vec::with_capacity(n_edges);
@@ -197,12 +222,12 @@ pub fn route_scheme_edges(
     // ---- Pass 2: lock clean pathways first, then re-route high-crossing /
     // mol-blocked arrows against the locked *centroid pathways*.
     let mut order: Vec<usize> = (0..groups.len()).collect();
-    let empty_skip: HashSet<&str> = HashSet::new();
     order.sort_by_key(|&i| {
         let (s, g) = tips[i];
-        // Inflated hulls already pad ink; skip per-sample world SDF (was the
-        // dense-net hotspot).
-        let tip_clear = segment_clears_obstacles(s, g, &obstacles, &empty_skip);
+        // Tile obstacles reject chords that skim foreign viewport whitespace;
+        // ink obstacles alone miss those. Endpoint tiles are skipped.
+        let skip_i: HashSet<&str> = skips[i].iter().map(String::as_str).collect();
+        let tip_clear = segment_clears_obstacles(s, g, &tile_obstacles, &skip_i);
         // Clean tip chord + zero centroid-pathway crossings first. Within dirty
         // tiers, few-crossing shafts lock first so multi-cross arrows route last.
         let tier = if tip_clear && draft_cross[i] == 0 {
@@ -225,13 +250,11 @@ pub fn route_scheme_edges(
         let skip: HashSet<&str> = skips[gi].iter().map(String::as_str).collect();
         let clash = clashes[gi];
 
-        // Lock a straight tip chord only when the centroid pathway has no
-        // crossings — tip shortening must not hide an X.
+        // Lock a straight tip chord only when it clears foreign *tiles* (not
+        // just ink) and the centroid pathway has no crossings.
         let keep_draft = draft_cross[gi] == 0
-            && segment_clears_obstacles(start, goal, &obstacles, &empty_skip)
-            && path_crosses_committed(&[src_c, tgt_c], &committed) == 0;
-
-        let center = if keep_draft {
+            && segment_clears_obstacles(start, goal, &tile_obstacles, &skip)
+            && path_crosses_committed(&[src_c, tgt_c], &committed) == 0;        let center = if keep_draft {
             vec![start, goal]
         } else {
             // Against locked centroid pathways: high crossing cost → detour.
@@ -247,6 +270,7 @@ pub fn route_scheme_edges(
                 mol_ids,
                 clash,
                 &obstacles,
+                &tile_obstacles,
                 &vis,
                 &committed,
             )
@@ -273,15 +297,18 @@ pub fn route_scheme_edges(
         world,
         mol_ids,
         &obstacles,
+        &tile_obstacles,
         &vis,
     );
 
-    // Final string-pull / collinear collapse must not *add* pathway crossings.
+    // Final string-pull / collinear collapse must not *add* pathway crossings
+    // or re-collapse to a tip chord that skims foreign viewport tiles.
     simplify_routed_centers(
         &mut group_centers,
         &group_centroids,
         &obstacles,
-        &empty_skip,
+        &tile_obstacles,
+        &skips,
     );
 
     // ---- Tip layout (separate from pathway routing): hug ink along the
@@ -304,7 +331,8 @@ pub fn route_scheme_edges(
         &mut group_centers,
         &group_centroids,
         &obstacles,
-        &empty_skip,
+        &tile_obstacles,
+        &skips,
     );
 
     let edge_list = spec.edges();
@@ -423,12 +451,13 @@ fn route_one_centerline(
     mol_ids: &[String],
     clash: f64,
     obstacles: &[Obstacle],
+    tile_obstacles: &[Obstacle],
     vis: &VisGraph,
     committed: &[Committed],
 ) -> Vec<Pt> {
-    let empty: HashSet<&str> = HashSet::new();
-    let _ = (world, mol_ids, skip, clash); // tip ink already posed; hulls pad structure
-    let mol_clear = segment_clears_obstacles(start, goal, obstacles, &empty);
+    let _ = (world, mol_ids, clash); // tip ink already posed; hulls pad structure
+    // Straight chord must clear foreign tiles (viewport whitespace), not only ink.
+    let mol_clear = segment_clears_obstacles(start, goal, tile_obstacles, skip);
     let crosses_locked = pathway_crosses_committed(&[start, goal], src_c, tgt_c, committed) > 0;
     // Pass-2 must actually re-route against the locked set. A mol-clear tip
     // chord that still crosses on the centroid pathway is not done.
@@ -436,29 +465,52 @@ fn route_one_centerline(
         return prune_close_controls(&[start, goal], CLOSE_CTRL_PX);
     }
 
-    let vis_path =
-        visibility_route(start, goal, src_c, tgt_c, src, tgt, vis, obstacles, committed);
-    // String-pull must not cut through endpoint hulls or reopen locked crossings.
-    let pulled = string_pull(&vis_path, obstacles, &empty, committed);
-    let pulled_ok = path_clears_obstacles(&pulled, obstacles, &empty);
+    let vis_path = visibility_route(
+        start,
+        goal,
+        src_c,
+        tgt_c,
+        src,
+        tgt,
+        skip,
+        vis,
+        obstacles,
+        tile_obstacles,
+        committed,
+    );
+    // String-pull on ink hulls must not re-collapse to a tip chord that skims
+    // foreign viewport tiles (the Morphine→M3S failure mode).
+    let pulled = string_pull(&vis_path, obstacles, skip, committed);
+    let pulled_ok = path_clears_obstacles(&pulled, obstacles, skip)
+        && path_clears_obstacles(&pulled, tile_obstacles, skip);
     let pulled_x = pathway_crosses_committed(&pulled, src_c, tgt_c, committed);
     if pulled.len() == 2 && pulled_ok && pulled_x == 0 {
         return pulled;
     }
 
     // Visibility walk already clear and crossing-optimal — skip the bow search.
+    // Vis graph edges only avoid ink; reject walks that still skim tiles.
+    let vis_ok = path_clears_obstacles(&vis_path, obstacles, skip)
+        && path_clears_obstacles(&vis_path, tile_obstacles, skip);
     if pulled_ok && pulled_x == 0 && pulled.len() >= 2 {
         return pulled;
     }
-    let bow = fallback_bow(start, goal, obstacles, &empty, committed);
-    let bow_ok = path_clears_obstacles(&bow, obstacles, &empty);
+    if vis_ok && vis_path.len() >= 3 {
+        return prune_close_controls(&vis_path, CLOSE_CTRL_PX);
+    }
+    // Geometric bow against tiles — visibility may have only dodged ink.
+    let bow = fallback_bow(start, goal, tile_obstacles, skip, committed);
+    let bow_ok = path_clears_obstacles(&bow, tile_obstacles, skip);
     let bow_x = pathway_crosses_committed(&bow, src_c, tgt_c, committed);
     // Fewer pathway crossings win even if the walk is longer / less "clear"
-    // on ink — a direct 1-cross beats a circuitous 2-cross.
-    if bow_x < pulled_x && bow.len() >= 2 {
+    // on ink — a direct 1-cross beats a circuitous 2-cross. Never prefer a
+    // tile-piercing 2-point chord when a longer clear walk exists.
+    let pulled_tile = path_clears_obstacles(&pulled, tile_obstacles, skip);
+    let bow_tile = path_clears_obstacles(&bow, tile_obstacles, skip);
+    if bow_x < pulled_x && bow.len() >= 2 && (bow_tile || bow.len() >= 3) {
         return bow;
     }
-    if pulled_x < bow_x && pulled.len() >= 2 {
+    if pulled_x < bow_x && pulled.len() >= 2 && pulled_tile {
         return pulled;
     }
     match (pulled_ok, bow_ok) {
@@ -466,12 +518,20 @@ fn route_one_centerline(
         (true, false) => pulled,
         (false, true) => bow,
         (false, false) => {
-            if pulled.len() >= 3 {
-                pulled
+            if vis_path.len() >= 3 {
+                prune_close_controls(&vis_path, CLOSE_CTRL_PX)
             } else if bow.len() >= 3 {
                 bow
-            } else {
+            } else if pulled.len() >= 3 {
                 pulled
+            } else {
+                // Last resort: still try a geometric bow before punching tiles.
+                let forced = fallback_bow(start, goal, tile_obstacles, skip, committed);
+                if forced.len() >= 3 {
+                    forced
+                } else {
+                    pulled
+                }
             }
         }
     }
@@ -641,8 +701,13 @@ fn cosmetic_douglas_peucker(
 fn pad_tolerant_obstacles(obstacles: &[Obstacle], shrink: f64) -> Vec<Obstacle> {
     obstacles
         .iter()
-        .map(|o| obstacle_with_hull(o.mol_id.clone(), inflate_convex(&o.hull, -shrink)))
-        .collect()
+        .map(|o| {
+            obstacle_with_hulls(
+                o.mol_id.clone(),
+                inflate_convex(&o.hull, -shrink),
+                inflate_convex(&o.tip_hull, -shrink),
+            )
+        })        .collect()
 }
 
 fn point_line_dist(p: Pt, a: Pt, b: Pt) -> f64 {
@@ -695,10 +760,16 @@ fn simplify_routed_centers(
     centers: &mut [Vec<Pt>],
     group_centroids: &[(Pt, Pt)],
     obstacles: &[Obstacle],
-    skip: &HashSet<&str>,
+    tile_obstacles: &[Obstacle],
+    skips: &[HashSet<String>],
 ) {
-    let pad = pad_tolerant_obstacles(obstacles, route().cosmetic_simplify_eps);
+    let _ = obstacles; // ink obstacles unused — simplify is tile-gated
+    let tile_pad = pad_tolerant_obstacles(tile_obstacles, route().cosmetic_simplify_eps);
     for gi in 0..centers.len() {
+        let skip: HashSet<&str> = skips
+            .get(gi)
+            .map(|s| s.iter().map(String::as_str).collect())
+            .unwrap_or_default();
         let (src_c, tgt_c) = group_centroids[gi];
         let others: Vec<Committed> = centers
             .iter()
@@ -712,23 +783,25 @@ fn simplify_routed_centers(
         let before = centers[gi].clone();
         let before_x =
             path_crosses_committed(&extend_to_centroids(&before, src_c, tgt_c), &others);
-        let mut pulled = string_pull(&before, obstacles, skip, &others);
+        // Pull against tiles so ink-clear tip chords cannot erase a bow that
+        // only existed to dodge viewport whitespace.
+        let mut pulled = string_pull(&before, tile_obstacles, &skip, &others);
         pulled = cosmetic_douglas_peucker(
             &pulled,
             &others,
-            &pad,
-            skip,
+            &tile_pad,
+            &skip,
             route().cosmetic_simplify_eps,
         );
         // Second pass against deflated hulls: drop leftover ~10° elbows that
         // only existed to walk the inflate pad.
-        pulled = collapse_collinear(&pulled, &pad, skip, &others);
-        pulled = string_pull(&pulled, &pad, skip, &others);
-        // Prefer a tip–tip chord or single bow when pad-clear and no extra X.
+        pulled = collapse_collinear(&pulled, &tile_pad, &skip, &others);
+        pulled = string_pull(&pulled, &tile_pad, &skip, &others);
+        // Prefer a tip–tip chord or single bow when tile-clear and no extra X.
         if pulled.len() > 2 {
             let a = pulled[0];
             let b = *pulled.last().unwrap();
-            if segment_clears_obstacles(a, b, &pad, skip) {
+            if segment_clears_obstacles(a, b, tile_obstacles, &skip) {
                 let chord = vec![a, b];
                 let cx = path_crosses_committed(
                     &extend_to_centroids(&chord, src_c, tgt_c),
@@ -739,8 +812,9 @@ fn simplify_routed_centers(
                 }
             }
             if pulled.len() > 2 {
-                let bow = fallback_bow(a, b, &pad, skip, &others);
-                if bow.len() < pulled.len() && path_clears_obstacles(&bow, &pad, skip) {
+                let bow = fallback_bow(a, b, tile_obstacles, &skip, &others);
+                if bow.len() < pulled.len() && path_clears_obstacles(&bow, tile_obstacles, &skip)
+                {
                     let bx = path_crosses_committed(
                         &extend_to_centroids(&bow, src_c, tgt_c),
                         &others,
@@ -751,8 +825,8 @@ fn simplify_routed_centers(
                 }
             }
         }
-        // Cosmetic passes may clip inflate pad; still refuse deep ink hits.
-        if !path_clears_obstacles(&pulled, &pad, skip) {
+        // Cosmetic passes may clip inflate pad; still refuse tile punches.
+        if !path_clears_obstacles(&pulled, &tile_pad, &skip) {
             continue;
         }
         let after_x =
@@ -851,6 +925,7 @@ fn reoptimize_crossing_routes(
     world: &LayoutWorld,
     mol_ids: &[String],
     obstacles: &[Obstacle],
+    tile_obstacles: &[Obstacle],
     vis: &VisGraph,
 ) {
     let n = centers.len();
@@ -918,6 +993,7 @@ fn reoptimize_crossing_routes(
             mol_ids,
             clash,
             obstacles,
+            tile_obstacles,
             vis,
             &peers,
         );
@@ -928,9 +1004,8 @@ fn reoptimize_crossing_routes(
         centers[gi] = candidate;
         index.refresh_arrow(gi, centers, group_centroids);
         let after_x = index.degree[gi];
-        let empty = HashSet::new();
-        let clears = path_clears_obstacles(&centers[gi], obstacles, &empty);
-        let before_clears = path_clears_obstacles(&before, obstacles, &empty);
+        let clears = path_clears_obstacles(&centers[gi], tile_obstacles, &skip);
+        let before_clears = path_clears_obstacles(&before, tile_obstacles, &skip);
         let new_len = polyline_len(&extend_to_centroids(&centers[gi], src_c, tgt_c));
         // Lexicographic: fewer pathway crossings first, then clearance, then length.
         let better = after_x < before_x
@@ -1036,36 +1111,57 @@ fn resnap_tips_to_approach_rays(
     }
 }
 
-fn build_obstacles(mol_ids: &[String], world: &LayoutWorld, inflate: f64) -> Vec<Obstacle> {
-    let mut out = Vec::with_capacity(mol_ids.len());
+/// Returns `(ink_obstacles, tile_obstacles)`.
+///
+/// - **Ink** obstacles drive the visibility graph / bows (tight).
+/// - **Tile** obstacles (= inflated ink ∪ padded placement AABB) only gate
+///   straight tip chords so Morphine-style fans cannot skim foreign
+///   viewport whitespace. Using tiles for visibility forced page-edge loops.
+fn build_obstacles(
+    mol_ids: &[String],
+    world: &LayoutWorld,
+    positions: &HashMap<String, Pt>,
+    size_of: &HashMap<&str, (f64, f64)>,
+    inflate: f64,
+) -> (Vec<Obstacle>, Vec<Obstacle>) {
+    let mut ink_out = Vec::with_capacity(mol_ids.len());
+    let mut tile_out = Vec::with_capacity(mol_ids.len());
     for id in mol_ids {
         let under = format!("scheme/mols/{id}");
-        let pts = collect_ink_points(world, &under);
-        let hull = if pts.len() >= 3 {
-            convex_hull_pts(&pts)
-        } else if let Some(a) = world.get(&under).map(|n| n.world_shape().aabb()) {
-            vec![
-                (a.x0, a.y0),
-                (a.x1, a.y0),
-                (a.x1, a.y1),
-                (a.x0, a.y1),
-            ]
+        let ink_pts = collect_ink_points(world, &under);
+        let tile = match (positions.get(id.as_str()), size_of.get(id.as_str())) {
+            (Some(&(x, y)), Some(&(w, h))) => Some((x, y, x + w, y + h)),
+            _ => world.get(&under).map(|n| {
+                let a = n.world_shape().aabb();
+                (a.x0, a.y0, a.x1, a.y1)
+            }),
+        };
+        let tip_hull = if ink_pts.len() >= 3 {
+            inflate_convex(&convex_hull_pts(&ink_pts), inflate)
+        } else if let Some((x0, y0, x1, y1)) = tile {
+            inflate_convex(&[(x0, y0), (x1, y0), (x1, y1), (x0, y1)], inflate)
         } else {
             continue;
         };
-        // Keep the full inflated hull for collision (subsampling verts would
-        // shrink the polygon inward and let shafts clip ink). Visibility-graph
-        // nodes subsample separately.
-        let hull = if hull.len() >= 3 {
-            inflate_convex(&hull, inflate)
-        } else {
-            hull
-        };
-        if hull.len() >= 3 {
-            out.push(obstacle_with_hull(id.clone(), hull));
+        if tip_hull.len() < 3 {
+            continue;
+        }
+        ink_out.push(obstacle_with_hulls(id.clone(), tip_hull.clone(), tip_hull.clone()));
+
+        let mut block_pts = tip_hull.clone();
+        if let Some((x0, y0, x1, y1)) = tile {
+            let p = inflate;
+            block_pts.push((x0 - p, y0 - p));
+            block_pts.push((x1 + p, y0 - p));
+            block_pts.push((x1 + p, y1 + p));
+            block_pts.push((x0 - p, y1 + p));
+        }
+        let tile_hull = convex_hull_pts(&block_pts);
+        if tile_hull.len() >= 3 {
+            tile_out.push(obstacle_with_hulls(id.clone(), tile_hull, tip_hull));
         }
     }
-    out
+    (ink_out, tile_out)
 }
 
 /// Evenly spaced subset of a convex ring — routing Steiner ports only.
@@ -1194,13 +1290,21 @@ fn build_visibility_graph(obstacles: &[Obstacle]) -> VisGraph {
     }
 
     // 1c) Scheme frame cycle (unowned Steiners — not same-owner skipped below).
+    // Cost is inflated so A* prefers local hull/box bows over page-edge
+    // U-loops (morphine intermediate edges were ~2.5× chord via the frame).
     let empty_skip = HashSet::new();
     if let Some((flo, _fhi)) = frame_range {
         for k in 0..4 {
             let i = flo + k;
             let j = flo + (k + 1) % 4;
             if segment_clears_obstacles(pts[i], pts[j], obstacles, &empty_skip) {
-                add(&mut adj, &mut linked, i, j, dist(pts[i], pts[j]));
+                add(
+                    &mut adj,
+                    &mut linked,
+                    i,
+                    j,
+                    frame_edge_cost(dist(pts[i], pts[j])),
+                );
             }
         }
     }
@@ -1219,7 +1323,7 @@ fn build_visibility_graph(obstacles: &[Obstacle]) -> VisGraph {
             for j in blo..bhi {
                 let len = dist(pts[fi], pts[j]);
                 if segment_clears_obstacles(pts[fi], pts[j], obstacles, &empty_skip) {
-                    add(&mut adj, &mut linked, fi, j, len);
+                    add(&mut adj, &mut linked, fi, j, frame_edge_cost(len));
                 }
             }
             // Nearest hull ports of this mol.
@@ -1234,7 +1338,7 @@ fn build_visibility_graph(obstacles: &[Obstacle]) -> VisGraph {
                     break;
                 }
                 if segment_clears_obstacles(pts[fi], pts[j], obstacles, &empty_skip) {
-                    add(&mut adj, &mut linked, fi, j, len);
+                    add(&mut adj, &mut linked, fi, j, frame_edge_cost(len));
                     kept += 1;
                 }
             }
@@ -1247,7 +1351,7 @@ fn build_visibility_graph(obstacles: &[Obstacle]) -> VisGraph {
             }
             let len = dist(pts[fi], pts[fj]);
             if segment_clears_obstacles(pts[fi], pts[fj], obstacles, &empty_skip) {
-                add(&mut adj, &mut linked, fi, fj, len);
+                add(&mut adj, &mut linked, fi, fj, frame_edge_cost(len));
             }
         }
     }
@@ -1378,7 +1482,9 @@ fn tip_outside_hull(
     let Some(o) = obstacles.iter().find(|o| o.mol_id == mol) else {
         return tip;
     };
-    if !point_in_convex(tip, &o.hull) {
+    // Use ink tip hull — not the blocking AABB∪ink hull.
+    let hull = &o.tip_hull;
+    if !point_in_convex(tip, hull) {
         return tip;
     }
     let dx = toward.0 - centroid.0;
@@ -1391,10 +1497,10 @@ fn tip_outside_hull(
     let mut lo = ((tip.0 - centroid.0) * ux + (tip.1 - centroid.1) * uy).max(0.0);
     let mut hi = span.max(lo + BOND_PX);
     let at = |t: f64| (centroid.0 + ux * t, centroid.1 + uy * t);
-    if !point_in_convex(at(hi), &o.hull) {
+    if !point_in_convex(at(hi), hull) {
         for _ in 0..32 {
             let mid = 0.5 * (lo + hi);
-            if point_in_convex(at(mid), &o.hull) {
+            if point_in_convex(at(mid), hull) {
                 lo = mid;
             } else {
                 hi = mid;
@@ -1406,7 +1512,7 @@ fn tip_outside_hull(
     for k in 1..16 {
         let t = span + (k as f64) * BOND_PX * 2.0;
         let p = at(t);
-        if !point_in_convex(p, &o.hull) {
+        if !point_in_convex(p, hull) {
             return p;
         }
     }
@@ -1602,19 +1708,21 @@ fn visibility_route(
     tgt_c: Pt,
     _src: &str,
     _tgt: &str,
+    skip: &HashSet<&str>,
     vis: &VisGraph,
     obstacles: &[Obstacle],
+    tile_obstacles: &[Obstacle],
     committed: &[Committed],
 ) -> Vec<Pt> {
     // Nodes: start=0, goal=1, then shared hull verts at 2.. — do **not** clone
     // the shared adj each call; index into `vis.adj` with a +2 shift.
-    let empty_skip = HashSet::new();
-    let start_links = link_terminal_sparse(start, &vis.pts, &vis.owner, obstacles);
-    let goal_links = link_terminal_sparse(goal, &vis.pts, &vis.owner, obstacles);
-    let direct = segment_clears_obstacles(start, goal, obstacles, &empty_skip)
-        .then(|| dist(start, goal));
-
-    // Reverse maps: vis-node → link length to start/goal.
+    let start_links = link_terminal_sparse(start, &vis.pts, &vis.owner, obstacles, skip);
+    let goal_links = link_terminal_sparse(goal, &vis.pts, &vis.owner, obstacles, skip);
+    // Direct tip chord must clear foreign tiles as well as ink — otherwise A*
+    // takes the Morphine-fan skim that ink alone allows.
+    let direct = (segment_clears_obstacles(start, goal, obstacles, skip)
+        && segment_clears_obstacles(start, goal, tile_obstacles, skip))
+    .then(|| dist(start, goal));    // Reverse maps: vis-node → link length to start/goal.
     let mut to_start = vec![None; vis.pts.len()];
     let mut to_goal = vec![None; vis.pts.len()];
     for &(j, len) in &start_links {
@@ -1707,7 +1815,7 @@ fn visibility_route(
     );
 
     let Some((states, _)) = path else {
-        return fallback_bow(start, goal, obstacles, &empty_skip, committed);
+        return fallback_bow(start, goal, tile_obstacles, skip, committed);
     };
     let mut idxs = Vec::with_capacity(states.len());
     for (node, _) in states {
@@ -1716,11 +1824,19 @@ fn visibility_route(
         }
     }
     let mut pts: Vec<Pt> = idxs.into_iter().map(node_pt).collect();
-    pts = string_pull(&pts, obstacles, &empty_skip, committed);
+    // Pull against tiles so a clear ink chord cannot re-collapse a walk that
+    // was only needed to dodge viewport whitespace.
+    pts = string_pull(&pts, tile_obstacles, skip, committed);
     if pts.len() < 2 {
-        return fallback_bow(start, goal, obstacles, &empty_skip, committed);
+        return fallback_bow(start, goal, tile_obstacles, skip, committed);
     }
     pts
+}
+
+/// Inflate Euclidean length for scheme-frame highway edges so A* prefers
+/// local bows when they exist.
+fn frame_edge_cost(len: f64) -> f64 {
+    len * 2.5 + BOND_PX * 20.0
 }
 
 /// Link a tip to all clear frame (unowned) ports plus the nearest clear hull /
@@ -1730,8 +1846,8 @@ fn link_terminal_sparse(
     pts: &[Pt],
     owner: &[Option<String>],
     obstacles: &[Obstacle],
+    skip: &HashSet<&str>,
 ) -> Vec<(usize, f64)> {
-    let empty_skip = HashSet::new();
     let mut out = Vec::new();
     let mut near: Vec<(f64, usize)> = Vec::new();
     for (j, &p) in pts.iter().enumerate() {
@@ -1740,8 +1856,8 @@ fn link_terminal_sparse(
             continue;
         }
         if owner[j].is_none() {
-            if segment_clears_obstacles(hub, p, obstacles, &empty_skip) {
-                out.push((j, len));
+            if segment_clears_obstacles(hub, p, obstacles, skip) {
+                out.push((j, frame_edge_cost(len)));
             }
         } else {
             near.push((len, j));
@@ -1753,7 +1869,7 @@ fn link_terminal_sparse(
         if linked >= route().terminal_link_near {
             break;
         }
-        if segment_clears_obstacles(hub, pts[j], obstacles, &empty_skip) {
+        if segment_clears_obstacles(hub, pts[j], obstacles, skip) {
             out.push((j, len));
             linked += 1;
         }
@@ -2477,6 +2593,7 @@ mod tests {
             &world,
             &mol_ids,
             &empty_obs,
+            &empty_obs,
             &vis,
         );
         assert_eq!(
@@ -2516,6 +2633,7 @@ mod tests {
             &world,
             &mol_ids,
             2.0,
+            &obstacles,
             &obstacles,
             &vis,
             &committed,
@@ -2558,6 +2676,7 @@ mod tests {
             &mol_ids,
             2.0,
             &obstacles,
+            &obstacles,
             &vis,
             &[],
         );
@@ -2585,6 +2704,7 @@ mod tests {
             vis.adj.iter().all(|n| !n.is_empty()),
             "blocker hull verts must be linked on the boundary"
         );
+        let empty = HashSet::new();
         let path = visibility_route(
             (50.0, 10.0),
             (50.0, 90.0),
@@ -2592,7 +2712,9 @@ mod tests {
             (50.0, 90.0),
             "a",
             "b",
+            &empty,
             &vis,
+            &obstacles,
             &obstacles,
             &[],
         );
@@ -2600,7 +2722,6 @@ mod tests {
             path.len() >= 3,
             "must detour around blocker, got {path:?}"
         );
-        let empty = HashSet::new();
         for w in path.windows(2) {
             assert!(
                 segment_clears_obstacles(w[0], w[1], &obstacles, &empty),
@@ -2640,6 +2761,7 @@ mod tests {
             &mol_ids,
             2.0,
             &obstacles,
+            &obstacles,
             &vis,
             &committed,
         );
@@ -2653,4 +2775,29 @@ mod tests {
             "detour must not cross the locked shaft: {path:?}"
         );
     }
+
+    #[test]
+    fn morphine_fan_chord_hits_padded_tile() {
+        // Morphine→M3S tip chord skims Morphine N-oxide viewport top.
+        let a = (1000.44, 211.73);
+        let b = (1267.95, 463.13);
+        let pad = route().routing_clearance;
+        let padded = vec![
+            (1064.0 - pad, 401.53 - pad),
+            (1266.56 + pad, 401.53 - pad),
+            (1266.56 + pad, 644.75 + pad),
+            (1064.0 - pad, 644.75 + pad),
+        ];
+        assert!(
+            segment_hits_convex(a, b, &padded),
+            "padded N-oxide tile must block the Morphine→M3S chord"
+        );
+        let obstacles = vec![obstacle_with_hull("xbm:0004960".into(), padded)];
+        let skip: HashSet<&str> = ["xbm:0004961", "xbm:0007817"].into_iter().collect();
+        assert!(
+            !segment_clears_obstacles(a, b, &obstacles, &skip),
+            "tip chord must not clear foreign N-oxide tile"
+        );
+    }
+
 }
