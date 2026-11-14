@@ -157,10 +157,18 @@ pub fn route_scheme_edges(
     let mut tips: Vec<(Pt, Pt)> = Vec::with_capacity(groups.len());
     let mut skips: Vec<HashSet<String>> = Vec::with_capacity(groups.len());
     let mut clashes: Vec<f64> = Vec::with_capacity(groups.len());
+    // Dashed inferred/intermediate edges prefer a tip chord even when it
+    // crosses peers or skims tiles — long bows look worse than an X.
+    let mut group_dashed: Vec<bool> = Vec::with_capacity(groups.len());
 
     for group in &groups {
         let rep = group.members[0];
         let edge = &spec.edges()[rep];
+        let dashed = group
+            .members
+            .iter()
+            .any(|&ei| spec.edges().get(ei).is_some_and(|e| e.dashed));
+        group_dashed.push(dashed);
         let (src, tgt) = edge_facing_src_tgt(edge, &centroids);
         // Multi-endpoint: pathway + tips use the *group* centroid so the shaft
         // leaves the middle of A+B (not only the nearer mol's latitude).
@@ -228,14 +236,16 @@ pub fn route_scheme_edges(
         // ink obstacles alone miss those. Endpoint tiles are skipped.
         let skip_i: HashSet<&str> = skips[i].iter().map(String::as_str).collect();
         let tip_clear = segment_clears_obstacles(s, g, &tile_obstacles, &skip_i);
-        // Clean tip chord + zero centroid-pathway crossings first. Within dirty
-        // tiers, few-crossing shafts lock first so multi-cross arrows route last.
-        let tier = if tip_clear && draft_cross[i] == 0 {
+        // Dashed edges lock first as tip chords (accept X). Solid: clean tip
+        // chord + zero centroid-pathway crossings first.
+        let tier = if group_dashed[i] {
             0
-        } else if tip_clear {
+        } else if tip_clear && draft_cross[i] == 0 {
             1
-        } else {
+        } else if tip_clear {
             2
+        } else {
+            3
         };
         (tier, draft_cross[i], i)
     });
@@ -249,12 +259,16 @@ pub fn route_scheme_edges(
         let (src_c, tgt_c) = group_centroids[gi];
         let skip: HashSet<&str> = skips[gi].iter().map(String::as_str).collect();
         let clash = clashes[gi];
+        let dashed = group_dashed[gi];
 
-        // Lock a straight tip chord only when it clears foreign *tiles* (not
-        // just ink) and the centroid pathway has no crossings.
-        let keep_draft = draft_cross[gi] == 0
-            && segment_clears_obstacles(start, goal, &tile_obstacles, &skip)
-            && path_crosses_committed(&[src_c, tgt_c], &committed) == 0;        let center = if keep_draft {
+        // Solid: lock tip chord only when it clears foreign tiles and the
+        // centroid pathway has no crossings. Dashed: always take the tip
+        // chord — accept peer intersections over circuitous bows.
+        let keep_draft = dashed
+            || (draft_cross[gi] == 0
+                && segment_clears_obstacles(start, goal, &tile_obstacles, &skip)
+                && path_crosses_committed(&[src_c, tgt_c], &committed) == 0);
+        let center = if keep_draft {
             vec![start, goal]
         } else {
             // Against locked centroid pathways: high crossing cost → detour.
@@ -294,6 +308,7 @@ pub fn route_scheme_edges(
         &tips,
         &skips,
         &clashes,
+        &group_dashed,
         world,
         mol_ids,
         &obstacles,
@@ -922,6 +937,7 @@ fn reoptimize_crossing_routes(
     tips: &[(Pt, Pt)],
     skips: &[HashSet<String>],
     clashes: &[f64],
+    group_dashed: &[bool],
     world: &LayoutWorld,
     mol_ids: &[String],
     obstacles: &[Obstacle],
@@ -946,9 +962,13 @@ fn reoptimize_crossing_routes(
     let mut stuck: HashSet<usize> = HashSet::new();
     for _ in 0..max_steps {
         // Skip zero-cross; among the rest: most intersections, then longest.
+        // Leave dashed tip chords alone — reopt bows look worse than an X.
         let mut worst: Option<(usize, f64, usize)> = None; // (cross, len, gi)
         for i in 0..n {
-            if stuck.contains(&i) || index.degree[i] == 0 {
+            if stuck.contains(&i)
+                || index.degree[i] == 0
+                || group_dashed.get(i).copied().unwrap_or(false)
+            {
                 continue;
             }
             let c = index.degree[i];
@@ -2583,6 +2603,7 @@ mod tests {
             HashSet::from(["c".into(), "d".into()]),
         ];
         let clashes = [2.0_f64, 2.0];
+        let no_dashed = [false, false];
         reoptimize_crossing_routes(
             &mut centers,
             &ends,
@@ -2590,6 +2611,7 @@ mod tests {
             &tips,
             &skips,
             &clashes,
+            &no_dashed,
             &world,
             &mol_ids,
             &empty_obs,

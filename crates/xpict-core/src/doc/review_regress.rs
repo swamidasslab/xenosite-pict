@@ -78,13 +78,23 @@ fn data_texts(scene: &Scene) -> Vec<String> {
 }
 
 fn overlay_edge_paths(scene: &Scene) -> Vec<String> {
+    overlay_edge_paths_filtered(scene, /*include_dashed=*/ true)
+}
+
+fn overlay_edge_paths_filtered(scene: &Scene, include_dashed: bool) -> Vec<String> {
     scene
         .overlays
         .iter()
         .filter_map(|p| match p {
             Primitive::Path {
-                d, class: Some(c), ..
+                d,
+                class: Some(c),
+                stroke_dasharray,
+                ..
             } if c.contains("edge") && !c.contains("head") && !c.contains("harpoon") => {
+                if !include_dashed && stroke_dasharray.as_ref().is_some_and(|s| !s.is_empty()) {
+                    return None;
+                }
                 Some(d.clone())
             }
             _ => None,
@@ -155,7 +165,8 @@ fn skeleton_signed(scene: &Scene, mol_id: &str, p: (f64, f64)) -> f64 {
 /// Interior shaft samples must stay outside *foreign* viewport boxes (dense
 /// xenobase fans look wrong when a shaft skims whitespace inside a mol tile
 /// even if it misses the bond skeleton). Endpoint tiles are skipped — tips
-/// hug ink inside those boxes, so the shaft must enter them.
+/// hug ink inside those boxes, so the shaft must enter them. Dashed edges are
+/// omitted: inferred intermediates prefer a tip chord even through tiles.
 pub(super) fn shaft_interior_clear_of_viewport_boxes(scene: &Scene, inset: f64) {
     let mols: Vec<(String, f64, f64, f64, f64)> = scene
         .viewports
@@ -168,7 +179,7 @@ pub(super) fn shaft_interior_clear_of_viewport_boxes(scene: &Scene, inset: f64) 
     let in_box = |p: (f64, f64), x: f64, y: f64, w: f64, h: f64| {
         p.0 >= x && p.0 <= x + w && p.1 >= y && p.1 <= y + h
     };
-    for d in overlay_edge_paths(scene) {
+    for d in overlay_edge_paths_filtered(scene, /*include_dashed=*/ false) {
         let pts = sample_path(&d);
         if pts.len() < 2 {
             continue;

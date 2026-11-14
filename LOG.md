@@ -8,8 +8,10 @@
   page-edge U-loops on dashed intermediate edges were ~2.5× chord. Fix:
   gate straight chords / string-pull / reopt on padded placement tiles
   while visibility stays ink-tight; inflate frame-highway edge costs so
-  local bows win. Regressions: shaft clear chem + foreign viewports,
-  min shaft length, detour ratio < 2.15.
+  local bows win. Dashed inferred edges take tip chords (accept X)
+  instead of circuitous / downward bows. Regressions: shaft clear chem
+  + foreign viewports (solid only), min shaft length, dashed ratio
+  < 1.15.
 - Glyph SVG paths looked faceted (O as hexagon): export RDP was ½ px,
   Bezier sampling only 4 steps, and weight-grow `buffer` used 30° round
   joins that re-polygonized bowls. Tighten `SVG_PATH_EPS_PX` to 0.1, sample

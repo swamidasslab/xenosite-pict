@@ -157,8 +157,8 @@ mod tests {
 
     #[test]
     fn morphine_sulfate_no_extreme_detours() {
-        // Intermediate dashed edges used to take page-edge U-loops (~2.5×
-        // chord). Prefer local bows; allow some weave but not frame highways.
+        // Dashed edges take tip chords (may cross). Solid edges may bow, but
+        // not page-edge U-loops.
         use crate::scene::Primitive;
         let scene = render_fixture(MORPHINE);
         let mut worst = 1.0_f64;
@@ -166,6 +166,7 @@ mod tests {
             let Primitive::Path {
                 d,
                 class: Some(c),
+                stroke_dasharray,
                 ..
             } = p
             else {
@@ -174,6 +175,9 @@ mod tests {
             if !c.split_whitespace().any(|t| t == "edge") || c.contains("head") {
                 continue;
             }
+            // Dashed must stay near-direct (the Morphine left/right U-loops).
+            let dashed = stroke_dasharray.as_ref().is_some_and(|s| !s.is_empty());
+            let max_ratio = if dashed { 1.15 } else { 2.15 };
             let nums: Vec<f64> = {
                 let mut out = Vec::new();
                 let mut cur = String::new();
@@ -215,8 +219,8 @@ mod tests {
             let ratio = len / chord;
             worst = worst.max(ratio);
             assert!(
-                ratio < 2.15,
-                "edge detour too long: path={len:.0} chord={chord:.0} ratio={ratio:.2} d={}",
+                ratio < max_ratio,
+                "edge detour too long: path={len:.0} chord={chord:.0} ratio={ratio:.2} (max {max_ratio}) d={}",
                 &d[..d.len().min(100)]
             );
         }
