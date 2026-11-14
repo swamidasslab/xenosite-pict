@@ -78,10 +78,6 @@ fn data_texts(scene: &Scene) -> Vec<String> {
 }
 
 fn overlay_edge_paths(scene: &Scene) -> Vec<String> {
-    overlay_edge_paths_filtered(scene, /*include_dashed=*/ true)
-}
-
-fn overlay_edge_paths_filtered(scene: &Scene, include_dashed: bool) -> Vec<String> {
     scene
         .overlays
         .iter()
@@ -89,12 +85,8 @@ fn overlay_edge_paths_filtered(scene: &Scene, include_dashed: bool) -> Vec<Strin
             Primitive::Path {
                 d,
                 class: Some(c),
-                stroke_dasharray,
                 ..
             } if c.contains("edge") && !c.contains("head") && !c.contains("harpoon") => {
-                if !include_dashed && stroke_dasharray.as_ref().is_some_and(|s| !s.is_empty()) {
-                    return None;
-                }
                 Some(d.clone())
             }
             _ => None,
@@ -162,11 +154,11 @@ fn skeleton_signed(scene: &Scene, mol_id: &str, p: (f64, f64)) -> f64 {
     best
 }
 
-/// Interior shaft samples must stay outside *foreign* viewport boxes (dense
-/// xenobase fans look wrong when a shaft skims whitespace inside a mol tile
-/// even if it misses the bond skeleton). Endpoint tiles are skipped — tips
-/// hug ink inside those boxes, so the shaft must enter them. Dashed edges are
-/// omitted: inferred intermediates prefer a tip chord even through tiles.
+/// Interior samples of *bowed* shafts must stay outside foreign viewport boxes
+/// (dense xenobase fans look wrong when a shaft skims whitespace inside a mol
+/// tile even if it misses the bond skeleton). Near-tip chords are exempt —
+/// excessive-detour collapse may punch tiles rather than U-loop. Endpoint
+/// tiles are always skipped (tips hug ink inside those boxes).
 pub(super) fn shaft_interior_clear_of_viewport_boxes(scene: &Scene, inset: f64) {
     let mols: Vec<(String, f64, f64, f64, f64)> = scene
         .viewports
@@ -179,13 +171,22 @@ pub(super) fn shaft_interior_clear_of_viewport_boxes(scene: &Scene, inset: f64) 
     let in_box = |p: (f64, f64), x: f64, y: f64, w: f64, h: f64| {
         p.0 >= x && p.0 <= x + w && p.1 >= y && p.1 <= y + h
     };
-    for d in overlay_edge_paths_filtered(scene, /*include_dashed=*/ false) {
+    for d in overlay_edge_paths(scene) {
         let pts = sample_path(&d);
         if pts.len() < 2 {
             continue;
         }
         let start = pts[0];
         let end = pts[pts.len() - 1];
+        // Tip-like shafts may punch foreign tiles; only assert on real bows.
+        let mut path_len = 0.0;
+        for w in pts.windows(2) {
+            path_len += (w[1].0 - w[0].0).hypot(w[1].1 - w[0].1);
+        }
+        let chord = (end.0 - start.0).hypot(end.1 - start.1).max(1.0);
+        if path_len / chord < 1.08 {
+            continue;
+        }
         let mut endpoint_ids = std::collections::HashSet::new();
         for (id, x, y, w, h) in &mols {
             if in_box(start, *x, *y, *w, *h) || in_box(end, *x, *y, *w, *h) {

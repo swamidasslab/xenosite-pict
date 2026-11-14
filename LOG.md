@@ -2,6 +2,11 @@
 
 ## 2026-11-13
 
+- Arrow tips use *final* group centroids after mol nudge / corridor offset:
+  tip resnap runs last; near-straight shafts re-aim at `src_c↔tgt_c`;
+  corridor offset keeps endpoints planted. Uniform detour gate + softer
+  `crossing_penalty` (400); no dashed routing fork. Morphine yellow
+  `#f0e442`→7817 regresses head aim at the nudged target.
 - Xenobase Morphine sulfate (`xbn:0004961`, Intermediates on) added as
   fixture + review case + shaft asserts. Dense Morphine fan tip chords
   skimmed foreign viewport whitespace (ink-clear but tile-piercing);

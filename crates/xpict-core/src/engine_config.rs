@@ -61,6 +61,10 @@ pub struct RouteConfig {
     pub cosmetic_simplify_eps: f64,
     pub shared_path_penalty: f64,
     pub crossing_penalty: f64,
+    /// Prefer tip chord when a detour's path length exceeds tip×this.
+    pub max_detour_ratio: f64,
+    /// Prefer tip chord when any control sits farther than this from the tip chord.
+    pub max_chord_deviation: f64,
     pub box_corner_margin: f64,
     pub frame_margin: f64,
     pub reopt_passes: usize,
@@ -83,7 +87,10 @@ impl RouteConfig {
             angle_penalty: 120.0,
             cosmetic_simplify_eps: 0.35 * BOND_PX,
             shared_path_penalty: 400.0,
-            crossing_penalty: 2_500.0,
+            // Soft enough that a short tip chord with one peer X beats a long U-bow.
+            crossing_penalty: 400.0,
+            max_detour_ratio: 1.25,
+            max_chord_deviation: 5.0 * BOND_PX,
             box_corner_margin: BOND_PX,
             frame_margin: BOND_PX * 4.0,
             reopt_passes: 1,
@@ -299,7 +306,8 @@ mod tests {
     fn pretty_matches_legacy_route_house_numbers() {
         let r = RouteConfig::pretty();
         assert_eq!(r.segment_penalty, 80.0);
-        assert_eq!(r.crossing_penalty, 2_500.0);
+        assert_eq!(r.crossing_penalty, 400.0);
+        assert_eq!(r.max_detour_ratio, 1.25);
         assert_eq!(r.reopt_passes, 1);
         assert_eq!(r.terminal_link_near, 40);
     }

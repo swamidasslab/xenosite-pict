@@ -157,18 +157,10 @@ pub fn route_scheme_edges(
     let mut tips: Vec<(Pt, Pt)> = Vec::with_capacity(groups.len());
     let mut skips: Vec<HashSet<String>> = Vec::with_capacity(groups.len());
     let mut clashes: Vec<f64> = Vec::with_capacity(groups.len());
-    // Dashed inferred/intermediate edges prefer a tip chord even when it
-    // crosses peers or skims tiles — long bows look worse than an X.
-    let mut group_dashed: Vec<bool> = Vec::with_capacity(groups.len());
 
     for group in &groups {
         let rep = group.members[0];
         let edge = &spec.edges()[rep];
-        let dashed = group
-            .members
-            .iter()
-            .any(|&ei| spec.edges().get(ei).is_some_and(|e| e.dashed));
-        group_dashed.push(dashed);
         let (src, tgt) = edge_facing_src_tgt(edge, &centroids);
         // Multi-endpoint: pathway + tips use the *group* centroid so the shaft
         // leaves the middle of A+B (not only the nearer mol's latitude).
@@ -236,16 +228,14 @@ pub fn route_scheme_edges(
         // ink obstacles alone miss those. Endpoint tiles are skipped.
         let skip_i: HashSet<&str> = skips[i].iter().map(String::as_str).collect();
         let tip_clear = segment_clears_obstacles(s, g, &tile_obstacles, &skip_i);
-        // Dashed edges lock first as tip chords (accept X). Solid: clean tip
-        // chord + zero centroid-pathway crossings first.
-        let tier = if group_dashed[i] {
+        // Clean tip chord + zero centroid-pathway crossings first. Within dirty
+        // tiers, few-crossing shafts lock first so multi-cross arrows route last.
+        let tier = if tip_clear && draft_cross[i] == 0 {
             0
-        } else if tip_clear && draft_cross[i] == 0 {
-            1
         } else if tip_clear {
-            2
+            1
         } else {
-            3
+            2
         };
         (tier, draft_cross[i], i)
     });
@@ -259,19 +249,18 @@ pub fn route_scheme_edges(
         let (src_c, tgt_c) = group_centroids[gi];
         let skip: HashSet<&str> = skips[gi].iter().map(String::as_str).collect();
         let clash = clashes[gi];
-        let dashed = group_dashed[gi];
 
-        // Solid: lock tip chord only when it clears foreign tiles and the
-        // centroid pathway has no crossings. Dashed: always take the tip
-        // chord — accept peer intersections over circuitous bows.
-        let keep_draft = dashed
-            || (draft_cross[gi] == 0
-                && segment_clears_obstacles(start, goal, &tile_obstacles, &skip)
-                && path_crosses_committed(&[src_c, tgt_c], &committed) == 0);
+        // Lock a straight tip chord only when it clears foreign *tiles* and the
+        // centroid pathway has no crossings. Stroke style (dashed/solid) does
+        // not change routing policy.
+        let keep_draft = draft_cross[gi] == 0
+            && segment_clears_obstacles(start, goal, &tile_obstacles, &skip)
+            && path_crosses_committed(&[src_c, tgt_c], &committed) == 0;
         let center = if keep_draft {
             vec![start, goal]
         } else {
-            // Against locked centroid pathways: high crossing cost → detour.
+            // Against locked centroid pathways: detour, but fall back to the tip
+            // chord when the walk is excessively long / bowed (accept peer X).
             route_one_centerline(
                 start,
                 goal,
@@ -308,7 +297,6 @@ pub fn route_scheme_edges(
         &tips,
         &skips,
         &clashes,
-        &group_dashed,
         world,
         mol_ids,
         &obstacles,
@@ -326,8 +314,19 @@ pub fn route_scheme_edges(
         &skips,
     );
 
-    // ---- Tip layout (separate from pathway routing): hug ink along the
-    // final approach rays. Does not participate in intersection scoring.
+    nudge_shared_corridors(&mut group_centers, &group_centroids);
+    // Nudge can reintroduce tiny elbows — pull again with the same rules.
+    simplify_routed_centers(
+        &mut group_centers,
+        &group_centroids,
+        &obstacles,
+        &tile_obstacles,
+        &skips,
+    );
+
+    // Tip layout last: hug ink on rays aimed at the *final* group centroids
+    // (post mol-nudge + corridor offset). Earlier tip snaps would miss after
+    // shared-corridor offsets slid end chords off the centroid line.
     resnap_tips_to_approach_rays(
         &mut group_centers,
         &group_ends,
@@ -338,16 +337,6 @@ pub fn route_scheme_edges(
         &clashes,
         spec,
         &groups,
-    );
-
-    nudge_shared_corridors(&mut group_centers, &group_centroids);
-    // Nudge can reintroduce tiny elbows — pull again with the same rules.
-    simplify_routed_centers(
-        &mut group_centers,
-        &group_centroids,
-        &obstacles,
-        &tile_obstacles,
-        &skips,
     );
 
     let edge_list = spec.edges();
@@ -528,7 +517,7 @@ fn route_one_centerline(
     if pulled_x < bow_x && pulled.len() >= 2 && pulled_tile {
         return pulled;
     }
-    match (pulled_ok, bow_ok) {
+    let candidate = match (pulled_ok, bow_ok) {
         (true, true) => prefer_simpler_path(&pulled, &bow),
         (true, false) => pulled,
         (false, true) => bow,
@@ -549,7 +538,63 @@ fn route_one_centerline(
                 }
             }
         }
+    };
+    prefer_tip_if_detour_excessive(start, goal, &candidate, tile_obstacles, skip)
+}
+
+/// When a detour is much longer or bows far off the tip chord, take the tip
+/// chord instead (accept peer crossings). Keep the detour when the tip punches
+/// foreign tiles the walk clears — packed Morphine-fan bows stay. Stroke style
+/// never participates — dashed and solid share this gate.
+fn prefer_tip_if_detour_excessive(
+    start: Pt,
+    goal: Pt,
+    detour: &[Pt],
+    tile_obstacles: &[Obstacle],
+    skip: &HashSet<&str>,
+) -> Vec<Pt> {
+    if detour.len() < 3 {
+        return detour.to_vec();
     }
+    let tip_len = dist(start, goal).max(1.0);
+    let det_len = polyline_len(detour);
+    let ratio = det_len / tip_len;
+    let deviation = max_chord_deviation(detour);
+    let excessive = ratio > route().max_detour_ratio || deviation > route().max_chord_deviation;
+    if !excessive {
+        return detour.to_vec();
+    }
+    let tip = vec![start, goal];
+    let tip_tile_ok = path_clears_obstacles(&tip, tile_obstacles, skip);
+    let det_tile_ok = path_clears_obstacles(detour, tile_obstacles, skip);
+    if !tip_tile_ok && det_tile_ok {
+        return detour.to_vec();
+    }
+    tip
+}
+
+fn max_chord_deviation(pts: &[Pt]) -> f64 {
+    if pts.len() < 3 {
+        return 0.0;
+    }
+    let a = pts[0];
+    let b = pts[pts.len() - 1];
+    let dx = b.0 - a.0;
+    let dy = b.1 - a.1;
+    let len = dx.hypot(dy);
+    if len < 1e-9 {
+        return 0.0;
+    }
+    let ux = dx / len;
+    let uy = dy / len;
+    let mut best = 0.0_f64;
+    for &p in &pts[1..pts.len() - 1] {
+        let px = p.0 - a.0;
+        let py = p.1 - a.1;
+        let lat = (px * (-uy) + py * ux).abs();
+        best = best.max(lat);
+    }
+    best
 }
 
 fn path_clears_obstacles(pts: &[Pt], obstacles: &[Obstacle], skip: &HashSet<&str>) -> bool {
@@ -937,7 +982,6 @@ fn reoptimize_crossing_routes(
     tips: &[(Pt, Pt)],
     skips: &[HashSet<String>],
     clashes: &[f64],
-    group_dashed: &[bool],
     world: &LayoutWorld,
     mol_ids: &[String],
     obstacles: &[Obstacle],
@@ -962,13 +1006,9 @@ fn reoptimize_crossing_routes(
     let mut stuck: HashSet<usize> = HashSet::new();
     for _ in 0..max_steps {
         // Skip zero-cross; among the rest: most intersections, then longest.
-        // Leave dashed tip chords alone — reopt bows look worse than an X.
         let mut worst: Option<(usize, f64, usize)> = None; // (cross, len, gi)
         for i in 0..n {
-            if stuck.contains(&i)
-                || index.degree[i] == 0
-                || group_dashed.get(i).copied().unwrap_or(false)
-            {
+            if stuck.contains(&i) || index.degree[i] == 0 {
                 continue;
             }
             let c = index.degree[i];
@@ -1065,8 +1105,12 @@ fn count_pathway_crossings_with_peers(
     n
 }
 
-/// Place start/end tips on the rays `src_centroid → path[1]` and
-/// `tgt_centroid → path[n-2]` so end chords aim at the centroids after a bow.
+/// Place start/end tips on rays that aim at the final group centroids.
+///
+/// Near-straight / tip-chord pathways hug `src_c → tgt_c` (and reverse) so a
+/// mol nudge or corridor offset cannot leave the head aimed at a stale
+/// lateral. Real bows keep `src_c → path[1]` / `tgt_c → path[n-2]` so the
+/// shaft still feeds the detour.
 fn resnap_tips_to_approach_rays(
     centers: &mut [Vec<Pt>],
     ends: &[(String, String)],
@@ -1103,32 +1147,84 @@ fn resnap_tips_to_approach_rays(
             .unwrap_or(std::slice::from_ref(tgt));
         let next = centers[gi][1];
         let prev = centers[gi][centers[gi].len() - 2];
+        let tip_like = centers[gi].len() == 2 || approach_stays_on_centroid_chord(src_c, tgt_c, next, prev);
+        let (toward_start, toward_goal) = if tip_like {
+            (tgt_c, src_c)
+        } else {
+            (next, prev)
+        };
         let start = tip_outside_hull(
             obstacles,
             src,
-            tip_pose_group(world, src_ids, centroids, src_c, next, clash, min_shaft),
+            tip_pose_group(
+                world,
+                src_ids,
+                centroids,
+                src_c,
+                toward_start,
+                clash,
+                min_shaft,
+            ),
             src_c,
-            next,
+            toward_start,
         );
         let goal = tip_outside_hull(
             obstacles,
             tgt,
-            tip_pose_group(world, tgt_ids, centroids, tgt_c, prev, clash, min_shaft),
+            tip_pose_group(
+                world,
+                tgt_ids,
+                centroids,
+                tgt_c,
+                toward_goal,
+                clash,
+                min_shaft,
+            ),
             tgt_c,
-            prev,
+            toward_goal,
         );
         // Tip layout only cares about hull clearance — pathway crossings are
         // already decided and must not be "fixed" by pulling tips back.
         let empty = HashSet::new();
-        if segment_clears_obstacles(start, next, obstacles, &empty) {
+        let clear_next = if tip_like && centers[gi].len() == 2 {
+            goal
+        } else {
+            next
+        };
+        let clear_prev = if tip_like && centers[gi].len() == 2 {
+            start
+        } else {
+            prev
+        };
+        if segment_clears_obstacles(start, clear_next, obstacles, &empty) {
             centers[gi][0] = start;
         }
-        if segment_clears_obstacles(prev, goal, obstacles, &empty) {
+        if segment_clears_obstacles(clear_prev, goal, obstacles, &empty) {
             let last = centers[gi].len() - 1;
             centers[gi][last] = goal;
         }
         centers[gi] = prune_close_controls(&centers[gi], CLOSE_CTRL_PX);
     }
+}
+
+/// True when approach controls sit near the group-centroid chord — tip-chord
+/// or corridor-nudged near-straight — so tips should re-aim at the centroids.
+fn approach_stays_on_centroid_chord(src_c: Pt, tgt_c: Pt, next: Pt, prev: Pt) -> bool {
+    let chord = dist(src_c, tgt_c).max(1.0);
+    let lim = (0.35 * route().max_chord_deviation).max(BOND_PX);
+    lateral_from_chord(src_c, tgt_c, next) <= lim
+        && lateral_from_chord(src_c, tgt_c, prev) <= lim
+        && dist(src_c, next) < chord * 1.15
+        && dist(tgt_c, prev) < chord * 1.15
+}
+
+fn lateral_from_chord(a: Pt, b: Pt, p: Pt) -> f64 {
+    let dx = b.0 - a.0;
+    let dy = b.1 - a.1;
+    let len = dx.hypot(dy).max(1e-9);
+    let ux = dx / len;
+    let uy = dy / len;
+    ((p.0 - a.0) * (-uy) + (p.1 - a.1) * ux).abs()
 }
 
 /// Returns `(ink_obstacles, tile_obstacles)`.
@@ -2024,6 +2120,19 @@ fn angle_penalty(a: Pt, b: Pt, c: Pt) -> f64 {
     turn * route().angle_penalty
 }
 
+/// Lateral corridor offset that keeps endpoints fixed so tip resnap can still
+/// aim heads at the final group centroids.
+fn offset_polyline_interior(pts: &[Pt], dist: f64) -> Vec<Pt> {
+    if pts.len() <= 2 || dist.abs() < 1e-9 {
+        return pts.to_vec();
+    }
+    let mut out = offset_polyline(pts, dist);
+    out[0] = pts[0];
+    let last = pts.len() - 1;
+    out[last] = pts[last];
+    out
+}
+
 /// Separate remaining shared / near-collinear corridor runs into parallel tracks.
 fn nudge_shared_corridors(centers: &mut [Vec<Pt>], group_centroids: &[(Pt, Pt)]) {
     let n = centers.len();
@@ -2044,7 +2153,9 @@ fn nudge_shared_corridors(centers: &mut [Vec<Pt>], group_centroids: &[(Pt, Pt)])
             }
             let before_x = count_pathway_crossings_with_peers(j, centers, group_centroids);
             let (px, py) = corridor_normal(&a);
-            let mut cand = offset_polyline(&b, route().nudge_px);
+            // Keep endpoints planted — tip resnap aims them at final centroids.
+            // Laterally shifting tip chords would leave heads parallel-but-off.
+            let mut cand = offset_polyline_interior(&b, route().nudge_px);
             // Flip if offset moved toward a.
             let mid_a = polyline_mid(&a);
             let mid_b = polyline_mid(&cand);
@@ -2052,7 +2163,7 @@ fn nudge_shared_corridors(centers: &mut [Vec<Pt>], group_centroids: &[(Pt, Pt)])
             let d0 = dist(mid_a, mid_b0);
             let d1 = dist(mid_a, mid_b);
             if d1 + 0.5 < d0 {
-                cand = offset_polyline(&b, -route().nudge_px);
+                cand = offset_polyline_interior(&b, -route().nudge_px);
             }
             let _ = (px, py);
             // Never reopen a pathway X just to parallel-track shared corridors.
@@ -2603,7 +2714,6 @@ mod tests {
             HashSet::from(["c".into(), "d".into()]),
         ];
         let clashes = [2.0_f64, 2.0];
-        let no_dashed = [false, false];
         reoptimize_crossing_routes(
             &mut centers,
             &ends,
@@ -2611,7 +2721,6 @@ mod tests {
             &tips,
             &skips,
             &clashes,
-            &no_dashed,
             &world,
             &mol_ids,
             &empty_obs,

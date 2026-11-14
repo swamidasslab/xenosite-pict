@@ -156,17 +156,89 @@ mod tests {
     }
 
     #[test]
-    fn morphine_sulfate_no_extreme_detours() {
-        // Dashed edges take tip chords (may cross). Solid edges may bow, but
-        // not page-edge U-loops.
+    fn morphine_yellow_head_aims_at_final_target_centroid() {
+        // Yellow Morphine→xbm:0007817: target may be soft-nudged off the ELK
+        // chord; the head must still aim at that mol's *final* placement
+        // centroid (viewport chem center), not a pre-nudge lateral.
+        use crate::catmull::open_catmull_end_frame;
         use crate::scene::Primitive;
         let scene = render_fixture(MORPHINE);
+        let mut yellow: Option<Vec<(f64, f64)>> = None;
+        for p in &scene.overlays {
+            let Primitive::Path {
+                d,
+                class: Some(c),
+                stroke: Some(color),
+                ..
+            } = p
+            else {
+                continue;
+            };
+            if color != "#f0e442" || !c.contains("edge") || c.contains("head") {
+                continue;
+            }
+            let nums: Vec<f64> = {
+                let mut out = Vec::new();
+                let mut cur = String::new();
+                for ch in d.chars() {
+                    if ch.is_ascii_digit() || ch == '.' || ch == '-' || ch == '+' || ch == 'e' || ch == 'E'
+                    {
+                        cur.push(ch);
+                    } else if !cur.is_empty() {
+                        if let Ok(v) = cur.parse() {
+                            out.push(v);
+                        }
+                        cur.clear();
+                    }
+                }
+                if !cur.is_empty() {
+                    if let Ok(v) = cur.parse() {
+                        out.push(v);
+                    }
+                }
+                out
+            };
+            let mut pts = Vec::new();
+            let mut i = 0;
+            while i + 1 < nums.len() {
+                pts.push((nums[i], nums[i + 1]));
+                i += 2;
+            }
+            yellow = Some(pts);
+            break;
+        }
+        let pts = yellow.expect("yellow #f0e442 Morphine→7817 shaft");
+        assert!(pts.len() >= 2, "yellow shaft pts={pts:?}");
+        let vp = scene
+            .viewports
+            .iter()
+            .find(|v| v.id.as_deref() == Some("xbm:0007817"))
+            .expect("7817 viewport");
+        // Final placement centroid proxy: chem sits in the nudged viewport box.
+        let cb = (vp.x + vp.width * 0.5, vp.y + vp.height * 0.5);
+        let (tip, tan) = open_catmull_end_frame(&pts);
+        let to_c = (cb.0 - tip.0, cb.1 - tip.1);
+        let clen = to_c.0.hypot(to_c.1).max(1e-9);
+        let aim = (tan.0 * to_c.0 + tan.1 * to_c.1) / clen;
+        let perp = (to_c.0 * tan.1 - to_c.1 * tan.0).abs() / clen;
+        assert!(
+            aim > 0.5 && perp < 0.35,
+            "yellow head must aim at final 7817 centroid: aim={aim:.3} perp={perp:.3} tip={tip:?} tan={tan:?} cb={cb:?} pts={pts:?}"
+        );
+    }
+
+    #[test]
+    fn morphine_sulfate_no_extreme_detours() {
+        // Same length budget for dashed and solid — formatting must not change
+        // routing. Short fan bows stay; page-edge U-loops do not.
+        use crate::scene::Primitive;
+        let scene = render_fixture(MORPHINE);
+        let max_ratio = 1.35;
         let mut worst = 1.0_f64;
         for p in &scene.overlays {
             let Primitive::Path {
                 d,
                 class: Some(c),
-                stroke_dasharray,
                 ..
             } = p
             else {
@@ -175,9 +247,6 @@ mod tests {
             if !c.split_whitespace().any(|t| t == "edge") || c.contains("head") {
                 continue;
             }
-            // Dashed must stay near-direct (the Morphine left/right U-loops).
-            let dashed = stroke_dasharray.as_ref().is_some_and(|s| !s.is_empty());
-            let max_ratio = if dashed { 1.15 } else { 2.15 };
             let nums: Vec<f64> = {
                 let mut out = Vec::new();
                 let mut cur = String::new();
