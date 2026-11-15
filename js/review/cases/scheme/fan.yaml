@@ -1,5 +1,5 @@
 title: Network fan (8 mols)
-expect: Hub plus seven products trips the network path; tips attach around the hull, not one shared port latitude.
+expect: Hub plus seven products; spokes stay near tip chords (no left wrap around the hub).
 spec:
   type: reaction_scheme
   children:

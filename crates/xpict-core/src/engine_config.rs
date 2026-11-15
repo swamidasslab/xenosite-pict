@@ -89,8 +89,10 @@ impl RouteConfig {
             shared_path_penalty: 400.0,
             // Soft enough that a short tip chord with one peer X beats a long U-bow.
             crossing_penalty: 400.0,
-            max_detour_ratio: 1.25,
-            max_chord_deviation: 5.0 * BOND_PX,
+            // Tight enough that a left wrap around a fan hub collapses to tip
+            // (network fan top spokes were ~1.22× / ~4×bond off-chord).
+            max_detour_ratio: 1.15,
+            max_chord_deviation: 3.0 * BOND_PX,
             box_corner_margin: BOND_PX,
             frame_margin: BOND_PX * 4.0,
             reopt_passes: 1,
@@ -307,7 +309,8 @@ mod tests {
         let r = RouteConfig::pretty();
         assert_eq!(r.segment_penalty, 80.0);
         assert_eq!(r.crossing_penalty, 400.0);
-        assert_eq!(r.max_detour_ratio, 1.25);
+        assert_eq!(r.max_detour_ratio, 1.15);
+        assert_eq!(r.max_chord_deviation, 3.0 * BOND_PX);
         assert_eq!(r.reopt_passes, 1);
         assert_eq!(r.terminal_link_near, 40);
     }

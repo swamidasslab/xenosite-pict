@@ -18,6 +18,8 @@ mod tests {
     /// xbn:0004961 Morphine sulfate with Intermediates on (live xenobase dump).
     const MORPHINE: &str =
         include_str!("../../tests/fixtures/xenobase/morphine-sulfate.json");
+    /// Review `scheme/fan` — hub plus seven products (network path).
+    const FAN: &str = include_str!("../../tests/fixtures/scheme/fan.json");
 
     fn render_fixture(json: &str) -> crate::scene::Scene {
         let spec: DepictSpec = serde_json::from_str(json).expect("xenobase DepictSpec");
@@ -67,6 +69,87 @@ mod tests {
             ms < budget,
             "ranolazine compose took {ms}ms (budget {budget}ms)"
         );
+    }
+
+    #[test]
+    fn network_fan_top_spokes_stay_near_tip() {
+        // Review fan: clear left wraps around the hub used to send the top
+        // spokes (→benzene) far west of the tip chord. Tip gate must collapse
+        // those; a short bow that clears a blocking sibling tile (→pyridine)
+        // may remain.
+        use crate::scene::Primitive;
+        let scene = render_fixture(FAN);
+        let mut shafts = 0usize;
+        for p in &scene.overlays {
+            let Primitive::Path {
+                d,
+                class: Some(c),
+                ..
+            } = p
+            else {
+                continue;
+            };
+            if !c.split_whitespace().any(|t| t == "edge") || c.contains("head") {
+                continue;
+            }
+            let nums: Vec<f64> = {
+                let mut out = Vec::new();
+                let mut cur = String::new();
+                for ch in d.chars() {
+                    if ch.is_ascii_digit() || ch == '.' || ch == '-' || ch == '+' || ch == 'e' || ch == 'E'
+                    {
+                        cur.push(ch);
+                    } else if !cur.is_empty() {
+                        if let Ok(v) = cur.parse() {
+                            out.push(v);
+                        }
+                        cur.clear();
+                    }
+                }
+                if !cur.is_empty() {
+                    if let Ok(v) = cur.parse() {
+                        out.push(v);
+                    }
+                }
+                out
+            };
+            let mut pts = Vec::new();
+            let mut i = 0;
+            while i + 1 < nums.len() {
+                pts.push((nums[i], nums[i + 1]));
+                i += 2;
+            }
+            if pts.len() < 2 {
+                continue;
+            }
+            shafts += 1;
+            let tip = (pts[0].0 - pts[pts.len() - 1].0).hypot(pts[0].1 - pts[pts.len() - 1].1);
+            let mut len = 0.0;
+            for w in pts.windows(2) {
+                len += (w[1].0 - w[0].0).hypot(w[1].1 - w[0].1);
+            }
+            let ratio = len / tip.max(1.0);
+            let a = pts[0];
+            let b = pts[pts.len() - 1];
+            let dx = b.0 - a.0;
+            let dy = b.1 - a.1;
+            let cl = dx.hypot(dy).max(1e-9);
+            let ux = dx / cl;
+            let uy = dy / cl;
+            let mut maxlat = 0.0_f64;
+            for &p in &pts[1..pts.len().saturating_sub(1)] {
+                let lat = ((p.0 - a.0) * (-uy) + (p.1 - a.1) * ux).abs();
+                maxlat = maxlat.max(lat);
+            }
+            // Catmull sampling inflates crude length; bound lateral span.
+            let lim = crate::engine_config::RouteConfig::pretty().max_chord_deviation * 1.25;
+            assert!(
+                maxlat <= lim,
+                "fan spoke spans too far off tip chord: maxlat={maxlat:.1} lim={lim:.1} ratio={ratio:.2} d={}",
+                &d[..d.len().min(120)]
+            );
+        }
+        assert!(shafts >= 7, "expected 7 fan shafts, got {shafts}");
     }
 
     #[test]

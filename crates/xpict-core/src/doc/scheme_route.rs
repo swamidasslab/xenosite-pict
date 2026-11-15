@@ -488,8 +488,18 @@ fn route_one_centerline(
     let pulled_ok = path_clears_obstacles(&pulled, obstacles, skip)
         && path_clears_obstacles(&pulled, tile_obstacles, skip);
     let pulled_x = pathway_crosses_committed(&pulled, src_c, tgt_c, committed);
+    let finish = |candidate: Vec<Pt>| {
+        prefer_tip_if_detour_excessive(
+            start,
+            goal,
+            &candidate,
+            tile_obstacles,
+            skip,
+            committed,
+        )
+    };
     if pulled.len() == 2 && pulled_ok && pulled_x == 0 {
-        return pulled;
+        return finish(pulled);
     }
 
     // Visibility walk already clear and crossing-optimal — skip the bow search.
@@ -497,10 +507,12 @@ fn route_one_centerline(
     let vis_ok = path_clears_obstacles(&vis_path, obstacles, skip)
         && path_clears_obstacles(&vis_path, tile_obstacles, skip);
     if pulled_ok && pulled_x == 0 && pulled.len() >= 2 {
-        return pulled;
+        // Still run the tip gate: a clear left-wrap around the hub (network fan
+        // top spokes) must not beat a near tip chord just because it is clear.
+        return finish(pulled);
     }
     if vis_ok && vis_path.len() >= 3 {
-        return prune_close_controls(&vis_path, CLOSE_CTRL_PX);
+        return finish(prune_close_controls(&vis_path, CLOSE_CTRL_PX));
     }
     // Geometric bow against tiles — visibility may have only dodged ink.
     let bow = fallback_bow(start, goal, tile_obstacles, skip, committed);
@@ -512,10 +524,10 @@ fn route_one_centerline(
     let pulled_tile = path_clears_obstacles(&pulled, tile_obstacles, skip);
     let bow_tile = path_clears_obstacles(&bow, tile_obstacles, skip);
     if bow_x < pulled_x && bow.len() >= 2 && (bow_tile || bow.len() >= 3) {
-        return bow;
+        return finish(bow);
     }
     if pulled_x < bow_x && pulled.len() >= 2 && pulled_tile {
-        return pulled;
+        return finish(pulled);
     }
     let candidate = match (pulled_ok, bow_ok) {
         (true, true) => prefer_simpler_path(&pulled, &bow),
@@ -539,19 +551,22 @@ fn route_one_centerline(
             }
         }
     };
-    prefer_tip_if_detour_excessive(start, goal, &candidate, tile_obstacles, skip)
+    finish(candidate)
 }
 
 /// When a detour is much longer or bows far off the tip chord, take the tip
-/// chord instead (accept peer crossings). Keep the detour when the tip punches
-/// foreign tiles the walk clears — packed Morphine-fan bows stay. Stroke style
-/// never participates — dashed and solid share this gate.
+/// chord instead (accept peer crossings). Keep the detour when:
+/// - the tip punches foreign tiles the walk clears, or
+/// - the tip reintroduces pathway crossings the walk avoided *and* the walk is
+///   only mildly long (locked-shaft bows stay; network-fan left wraps do not).
+/// Stroke style never participates — dashed and solid share this gate.
 fn prefer_tip_if_detour_excessive(
     start: Pt,
     goal: Pt,
     detour: &[Pt],
     tile_obstacles: &[Obstacle],
     skip: &HashSet<&str>,
+    committed: &[Committed],
 ) -> Vec<Pt> {
     if detour.len() < 3 {
         return detour.to_vec();
@@ -567,8 +582,20 @@ fn prefer_tip_if_detour_excessive(
     let tip = vec![start, goal];
     let tip_tile_ok = path_clears_obstacles(&tip, tile_obstacles, skip);
     let det_tile_ok = path_clears_obstacles(detour, tile_obstacles, skip);
+    // Never tip through a foreign tile the detour clears (packed A–M–B,
+    // Morphine fan). When the tip is also tile-clear, collapse wild wraps
+    // (network-fan left loop around the hub).
     if !tip_tile_ok && det_tile_ok {
         return detour.to_vec();
+    }
+    let tip_x = path_crosses_committed(&tip, committed);
+    let det_x = path_crosses_committed(detour, committed);
+    if tip_x > det_x {
+        // Mild anti-cross bows stay (locked-shaft side-step ~1–2×bond).
+        let wild = deviation > route().max_chord_deviation * 1.25;
+        if !wild {
+            return detour.to_vec();
+        }
     }
     tip
 }
@@ -2904,6 +2931,39 @@ mod tests {
             path_crosses_committed(&path, &committed),
             0,
             "detour must not cross the locked shaft: {path:?}"
+        );
+    }
+
+    #[test]
+    fn clear_but_excessive_wrap_collapses_to_tip() {
+        // Network-fan failure mode: visibility finds a clear left wrap around
+        // the hub that never punches tiles, but spans far off the tip chord.
+        // Early clear returns used to skip the tip gate — force the tip.
+        let start = (50.0, 400.0);
+        let goal = (200.0, 80.0);
+        let tip_len = dist(start, goal);
+        let wrap = vec![
+            start,
+            (10.0, 320.0),
+            (0.0, 200.0),
+            (40.0, 120.0),
+            goal,
+        ];
+        assert!(
+            max_chord_deviation(&wrap) > route().max_chord_deviation,
+            "fixture must exceed the deviation gate"
+        );
+        assert!(
+            polyline_len(&wrap) / tip_len > route().max_detour_ratio,
+            "fixture must exceed the length gate"
+        );
+        let empty: Vec<Obstacle> = Vec::new();
+        let skip = HashSet::new();
+        let out = prefer_tip_if_detour_excessive(start, goal, &wrap, &empty, &skip, &[]);
+        assert_eq!(
+            out,
+            vec![start, goal],
+            "clear excessive wrap must collapse to tip when tip also clears: {out:?}"
         );
     }
 

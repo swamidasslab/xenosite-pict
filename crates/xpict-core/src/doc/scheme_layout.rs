@@ -2799,10 +2799,19 @@ mod tests {
         let mut ys = Vec::new();
         for path in &refined.edge_paths {
             let pts = path.as_ref().expect("path");
-            assert_eq!(
-                pts.len(),
-                2,
-                "2-point ELK seed must not grow invented controls: {pts:?}"
+            assert!(pts.len() >= 2, "missing shaft: {pts:?}");
+            // Tip-clear spokes stay near-direct; tile-clearing bows may bend.
+            let a = pts[0];
+            let b = pts[pts.len() - 1];
+            let tip = (b.0 - a.0).hypot(b.1 - a.1).max(1.0);
+            let mut len = 0.0;
+            for w in pts.windows(2) {
+                len += (w[1].0 - w[0].0).hypot(w[1].1 - w[0].1);
+            }
+            assert!(
+                len / tip < 2.0,
+                "fan spoke path too long vs tip: ratio={:.2} {pts:?}",
+                len / tip
             );
             ys.push(pts[0].1);
         }
