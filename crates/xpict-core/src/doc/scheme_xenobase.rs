@@ -527,9 +527,44 @@ mod tests {
     }
 
     #[test]
+    fn morphine_intermediate_shell_places_children_after() {
+        // Dotted i0→5110 / i0→4956 are layout:false but still express shell:
+        // intermediate in row ≥1, soft targets strictly deeper (children after).
+        use super::super::depict_doc::test_scheme_paints;
+        use super::super::scheme_layered::place_layered;
+        use crate::doc::spec::LayoutOpts;
+        let spec: DepictSpec = serde_json::from_str(MORPHINE).expect("spec");
+        let layout = match &spec {
+            DepictSpec::ReactionScheme { layout, .. } => layout.clone().unwrap_or_default(),
+            _ => LayoutOpts::default(),
+        };
+        let paints = test_scheme_paints(&spec).expect("paints");
+        let sizes: Vec<(String, f64, f64)> = paints
+            .iter()
+            .map(|p| (p.id.clone(), p.scene.width, p.scene.height))
+            .collect();
+        let placed = place_layered(&spec, &layout, &sizes, &paints).expect("place");
+        let i0 = *placed.layers.get("i0").expect("i0 layer");
+        let n5110 = *placed.layers.get("xbm:0005110").expect("5110");
+        let n4956 = *placed.layers.get("xbm:0004956").expect("4956");
+        assert!(
+            i0 >= 1,
+            "intermediate i0 should sit past the Morphine root row, got layer {i0}"
+        );
+        assert!(
+            n5110 > i0,
+            "soft child 5110 must be after i0: i0={i0} 5110={n5110}"
+        );
+        assert!(
+            n4956 > i0,
+            "soft child 4956 must be after i0: i0={i0} 4956={n4956}"
+        );
+    }
+
+    #[test]
     fn morphine_placer_beats_or_matches_elk_pack_metrics() {
         // Hard gate: placer must not lose to ELK on overlaps / detours /
-        // crossings, and tip aim must be at least as good.
+        // crossings / shaft-through-tile, and tip aim must be at least as good.
         use super::super::compose::compare_placer_vs_elk;
         use super::super::depict_doc::test_scheme_paints;
         use crate::doc::spec::LayoutOpts;
@@ -543,11 +578,22 @@ mod tests {
         eprintln!("placer={placer:?}");
         eprintln!("elk   ={elk:?}");
         assert_eq!(placer.overlaps, 0, "placer must have zero tile overlaps");
+        assert_eq!(
+            placer.shaft_tile_hits, 0,
+            "placer shafts must not cut foreign tiles (got {})",
+            placer.shaft_tile_hits
+        );
         assert!(
             placer.overlaps <= elk.overlaps,
             "placer overlaps {} > elk {}",
             placer.overlaps,
             elk.overlaps
+        );
+        assert!(
+            placer.shaft_tile_hits <= elk.shaft_tile_hits,
+            "placer shaft_tile_hits {} > elk {}",
+            placer.shaft_tile_hits,
+            elk.shaft_tile_hits
         );
         assert!(
             placer.max_detour <= elk.max_detour + 0.02,

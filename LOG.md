@@ -2,14 +2,25 @@
 
 ## 2026-11-15
 
-- **Layered placer vs ELK (Morphine)**: crossing-min now (1) freezes
-  within-layer order so median/hub passes cannot reshuffle ranks, (2) scores
-  reorder swaps with cheap rank-space crossings including `layout: false`
-  soft edges, (3) exhaustive-searches small layers, (4) rejects route detours
-  that back up past the start. Gate
-  `morphine_placer_beats_or_matches_elk_pack_metrics` is green — placer
-  crossings 1 vs ELK 3 (detour/tip both tip-clean under the wild-wrap rule).
-  Intra-layer layout edges promote sinks into deeper layers (hint-respecting).
+- **Why Morphine shaft/tile / ELK-worse gates were vacuous**: (1) viewport
+  shaft check skipped tip *and* bow → never asserted; (2) tip lock / prefer_tip
+  treated ink-clear chords through sibling *tile whitespace* as done; (3)
+  PackMetrics omitted shaft–tile hits; (4) exhaustive layer order skipped when
+  crossings were already 0 → span-suboptimal ranks. Soft (`layout: false`)
+  edges also never promoted shell, so dotted intermediate→child looked
+  backward (i0 deeper than 5110/4956).
+- **Shell**: `soft_promote_layers` deepens soft targets when that does not
+  cycle against the hard DAG; soft long edges get dummy chains for span /
+  crossing scores. Gate: `morphine_intermediate_shell_places_children_after`.
+- **Routing**: tile gate uses placement AABB + AABB sampler aligned with
+  review/PackMetrics; post-resnap / final pass replaces tip-through-tile with
+  bow or AABB escape; page wraps collapse to tip. Still open: ~2 Morphine
+  shaft–tile hits and max_detour vs ELK on
+  `morphine_placer_beats_or_matches_elk_pack_metrics` /
+  `morphine_sulfate_shafts_clear_viewport_boxes`.
+- **Layered placer vs ELK (Morphine)**: crossing-min freezes within-layer
+  order; soft edges score in reorder; exhaustive small layers always run for
+  span. Intra-layer layout edges promote sinks (hint-respecting).
 - **Down-layer mark align**: turned off mark-on-X packing for `direction:
   down|up`. Within a layer, share a horizontal mark line (Auto baseline /
   centroid / top / …). Pose-aligned mols use **common-core** centroid

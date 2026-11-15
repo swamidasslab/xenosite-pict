@@ -4,7 +4,7 @@
 //! mols with the in-house layered placer (elkrs only for radial/force/stress),
 //! then strokes edges via [`crate::arrows`] after visibility routing.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use serde_json::{json, Value};
 
@@ -423,6 +423,8 @@ fn elk_node_positions(
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct PackMetrics {
     pub overlaps: usize,
+    /// Shaft interiors that sit in a foreign mol tile (the Morphine hub failure).
+    pub shaft_tile_hits: usize,
     pub max_detour: f64,
     pub crossings: usize,
     pub mean_tip_aim: f64,
@@ -458,6 +460,7 @@ fn score_pack(p: &Placement, sizes: &[(String, f64, f64)], gap: f64) -> PackMetr
 
     let mut max_detour = 1.0_f64;
     let mut crossings = 0usize;
+    let mut shaft_tile_hits = 0usize;
     let mut aim_sum = 0.0_f64;
     let mut aim_n = 0usize;
     let paths: Vec<&[(f64, f64)]> = p
@@ -466,6 +469,7 @@ fn score_pack(p: &Placement, sizes: &[(String, f64, f64)], gap: f64) -> PackMetr
         .filter_map(|o| o.as_deref())
         .filter(|pts| pts.len() >= 2)
         .collect();
+    let inset = 4.0_f64;
     for pts in &paths {
         let chord = (pts[0].0 - pts[pts.len() - 1].0).hypot(pts[0].1 - pts[pts.len() - 1].1);
         if chord < 20.0 {
@@ -487,6 +491,63 @@ fn score_pack(p: &Placement, sizes: &[(String, f64, f64)], gap: f64) -> PackMetr
         let aim = (tx / tl) * (cx / cl) + (ty / tl) * (cy / cl);
         aim_sum += aim;
         aim_n += 1;
+
+        // Foreign-tile hits along the shaft interior (endpoints skipped).
+        let start = pts[0];
+        let end = pts[pts.len() - 1];
+        let mut endpoint: HashSet<&str> = HashSet::new();
+        for (id, &(w, h)) in &size_of {
+            let Some(&(x, y)) = p.positions.get(*id) else {
+                continue;
+            };
+            let in_box = |q: (f64, f64)| {
+                q.0 >= x && q.0 <= x + w && q.1 >= y && q.1 <= y + h
+            };
+            if in_box(start) || in_box(end) {
+                endpoint.insert(*id);
+            }
+        }
+        let skip = (len * 0.08).max(4.0).min(18.0);
+        let mut along = 0.0;
+        let mut hit = false;
+        for w in pts.windows(2) {
+            let seg = (w[1].0 - w[0].0).hypot(w[1].1 - w[0].1);
+            let n = ((seg / 4.0).ceil() as usize).max(1);
+            for i in 0..=n {
+                let t = i as f64 / n as f64;
+                let q = (w[0].0 + (w[1].0 - w[0].0) * t, w[0].1 + (w[1].1 - w[0].1) * t);
+                let s = along + seg * t;
+                if s < skip || s > len - skip {
+                    continue;
+                }
+                for (id, &(tw, th)) in &size_of {
+                    if endpoint.contains(id) {
+                        continue;
+                    }
+                    let Some(&(tx, ty)) = p.positions.get(*id) else {
+                        continue;
+                    };
+                    if q.0 > tx + inset
+                        && q.0 < tx + tw - inset
+                        && q.1 > ty + inset
+                        && q.1 < ty + th - inset
+                    {
+                        hit = true;
+                        break;
+                    }
+                }
+                if hit {
+                    break;
+                }
+            }
+            along += seg;
+            if hit {
+                break;
+            }
+        }
+        if hit {
+            shaft_tile_hits += 1;
+        }
     }
     for i in 0..paths.len() {
         for j in (i + 1)..paths.len() {
@@ -497,6 +558,7 @@ fn score_pack(p: &Placement, sizes: &[(String, f64, f64)], gap: f64) -> PackMetr
     }
     PackMetrics {
         overlaps,
+        shaft_tile_hits,
         max_detour,
         crossings,
         mean_tip_aim: if aim_n == 0 {

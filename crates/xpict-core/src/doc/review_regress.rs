@@ -157,8 +157,10 @@ fn skeleton_signed(scene: &Scene, mol_id: &str, p: (f64, f64)) -> f64 {
 /// Interior samples of *bowed* shafts must stay outside foreign viewport boxes
 /// (dense xenobase fans look wrong when a shaft skims whitespace inside a mol
 /// tile even if it misses the bond skeleton). Near-tip chords are exempt —
-/// excessive-detour collapse may punch tiles rather than U-loop. Endpoint
-/// tiles are always skipped (tips hug ink inside those boxes).
+/// Interior shaft samples must not sit in a *foreign* mol tile.
+///
+/// Endpoint tiles are skipped (tips hug ink inside those boxes). Tip chords
+/// and bows are both checked — a prior tip/bow dual-skip made this vacuous.
 pub(super) fn shaft_interior_clear_of_viewport_boxes(scene: &Scene, inset: f64) {
     let mols: Vec<(String, f64, f64, f64, f64)> = scene
         .viewports
@@ -178,15 +180,6 @@ pub(super) fn shaft_interior_clear_of_viewport_boxes(scene: &Scene, inset: f64) 
         }
         let start = pts[0];
         let end = pts[pts.len() - 1];
-        // Tip-like shafts may punch foreign tiles; only assert on real bows.
-        let mut path_len = 0.0;
-        for w in pts.windows(2) {
-            path_len += (w[1].0 - w[0].0).hypot(w[1].1 - w[0].1);
-        }
-        let chord = (end.0 - start.0).hypot(end.1 - start.1).max(1.0);
-        if path_len / chord < 1.08 {
-            continue;
-        }
         let mut endpoint_ids = std::collections::HashSet::new();
         for (id, x, y, w, h) in &mols {
             if in_box(start, *x, *y, *w, *h) || in_box(end, *x, *y, *w, *h) {
@@ -203,13 +196,9 @@ pub(super) fn shaft_interior_clear_of_viewport_boxes(scene: &Scene, inset: f64) 
         if acc < 8.0 {
             continue;
         }
-        // Tile-whitespace check targets straight tip chords (Morphine fans).
-        // Bowed visibility walks may skim tile padding while clearing ink.
-        let chord = (start.0 - end.0).hypot(start.1 - end.1).max(1e-9);
-        if acc > chord * 1.08 {
-            continue;
-        }
-        let skip = (acc * 0.18).max(6.0);
+        // Keep a short tip inset so endpoint hug does not false-positive, but
+        // still catch hub spokes cutting through sibling tiles mid-chord.
+        let skip = (acc * 0.08).max(4.0).min(18.0);
         let mut along = 0.0;
         for (a, b, len) in segs {
             let n = ((len / 3.0).ceil() as usize).max(1);

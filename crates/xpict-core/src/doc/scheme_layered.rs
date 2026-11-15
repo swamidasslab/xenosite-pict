@@ -102,15 +102,16 @@ pub fn place_layered(
         .filter_map(|(i, m)| m.layer_hint.map(|_| i))
         .collect();
     promote_strict_layers(&mut layer_of, &forward, &hinted);
+    // Paint-only (`layout: false`) edges still express shell: dotted
+    // intermediate→child should sit the child *after* the intermediate when
+    // that does not cycle against hard layout edges.
+    let soft = soft_order_edges(spec, &id_of);
+    soft_promote_layers(&mut layer_of, &soft, &forward, &hinted);
+    promote_strict_layers(&mut layer_of, &forward, &hinted);
     compact_layer_indices(&mut layer_of);
 
     let (mut nodes, mut edges) = insert_dummies(&metrics, &layer_of, &forward, &feedback);
-    for (s, t) in soft_order_edges(spec, &id_of) {
-        edges.push(PackEdge {
-            src: NodeKey::Real(s),
-            tgt: NodeKey::Real(t),
-        });
-    }
+    append_soft_edges_with_dummies(&mut nodes, &mut edges, &layer_of, &soft);
     order_layers(&mut nodes, &edges, budgets);
     assign_coordinates(&mut nodes, &edges, layout, &metrics, budgets);
     // Star fans: park each parent on the cross-mid of its children so spokes
@@ -119,6 +120,11 @@ pub fn place_layered(
     let dir = layout.direction_or_default();
     let vertical_flow = matches!(dir, LayoutDirection::Up | LayoutDirection::Down);
     let node_gap = layout.node_spacing_or_default();
+    // Long multi-layer edges need a clear cross-axis corridor — nudge real
+    // tiles that sit on the parent→child lerp off the shaft line.
+    if vertical_flow {
+        clear_long_edge_corridors(&mut nodes, &edges, node_gap, vertical_flow);
+    }
     // Only re-separate / AABB on vertical packs — horizontal (Right/Left) already
     // finished mark-align on the cross axis; a second resolve would reset Y.
     if vertical_flow {
@@ -355,6 +361,128 @@ fn promote_strict_layers(
         if !changed {
             break;
         }
+    }
+}
+
+/// Soft (`layout: false`) edges promote shell when they do not cycle against
+/// the hard forward DAG. Intermediate→child dotted links deepen the child so
+/// the intermediate sits in an earlier row with descendants after it.
+fn soft_promote_layers(
+    layer_of: &mut [usize],
+    soft: &[(usize, usize)],
+    hard_forward: &[(usize, usize)],
+    hinted: &HashSet<usize>,
+) {
+    if soft.is_empty() {
+        return;
+    }
+    let n = layer_of.len();
+    let mut hard_adj: Vec<Vec<usize>> = vec![Vec::new(); n];
+    for &(s, t) in hard_forward {
+        hard_adj[s].push(t);
+    }
+    let hard_reaches = |from: usize, to: usize| -> bool {
+        if from == to {
+            return true;
+        }
+        let mut stack = vec![from];
+        let mut seen = vec![false; n];
+        seen[from] = true;
+        while let Some(u) = stack.pop() {
+            for &v in &hard_adj[u] {
+                if v == to {
+                    return true;
+                }
+                if !seen[v] {
+                    seen[v] = true;
+                    stack.push(v);
+                }
+            }
+        }
+        false
+    };
+    for _ in 0..(n * n).max(1) {
+        let mut changed = false;
+        for &(s, t) in soft {
+            if hinted.contains(&t) {
+                continue;
+            }
+            // Soft s→t must not reverse a hard path t ↝ s (e.g. Morphine↔Codeine).
+            if hard_reaches(t, s) {
+                continue;
+            }
+            if layer_of[t] <= layer_of[s] {
+                layer_of[t] = layer_of[s] + 1;
+                changed = true;
+            }
+        }
+        if !changed {
+            break;
+        }
+        promote_strict_layers(layer_of, hard_forward, hinted);
+    }
+}
+
+/// Soft edges spanning multiple layers get the same dummy chain as hard edges
+/// so crossing / span scoring sees the full pathway.
+fn append_soft_edges_with_dummies(
+    nodes: &mut Vec<PackNode>,
+    edges: &mut Vec<PackEdge>,
+    layer_of: &[usize],
+    soft: &[(usize, usize)],
+) {
+    let mut dummy_i = nodes
+        .iter()
+        .filter_map(|n| match n.key {
+            NodeKey::Dummy(i) => Some(i + 1),
+            NodeKey::Real(_) => None,
+        })
+        .max()
+        .unwrap_or(0);
+    for &(s, t) in soft {
+        let ls = layer_of[s];
+        let lt = layer_of[t];
+        if ls == lt {
+            edges.push(PackEdge {
+                src: NodeKey::Real(s),
+                tgt: NodeKey::Real(t),
+            });
+            continue;
+        }
+        let (lo, hi, a, b) = if lt > ls {
+            (ls, lt, s, t)
+        } else {
+            // Soft edge points up-shell; still score the pathway for crossings.
+            (lt, ls, t, s)
+        };
+        if hi == lo + 1 {
+            edges.push(PackEdge {
+                src: NodeKey::Real(a),
+                tgt: NodeKey::Real(b),
+            });
+            continue;
+        }
+        let mut prev = NodeKey::Real(a);
+        for layer in (lo + 1)..hi {
+            let key = NodeKey::Dummy(dummy_i);
+            dummy_i += 1;
+            nodes.push(PackNode {
+                key,
+                real: None,
+                w: 0.0,
+                h: 0.0,
+                layer,
+                ord: 0,
+                cross: 0.0,
+                flow: 0.0,
+            });
+            edges.push(PackEdge { src: prev, tgt: key });
+            prev = key;
+        }
+        edges.push(PackEdge {
+            src: prev,
+            tgt: NodeKey::Real(b),
+        });
     }
 }
 
@@ -840,10 +968,9 @@ fn soft_same_side_penalty(nodes: &[PackNode], edges: &[PackEdge]) -> i32 {
 }
 
 fn exhaustive_order_small_layers(nodes: &mut [PackNode], edges: &[PackEdge]) {
-    // 8! is fine once; skip when swaps already found a zero-crossing order.
-    if total_layer_crossings(nodes, edges) == 0 {
-        return;
-    }
+    // Always search small layers for best `order_cost` (crossings, then
+    // bundle, then path span). Skipping when crossings were already zero left
+    // span-suboptimal ranks that lengthen multi-hop arrows.
     const MAX_N: usize = 8;
     let max_layer = nodes.iter().map(|n| n.layer).max().unwrap_or(0);
     for layer in 0..=max_layer {
@@ -1498,6 +1625,106 @@ fn center_parents_over_children(nodes: &mut [PackNode], edges: &[PackEdge]) {
     }
 }
 
+/// Real→real endpoints of each edge path after contracting dummy chains.
+fn real_real_edges(nodes: &[PackNode], edges: &[PackEdge]) -> Vec<(usize, usize)> {
+    let idx_of: HashMap<NodeKey, usize> = nodes
+        .iter()
+        .enumerate()
+        .map(|(i, n)| (n.key, i))
+        .collect();
+    let mut out_adj: HashMap<NodeKey, Vec<NodeKey>> = HashMap::new();
+    for e in edges {
+        out_adj.entry(e.src).or_default().push(e.tgt);
+    }
+    let mut pairs = Vec::new();
+    let mut seen = HashSet::new();
+    for (i, n) in nodes.iter().enumerate() {
+        if n.real.is_none() {
+            continue;
+        }
+        let mut stack: Vec<NodeKey> = out_adj.get(&n.key).cloned().unwrap_or_default();
+        let mut visited = HashSet::new();
+        visited.insert(n.key);
+        while let Some(k) = stack.pop() {
+            if !visited.insert(k) {
+                continue;
+            }
+            let Some(&j) = idx_of.get(&k) else {
+                continue;
+            };
+            if nodes[j].real.is_some() {
+                if nodes[j].layer > n.layer && seen.insert((i, j)) {
+                    pairs.push((i, j));
+                }
+                continue;
+            }
+            if let Some(nbrs) = out_adj.get(&k) {
+                stack.extend(nbrs.iter().copied());
+            }
+        }
+    }
+    pairs
+}
+
+fn spoke_half_extent(n: &PackNode, vertical_flow: bool) -> f64 {
+    if vertical_flow {
+        n.w * 0.5
+    } else {
+        n.h * 0.5
+    }
+}
+
+fn nudge_off_corridor(nodes: &mut [PackNode], i: usize, corridor: f64, clear: f64) {
+    let d = nodes[i].cross - corridor;
+    if d.abs() >= clear {
+        return;
+    }
+    let dir = if d > 1e-9 {
+        1.0
+    } else if d < -1e-9 {
+        -1.0
+    } else if node_tie(nodes, i).0 % 2 == 0 {
+        1.0
+    } else {
+        -1.0
+    };
+    nodes[i].cross = corridor + dir * clear;
+}
+
+/// Nudge intermediate-layer real tiles off the cross-axis corridor of long
+/// parent→child edges so hub spokes need only short bows (or stay tips).
+fn clear_long_edge_corridors(
+    nodes: &mut [PackNode],
+    edges: &[PackEdge],
+    gap: f64,
+    vertical_flow: bool,
+) {
+    let pairs = real_real_edges(nodes, edges);
+    for &(si, ti) in &pairs {
+        let ls = nodes[si].layer;
+        let lt = nodes[ti].layer;
+        if lt <= ls + 1 {
+            continue;
+        }
+        let c0 = nodes[si].cross;
+        let c1 = nodes[ti].cross;
+        for i in 0..nodes.len() {
+            if nodes[i].real.is_none() || i == si || i == ti {
+                continue;
+            }
+            let l = nodes[i].layer;
+            if l <= ls || l >= lt {
+                continue;
+            }
+            let t = (l - ls) as f64 / (lt - ls) as f64;
+            let corridor = c0 + (c1 - c0) * t;
+            let clear = spoke_half_extent(&nodes[i], vertical_flow) + gap * 0.5;
+            nudge_off_corridor(nodes, i, corridor, clear);
+        }
+    }
+}
+
+
 fn top_left_from_centers(n: &PackNode, dir: LayoutDirection) -> Pt {
     let vertical_flow = matches!(dir, LayoutDirection::Up | LayoutDirection::Down);
     if vertical_flow {
@@ -1632,18 +1859,22 @@ mod tests {
     }
 
     fn edge(a: &str, b: &str) -> Node {
+        soft_edge(a, b, true)
+    }
+
+    fn soft_edge(a: &str, b: &str, layout: bool) -> Node {
         Node::Edge(EdgeNode {
             type_: EdgeNodeKind::Edge,
             sources: crate::doc::MolIds::One(a.into()),
             targets: crate::doc::MolIds::One(b.into()),
             label: None,
             edge_routing: None,
-            layout: None,
+            layout: if layout { None } else { Some(false) },
             role: None,
             arrow: EdgeArrow::Forward,
             color: None,
             stroke_width: None,
-            dashed: false,
+            dashed: !layout,
         })
     }
 
@@ -1796,6 +2027,47 @@ mod tests {
         .unwrap();
         assert_eq!(p.layers["B"], 0);
         assert!(p.layers["C"] >= 1);
+    }
+
+    #[test]
+    fn soft_edge_promotes_shell_without_cycling_hard_dag() {
+        // Hub→leaf hard; soft intermediate→leaf must deepen the leaf past the
+        // intermediate. Soft hub←child feedback must not reverse the hub.
+        let sizes: Vec<(String, f64, f64)> = ["H", "A", "I", "L"]
+            .iter()
+            .map(|id| (id.to_string(), 40.0, 40.0))
+            .collect();
+        let paints: Vec<DocPaint> = sizes
+            .iter()
+            .map(|(id, w, h)| paint_box(id, *w, *h, None, 20.0))
+            .collect();
+        let p = place_layered(
+            &scheme(
+                vec![
+                    mol("H", None),
+                    mol("A", None),
+                    mol("I", None),
+                    mol("L", None),
+                    edge("H", "A"),
+                    edge("H", "L"),
+                    edge("A", "I"),
+                    soft_edge("I", "L", false),
+                    soft_edge("A", "H", false), // would cycle against H→A
+                ],
+                None,
+            ),
+            &LayoutOpts::default(),
+            &sizes,
+            &paints,
+        )
+        .unwrap();
+        assert_eq!(p.layers["H"], 0);
+        assert!(p.layers["I"] > p.layers["A"]);
+        assert!(
+            p.layers["L"] > p.layers["I"],
+            "soft I→L must place L after I: {:?}",
+            p.layers
+        );
     }
 
     #[test]
