@@ -396,6 +396,106 @@ mod tests {
     }
 
     #[test]
+    fn morphine_i0_to_glca_dashed_prefers_tip_over_ink_wrap() {
+        // Dashed intermediate i0→xbm:0004956 (Morphine-3-glucuronide) kept a
+        // wild visibility wrap that still punched molecule ink. When the wrap
+        // does not clear ink better than the tip, take the tip — pathway
+        // crossings beat ink hits.
+        use crate::scene::Primitive;
+        let scene = render_fixture(MORPHINE);
+        let src = scene
+            .viewports
+            .iter()
+            .find(|v| v.id.as_deref() == Some("i0"))
+            .expect("i0 viewport");
+        let tgt = scene
+            .viewports
+            .iter()
+            .find(|v| v.id.as_deref() == Some("xbm:0004956"))
+            .expect("4956 viewport");
+        let sc = (src.x + src.width * 0.5, src.y + src.height * 0.5);
+        let tc = (tgt.x + tgt.width * 0.5, tgt.y + tgt.height * 0.5);
+
+        let mut best: Option<(f64, Vec<(f64, f64)>, String)> = None;
+        for p in &scene.overlays {
+            let Primitive::Path {
+                d,
+                class: Some(c),
+                stroke: Some(color),
+                stroke_dasharray: Some(_),
+                ..
+            } = p
+            else {
+                continue;
+            };
+            if color != "#9a9a9a" || !c.contains("edge") || c.contains("head") {
+                continue;
+            }
+            let nums: Vec<f64> = {
+                let mut out = Vec::new();
+                let mut cur = String::new();
+                for ch in d.chars() {
+                    if ch.is_ascii_digit()
+                        || ch == '.'
+                        || ch == '-'
+                        || ch == '+'
+                        || ch == 'e'
+                        || ch == 'E'
+                    {
+                        cur.push(ch);
+                    } else if !cur.is_empty() {
+                        if let Ok(v) = cur.parse() {
+                            out.push(v);
+                        }
+                        cur.clear();
+                    }
+                }
+                if !cur.is_empty() {
+                    if let Ok(v) = cur.parse() {
+                        out.push(v);
+                    }
+                }
+                out
+            };
+            let mut pts = Vec::new();
+            let mut i = 0;
+            while i + 1 < nums.len() {
+                pts.push((nums[i], nums[i + 1]));
+                i += 2;
+            }
+            if pts.len() < 2 {
+                continue;
+            }
+            let a = pts[0];
+            let b = *pts.last().unwrap();
+            // Match either orientation to the i0↔4956 chord.
+            let score = (a.0 - sc.0)
+                .hypot(a.1 - sc.1)
+                .min((a.0 - tc.0).hypot(a.1 - tc.1))
+                + (b.0 - sc.0)
+                    .hypot(b.1 - sc.1)
+                    .min((b.0 - tc.0).hypot(b.1 - tc.1));
+            let replace = best.as_ref().map(|(s, _, _)| score < *s).unwrap_or(true);
+            if replace {
+                best = Some((score, pts, d.clone()));
+            }
+        }
+        let (_score, pts, d) = best.expect("dashed i0→4956 shaft");
+        assert!(
+            pts.len() == 2 && !d.contains('C') && !d.contains('Q'),
+            "i0→4956 must be a tip chord, not an ink-punching wrap: n={} d={}",
+            pts.len(),
+            &d[..d.len().min(160)]
+        );
+        let chord = (pts[0].0 - pts[1].0).hypot(pts[0].1 - pts[1].1);
+        assert!(
+            chord > 200.0,
+            "expected the long i0→GlcA dashed spoke, chord={chord:.0} d={}",
+            &d[..d.len().min(100)]
+        );
+    }
+
+    #[test]
     fn morphine_sulfate_no_extreme_detours() {
         // Same length budget for dashed and solid — formatting must not change
         // routing. Short fan bows stay; page-edge U-loops do not.

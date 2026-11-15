@@ -6,8 +6,9 @@
   only when it clears chem ink the tip hits *and* does not skim tiles; if
   both punch ink, take the tip (Morphine dashed i0→GlcA was a wild wrap
   still through ink). Ink-clear tip wins over ink-hitting bow even when
-  the bow has fewer edge crossings. Unit:
-  `ink_hitting_wrap_collapses_to_tip_even_if_shorter_crossings`.
+  the bow has fewer edge crossings. Regress:
+  `ink_hitting_wrap_collapses_to_tip_even_if_shorter_crossings`,
+  `morphine_i0_to_glca_dashed_prefers_tip_over_ink_wrap`.
 - Tip unless detour *strictly improves* (ink clearance or fewer pathway
   crossings). Morphine bottom-orange Codeine→GlcA was a mild non-improving
   bow; falls back to tip. Same rule as fan hub wraps.
