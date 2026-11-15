@@ -15,7 +15,8 @@ use crate::debug_box::debug_rect;
 use crate::scene::{LayerName, Primitive, Scene, TextAnchor, Viewport};
 
 use super::{
-    fit, DepictSpec, DocPaint, EdgeNode, EdgeRouting, LabelPos, LayoutAlgorithm, LayoutOpts, Node,
+    fit, DepictSpec, DocPaint, EdgeNode, EdgeRouting, LabelPos, LayoutAlgorithm, LayoutDirection,
+    LayoutOpts, Node,
 };
 
 const EDGE_LABEL_FONT_PX: f64 = 11.0;
@@ -376,18 +377,34 @@ fn layout_scheme(
         spec.edges().len(),
         &layout.engine(),
     );
-    let positions = if use_layered_placer {
+    let (mut positions, layers) = if use_layered_placer {
         let placed = super::scheme_layered::place_layered(spec, layout, sizes, paints)?;
-        let _ = (placed.width, placed.height, &placed.layers);
-        placed.positions
+        (placed.positions, Some(placed.layers))
     } else {
         // Non-layered algorithms, and oversized network schemes, use elkrs for
         // node positions only (shafts still come from scheme_route).
         let graph = build_elk_graph(spec, layout, sizes);
         let laid =
             crate::elk::layout_json(&serde_json::to_string(&graph).map_err(|e| e.to_string())?)?;
-        parse_elk_positions(&laid, sizes)?
+        (parse_elk_positions(&laid, sizes)?, None)
     };
+    // Down/up ELK packs are top-aligned; nudge so each layer shares a baseline /
+    // common-core Y. The in-house placer already mark-aligns — skip it there.
+    if layers.is_none()
+        && matches!(
+            layout.direction_or_default(),
+            LayoutDirection::Down | LayoutDirection::Up
+        )
+    {
+        super::scheme_layered::nudge_down_layer_marks(
+            &mut positions,
+            spec,
+            layout,
+            sizes,
+            paints,
+            None,
+        );
+    }
     let refined =
         super::scheme_layout::refine_scheme_edges(spec, layout, &positions, paints, sizes);
     Ok(Placement {

@@ -64,6 +64,125 @@ struct PackEdge {
     tgt: NodeKey,
 }
 
+/// After ELK (or any top-aligned down pack), nudge tile Y so each layer shares
+/// one horizontal mark line (baseline / common-core centroid / …).
+pub fn nudge_down_layer_marks(
+    positions: &mut HashMap<String, Pt>,
+    spec: &DepictSpec,
+    layout: &LayoutOpts,
+    sizes: &[(String, f64, f64)],
+    paints: &[DocPaint],
+    layers: Option<&HashMap<String, usize>>,
+) {
+    if sizes.is_empty() {
+        return;
+    }
+    let metrics = collect_metrics(spec, sizes, paints);
+    let align = layout.align_or_default();
+    let id_layer: HashMap<String, usize> = if let Some(layers) = layers {
+        layers.clone()
+    } else {
+        infer_layers_from_y(positions, &metrics)
+    };
+
+    let max_layer = id_layer.values().copied().max().unwrap_or(0);
+    for layer in 0..=max_layer {
+        let mut members: Vec<usize> = metrics
+            .iter()
+            .enumerate()
+            .filter(|(_, m)| id_layer.get(&m.id).copied() == Some(layer))
+            .map(|(i, _)| i)
+            .collect();
+        if members.len() < 2 {
+            continue;
+        }
+        members.sort_by(|&a, &b| metrics[a].tie.cmp(&metrics[b].tie));
+
+        // Shared document mark: max so every top stays ≥ current min top.
+        let mut min_top = f64::INFINITY;
+        for &i in &members {
+            if let Some(&(x, y)) = positions.get(&metrics[i].id) {
+                let _ = x;
+                min_top = min_top.min(y);
+            }
+        }
+        if !min_top.is_finite() {
+            continue;
+        }
+        let max_ml = members
+            .iter()
+            .map(|&i| mark_flow_local(&metrics[i], align).0)
+            .fold(0.0_f64, f64::max);
+        let shared = min_top + max_ml;
+        for &i in &members {
+            let m = &metrics[i];
+            let (ml, _) = mark_flow_local(m, align);
+            if let Some(p) = positions.get_mut(&m.id) {
+                p.1 = shared - ml;
+            }
+        }
+        if matches!(align, LayerAlign::Auto) {
+            let mut named_doc = Vec::new();
+            for &i in &members {
+                let m = &metrics[i];
+                let (ml, is_text) = mark_flow_local(m, align);
+                if is_text {
+                    if let Some(&(_, y)) = positions.get(&m.id) {
+                        named_doc.push(y + ml);
+                    }
+                }
+            }
+            if !named_doc.is_empty() {
+                let mean_line = named_doc.iter().sum::<f64>() / named_doc.len() as f64;
+                for &i in &members {
+                    let m = &metrics[i];
+                    let (_, is_text) = mark_flow_local(m, align);
+                    if !is_text {
+                        if let Some(p) = positions.get_mut(&m.id) {
+                            p.1 = mean_line - m.centroid_local.1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn infer_layers_from_y(
+    positions: &HashMap<String, Pt>,
+    metrics: &[NodeMetrics],
+) -> HashMap<String, usize> {
+    // Cluster tops that fall within half the median height of each other.
+    let mut rows: Vec<(String, f64, f64)> = metrics
+        .iter()
+        .filter_map(|m| {
+            let &(x, y) = positions.get(&m.id)?;
+            let _ = x;
+            Some((m.id.clone(), y, m.h))
+        })
+        .collect();
+    rows.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+    let med_h = {
+        let mut hs: Vec<f64> = rows.iter().map(|r| r.2).collect();
+        hs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        hs.get(hs.len() / 2).copied().unwrap_or(40.0)
+    };
+    let tol = (med_h * 0.45).max(8.0);
+    let mut out = HashMap::new();
+    let mut layer = 0usize;
+    let mut band_y = f64::NEG_INFINITY;
+    for (id, y, _) in rows {
+        if y > band_y + tol {
+            if band_y.is_finite() {
+                layer += 1;
+            }
+            band_y = y;
+        }
+        out.insert(id, layer);
+    }
+    out
+}
+
 /// Place mols for a layered scheme. Order-invariant given the same connectivity
 /// and sizes (document list order is canonicalized away).
 pub fn place_layered(
@@ -98,6 +217,9 @@ pub fn place_layered(
     let (mut nodes, edges) = insert_dummies(&metrics, &layer_of, &forward, &feedback);
     order_layers(&mut nodes, &edges, budgets);
     assign_coordinates(&mut nodes, &edges, layout, &metrics, budgets);
+    // Star fans: park each parent on the cross-mid of its children so spokes
+    // stay tip chords instead of wrapping around an off-axis hub.
+    center_parents_over_children(&mut nodes, &edges);
 
     let mut positions = HashMap::new();
     let mut layers = HashMap::new();
@@ -181,22 +303,43 @@ fn local_chem_centroid(paint: Option<&DocPaint>, w: f64, h: f64) -> Pt {
     if paint.molecule.atoms.is_empty() {
         return (w * 0.5, h * 0.5);
     }
-    // Same frame as scheme_layout::chem_to_document at elk=(0,0): leftover folds
-    // viewBox origin into document; local centroid for packing uses atom mean
-    // shifted by scene crop into the fitted tile.
-    let n = paint.molecule.atoms.len() as f64;
-    let sx: f64 = paint.molecule.atoms.iter().map(|a| a.x).sum();
-    let sy: f64 = paint.molecule.atoms.iter().map(|a| a.y).sum();
-    let ax = sx / n;
-    let ay = sy / n;
+    // When pose-aligned, the packing "centroid" is the common core (matched
+    // atoms), not the mean of every atom — substituents must not drag the mark.
+    let (ax, ay) = if let Some(dbg) = paint.molecule.align_debug.as_ref() {
+        let mut sx = 0.0_f64;
+        let mut sy = 0.0_f64;
+        let mut n = 0_usize;
+        for &(atom_idx, _) in &dbg.tags {
+            if atom_idx < 0 {
+                continue;
+            }
+            if let Some(a) = paint.molecule.atoms.get(atom_idx as usize) {
+                sx += a.x;
+                sy += a.y;
+                n += 1;
+            }
+        }
+        if n > 0 {
+            (sx / n as f64, sy / n as f64)
+        } else {
+            mean_atom_xy(paint)
+        }
+    } else {
+        mean_atom_xy(paint)
+    };
     let lx = paint.scene.viewports.first().map(|v| v.x).unwrap_or(0.0);
     let ly = paint.scene.viewports.first().map(|v| v.y).unwrap_or(0.0);
-    // Document = elk + leftover + scale*atom; at elk=0 leftover = lx - scene.x …
-    // For local tile space used by fit scenes, scene.x/y is crop origin.
     let ox = lx - paint.scene.x;
     let oy = ly - paint.scene.y;
     let s = paint.molecule.scale.max(1e-9);
     (ox + s * ax, oy + s * ay)
+}
+
+fn mean_atom_xy(paint: &DocPaint) -> Pt {
+    let n = paint.molecule.atoms.len() as f64;
+    let sx: f64 = paint.molecule.atoms.iter().map(|a| a.x).sum();
+    let sy: f64 = paint.molecule.atoms.iter().map(|a| a.y).sum();
+    (sx / n, sy / n)
 }
 
 fn local_caption_baseline(paint: Option<&DocPaint>) -> Option<f64> {
@@ -611,55 +754,74 @@ fn assign_coordinates(
 
     let max_layer = nodes.iter().map(|n| n.layer).max().unwrap_or(0);
 
-    // Flow-axis: layer fronts from sizes along flow.
-    let mut layer_thickness = vec![0.0_f64; max_layer + 1];
-    for n in nodes.iter() {
-        let thick = if vertical_flow { n.h } else { n.w };
-        layer_thickness[n.layer] = layer_thickness[n.layer].max(thick);
-    }
-    let mut layer_origin = vec![0.0_f64; max_layer + 1];
-    for l in 1..=max_layer {
-        layer_origin[l] = layer_origin[l - 1] + layer_thickness[l - 1] + layer_gap;
-    }
-    for n in nodes.iter_mut() {
-        n.flow = layer_origin[n.layer];
-    }
-
-    // Initial cross-axis pack by current order (box centers).
+    // Cross-axis pack by box size (down/up: X widths; left/right: Y heights).
     for layer in 0..=max_layer {
-        pack_layer_cross(nodes, layer, node_gap, vertical_flow, align, metrics);
+        pack_layer_cross(nodes, layer, node_gap, vertical_flow);
     }
 
-    // Work in mark space (baseline / centroid / top / …), then straighten.
-    for n in nodes.iter_mut() {
-        if let Some(ri) = n.real {
-            let (ml, _) = mark_local(&metrics[ri], align, vertical_flow);
-            let span = if vertical_flow { n.w } else { n.h };
-            let top = n.cross - span * 0.5;
-            n.cross = top + ml; // store mark
+    if vertical_flow {
+        // Down/up: straighten on box centers, then share a horizontal mark line
+        // (baseline / common-core) within each layer — not mark-on-X packing.
+        for _ in 0..budgets.align_passes {
+            let mut moved = false;
+            for layer in 0..=max_layer {
+                if median_pull_marks(nodes, edges, layer, true) {
+                    moved = true;
+                }
+            }
+            for layer in (0..=max_layer).rev() {
+                if median_pull_marks(nodes, edges, layer, false) {
+                    moved = true;
+                }
+            }
+            if !moved {
+                break;
+            }
         }
-    }
-
-    for _ in 0..budgets.align_passes {
-        let mut moved = false;
         for layer in 0..=max_layer {
-            if median_pull_marks(nodes, edges, layer, true) {
-                moved = true;
-            }
+            resolve_cross_overlaps(nodes, layer, node_gap, true);
         }
-        for layer in (0..=max_layer).rev() {
-            if median_pull_marks(nodes, edges, layer, false) {
-                moved = true;
-            }
+        assign_flow_by_marks(nodes, metrics, align, layer_gap);
+    } else {
+        // Left/right: layer fronts from widths; mark-align on Y across layers.
+        let mut layer_thickness = vec![0.0_f64; max_layer + 1];
+        for n in nodes.iter() {
+            layer_thickness[n.layer] = layer_thickness[n.layer].max(n.w);
         }
-        if !moved {
-            break;
+        let mut layer_origin = vec![0.0_f64; max_layer + 1];
+        for l in 1..=max_layer {
+            layer_origin[l] = layer_origin[l - 1] + layer_thickness[l - 1] + layer_gap;
         }
-    }
+        for n in nodes.iter_mut() {
+            n.flow = layer_origin[n.layer];
+        }
 
-    // Marks → tops; resolve overlaps within each layer.
-    for layer in 0..=max_layer {
-        apply_marks_as_tops(nodes, layer, node_gap, vertical_flow, align, metrics);
+        for n in nodes.iter_mut() {
+            if let Some(ri) = n.real {
+                let (ml, _) = mark_cross_local(&metrics[ri], align);
+                let top = n.cross - n.h * 0.5;
+                n.cross = top + ml; // store mark
+            }
+        }
+        for _ in 0..budgets.align_passes {
+            let mut moved = false;
+            for layer in 0..=max_layer {
+                if median_pull_marks(nodes, edges, layer, true) {
+                    moved = true;
+                }
+            }
+            for layer in (0..=max_layer).rev() {
+                if median_pull_marks(nodes, edges, layer, false) {
+                    moved = true;
+                }
+            }
+            if !moved {
+                break;
+            }
+        }
+        for layer in 0..=max_layer {
+            apply_cross_marks_as_tops(nodes, layer, node_gap, align, metrics);
+        }
     }
 
     // Mirror flow for left/up.
@@ -678,14 +840,7 @@ fn assign_coordinates(
     }
 }
 
-fn pack_layer_cross(
-    nodes: &mut [PackNode],
-    layer: usize,
-    node_gap: f64,
-    vertical_flow: bool,
-    _align: LayerAlign,
-    _metrics: &[NodeMetrics],
-) {
+fn pack_layer_cross(nodes: &mut [PackNode], layer: usize, node_gap: f64, vertical_flow: bool) {
     let mut idx: Vec<usize> = nodes
         .iter()
         .enumerate()
@@ -706,9 +861,116 @@ fn pack_layer_cross(
         } else {
             nodes[i].h
         };
-        // cross stores center
         nodes[i].cross = cursor + span * 0.5;
         cursor += span + node_gap;
+    }
+}
+
+fn resolve_cross_overlaps(
+    nodes: &mut [PackNode],
+    layer: usize,
+    node_gap: f64,
+    vertical_flow: bool,
+) {
+    let mut idx: Vec<usize> = nodes
+        .iter()
+        .enumerate()
+        .filter(|(_, n)| n.layer == layer)
+        .map(|(i, _)| i)
+        .collect();
+    idx.sort_by(|&a, &b| {
+        nodes[a]
+            .cross
+            .partial_cmp(&nodes[b].cross)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| node_tie(nodes, a).cmp(&node_tie(nodes, b)))
+    });
+    let mut cursor = f64::NEG_INFINITY;
+    for &i in &idx {
+        let span = if vertical_flow {
+            nodes[i].w
+        } else {
+            nodes[i].h
+        };
+        let mut top = nodes[i].cross - span * 0.5;
+        if cursor.is_finite() && top < cursor + node_gap {
+            top = cursor + node_gap;
+        }
+        cursor = top + span;
+        nodes[i].cross = top + span * 0.5;
+    }
+}
+
+/// Within each down/up layer, share one horizontal mark line (baseline / core).
+fn assign_flow_by_marks(
+    nodes: &mut [PackNode],
+    metrics: &[NodeMetrics],
+    align: LayerAlign,
+    layer_gap: f64,
+) {
+    let max_layer = nodes.iter().map(|n| n.layer).max().unwrap_or(0);
+    let mut origin = 0.0_f64;
+    for layer in 0..=max_layer {
+        let idx: Vec<usize> = nodes
+            .iter()
+            .enumerate()
+            .filter(|(_, n)| n.layer == layer)
+            .map(|(i, _)| i)
+            .collect();
+        if idx.is_empty() {
+            continue;
+        }
+
+        let mut mark_of: HashMap<usize, f64> = HashMap::new();
+        for &i in &idx {
+            let ml = if let Some(ri) = nodes[i].real {
+                mark_flow_local(&metrics[ri], align).0
+            } else {
+                0.0
+            };
+            mark_of.insert(i, ml);
+        }
+
+        let max_ml = idx
+            .iter()
+            .map(|&i| mark_of[&i])
+            .fold(0.0_f64, f64::max);
+        let shared = origin + max_ml;
+        for &i in &idx {
+            nodes[i].flow = shared - mark_of[&i];
+        }
+
+        // Auto: unnamed cores share the mean named-baseline document line.
+        if matches!(align, LayerAlign::Auto) {
+            let mut named_doc = Vec::new();
+            for &i in &idx {
+                let Some(ri) = nodes[i].real else {
+                    continue;
+                };
+                let (ml, is_text) = mark_flow_local(&metrics[ri], align);
+                if is_text {
+                    named_doc.push(nodes[i].flow + ml);
+                }
+            }
+            if !named_doc.is_empty() {
+                let mean_line = named_doc.iter().sum::<f64>() / named_doc.len() as f64;
+                for &i in &idx {
+                    let Some(ri) = nodes[i].real else {
+                        continue;
+                    };
+                    let (_, is_text) = mark_flow_local(&metrics[ri], align);
+                    if !is_text {
+                        nodes[i].flow = mean_line - metrics[ri].centroid_local.1;
+                    }
+                }
+            }
+        }
+
+        let mut bottom = origin;
+        for &i in &idx {
+            bottom = bottom.max(nodes[i].flow + nodes[i].h);
+        }
+        origin = bottom + layer_gap;
     }
 }
 
@@ -763,11 +1025,10 @@ fn median_pull_marks(
     moved
 }
 
-fn apply_marks_as_tops(
+fn apply_cross_marks_as_tops(
     nodes: &mut [PackNode],
     layer: usize,
     node_gap: f64,
-    vertical_flow: bool,
     align: LayerAlign,
     metrics: &[NodeMetrics],
 ) {
@@ -785,30 +1046,26 @@ fn apply_marks_as_tops(
             .then_with(|| node_tie(nodes, a).cmp(&node_tie(nodes, b)))
     });
 
-    // Auto mixed: unnamed real mols retarget their mark to the mean named centroid.
-    if matches!(align, LayerAlign::Auto) && !vertical_flow {
+    // Auto mixed: unnamed cores sit on the mean named-baseline line.
+    if matches!(align, LayerAlign::Auto) {
         let mut named_centroids = Vec::new();
         for &i in &idx {
             let Some(ri) = nodes[i].real else {
                 continue;
             };
-            let (ml, is_text) = mark_local(&metrics[ri], align, vertical_flow);
+            let (ml, is_text) = mark_cross_local(&metrics[ri], align);
             if is_text {
-                // mark is baseline; centroid_doc = (mark - ml) + centroid_local.y
-                named_centroids
-                    .push(nodes[i].cross - ml + metrics[ri].centroid_local.1);
+                named_centroids.push(nodes[i].cross - ml + metrics[ri].centroid_local.1);
             }
         }
         if !named_centroids.is_empty() {
-            let mean_c =
-                named_centroids.iter().sum::<f64>() / named_centroids.len() as f64;
+            let mean_c = named_centroids.iter().sum::<f64>() / named_centroids.len() as f64;
             for &i in &idx {
                 let Some(ri) = nodes[i].real else {
                     continue;
                 };
-                let (_, is_text) = mark_local(&metrics[ri], align, vertical_flow);
+                let (_, is_text) = mark_cross_local(&metrics[ri], align);
                 if !is_text {
-                    // Centroid mark_local == centroid_local.y → mark := mean_c
                     nodes[i].cross = mean_c;
                 }
             }
@@ -819,7 +1076,7 @@ fn apply_marks_as_tops(
     for &i in &idx {
         let mark = nodes[i].cross;
         let ml = if let Some(ri) = nodes[i].real {
-            mark_local(&metrics[ri], align, vertical_flow).0
+            mark_cross_local(&metrics[ri], align).0
         } else {
             0.0
         };
@@ -827,57 +1084,80 @@ fn apply_marks_as_tops(
     }
     let mut cursor = f64::NEG_INFINITY;
     for &mut (i, ref mut top) in tops.iter_mut() {
-        let span = if vertical_flow {
-            nodes[i].w
-        } else {
-            nodes[i].h
-        };
+        let span = nodes[i].h;
         if cursor.is_finite() && *top < cursor + node_gap {
             *top = cursor + node_gap;
         }
         cursor = *top + span;
-        nodes[i].cross = *top + span * 0.5; // back to box center for top_left_from_centers
+        nodes[i].cross = *top + span * 0.5;
     }
 }
 
-/// Local mark offset from tile top-left along the cross axis.
-fn mark_local(m: &NodeMetrics, align: LayerAlign, vertical_flow: bool) -> (f64, bool) {
-    let cross_centroid = if vertical_flow {
-        m.centroid_local.0
-    } else {
-        m.centroid_local.1
-    };
+/// Local mark along Y for left/right packing (cross axis).
+fn mark_cross_local(m: &NodeMetrics, align: LayerAlign) -> (f64, bool) {
     match align {
         LayerAlign::Top => (0.0, false),
-        LayerAlign::Bottom => (
-            if vertical_flow {
-                m.w
-            } else {
-                m.h
-            },
-            false,
-        ),
-        LayerAlign::Middle => (
-            if vertical_flow {
-                m.w * 0.5
-            } else {
-                m.h * 0.5
-            },
-            false,
-        ),
-        LayerAlign::Centroid => (cross_centroid, false),
+        LayerAlign::Bottom => (m.h, false),
+        LayerAlign::Middle => (m.h * 0.5, false),
+        LayerAlign::Centroid => (m.centroid_local.1, false),
         LayerAlign::Baseline | LayerAlign::Auto => {
-            if !vertical_flow {
-                if let Some(by) = m.baseline_local_y {
-                    return (by, true);
-                }
+            if let Some(by) = m.baseline_local_y {
+                (by, true)
+            } else {
+                (m.centroid_local.1, false)
             }
-            (cross_centroid, m.baseline_local_y.is_some())
         }
     }
 }
 
+/// Local mark along Y for down/up layers (shared horizontal line).
+fn mark_flow_local(m: &NodeMetrics, align: LayerAlign) -> (f64, bool) {
+    mark_cross_local(m, align)
+}
 
+
+
+/// Shift each parent’s cross so it sits on the mean cross of its children
+/// (same layer-delta). Leaves child packing intact.
+fn center_parents_over_children(nodes: &mut [PackNode], edges: &[PackEdge]) {
+    let cross_of: HashMap<NodeKey, f64> = nodes.iter().map(|n| (n.key, n.cross)).collect();
+    let layer_of: HashMap<NodeKey, usize> = nodes.iter().map(|n| (n.key, n.layer)).collect();
+    let mut shift: HashMap<NodeKey, f64> = HashMap::new();
+    for n in nodes.iter() {
+        let mut child_cross = Vec::new();
+        for e in edges {
+            let other = if e.src == n.key {
+                e.tgt
+            } else if e.tgt == n.key {
+                e.src
+            } else {
+                continue;
+            };
+            let Some(&ol) = layer_of.get(&other) else {
+                continue;
+            };
+            if ol <= n.layer {
+                continue;
+            }
+            if let Some(&c) = cross_of.get(&other) {
+                child_cross.push(c);
+            }
+        }
+        if child_cross.len() < 2 {
+            continue;
+        }
+        let mean = child_cross.iter().sum::<f64>() / child_cross.len() as f64;
+        let delta = mean - n.cross;
+        if delta.abs() > 0.5 {
+            shift.insert(n.key, delta);
+        }
+    }
+    for n in nodes.iter_mut() {
+        if let Some(d) = shift.get(&n.key) {
+            n.cross += *d;
+        }
+    }
+}
 
 fn top_left_from_centers(n: &PackNode, dir: LayoutDirection) -> Pt {
     let vertical_flow = matches!(dir, LayoutDirection::Up | LayoutDirection::Down);
@@ -1240,6 +1520,163 @@ mod tests {
             (a_baseline - b_centroid).abs() < 2.0,
             "unnamed centroid mark on named baseline: {a_baseline} vs {b_centroid} {:?}",
             p.positions
+        );
+    }
+
+    #[test]
+    fn down_auto_named_shares_baseline_in_layer() {
+        // Fan: two named products in one down-layer must share caption Y.
+        let sizes: Vec<(String, f64, f64)> = vec![
+            ("S".to_string(), 40.0, 40.0),
+            ("A".to_string(), 50.0, 80.0),
+            ("B".to_string(), 50.0, 110.0),
+        ];
+        let paints = vec![
+            paint_box("S", 40.0, 40.0, Some(35.0), 20.0),
+            paint_box("A", 50.0, 80.0, Some(70.0), 30.0),
+            paint_box("B", 50.0, 110.0, Some(100.0), 40.0),
+        ];
+        let layout = LayoutOpts {
+            direction: Some(LayoutDirection::Down),
+            align: Some(LayerAlign::Auto),
+            ..Default::default()
+        };
+        let p = place_layered(
+            &scheme(
+                vec![
+                    mol("S", Some("src")),
+                    mol("A", Some("ethanol")),
+                    mol("B", Some("phenol")),
+                    edge("S", "A"),
+                    edge("S", "B"),
+                ],
+                Some(layout.clone()),
+            ),
+            &layout,
+            &sizes,
+            &paints,
+        )
+        .unwrap();
+        assert_eq!(p.layers["A"], p.layers["B"]);
+        let ya = p.positions["A"].1 + 70.0;
+        let yb = p.positions["B"].1 + 100.0;
+        assert!(
+            (ya - yb).abs() < 1.0,
+            "down-layer baselines should align: {ya} vs {yb} {:?}",
+            p.positions
+        );
+    }
+
+    #[test]
+    fn down_centroid_align_in_layer() {
+        let sizes: Vec<(String, f64, f64)> = vec![
+            ("S".to_string(), 40.0, 40.0),
+            ("A".to_string(), 50.0, 80.0),
+            ("B".to_string(), 50.0, 110.0),
+        ];
+        let paints = vec![
+            paint_box("S", 40.0, 40.0, None, 20.0),
+            paint_box("A", 50.0, 80.0, None, 25.0),
+            paint_box("B", 50.0, 110.0, None, 55.0),
+        ];
+        let layout = LayoutOpts {
+            direction: Some(LayoutDirection::Down),
+            align: Some(LayerAlign::Centroid),
+            ..Default::default()
+        };
+        let p = place_layered(
+            &scheme(
+                vec![
+                    mol("S", None),
+                    mol("A", None),
+                    mol("B", None),
+                    edge("S", "A"),
+                    edge("S", "B"),
+                ],
+                Some(layout.clone()),
+            ),
+            &layout,
+            &sizes,
+            &paints,
+        )
+        .unwrap();
+        let ya = p.positions["A"].1 + 25.0;
+        let yb = p.positions["B"].1 + 55.0;
+        assert!(
+            (ya - yb).abs() < 1.0,
+            "down-layer centroids should align: {ya} vs {yb} {:?}",
+            p.positions
+        );
+    }
+
+    #[test]
+    fn common_core_centroid_uses_align_tags() {
+        use crate::scene::{AlignDebug, AlignDebugRole, AtomIn, MoleculeIn, Scene};
+        let mut scene = Scene::empty(100.0, 80.0);
+        let _ = &mut scene;
+        let mut paint = DocPaint {
+            id: "Q".into(),
+            molecule: MoleculeIn {
+                id: Some("Q".into()),
+                atoms: vec![
+                    AtomIn {
+                        index: 0,
+                        element: Some("C".into()),
+                        z: Some(6),
+                        x: 10.0,
+                        y: 20.0,
+                        label: None,
+                        charge: 0,
+                        radical: 0,
+                        mapno: None,
+                    },
+                    AtomIn {
+                        index: 1,
+                        element: Some("C".into()),
+                        z: Some(6),
+                        x: 30.0,
+                        y: 20.0,
+                        label: None,
+                        charge: 0,
+                        radical: 0,
+                        mapno: None,
+                    },
+                    AtomIn {
+                        index: 2,
+                        element: Some("O".into()),
+                        z: Some(8),
+                        x: 90.0,
+                        y: 70.0,
+                        label: None,
+                        charge: 0,
+                        radical: 0,
+                        mapno: None,
+                    },
+                ],
+                bonds: vec![],
+                align_debug: Some(AlignDebug {
+                    role: AlignDebugRole::Query,
+                    peer_id: Some("T".into()),
+                    tags: vec![(0, 0), (1, 1)],
+                }),
+                ..Default::default()
+            },
+            scene,
+            frame_json: String::new(),
+        };
+        let c = local_chem_centroid(Some(&paint), 100.0, 80.0);
+        // Core mean of atoms 0,1 at y=20 — not dragged by substituent at y=70.
+        assert!(
+            (c.1 - 20.0).abs() < 1e-6,
+            "common-core y should be 20, got {:?}",
+            c
+        );
+        paint.molecule.align_debug = None;
+        let full = local_chem_centroid(Some(&paint), 100.0, 80.0);
+        assert!(
+            (full.1 - (20.0 + 20.0 + 70.0) / 3.0).abs() < 1e-6,
+            "without tags, mean of all atoms: {:?}",
+            full
         );
     }
 }

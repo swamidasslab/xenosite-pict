@@ -1,7 +1,7 @@
 //! Multi-molecule diagram placement via **elkrs** (native ELK).
 //!
-//! Used by [`crate::doc::compose_scheme`] for non-layered algorithms and
-//! oversized network schemes. Standard layered reactions use
+//! Used by [`crate::doc::compose_scheme`] for non-layered algorithms
+//! (radial / force / stress). Layered reactions use
 //! [`crate::doc::scheme_layered`].
 
 use std::collections::BTreeMap;
