@@ -2,13 +2,12 @@
 
 ## 2026-11-15
 
+- Tip unless detour *strictly improves* (ink clearance or fewer pathway
+  crossings). Morphine bottom-orange Codeine→GlcA was a mild non-improving
+  bow; falls back to tip. Same rule as fan hub wraps.
 - Network fan: ink-clean tip chords must win — do not reject a simple tip
-  for padded tile whitespace alone (that forced hub left-wraps). Keep /
-  route_one / tip-gate all key off ink; tiles still shape bows when a tip
-  truly hits ink. All seven fan spokes are straight tip chords (no X, no
-  ink overlap); regress `network_fan_all_spokes_are_straight_tip_chords`.
-- Prior fan note: tip-gate on every `route_one` return + tighter
-  `max_detour_ratio` / `max_chord_deviation` (kept).
+  for padded tile whitespace alone. All seven spokes straight; regress
+  `network_fan_all_spokes_are_straight_tip_chords`.
 
 ## 2026-11-13
 

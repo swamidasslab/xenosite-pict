@@ -491,7 +491,16 @@ fn route_one_centerline(
         && path_clears_obstacles(&pulled, tile_obstacles, skip);
     let pulled_x = pathway_crosses_committed(&pulled, src_c, tgt_c, committed);
     let finish = |candidate: Vec<Pt>| {
-        prefer_tip_if_detour_excessive(start, goal, &candidate, obstacles, skip, committed)
+        prefer_tip_unless_detour_improves(
+            start,
+            goal,
+            src_c,
+            tgt_c,
+            &candidate,
+            obstacles,
+            skip,
+            committed,
+        )
     };
     if pulled.len() == 2 && pulled_ok && pulled_x == 0 {
         return finish(pulled);
@@ -549,14 +558,15 @@ fn route_one_centerline(
     finish(candidate)
 }
 
-/// When a detour is much longer or bows far off the tip chord, take the tip
-/// instead if the tip is ink-clean (accept peer crossings / tile skim). Keep
-/// the detour when the tip hits ink the walk clears, or when the tip would
-/// reintroduce pathway crossings and the walk is only a mild anti-cross bow.
-/// Stroke style never participates — dashed and solid share this gate.
-fn prefer_tip_if_detour_excessive(
+/// Prefer the tip chord unless the detour *strictly improves* something:
+/// clears ink the tip hits, or fewer centroid-pathway crossings. Mild bows
+/// that do not improve (Morphine bottom-orange) fall back to the tip — same
+/// rule as collapsing clear hub wraps. Stroke style never participates.
+fn prefer_tip_unless_detour_improves(
     start: Pt,
     goal: Pt,
+    src_c: Pt,
+    tgt_c: Pt,
     detour: &[Pt],
     ink_obstacles: &[Obstacle],
     skip: &HashSet<&str>,
@@ -565,55 +575,24 @@ fn prefer_tip_if_detour_excessive(
     if detour.len() < 3 {
         return detour.to_vec();
     }
-    let tip_len = dist(start, goal).max(1.0);
-    let det_len = polyline_len(detour);
-    let ratio = det_len / tip_len;
-    let deviation = max_chord_deviation(detour);
-    let excessive = ratio > route().max_detour_ratio || deviation > route().max_chord_deviation;
-    if !excessive {
-        return detour.to_vec();
-    }
     let tip = vec![start, goal];
     let tip_ink_ok = path_clears_obstacles(&tip, ink_obstacles, skip);
     let det_ink_ok = path_clears_obstacles(detour, ink_obstacles, skip);
     if !tip_ink_ok && det_ink_ok {
         return detour.to_vec();
     }
-    let tip_x = path_crosses_committed(&tip, committed);
-    let det_x = path_crosses_committed(detour, committed);
-    if tip_x > det_x {
-        // Mild anti-cross bows stay (locked-shaft side-step ~1–2×bond).
-        let wild = deviation > route().max_chord_deviation * 1.25;
-        if !wild {
-            return detour.to_vec();
-        }
+    if !tip_ink_ok {
+        // Tip hits ink and detour does not help — keep whatever we have.
+        return detour.to_vec();
+    }
+    let tip_x = pathway_crosses_committed(&tip, src_c, tgt_c, committed);
+    let det_x = pathway_crosses_committed(detour, src_c, tgt_c, committed);
+    if det_x < tip_x {
+        return detour.to_vec();
     }
     tip
 }
 
-fn max_chord_deviation(pts: &[Pt]) -> f64 {
-    if pts.len() < 3 {
-        return 0.0;
-    }
-    let a = pts[0];
-    let b = pts[pts.len() - 1];
-    let dx = b.0 - a.0;
-    let dy = b.1 - a.1;
-    let len = dx.hypot(dy);
-    if len < 1e-9 {
-        return 0.0;
-    }
-    let ux = dx / len;
-    let uy = dy / len;
-    let mut best = 0.0_f64;
-    for &p in &pts[1..pts.len() - 1] {
-        let px = p.0 - a.0;
-        let py = p.1 - a.1;
-        let lat = (px * (-uy) + py * ux).abs();
-        best = best.max(lat);
-    }
-    best
-}
 
 fn path_clears_obstacles(pts: &[Pt], obstacles: &[Obstacle], skip: &HashSet<&str>) -> bool {
     if pts.len() < 2 {
@@ -2926,13 +2905,10 @@ mod tests {
     }
 
     #[test]
-    fn clear_but_excessive_wrap_collapses_to_tip() {
-        // Network-fan failure mode: visibility finds a clear left wrap around
-        // the hub that never punches tiles, but spans far off the tip chord.
-        // Early clear returns used to skip the tip gate — force the tip.
+    fn clear_wrap_without_crossing_gain_collapses_to_tip() {
+        // Detour that does not reduce crossings must not stick — tip wins.
         let start = (50.0, 400.0);
         let goal = (200.0, 80.0);
-        let tip_len = dist(start, goal);
         let wrap = vec![
             start,
             (10.0, 320.0),
@@ -2940,22 +2916,30 @@ mod tests {
             (40.0, 120.0),
             goal,
         ];
-        assert!(
-            max_chord_deviation(&wrap) > route().max_chord_deviation,
-            "fixture must exceed the deviation gate"
-        );
-        assert!(
-            polyline_len(&wrap) / tip_len > route().max_detour_ratio,
-            "fixture must exceed the length gate"
-        );
         let empty: Vec<Obstacle> = Vec::new();
         let skip = HashSet::new();
-        let out = prefer_tip_if_detour_excessive(start, goal, &wrap, &empty, &skip, &[]);
+        let out = prefer_tip_unless_detour_improves(
+            start, goal, start, goal, &wrap, &empty, &skip, &[],
+        );
         assert_eq!(
             out,
             vec![start, goal],
-            "clear excessive wrap must collapse to tip when tip also clears: {out:?}"
+            "non-improving wrap must collapse to tip: {out:?}"
         );
+    }
+
+    #[test]
+    fn mild_bow_without_crossing_gain_collapses_to_tip() {
+        // Morphine bottom-orange failure: ratio ~1.06 bow that does not beat tip.
+        let start = (1600.0, 660.0);
+        let goal = (1500.0, 790.0);
+        let bow = vec![start, (1590.0, 720.0), (1550.0, 760.0), goal];
+        let empty: Vec<Obstacle> = Vec::new();
+        let skip = HashSet::new();
+        let out = prefer_tip_unless_detour_improves(
+            start, goal, start, goal, &bow, &empty, &skip, &[],
+        );
+        assert_eq!(out, vec![start, goal], "mild non-improving bow → tip: {out:?}");
     }
 
     #[test]

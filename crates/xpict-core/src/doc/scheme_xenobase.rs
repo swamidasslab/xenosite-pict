@@ -162,6 +162,82 @@ mod tests {
     }
 
     #[test]
+    fn morphine_codeine_glucuronide_spoke_is_tip_chord() {
+        // Review note: bottom-orange Codeine→GlcA was a mild bow that did not
+        // beat the tip on crossings — must fall back to the straight tip.
+        use crate::scene::Primitive;
+        let scene = render_fixture(MORPHINE);
+        let mut found = false;
+        for p in &scene.overlays {
+            let Primitive::Path {
+                d,
+                class: Some(c),
+                stroke: Some(color),
+                ..
+            } = p
+            else {
+                continue;
+            };
+            if color != "#e69f00" || !c.contains("edge") || c.contains("head") {
+                continue;
+            }
+            // The Morphine-root orange spoke is a long tip; Codeine→GlcA is the
+            // short bent one (chord ≪ 400px in the current pack).
+            let nums: Vec<f64> = {
+                let mut out = Vec::new();
+                let mut cur = String::new();
+                for ch in d.chars() {
+                    if ch.is_ascii_digit() || ch == '.' || ch == '-' || ch == '+' || ch == 'e' || ch == 'E'
+                    {
+                        cur.push(ch);
+                    } else if !cur.is_empty() {
+                        if let Ok(v) = cur.parse() {
+                            out.push(v);
+                        }
+                        cur.clear();
+                    }
+                }
+                if !cur.is_empty() {
+                    if let Ok(v) = cur.parse() {
+                        out.push(v);
+                    }
+                }
+                out
+            };
+            let mut pts = Vec::new();
+            let mut i = 0;
+            while i + 1 < nums.len() {
+                pts.push((nums[i], nums[i + 1]));
+                i += 2;
+            }
+            if pts.len() < 2 {
+                continue;
+            }
+            let tip = (pts[0].0 - pts[pts.len() - 1].0).hypot(pts[0].1 - pts[pts.len() - 1].1);
+            if tip > 400.0 {
+                continue; // Morphine→acetate spoke
+            }
+            found = true;
+            let mut len = 0.0;
+            for w in pts.windows(2) {
+                len += (w[1].0 - w[0].0).hypot(w[1].1 - w[0].1);
+            }
+            assert!(
+                !d.contains('C') && !d.contains('Q'),
+                "Codeine→GlcA must be a straight tip (M…L…), not a bow: d={}",
+                &d[..d.len().min(160)]
+            );
+            assert!(
+                len / tip.max(1.0) < 1.02,
+                "Codeine→GlcA must be a tip chord: ratio={:.2} d={}",
+                len / tip.max(1.0),
+                &d[..d.len().min(120)]
+            );
+        }
+        assert!(found, "missing Codeine→GlcA orange shaft");
+    }
+
+    #[test]
     fn morphine_sulfate_shafts_clear_chem() {
         // Dense fan from the Morphine root; shafts must not cut through
         // sibling metabolite boxes (esp. Morphine-3-sulfate / N-oxide fan).
