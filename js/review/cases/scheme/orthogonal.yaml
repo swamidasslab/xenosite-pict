@@ -1,5 +1,5 @@
 title: Orthogonal routing
-expect: Axis-aligned shaft (ELK orthogonal), not a diagonal polyline.
+expect: Axis-aligned shaft (edge_routing orthogonal), not a diagonal polyline.
 spec:
   type: reaction_scheme
   layout:

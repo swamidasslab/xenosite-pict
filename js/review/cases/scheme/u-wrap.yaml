@@ -1,5 +1,5 @@
 title: Network wrap (8 mols)
-expect: Horizontal chain of eight mols plus dashed A→H. Network path keeps the ELK corridor (above/around the row) instead of Catmull-shoving it off the page or cutting a 2-point chord through the intermediates.
+expect: Horizontal chain of eight mols plus dashed A→H. Network path keeps a corridor above/around the row instead of Catmull-shoving it off the page or cutting a 2-point chord through the intermediates.
 spec:
   type: reaction_scheme
   layout:
