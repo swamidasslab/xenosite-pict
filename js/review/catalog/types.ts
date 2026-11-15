@@ -14,6 +14,7 @@ export type ReviewGroup =
   | "region"
   | "align"
   | "scheme"
+  | "scheme-layered"
   | "compose";
 
 export const GROUP_TITLE: Record<ReviewGroup, string> = {
@@ -29,6 +30,7 @@ export const GROUP_TITLE: Record<ReviewGroup, string> = {
   region: "Region annotation",
   align: "Align",
   scheme: "Schemes",
+  "scheme-layered": "Layered layout",
   compose: "Compose (group / grid)",
 };
 
@@ -45,6 +47,7 @@ export const GROUP_ORDER: ReviewGroup[] = [
   "region",
   "align",
   "scheme",
+  "scheme-layered",
   "compose",
 ];
 

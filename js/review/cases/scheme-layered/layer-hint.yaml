@@ -1,5 +1,5 @@
 title: Forced layer hint
-expect: Intermediate B forced to layer 0 with A (mol.layer: 0); C remains downstream.
+expect: "Intermediate B forced to layer 0 with A (mol.layer: 0); C remains downstream."
 spec:
   type: reaction_scheme
   children:
