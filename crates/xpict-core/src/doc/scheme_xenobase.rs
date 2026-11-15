@@ -72,14 +72,14 @@ mod tests {
     }
 
     #[test]
-    fn network_fan_top_spokes_stay_near_tip() {
-        // Review fan: clear left wraps around the hub used to send the top
-        // spokes (→benzene) far west of the tip chord. Tip gate must collapse
-        // those; a short bow that clears a blocking sibling tile (→pyridine)
-        // may remain.
+    fn network_fan_all_spokes_are_straight_tip_chords() {
+        // Review fan: every hub→product shaft should be a straight tip chord —
+        // no hub wraps, no intersections, no ink overlap. Ink-clean tips must
+        // not be rejected for padded tile whitespace alone.
         use crate::scene::Primitive;
         let scene = render_fixture(FAN);
-        let mut shafts = 0usize;
+        shaft_interior_clear_of_mols(&scene, -1.5);
+        let mut shafts = Vec::new();
         for p in &scene.overlays {
             let Primitive::Path {
                 d,
@@ -122,34 +122,43 @@ mod tests {
             if pts.len() < 2 {
                 continue;
             }
-            shafts += 1;
             let tip = (pts[0].0 - pts[pts.len() - 1].0).hypot(pts[0].1 - pts[pts.len() - 1].1);
             let mut len = 0.0;
             for w in pts.windows(2) {
                 len += (w[1].0 - w[0].0).hypot(w[1].1 - w[0].1);
             }
             let ratio = len / tip.max(1.0);
-            let a = pts[0];
-            let b = pts[pts.len() - 1];
-            let dx = b.0 - a.0;
-            let dy = b.1 - a.1;
-            let cl = dx.hypot(dy).max(1e-9);
-            let ux = dx / cl;
-            let uy = dy / cl;
-            let mut maxlat = 0.0_f64;
-            for &p in &pts[1..pts.len().saturating_sub(1)] {
-                let lat = ((p.0 - a.0) * (-uy) + (p.1 - a.1) * ux).abs();
-                maxlat = maxlat.max(lat);
-            }
-            // Catmull sampling inflates crude length; bound lateral span.
-            let lim = crate::engine_config::RouteConfig::pretty().max_chord_deviation * 1.25;
             assert!(
-                maxlat <= lim,
-                "fan spoke spans too far off tip chord: maxlat={maxlat:.1} lim={lim:.1} ratio={ratio:.2} d={}",
+                ratio < 1.08,
+                "fan spoke must be a near tip chord: ratio={ratio:.2} d={}",
                 &d[..d.len().min(120)]
             );
+            shafts.push(pts);
         }
-        assert!(shafts >= 7, "expected 7 fan shafts, got {shafts}");
+        assert_eq!(shafts.len(), 7, "expected 7 fan shafts, got {}", shafts.len());
+        // Tip chords from one hub must not properly cross each other.
+        fn orient(a: (f64, f64), b: (f64, f64), c: (f64, f64)) -> f64 {
+            (b.0 - a.0) * (c.1 - a.1) - (b.1 - a.1) * (c.0 - a.0)
+        }
+        fn proper_cross(p: (f64, f64), q: (f64, f64), r: (f64, f64), s: (f64, f64)) -> bool {
+            let o1 = orient(p, q, r).signum();
+            let o2 = orient(p, q, s).signum();
+            let o3 = orient(r, s, p).signum();
+            let o4 = orient(r, s, q).signum();
+            o1 != 0.0 && o2 != 0.0 && o3 != 0.0 && o4 != 0.0 && o1 != o2 && o3 != o4
+        }
+        for i in 0..shafts.len() {
+            for j in (i + 1)..shafts.len() {
+                let a0 = shafts[i][0];
+                let a1 = shafts[i][shafts[i].len() - 1];
+                let b0 = shafts[j][0];
+                let b1 = shafts[j][shafts[j].len() - 1];
+                assert!(
+                    !proper_cross(a0, a1, b0, b1),
+                    "fan spokes must not cross: {i} vs {j}"
+                );
+            }
+        }
     }
 
     #[test]

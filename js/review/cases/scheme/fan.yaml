@@ -1,5 +1,5 @@
 title: Network fan (8 mols)
-expect: Hub plus seven products; spokes stay near tip chords (no left wrap around the hub).
+expect: Hub plus seven products; all shafts are straight tip chords (no wraps, crossings, or ink overlap).
 spec:
   type: reaction_scheme
   children:

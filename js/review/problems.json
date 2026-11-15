@@ -4,7 +4,7 @@
   "deuteromethane": "This isn't deutero.",
   "chrome-on-scheme": "Callout line clashes with 6. Clashing ink should be a basic generalizable test check. This should be easily fixable with constraints.",
   "equilibrium": "Arrowheads not joined to shaft.",
-  "fan": "Top spokes were wrapping left around the hub (clear but far off-chord). Tip gate must collapse those; short bows that clear a sibling tile may stay.",
+  "fan": "All hub→product shafts should be straight tip chords (no wrap, no X, no ink overlap). Ink-clean tips must not enter complex routing for tile whitespace alone.",
   "multi-reactant": "Overlapping arrow. Once again. Easy generalizable test is possible.",
   "atom-label-greek": "greek label too small and too thin.",
   "star-bare": "Should look more like an asterix.",

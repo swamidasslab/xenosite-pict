@@ -250,11 +250,12 @@ pub fn route_scheme_edges(
         let skip: HashSet<&str> = skips[gi].iter().map(String::as_str).collect();
         let clash = clashes[gi];
 
-        // Lock a straight tip chord only when it clears foreign *tiles* and the
-        // centroid pathway has no crossings. Stroke style (dashed/solid) does
-        // not change routing policy.
+        // Lock a straight tip chord when it clears foreign *ink* and the
+        // centroid pathway has no crossings. Do not demand tile clearance —
+        // padded viewport whitespace alone must not force a hub wrap when a
+        // simple tip is already ink-clean (network fan →pyridine).
         let keep_draft = draft_cross[gi] == 0
-            && segment_clears_obstacles(start, goal, &tile_obstacles, &skip)
+            && segment_clears_obstacles(start, goal, &obstacles, &skip)
             && path_crosses_committed(&[src_c, tgt_c], &committed) == 0;
         let center = if keep_draft {
             vec![start, goal]
@@ -460,12 +461,13 @@ fn route_one_centerline(
     committed: &[Committed],
 ) -> Vec<Pt> {
     let _ = (world, mol_ids, clash); // tip ink already posed; hulls pad structure
-    // Straight chord must clear foreign tiles (viewport whitespace), not only ink.
-    let mol_clear = segment_clears_obstacles(start, goal, tile_obstacles, skip);
+    // Straight tip when ink-clean. Tile whitespace is not enough to reject a
+    // tip — that sent network-fan spokes into left wraps around the hub.
+    let ink_clear = segment_clears_obstacles(start, goal, obstacles, skip);
     let crosses_locked = pathway_crosses_committed(&[start, goal], src_c, tgt_c, committed) > 0;
-    // Pass-2 must actually re-route against the locked set. A mol-clear tip
+    // Pass-2 must actually re-route against the locked set. An ink-clear tip
     // chord that still crosses on the centroid pathway is not done.
-    if mol_clear && !crosses_locked {
+    if ink_clear && !crosses_locked {
         return prune_close_controls(&[start, goal], CLOSE_CTRL_PX);
     }
 
@@ -489,14 +491,7 @@ fn route_one_centerline(
         && path_clears_obstacles(&pulled, tile_obstacles, skip);
     let pulled_x = pathway_crosses_committed(&pulled, src_c, tgt_c, committed);
     let finish = |candidate: Vec<Pt>| {
-        prefer_tip_if_detour_excessive(
-            start,
-            goal,
-            &candidate,
-            tile_obstacles,
-            skip,
-            committed,
-        )
+        prefer_tip_if_detour_excessive(start, goal, &candidate, obstacles, skip, committed)
     };
     if pulled.len() == 2 && pulled_ok && pulled_x == 0 {
         return finish(pulled);
@@ -555,16 +550,15 @@ fn route_one_centerline(
 }
 
 /// When a detour is much longer or bows far off the tip chord, take the tip
-/// chord instead (accept peer crossings). Keep the detour when:
-/// - the tip punches foreign tiles the walk clears, or
-/// - the tip reintroduces pathway crossings the walk avoided *and* the walk is
-///   only mildly long (locked-shaft bows stay; network-fan left wraps do not).
+/// instead if the tip is ink-clean (accept peer crossings / tile skim). Keep
+/// the detour when the tip hits ink the walk clears, or when the tip would
+/// reintroduce pathway crossings and the walk is only a mild anti-cross bow.
 /// Stroke style never participates — dashed and solid share this gate.
 fn prefer_tip_if_detour_excessive(
     start: Pt,
     goal: Pt,
     detour: &[Pt],
-    tile_obstacles: &[Obstacle],
+    ink_obstacles: &[Obstacle],
     skip: &HashSet<&str>,
     committed: &[Committed],
 ) -> Vec<Pt> {
@@ -580,12 +574,9 @@ fn prefer_tip_if_detour_excessive(
         return detour.to_vec();
     }
     let tip = vec![start, goal];
-    let tip_tile_ok = path_clears_obstacles(&tip, tile_obstacles, skip);
-    let det_tile_ok = path_clears_obstacles(detour, tile_obstacles, skip);
-    // Never tip through a foreign tile the detour clears (packed A–M–B,
-    // Morphine fan). When the tip is also tile-clear, collapse wild wraps
-    // (network-fan left loop around the hub).
-    if !tip_tile_ok && det_tile_ok {
+    let tip_ink_ok = path_clears_obstacles(&tip, ink_obstacles, skip);
+    let det_ink_ok = path_clears_obstacles(detour, ink_obstacles, skip);
+    if !tip_ink_ok && det_ink_ok {
         return detour.to_vec();
     }
     let tip_x = path_crosses_committed(&tip, committed);
