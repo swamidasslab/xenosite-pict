@@ -1,7 +1,7 @@
 //! Compose a reaction scheme into one [`Scene`]: place painted mols + edge overlays.
 //!
 //! [`super::render_doc`] paints each molecule independently. This module packs
-//! mols with the in-house layered placer (ELK only for non-layered algorithms),
+//! mols with the in-house layered placer (elkrs only for radial/force/stress),
 //! then strokes edges via [`crate::arrows`] after visibility routing.
 
 use std::collections::HashMap;
@@ -15,8 +15,7 @@ use crate::debug_box::debug_rect;
 use crate::scene::{LayerName, Primitive, Scene, TextAnchor, Viewport};
 
 use super::{
-    fit, DepictSpec, DocPaint, EdgeNode, EdgeRouting, LabelPos, LayoutAlgorithm, LayoutDirection,
-    LayoutOpts, Node,
+    fit, DepictSpec, DocPaint, EdgeNode, EdgeRouting, LabelPos, LayoutAlgorithm, LayoutOpts, Node,
 };
 
 const EDGE_LABEL_FONT_PX: f64 = 11.0;
@@ -369,42 +368,22 @@ fn layout_scheme(
     sizes: &[(String, f64, f64)],
     paints: &[DocPaint],
 ) -> Result<Placement, String> {
-    let use_layered_placer = matches!(
-        layout.algorithm_or_default(),
-        LayoutAlgorithm::Layered
-    ) && !super::scheme_layout::is_network_scheme(
-        sizes.len(),
-        spec.edges().len(),
-        &layout.engine(),
-    );
-    let (mut positions, layers) = if use_layered_placer {
-        let placed = super::scheme_layered::place_layered(spec, layout, sizes, paints)?;
-        (placed.positions, Some(placed.layers))
-    } else {
-        // Non-layered algorithms, and oversized network schemes, use elkrs for
-        // node positions only (shafts still come from scheme_route).
-        let graph = build_elk_graph(spec, layout, sizes);
-        let laid =
-            crate::elk::layout_json(&serde_json::to_string(&graph).map_err(|e| e.to_string())?)?;
-        (parse_elk_positions(&laid, sizes)?, None)
+    let positions = match layout.algorithm_or_default() {
+        LayoutAlgorithm::Layered => {
+            // All layered schemes (including dense xenobase nets) use the
+            // in-house placer. elkrs is only for radial / force / stress.
+            let placed = super::scheme_layered::place_layered(spec, layout, sizes, paints)?;
+            let _ = (placed.width, placed.height, &placed.layers);
+            placed.positions
+        }
+        LayoutAlgorithm::Radial | LayoutAlgorithm::Force | LayoutAlgorithm::Stress => {
+            let graph = build_elk_graph(spec, layout, sizes);
+            let laid = crate::elk::layout_json(
+                &serde_json::to_string(&graph).map_err(|e| e.to_string())?,
+            )?;
+            parse_elk_positions(&laid, sizes)?
+        }
     };
-    // Down/up ELK packs are top-aligned; nudge so each layer shares a baseline /
-    // common-core Y. The in-house placer already mark-aligns — skip it there.
-    if layers.is_none()
-        && matches!(
-            layout.direction_or_default(),
-            LayoutDirection::Down | LayoutDirection::Up
-        )
-    {
-        super::scheme_layered::nudge_down_layer_marks(
-            &mut positions,
-            spec,
-            layout,
-            sizes,
-            paints,
-            None,
-        );
-    }
     let refined =
         super::scheme_layout::refine_scheme_edges(spec, layout, &positions, paints, sizes);
     Ok(Placement {

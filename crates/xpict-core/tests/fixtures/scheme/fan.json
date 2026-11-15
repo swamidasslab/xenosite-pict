@@ -1,5 +1,10 @@
 {
   "type": "reaction_scheme",
+  "layout": {
+    "layer_spacing": 72,
+    "node_spacing": 40,
+    "align": "centroid"
+  },
   "children": [
     {"type": "mol", "id": "src", "smiles": "c1ccccc1O", "name": "phenol"},
     {"type": "mol", "id": "t0", "smiles": "CC(=O)O"},

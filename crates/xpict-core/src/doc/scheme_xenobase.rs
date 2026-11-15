@@ -167,7 +167,7 @@ mod tests {
         // beat the tip on crossings — must fall back to the straight tip.
         use crate::scene::Primitive;
         let scene = render_fixture(MORPHINE);
-        let mut found = false;
+        let mut best: Option<(f64, f64, String, Vec<(f64, f64)>)> = None;
         for p in &scene.overlays {
             let Primitive::Path {
                 d,
@@ -181,8 +181,7 @@ mod tests {
             if color != "#e69f00" || !c.contains("edge") || c.contains("head") {
                 continue;
             }
-            // The Morphine-root orange spoke is a long tip; Codeine→GlcA is the
-            // short bent one (chord ≪ 400px in the current pack).
+            // Shorter orange shaft = Codeine→GlcA; longer = Morphine-root spoke.
             let nums: Vec<f64> = {
                 let mut out = Vec::new();
                 let mut cur = String::new();
@@ -214,27 +213,33 @@ mod tests {
                 continue;
             }
             let tip = (pts[0].0 - pts[pts.len() - 1].0).hypot(pts[0].1 - pts[pts.len() - 1].1);
-            if tip > 400.0 {
-                continue; // Morphine→acetate spoke
-            }
-            found = true;
             let mut len = 0.0;
             for w in pts.windows(2) {
                 len += (w[1].0 - w[0].0).hypot(w[1].1 - w[0].1);
             }
-            assert!(
-                !d.contains('C') && !d.contains('Q'),
-                "Codeine→GlcA must be a straight tip (M…L…), not a bow: d={}",
-                &d[..d.len().min(160)]
-            );
-            assert!(
-                len / tip.max(1.0) < 1.02,
-                "Codeine→GlcA must be a tip chord: ratio={:.2} d={}",
-                len / tip.max(1.0),
-                &d[..d.len().min(120)]
-            );
+            // Prefer the shorter orange shaft (Codeine→GlcA); the Morphine-root
+            // spoke is the long tip under the layered placer pack.
+            let cand = (tip, len, d.clone(), pts);
+            let replace = match &best {
+                None => true,
+                Some((t, _, _, _)) => tip < *t,
+            };
+            if replace {
+                best = Some(cand);
+            }
         }
-        assert!(found, "missing Codeine→GlcA orange shaft");
+        let (tip, len, d, _pts) = best.expect("missing Codeine→GlcA orange shaft");
+        assert!(
+            !d.contains('C') && !d.contains('Q'),
+            "Codeine→GlcA must be a straight tip (M…L…), not a bow: d={}",
+            &d[..d.len().min(160)]
+        );
+        assert!(
+            len / tip.max(1.0) < 1.02,
+            "Codeine→GlcA must be a tip chord: ratio={:.2} tip={tip:.1} d={}",
+            len / tip.max(1.0),
+            &d[..d.len().min(120)]
+        );
     }
 
     #[test]
@@ -479,21 +484,24 @@ mod tests {
             }
         }
         let (_score, pts, d) = best.expect("dashed i0→4956 shaft");
-        // Painted Catmull samples inflate control count; require a real bow
-        // (not a tip) that stays south of the chord and does not pack redundant
-        // early elbows (ink string-pull should drop tile-only kinks).
-        assert!(
-            d.contains('C') || pts.len() >= 3,
-            "ink-hitting tip must yield to a south bow: n={} d={}",
-            pts.len(),
-            &d[..d.len().min(160)]
-        );
-        let end_y = 0.5 * (pts[0].1 + pts[pts.len() - 1].1);
-        let mid_y: f64 = pts.iter().map(|p| p.1).sum::<f64>() / pts.len() as f64;
-        assert!(
-            mid_y > end_y + 10.0,
-            "expected a below-chord bow: mid_y={mid_y:.0} end_y={end_y:.0} pts={pts:?}"
-        );
+        // Under ELK packs the tip punched chem and needed a south bow. The
+        // layered placer often leaves a clear tip — either is fine so long as
+        // the painted shaft clears ink (and a bow, if used, stays south).
+        let is_tip = pts.len() == 2 && !d.contains('C') && !d.contains('Q');
+        if !is_tip {
+            assert!(
+                d.contains('C') || pts.len() >= 3,
+                "ink-hitting tip must yield to a bow: n={} d={}",
+                pts.len(),
+                &d[..d.len().min(160)]
+            );
+            let end_y = 0.5 * (pts[0].1 + pts[pts.len() - 1].1);
+            let mid_y: f64 = pts.iter().map(|p| p.1).sum::<f64>() / pts.len() as f64;
+            assert!(
+                mid_y > end_y + 10.0,
+                "expected a below-chord bow: mid_y={mid_y:.0} end_y={end_y:.0} pts={pts:?}"
+            );
+        }
         shaft_interior_clear_of_mols(&scene, -1.5);
     }
 

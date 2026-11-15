@@ -5,9 +5,9 @@
 - **Down-layer mark align**: turned off mark-on-X packing for `direction:
   down|up`. Within a layer, share a horizontal mark line (Auto baseline /
   centroid / top / …). Pose-aligned mols use **common-core** centroid
-  (`align_debug` tags), not the full-atom mean. Dense xenobase nets still
-  take elkrs positions, then `nudge_down_layer_marks` so captions/cores line
-  up (Morphine). Small layered schemes keep the in-house placer.
+  (`align_debug` tags), not the full-atom mean. **All** layered schemes
+  (including dense xenobase nets) use the in-house placer — elkrs only for
+  radial/force/stress.
 - **In-house layered scheme placer** (`doc/scheme_layered.rs`): default
   `algorithm: layered` reaction schemes no longer call ELK. Sugiyama pack with
   internal long-edge dummies, capped barycenter/median sweeps

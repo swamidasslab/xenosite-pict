@@ -64,125 +64,6 @@ struct PackEdge {
     tgt: NodeKey,
 }
 
-/// After ELK (or any top-aligned down pack), nudge tile Y so each layer shares
-/// one horizontal mark line (baseline / common-core centroid / …).
-pub fn nudge_down_layer_marks(
-    positions: &mut HashMap<String, Pt>,
-    spec: &DepictSpec,
-    layout: &LayoutOpts,
-    sizes: &[(String, f64, f64)],
-    paints: &[DocPaint],
-    layers: Option<&HashMap<String, usize>>,
-) {
-    if sizes.is_empty() {
-        return;
-    }
-    let metrics = collect_metrics(spec, sizes, paints);
-    let align = layout.align_or_default();
-    let id_layer: HashMap<String, usize> = if let Some(layers) = layers {
-        layers.clone()
-    } else {
-        infer_layers_from_y(positions, &metrics)
-    };
-
-    let max_layer = id_layer.values().copied().max().unwrap_or(0);
-    for layer in 0..=max_layer {
-        let mut members: Vec<usize> = metrics
-            .iter()
-            .enumerate()
-            .filter(|(_, m)| id_layer.get(&m.id).copied() == Some(layer))
-            .map(|(i, _)| i)
-            .collect();
-        if members.len() < 2 {
-            continue;
-        }
-        members.sort_by(|&a, &b| metrics[a].tie.cmp(&metrics[b].tie));
-
-        // Shared document mark: max so every top stays ≥ current min top.
-        let mut min_top = f64::INFINITY;
-        for &i in &members {
-            if let Some(&(x, y)) = positions.get(&metrics[i].id) {
-                let _ = x;
-                min_top = min_top.min(y);
-            }
-        }
-        if !min_top.is_finite() {
-            continue;
-        }
-        let max_ml = members
-            .iter()
-            .map(|&i| mark_flow_local(&metrics[i], align).0)
-            .fold(0.0_f64, f64::max);
-        let shared = min_top + max_ml;
-        for &i in &members {
-            let m = &metrics[i];
-            let (ml, _) = mark_flow_local(m, align);
-            if let Some(p) = positions.get_mut(&m.id) {
-                p.1 = shared - ml;
-            }
-        }
-        if matches!(align, LayerAlign::Auto) {
-            let mut named_doc = Vec::new();
-            for &i in &members {
-                let m = &metrics[i];
-                let (ml, is_text) = mark_flow_local(m, align);
-                if is_text {
-                    if let Some(&(_, y)) = positions.get(&m.id) {
-                        named_doc.push(y + ml);
-                    }
-                }
-            }
-            if !named_doc.is_empty() {
-                let mean_line = named_doc.iter().sum::<f64>() / named_doc.len() as f64;
-                for &i in &members {
-                    let m = &metrics[i];
-                    let (_, is_text) = mark_flow_local(m, align);
-                    if !is_text {
-                        if let Some(p) = positions.get_mut(&m.id) {
-                            p.1 = mean_line - m.centroid_local.1;
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-fn infer_layers_from_y(
-    positions: &HashMap<String, Pt>,
-    metrics: &[NodeMetrics],
-) -> HashMap<String, usize> {
-    // Cluster tops that fall within half the median height of each other.
-    let mut rows: Vec<(String, f64, f64)> = metrics
-        .iter()
-        .filter_map(|m| {
-            let &(x, y) = positions.get(&m.id)?;
-            let _ = x;
-            Some((m.id.clone(), y, m.h))
-        })
-        .collect();
-    rows.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
-    let med_h = {
-        let mut hs: Vec<f64> = rows.iter().map(|r| r.2).collect();
-        hs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-        hs.get(hs.len() / 2).copied().unwrap_or(40.0)
-    };
-    let tol = (med_h * 0.45).max(8.0);
-    let mut out = HashMap::new();
-    let mut layer = 0usize;
-    let mut band_y = f64::NEG_INFINITY;
-    for (id, y, _) in rows {
-        if y > band_y + tol {
-            if band_y.is_finite() {
-                layer += 1;
-            }
-            band_y = y;
-        }
-        out.insert(id, layer);
-    }
-    out
-}
-
 /// Place mols for a layered scheme. Order-invariant given the same connectivity
 /// and sizes (document list order is canonicalized away).
 pub fn place_layered(
@@ -1606,6 +1487,59 @@ mod tests {
             (ya - yb).abs() < 1.0,
             "down-layer centroids should align: {ya} vs {yb} {:?}",
             p.positions
+        );
+    }
+
+    #[test]
+    fn fan_hub_centers_over_products() {
+        let fan: DepictSpec = serde_json::from_str(include_str!(
+            "../../tests/fixtures/scheme/fan.json"
+        ))
+        .unwrap();
+        // Synthetic sizes / paints — enough to exercise packing geometry.
+        let mols = fan.mols();
+        let sizes: Vec<(String, f64, f64)> = mols
+            .iter()
+            .enumerate()
+            .map(|(i, m)| {
+                let id = m.id.clone().unwrap_or_else(|| format!("m{i}"));
+                let h = if id == "src" { 160.0 } else { 80.0 };
+                (id, 90.0, h)
+            })
+            .collect();
+        let paints: Vec<DocPaint> = sizes
+            .iter()
+            .map(|(id, w, h)| {
+                let cy = if id == "src" { 60.0 } else { 40.0 };
+                let by = if id == "src" { Some(140.0) } else { None };
+                paint_box(id, *w, *h, by, cy)
+            })
+            .collect();
+        let layout = LayoutOpts::default();
+        let p = place_layered(&fan, &layout, &sizes, &paints).unwrap();
+        let src = p.positions["src"];
+        let mut ys = Vec::new();
+        let mut xs = Vec::new();
+        for (id, &(x, y)) in &p.positions {
+            if id == "src" {
+                continue;
+            }
+            ys.push(y + 40.0); // approx centroid
+            xs.push(x);
+        }
+        ys.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let mid = 0.5 * (ys[0] + ys[ys.len() - 1]);
+        let src_c = src.1 + 80.0;
+        assert!(
+            (src_c - mid).abs() < 30.0,
+            "hub should sit near product column mid: hub={src_c} mid={mid} pos={:?}",
+            p.positions
+        );
+        let xmin = xs.iter().cloned().fold(f64::INFINITY, f64::min);
+        let xmax = xs.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+        assert!(
+            (xmax - xmin).abs() < 1.0,
+            "same-layer products must share flow x: {xmin}..{xmax}"
         );
     }
 

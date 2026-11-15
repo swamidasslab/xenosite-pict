@@ -2,6 +2,10 @@ title: Network fan (8 mols)
 expect: Hub plus seven products; all shafts are straight tip chords (no wraps, crossings, or ink overlap).
 spec:
   type: reaction_scheme
+  layout:
+    layer_spacing: 72
+    node_spacing: 40
+    align: centroid
   children:
     - type: mol
       id: src
