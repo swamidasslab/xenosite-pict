@@ -366,6 +366,13 @@ pub fn route_scheme_edges(
         spec,
         &groups,
     );
+    // Tip resnap moves endpoints — drop elbows that are now ink-redundant.
+    simplify_ink_elbows(
+        &mut group_centers,
+        &group_centroids,
+        &obstacles,
+        &skips,
+    );
 
     let edge_list = spec.edges();
     for (gi, group) in groups.iter().enumerate() {
@@ -518,7 +525,7 @@ fn route_one_centerline(
         && path_clears_obstacles(&pulled, tile_obstacles, skip);
     let pulled_x = pathway_crosses_committed(&pulled, src_c, tgt_c, committed);
     let finish = |candidate: Vec<Pt>| {
-        prefer_tip_unless_detour_improves(
+        let mut out = prefer_tip_unless_detour_improves(
             start,
             goal,
             src_c,
@@ -528,7 +535,12 @@ fn route_one_centerline(
             tile_obstacles,
             skip,
             committed,
-        )
+        );
+        // Drop elbows that exist only for tile pad — ink is the hard constraint.
+        if out.len() >= 3 && path_clears_obstacles(&out, obstacles, skip) {
+            out = string_pull(&out, obstacles, skip, committed, src_c, tgt_c);
+        }
+        out
     };
     if pulled.len() == 2 && pulled_ok && pulled_x == 0 {
         return finish(pulled);
@@ -875,6 +887,47 @@ fn polyline_len(pts: &[Pt]) -> f64 {
         .sum()
 }
 
+/// Drop intermediate controls that are unnecessary for **ink** clearance
+/// (and do not add pathway crossings). Tile-only elbows are fair game.
+fn simplify_ink_elbows(
+    centers: &mut [Vec<Pt>],
+    group_centroids: &[(Pt, Pt)],
+    ink_obstacles: &[Obstacle],
+    skips: &[HashSet<String>],
+) {
+    for gi in 0..centers.len() {
+        if centers[gi].len() < 3 {
+            continue;
+        }
+        let skip: HashSet<&str> = skips
+            .get(gi)
+            .map(|s| s.iter().map(String::as_str).collect())
+            .unwrap_or_default();
+        let (src_c, tgt_c) = group_centroids[gi];
+        let others: Vec<Committed> = centers
+            .iter()
+            .enumerate()
+            .filter(|&(j, _)| j != gi)
+            .map(|(j, c)| {
+                let (sc, tc) = group_centroids[j];
+                committed_from_pathway(c, sc, tc)
+            })
+            .collect();
+        if !path_clears_obstacles(&centers[gi], ink_obstacles, &skip) {
+            continue;
+        }
+        let before_x = pathway_crosses_committed(&centers[gi], src_c, tgt_c, &others);
+        let pulled = string_pull(&centers[gi], ink_obstacles, &skip, &others, src_c, tgt_c);
+        if pulled.len() < 2 || !path_clears_obstacles(&pulled, ink_obstacles, &skip) {
+            continue;
+        }
+        let after_x = pathway_crosses_committed(&pulled, src_c, tgt_c, &others);
+        if after_x <= before_x && pulled.len() <= centers[gi].len() {
+            centers[gi] = pulled;
+        }
+    }
+}
+
 /// String-pull + collinear collapse + pad-tolerant Douglas–Peucker for every
 /// centerline; accept only when pathway crossings do not increase.
 fn simplify_routed_centers(
@@ -884,7 +937,6 @@ fn simplify_routed_centers(
     tile_obstacles: &[Obstacle],
     skips: &[HashSet<String>],
 ) {
-    let _ = obstacles; // ink obstacles unused — simplify is tile-gated
     let tile_pad = pad_tolerant_obstacles(tile_obstacles, route().cosmetic_simplify_eps);
     for gi in 0..centers.len() {
         let skip: HashSet<&str> = skips
@@ -904,9 +956,14 @@ fn simplify_routed_centers(
         let before = centers[gi].clone();
         let before_x =
             path_crosses_committed(&extend_to_centroids(&before, src_c, tgt_c), &others);
-        // Pull against tiles so ink-clear tip chords cannot erase a bow that
-        // only existed to dodge viewport whitespace.
-        let mut pulled = string_pull(&before, tile_obstacles, &skip, &others, src_c, tgt_c);
+        // Ink pull drops tile-only elbows; tile pull may not reintroduce ink hits.
+        let ink_pulled = string_pull(&before, obstacles, &skip, &others, src_c, tgt_c);
+        let tile_pulled = string_pull(&ink_pulled, tile_obstacles, &skip, &others, src_c, tgt_c);
+        let mut pulled = if path_clears_obstacles(&tile_pulled, obstacles, &skip) {
+            tile_pulled
+        } else {
+            ink_pulled
+        };
         pulled = cosmetic_douglas_peucker(
             &pulled,
             &others,
@@ -946,13 +1003,21 @@ fn simplify_routed_centers(
                 }
             }
         }
-        // Cosmetic passes may clip inflate pad; still refuse tile punches.
-        if !path_clears_obstacles(&pulled, &tile_pad, &skip) {
+        // Ink is hard; tile pad is soft — allow ink-clear fewer-bend pulls that
+        // skim viewport whitespace (Morphine south bow first elbow).
+        if !path_clears_obstacles(&pulled, obstacles, &skip) {
             continue;
         }
         let after_x =
             path_crosses_committed(&extend_to_centroids(&pulled, src_c, tgt_c), &others);
-        if after_x <= before_x {
+        let fewer_bends = pulled.len() < before.len();
+        let tile_ok = path_clears_obstacles(&pulled, &tile_pad, &skip);
+        let before_tile = path_clears_obstacles(&before, &tile_pad, &skip);
+        if after_x < before_x
+            || (after_x == before_x && tile_ok && !before_tile)
+            || (after_x == before_x && fewer_bends && (tile_ok || !before_tile))
+            || (after_x == before_x && tile_ok && before_tile && pulled.len() <= before.len())
+        {
             centers[gi] = pulled;
         }
     }
@@ -2006,9 +2071,16 @@ fn visibility_route(
         }
     }
     let mut pts: Vec<Pt> = idxs.into_iter().map(node_pt).collect();
-    // Pull against tiles so a clear ink chord cannot re-collapse a walk that
-    // was only needed to dodge viewport whitespace.
-    pts = string_pull(&pts, tile_obstacles, skip, committed, src_c, tgt_c);
+    // Ink pull first — remove silhouette kinks that tiles alone would keep
+    // (Morphine i0→GlcA first elbow). Then tile pull without undoing ink-clear
+    // shortcuts: only accept tile pull if it does not add ink hits.
+    let ink_pulled = string_pull(&pts, obstacles, skip, committed, src_c, tgt_c);
+    let tile_pulled = string_pull(&ink_pulled, tile_obstacles, skip, committed, src_c, tgt_c);
+    pts = if path_clears_obstacles(&tile_pulled, obstacles, skip) {
+        tile_pulled
+    } else {
+        ink_pulled
+    };
     if pts.len() < 2 {
         return fallback_bow(start, goal, tile_obstacles, skip, committed);
     }
@@ -3051,6 +3123,27 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn ink_string_pull_drops_redundant_first_elbow() {
+        // Elbow only needed if we refuse tile-skimming; ink chord start→p2 is clear.
+        let start = (0.0, 0.0);
+        let elbow = (20.0, 15.0);
+        let mid = (60.0, 40.0);
+        let goal = (100.0, 0.0);
+        let path = vec![start, elbow, mid, goal];
+        let empty: Vec<Obstacle> = Vec::new();
+        let skip = HashSet::new();
+        let pulled = string_pull(&path, &empty, &skip, &[], start, goal);
+        assert!(
+            pulled.len() <= 3,
+            "redundant first elbow must collapse: {pulled:?}"
+        );
+        assert!(
+            pulled.iter().all(|p| *p != elbow),
+            "elbow must be gone: {pulled:?}"
+        );
     }
 
     #[test]
