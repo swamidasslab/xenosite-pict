@@ -498,6 +498,7 @@ fn route_one_centerline(
             tgt_c,
             &candidate,
             obstacles,
+            tile_obstacles,
             skip,
             committed,
         )
@@ -511,8 +512,6 @@ fn route_one_centerline(
     let vis_ok = path_clears_obstacles(&vis_path, obstacles, skip)
         && path_clears_obstacles(&vis_path, tile_obstacles, skip);
     if pulled_ok && pulled_x == 0 && pulled.len() >= 2 {
-        // Still run the tip gate: a clear left-wrap around the hub (network fan
-        // top spokes) must not beat a near tip chord just because it is clear.
         return finish(pulled);
     }
     if vis_ok && vis_path.len() >= 3 {
@@ -520,20 +519,27 @@ fn route_one_centerline(
     }
     // Geometric bow against tiles — visibility may have only dodged ink.
     let bow = fallback_bow(start, goal, tile_obstacles, skip, committed);
-    let bow_ok = path_clears_obstacles(&bow, tile_obstacles, skip);
+    let bow_ink = path_clears_obstacles(&bow, obstacles, skip);
+    let pulled_ink = path_clears_obstacles(&pulled, obstacles, skip);
     let bow_x = pathway_crosses_committed(&bow, src_c, tgt_c, committed);
-    // Fewer pathway crossings win even if the walk is longer / less "clear"
-    // on ink — a direct 1-cross beats a circuitous 2-cross. Never prefer a
-    // tile-piercing 2-point chord when a longer clear walk exists.
-    let pulled_tile = path_clears_obstacles(&pulled, tile_obstacles, skip);
+    // Ink beats crossings: never pick an ink-hitting walk over an ink-clear one.
     let bow_tile = path_clears_obstacles(&bow, tile_obstacles, skip);
-    if bow_x < pulled_x && bow.len() >= 2 && (bow_tile || bow.len() >= 3) {
+    let pulled_tile = path_clears_obstacles(&pulled, tile_obstacles, skip);
+    if bow_ink && !pulled_ink && bow.len() >= 2 {
         return finish(bow);
     }
-    if pulled_x < bow_x && pulled.len() >= 2 && pulled_tile {
+    if pulled_ink && !bow_ink && pulled.len() >= 2 {
         return finish(pulled);
     }
-    let candidate = match (pulled_ok, bow_ok) {
+    if bow_ink && pulled_ink {
+        if bow_x < pulled_x && bow.len() >= 2 && (bow_tile || bow.len() >= 3) {
+            return finish(bow);
+        }
+        if pulled_x < bow_x && pulled.len() >= 2 && pulled_tile {
+            return finish(pulled);
+        }
+    }
+    let candidate = match (pulled_ok, bow_ok_tile(bow_tile, &bow)) {
         (true, true) => prefer_simpler_path(&pulled, &bow),
         (true, false) => pulled,
         (false, true) => bow,
@@ -545,7 +551,6 @@ fn route_one_centerline(
             } else if pulled.len() >= 3 {
                 pulled
             } else {
-                // Last resort: still try a geometric bow before punching tiles.
                 let forced = fallback_bow(start, goal, tile_obstacles, skip, committed);
                 if forced.len() >= 3 {
                     forced
@@ -558,10 +563,18 @@ fn route_one_centerline(
     finish(candidate)
 }
 
-/// Prefer the tip chord unless the detour *strictly improves* something:
-/// clears ink the tip hits, or fewer centroid-pathway crossings. Mild bows
-/// that do not improve (Morphine bottom-orange) fall back to the tip — same
-/// rule as collapsing clear hub wraps. Stroke style never participates.
+fn bow_ok_tile(tile_ok: bool, bow: &[Pt]) -> bool {
+    tile_ok || bow.len() >= 3
+}
+
+/// Prefer the tip unless the detour *strictly improves* structure.
+///
+/// **Ink / structure beats line crossings.** A detour only wins when it clears
+/// chem ink the tip hits (and does not skim foreign tiles). Tip clearance is
+/// ink-only so padded viewport whitespace alone cannot force a hub wrap
+/// (network fan). If the tip is ink-clean, take it unless the detour is also
+/// structure-clean *and* has fewer pathway crossings. If both hit ink, tip —
+/// never keep a wild wrap that still punches molecules (Morphine i0→GlcA).
 fn prefer_tip_unless_detour_improves(
     start: Pt,
     goal: Pt,
@@ -569,6 +582,7 @@ fn prefer_tip_unless_detour_improves(
     tgt_c: Pt,
     detour: &[Pt],
     ink_obstacles: &[Obstacle],
+    tile_obstacles: &[Obstacle],
     skip: &HashSet<&str>,
     committed: &[Committed],
 ) -> Vec<Pt> {
@@ -578,19 +592,22 @@ fn prefer_tip_unless_detour_improves(
     let tip = vec![start, goal];
     let tip_ink_ok = path_clears_obstacles(&tip, ink_obstacles, skip);
     let det_ink_ok = path_clears_obstacles(detour, ink_obstacles, skip);
-    if !tip_ink_ok && det_ink_ok {
-        return detour.to_vec();
+    let det_tile_ok = path_clears_obstacles(detour, tile_obstacles, skip);
+    let det_struct_ok = det_ink_ok && det_tile_ok;
+    match (tip_ink_ok, det_struct_ok) {
+        (false, true) => detour.to_vec(),
+        (true, false) => tip,
+        (false, false) => tip, // both dirty — tip is simpler than a wild wrap
+        (true, true) => {
+            let tip_x = pathway_crosses_committed(&tip, src_c, tgt_c, committed);
+            let det_x = pathway_crosses_committed(detour, src_c, tgt_c, committed);
+            if det_x < tip_x {
+                detour.to_vec()
+            } else {
+                tip
+            }
+        }
     }
-    if !tip_ink_ok {
-        // Tip hits ink and detour does not help — keep whatever we have.
-        return detour.to_vec();
-    }
-    let tip_x = pathway_crosses_committed(&tip, src_c, tgt_c, committed);
-    let det_x = pathway_crosses_committed(detour, src_c, tgt_c, committed);
-    if det_x < tip_x {
-        return detour.to_vec();
-    }
-    tip
 }
 
 
@@ -2919,7 +2936,7 @@ mod tests {
         let empty: Vec<Obstacle> = Vec::new();
         let skip = HashSet::new();
         let out = prefer_tip_unless_detour_improves(
-            start, goal, start, goal, &wrap, &empty, &skip, &[],
+            start, goal, start, goal, &wrap, &empty, &empty, &skip, &[],
         );
         assert_eq!(
             out,
@@ -2937,9 +2954,27 @@ mod tests {
         let empty: Vec<Obstacle> = Vec::new();
         let skip = HashSet::new();
         let out = prefer_tip_unless_detour_improves(
-            start, goal, start, goal, &bow, &empty, &skip, &[],
+            start, goal, start, goal, &bow, &empty, &empty, &skip, &[],
         );
         assert_eq!(out, vec![start, goal], "mild non-improving bow → tip: {out:?}");
+    }
+
+    #[test]
+    fn ink_hitting_wrap_collapses_to_tip_even_if_shorter_crossings() {
+        // Both tip and wrap punch ink → tip (do not keep a wild dashed wrap).
+        let start = (0.0, 0.0);
+        let goal = (200.0, 0.0);
+        let wrap = vec![start, (100.0, 40.0), (100.0, -40.0), goal];
+        let hull = vec![(80.0, -20.0), (120.0, -20.0), (120.0, 20.0), (80.0, 20.0)];
+        let ink = vec![obstacle_with_hull("mol".into(), hull.clone())];
+        let tiles = vec![obstacle_with_hull("mol".into(), inflate_convex(&hull, 8.0))];
+        let skip = HashSet::new();
+        assert!(!path_clears_obstacles(&wrap, &ink, &skip));
+        assert!(!path_clears_obstacles(&[start, goal], &ink, &skip));
+        let out = prefer_tip_unless_detour_improves(
+            start, goal, start, goal, &wrap, &ink, &tiles, &skip, &[],
+        );
+        assert_eq!(out, vec![start, goal], "dirty wrap must not stick: {out:?}");
     }
 
     #[test]

@@ -2,6 +2,12 @@
 
 ## 2026-11-15
 
+- Tip/detour: **ink + foreign tiles beat pathway crossings**. Keep a wrap
+  only when it clears chem ink the tip hits *and* does not skim tiles; if
+  both punch ink, take the tip (Morphine dashed i0→GlcA was a wild wrap
+  still through ink). Ink-clear tip wins over ink-hitting bow even when
+  the bow has fewer edge crossings. Unit:
+  `ink_hitting_wrap_collapses_to_tip_even_if_shorter_crossings`.
 - Tip unless detour *strictly improves* (ink clearance or fewer pathway
   crossings). Morphine bottom-orange Codeine→GlcA was a mild non-improving
   bow; falls back to tip. Same rule as fan hub wraps.
