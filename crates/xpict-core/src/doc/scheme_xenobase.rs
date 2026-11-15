@@ -396,11 +396,10 @@ mod tests {
     }
 
     #[test]
-    fn morphine_i0_to_glca_dashed_prefers_tip_over_ink_wrap() {
-        // Dashed intermediate i0→xbm:0004956 (Morphine-3-glucuronide) kept a
-        // wild visibility wrap that still punched molecule ink. When the wrap
-        // does not clear ink better than the tip, take the tip — pathway
-        // crossings beat ink hits.
+    fn morphine_i0_to_glca_dashed_takes_ink_clear_south_bow() {
+        // Tip chord for dashed i0→xbm:0004956 punches chem; the south bow must
+        // clear ink (and may skim tiles). A prior bug let same-owner box→hull
+        // visibility chords cut through xbm:0002271.
         use crate::scene::Primitive;
         let scene = render_fixture(MORPHINE);
         let src = scene
@@ -468,7 +467,6 @@ mod tests {
             }
             let a = pts[0];
             let b = *pts.last().unwrap();
-            // Match either orientation to the i0↔4956 chord.
             let score = (a.0 - sc.0)
                 .hypot(a.1 - sc.1)
                 .min((a.0 - tc.0).hypot(a.1 - tc.1))
@@ -482,17 +480,18 @@ mod tests {
         }
         let (_score, pts, d) = best.expect("dashed i0→4956 shaft");
         assert!(
-            pts.len() == 2 && !d.contains('C') && !d.contains('Q'),
-            "i0→4956 must be a tip chord, not an ink-punching wrap: n={} d={}",
+            pts.len() >= 3,
+            "ink-hitting tip must yield to a south bow: n={} d={}",
             pts.len(),
             &d[..d.len().min(160)]
         );
-        let chord = (pts[0].0 - pts[1].0).hypot(pts[0].1 - pts[1].1);
+        let end_y = 0.5 * (pts[0].1 + pts[pts.len() - 1].1);
+        let mid_y: f64 = pts.iter().map(|p| p.1).sum::<f64>() / pts.len() as f64;
         assert!(
-            chord > 200.0,
-            "expected the long i0→GlcA dashed spoke, chord={chord:.0} d={}",
-            &d[..d.len().min(100)]
+            mid_y > end_y + 10.0,
+            "expected a below-chord bow: mid_y={mid_y:.0} end_y={end_y:.0} pts={pts:?}"
         );
+        shaft_interior_clear_of_mols(&scene, -1.5);
     }
 
     #[test]

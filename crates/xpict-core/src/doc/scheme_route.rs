@@ -596,13 +596,12 @@ fn bow_ok_tile(tile_ok: bool, bow: &[Pt]) -> bool {
 
 /// Prefer the tip unless the detour *strictly improves* structure / cost.
 ///
-/// **Ink / structure beats line crossings.** A detour only wins when it clears
-/// chem ink the tip hits (and does not skim foreign tiles). Tip clearance is
-/// ink-only so padded viewport whitespace alone cannot force a hub wrap
-/// (network fan). If both are structure-clean, pick lower
-/// `length + crossings×crossing_penalty` — raising the penalty eventually
-/// buys a longer 2-bend that clears peers. If both hit ink, tip — never keep
-/// a wild wrap that still punches molecules (Morphine i0→GlcA).
+/// **Ink beats line crossings and tile whitespace.** Keep a detour that clears
+/// chem ink the tip hits — even if it still skims padded tiles. Tip clearance
+/// for the *fan* case is ink-only: when the tip is already ink-clean, do not
+/// force a hub wrap for tile pad alone. If both are ink-clean, pick lower
+/// `length + crossings×crossing_penalty` (unless the detour alone hits tiles).
+/// If both hit ink, tip — never keep a wild wrap that still punches molecules.
 fn prefer_tip_unless_detour_improves(
     start: Pt,
     goal: Pt,
@@ -620,13 +619,17 @@ fn prefer_tip_unless_detour_improves(
     let tip = vec![start, goal];
     let tip_ink_ok = path_clears_obstacles(&tip, ink_obstacles, skip);
     let det_ink_ok = path_clears_obstacles(detour, ink_obstacles, skip);
+    let tip_tile_ok = path_clears_obstacles(&tip, tile_obstacles, skip);
     let det_tile_ok = path_clears_obstacles(detour, tile_obstacles, skip);
-    let det_struct_ok = det_ink_ok && det_tile_ok;
-    match (tip_ink_ok, det_struct_ok) {
+    match (tip_ink_ok, det_ink_ok) {
         (false, true) => detour.to_vec(),
         (true, false) => tip,
         (false, false) => tip, // both dirty — tip is simpler than a wild wrap
         (true, true) => {
+            // Both ink-clean: tile pad alone must not force a wrap (network fan).
+            if tip_tile_ok && !det_tile_ok {
+                return tip;
+            }
             let tip_x = pathway_crosses_committed(&tip, src_c, tgt_c, committed);
             let det_x = pathway_crosses_committed(detour, src_c, tgt_c, committed);
             let tip_cost =
@@ -1453,9 +1456,14 @@ fn build_visibility_graph(obstacles: &[Obstacle]) -> VisGraph {
                 add(&mut adj, &mut linked, i, j, dist(pts[i], pts[j]));
             }
         }
-        // Also stitch each box corner to nearby hull verts of the same mol.
+        // Stitch box corners to hull verts of the same mol — but never through
+        // that mol's own ink. Skipping the owner here previously allowed A* to
+        // chord across a silhouette (Morphine i0→4956 cut xbm:0002271).
         for i in lo..hi {
             for j in ranges[ri].0..ranges[ri].1 {
+                if segment_hits_convex(pts[i], pts[j], &obstacles[ri].hull) {
+                    continue;
+                }
                 if segment_clears_obstacles(pts[i], pts[j], obstacles, &skip) {
                     add(&mut adj, &mut linked, i, j, dist(pts[i], pts[j]));
                 }
@@ -3015,6 +3023,34 @@ mod tests {
             start, goal, start, goal, &bow, &empty, &empty, &skip, &[],
         );
         assert_eq!(out, vec![start, goal], "mild non-improving bow → tip: {out:?}");
+    }
+
+    #[test]
+    fn box_hull_stitch_does_not_cut_through_owner_ink() {
+        // Same-owner box→hull links must not chord the silhouette interior.
+        let square = vec![(40.0, 40.0), (60.0, 40.0), (60.0, 60.0), (40.0, 60.0)];
+        let hull = inflate_convex(&square, 4.0);
+        let obstacles = vec![obstacle_with_hull("mol".into(), hull)];
+        let vis = build_visibility_graph(&obstacles);
+        let owned: Vec<usize> = vis
+            .owner
+            .iter()
+            .enumerate()
+            .filter_map(|(i, o)| o.as_deref().filter(|&id| id == "mol").map(|_| i))
+            .collect();
+        for &i in &owned {
+            for &(j, _) in &vis.adj[i] {
+                if !owned.contains(&j) {
+                    continue;
+                }
+                assert!(
+                    !segment_hits_convex(vis.pts[i], vis.pts[j], &obstacles[0].hull),
+                    "same-owner visibility edge cuts ink: {:?}→{:?}",
+                    vis.pts[i],
+                    vis.pts[j]
+                );
+            }
+        }
     }
 
     #[test]
