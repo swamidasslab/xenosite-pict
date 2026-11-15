@@ -636,12 +636,25 @@ fn prefer_tip_unless_detour_improves(
     let tip_tile_ok = path_clears_obstacles(&tip, tile_obstacles, skip);
     let det_tile_ok = path_clears_obstacles(detour, tile_obstacles, skip);
     match (tip_ink_ok, det_ink_ok) {
-        (false, true) => detour.to_vec(),
+        // Ink-clear detour wins — unless it backs up past the start away from
+        // the goal (reverse edge looping under a layer / hub wrap above page).
+        (false, true) => {
+            if detour_backs_up_past_start(start, goal, detour) {
+                tip
+            } else {
+                detour.to_vec()
+            }
+        }
         (true, false) => tip,
         (false, false) => tip, // both dirty — tip is simpler than a wild wrap
         (true, true) => {
             // Both ink-clean: tile pad alone must not force a wrap (network fan).
             if tip_tile_ok && !det_tile_ok {
+                return tip;
+            }
+            // Page-scale wraps that back up past the start collapse to tip;
+            // ordinary crossing-avoidance bows (even long ones) still compete.
+            if detour_backs_up_past_start(start, goal, detour) {
                 return tip;
             }
             let tip_x = pathway_crosses_committed(&tip, src_c, tgt_c, committed);
@@ -659,6 +672,40 @@ fn prefer_tip_unless_detour_improves(
     }
 }
 
+/// Backs up past the start away from the goal on either axis, or wanders far
+/// outside the start→goal box (hub wraps above the page, reverse edges looping
+/// under a whole layer).
+fn detour_backs_up_past_start(start: Pt, goal: Pt, detour: &[Pt]) -> bool {
+    let dx = goal.0 - start.0;
+    let dy = goal.1 - start.1;
+    let back_pad = 40.0;
+    for &p in detour {
+        if dy > 0.0 && p.1 < start.1 - back_pad {
+            return true;
+        }
+        if dy < 0.0 && p.1 > start.1 + back_pad {
+            return true;
+        }
+        if dx > 0.0 && p.0 < start.0 - back_pad {
+            return true;
+        }
+        if dx < 0.0 && p.0 > start.0 + back_pad {
+            return true;
+        }
+    }
+    let min_x = start.0.min(goal.0);
+    let max_x = start.0.max(goal.0);
+    let min_y = start.1.min(goal.1);
+    let max_y = start.1.max(goal.1);
+    let chord = dist(start, goal).max(1.0);
+    let pad = chord * 0.25 + 80.0;
+    for &p in detour {
+        if p.0 < min_x - pad || p.0 > max_x + pad || p.1 < min_y - pad || p.1 > max_y + pad {
+            return true;
+        }
+    }
+    false
+}
 
 fn path_clears_obstacles(pts: &[Pt], obstacles: &[Obstacle], skip: &HashSet<&str>) -> bool {
     if pts.len() < 2 {

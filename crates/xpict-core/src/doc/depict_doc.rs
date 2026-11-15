@@ -225,6 +225,15 @@ pub fn depict(spec: &DepictSpec) -> Result<Vec<Rendered>, String> {
     render(spec)
 }
 
+/// Per-mol paints before scheme compose (pack-quality tests).
+#[cfg(test)]
+pub(crate) fn test_scheme_paints(spec: &DepictSpec) -> Result<Vec<DocPaint>, String> {
+    Ok(paint_document(spec)?
+        .iter()
+        .map(rendered_to_paint)
+        .collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

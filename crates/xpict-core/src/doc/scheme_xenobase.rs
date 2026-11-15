@@ -506,6 +506,70 @@ mod tests {
     }
 
     #[test]
+    fn morphine_sulfate_no_tile_overlaps() {
+        let scene = render_fixture(MORPHINE);
+        let gap = 1.0_f64;
+        let vps = &scene.viewports;
+        for i in 0..vps.len() {
+            for j in (i + 1)..vps.len() {
+                let a = &vps[i];
+                let b = &vps[j];
+                let ox = (a.x + a.width).min(b.x + b.width) - a.x.max(b.x);
+                let oy = (a.y + a.height).min(b.y + b.height) - a.y.max(b.y);
+                assert!(
+                    ox <= gap || oy <= gap,
+                    "mol tiles overlap: {:?} vs {:?} ox={ox:.1} oy={oy:.1}",
+                    a.id,
+                    b.id
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn morphine_placer_beats_or_matches_elk_pack_metrics() {
+        // Hard gate: placer must not lose to ELK on overlaps / detours /
+        // crossings, and tip aim must be at least as good.
+        use super::super::compose::compare_placer_vs_elk;
+        use super::super::depict_doc::test_scheme_paints;
+        use crate::doc::spec::LayoutOpts;
+        let spec: DepictSpec = serde_json::from_str(MORPHINE).expect("spec");
+        let layout = match &spec {
+            DepictSpec::ReactionScheme { layout, .. } => layout.clone().unwrap_or_default(),
+            _ => LayoutOpts::default(),
+        };
+        let paints = test_scheme_paints(&spec).expect("paints");
+        let (placer, elk) = compare_placer_vs_elk(&spec, &layout, &paints).expect("compare");
+        eprintln!("placer={placer:?}");
+        eprintln!("elk   ={elk:?}");
+        assert_eq!(placer.overlaps, 0, "placer must have zero tile overlaps");
+        assert!(
+            placer.overlaps <= elk.overlaps,
+            "placer overlaps {} > elk {}",
+            placer.overlaps,
+            elk.overlaps
+        );
+        assert!(
+            placer.max_detour <= elk.max_detour + 0.02,
+            "placer max_detour {:.3} > elk {:.3}",
+            placer.max_detour,
+            elk.max_detour
+        );
+        assert!(
+            placer.crossings <= elk.crossings,
+            "placer crossings {} > elk {}",
+            placer.crossings,
+            elk.crossings
+        );
+        assert!(
+            placer.mean_tip_aim + 0.02 >= elk.mean_tip_aim,
+            "placer tip aim {:.3} < elk {:.3}",
+            placer.mean_tip_aim,
+            elk.mean_tip_aim
+        );
+    }
+
+    #[test]
     fn morphine_sulfate_no_extreme_detours() {
         // Same length budget for dashed and solid — formatting must not change
         // routing. Short fan bows stay; page-edge U-loops do not.

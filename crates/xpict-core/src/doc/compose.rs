@@ -377,11 +377,7 @@ fn layout_scheme(
             placed.positions
         }
         LayoutAlgorithm::Radial | LayoutAlgorithm::Force | LayoutAlgorithm::Stress => {
-            let graph = build_elk_graph(spec, layout, sizes);
-            let laid = crate::elk::layout_json(
-                &serde_json::to_string(&graph).map_err(|e| e.to_string())?,
-            )?;
-            parse_elk_positions(&laid, sizes)?
+            elk_node_positions(spec, layout, sizes)?
         }
     };
     let refined =
@@ -393,6 +389,205 @@ fn layout_scheme(
         width: None,
         height: None,
     })
+}
+
+#[cfg(test)]
+pub(crate) fn test_elk_node_positions(
+    spec: &DepictSpec,
+    layout: &LayoutOpts,
+    paints: &[DocPaint],
+) -> Result<HashMap<String, (f64, f64)>, String> {
+    let sizes: Vec<(String, f64, f64)> = paints
+        .iter()
+        .map(|p| {
+            let (w, h) = scene_size(&p.scene);
+            (p.id.clone(), w, h)
+        })
+        .collect();
+    elk_node_positions(spec, layout, &sizes)
+}
+
+fn elk_node_positions(
+    spec: &DepictSpec,
+    layout: &LayoutOpts,
+    sizes: &[(String, f64, f64)],
+) -> Result<HashMap<String, (f64, f64)>, String> {
+    let graph = build_elk_graph(spec, layout, sizes);
+    let laid =
+        crate::elk::layout_json(&serde_json::to_string(&graph).map_err(|e| e.to_string())?)?;
+    parse_elk_positions(&laid, sizes)
+}
+
+/// Pack quality for placer-vs-ELK gates (test-only).
+#[cfg(test)]
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct PackMetrics {
+    pub overlaps: usize,
+    pub max_detour: f64,
+    pub crossings: usize,
+    pub mean_tip_aim: f64,
+    pub n_scored_edges: usize,
+}
+
+#[cfg(test)]
+fn score_pack(p: &Placement, sizes: &[(String, f64, f64)], gap: f64) -> PackMetrics {
+    let size_of: HashMap<&str, (f64, f64)> = sizes
+        .iter()
+        .map(|(id, w, h)| (id.as_str(), (*w, *h)))
+        .collect();
+    let mut overlaps = 0usize;
+    let ids: Vec<&str> = sizes.iter().map(|(id, _, _)| id.as_str()).collect();
+    for i in 0..ids.len() {
+        for j in (i + 1)..ids.len() {
+            let (ia, ib) = (ids[i], ids[j]);
+            let Some(&(ax, ay)) = p.positions.get(ia) else {
+                continue;
+            };
+            let Some(&(bx, by)) = p.positions.get(ib) else {
+                continue;
+            };
+            let (aw, ah) = size_of[ia];
+            let (bw, bh) = size_of[ib];
+            let ox = (ax + aw).min(bx + bw) - ax.max(bx);
+            let oy = (ay + ah).min(by + bh) - ay.max(by);
+            if ox > gap && oy > gap {
+                overlaps += 1;
+            }
+        }
+    }
+
+    let mut max_detour = 1.0_f64;
+    let mut crossings = 0usize;
+    let mut aim_sum = 0.0_f64;
+    let mut aim_n = 0usize;
+    let paths: Vec<&[(f64, f64)]> = p
+        .edge_paths
+        .iter()
+        .filter_map(|o| o.as_deref())
+        .filter(|pts| pts.len() >= 2)
+        .collect();
+    for pts in &paths {
+        let chord = (pts[0].0 - pts[pts.len() - 1].0).hypot(pts[0].1 - pts[pts.len() - 1].1);
+        if chord < 20.0 {
+            continue;
+        }
+        let mut len = 0.0;
+        for w in pts.windows(2) {
+            len += (w[1].0 - w[0].0).hypot(w[1].1 - w[0].1);
+        }
+        max_detour = max_detour.max(len / chord.max(1e-9));
+
+        // Tip aim: last segment toward the geometric end (proxy for centroid tip).
+        let (a, b) = (pts[pts.len() - 2], pts[pts.len() - 1]);
+        let (tx, ty) = (b.0 - a.0, b.1 - a.1);
+        let tl = tx.hypot(ty).max(1e-9);
+        // Chord direction from start→end as stand-in when we lack mol centroids here.
+        let (cx, cy) = (pts[pts.len() - 1].0 - pts[0].0, pts[pts.len() - 1].1 - pts[0].1);
+        let cl = cx.hypot(cy).max(1e-9);
+        let aim = (tx / tl) * (cx / cl) + (ty / tl) * (cy / cl);
+        aim_sum += aim;
+        aim_n += 1;
+    }
+    for i in 0..paths.len() {
+        for j in (i + 1)..paths.len() {
+            if polylines_proper_cross(paths[i], paths[j]) {
+                crossings += 1;
+            }
+        }
+    }
+    PackMetrics {
+        overlaps,
+        max_detour,
+        crossings,
+        mean_tip_aim: if aim_n == 0 {
+            1.0
+        } else {
+            aim_sum / aim_n as f64
+        },
+        n_scored_edges: aim_n,
+    }
+}
+
+#[cfg(test)]
+fn orient(a: (f64, f64), b: (f64, f64), c: (f64, f64)) -> f64 {
+    (b.0 - a.0) * (c.1 - a.1) - (b.1 - a.1) * (c.0 - a.0)
+}
+
+#[cfg(test)]
+fn segments_proper_cross(
+    p: (f64, f64),
+    q: (f64, f64),
+    r: (f64, f64),
+    s: (f64, f64),
+) -> bool {
+    let o1 = orient(p, q, r).signum();
+    let o2 = orient(p, q, s).signum();
+    let o3 = orient(r, s, p).signum();
+    let o4 = orient(r, s, q).signum();
+    o1 != 0.0 && o2 != 0.0 && o3 != 0.0 && o4 != 0.0 && o1 != o2 && o3 != o4
+}
+
+#[cfg(test)]
+fn polylines_proper_cross(a: &[(f64, f64)], b: &[(f64, f64)]) -> bool {
+    for w in a.windows(2) {
+        for v in b.windows(2) {
+            if segments_proper_cross(w[0], w[1], v[0], v[1]) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Placer vs ELK refined pack scores on the same paints (test-only).
+#[cfg(test)]
+pub(crate) fn compare_placer_vs_elk(
+    spec: &DepictSpec,
+    layout: &LayoutOpts,
+    paints: &[DocPaint],
+) -> Result<(PackMetrics, PackMetrics), String> {
+    let sizes: Vec<(String, f64, f64)> = paints
+        .iter()
+        .map(|p| {
+            let (w, h) = scene_size(&p.scene);
+            (p.id.clone(), w, h)
+        })
+        .collect();
+    let placer = super::scheme_layered::place_layered(spec, layout, &sizes, paints)?;
+    let elk = elk_node_positions(spec, layout, &sizes)?;
+    let placer_p = super::scheme_layout::refine_scheme_edges(
+        spec,
+        layout,
+        &placer.positions,
+        paints,
+        &sizes,
+    );
+    let elk_p = super::scheme_layout::refine_scheme_edges(spec, layout, &elk, paints, &sizes);
+    let gap = layout.node_spacing_or_default();
+    Ok((
+        score_pack(
+            &Placement {
+                positions: placer_p.positions,
+                edge_paths: placer_p.edge_paths,
+                edge_labels: placer_p.edge_labels,
+                width: None,
+                height: None,
+            },
+            &sizes,
+            gap,
+        ),
+        score_pack(
+            &Placement {
+                positions: elk_p.positions,
+                edge_paths: elk_p.edge_paths,
+                edge_labels: elk_p.edge_labels,
+                width: None,
+                height: None,
+            },
+            &sizes,
+            gap,
+        ),
+    ))
 }
 
 /// Build an ELK JSON graph for **non-layered** algorithms only (radial/force/stress).

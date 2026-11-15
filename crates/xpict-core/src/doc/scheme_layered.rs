@@ -52,6 +52,8 @@ struct PackNode {
     w: f64,
     h: f64,
     layer: usize,
+    /// Frozen cross-axis order from crossing minimization.
+    ord: usize,
     /// Cross-axis center (document), set during coordinate assign.
     cross: f64,
     /// Flow-axis top-left (document).
@@ -89,18 +91,45 @@ pub fn place_layered(
         .map(|(i, m)| (m.id.clone(), i))
         .collect();
 
-    let packing_edges = packing_edges(spec, &id_of);
-    let (feedback, forward) = break_cycles(&packing_edges, metrics.len(), budgets);
+    let packing = packing_edges(spec, &id_of);
+    let (feedback, forward) = break_cycles(&packing, metrics.len(), budgets);
 
     let mut layer_of = assign_layers(&forward, &metrics, metrics.len());
     apply_layer_hints(&mut layer_of, &metrics);
+    let hinted: HashSet<usize> = metrics
+        .iter()
+        .enumerate()
+        .filter_map(|(i, m)| m.layer_hint.map(|_| i))
+        .collect();
+    promote_strict_layers(&mut layer_of, &forward, &hinted);
+    compact_layer_indices(&mut layer_of);
 
-    let (mut nodes, edges) = insert_dummies(&metrics, &layer_of, &forward, &feedback);
+    let (mut nodes, mut edges) = insert_dummies(&metrics, &layer_of, &forward, &feedback);
+    for (s, t) in soft_order_edges(spec, &id_of) {
+        edges.push(PackEdge {
+            src: NodeKey::Real(s),
+            tgt: NodeKey::Real(t),
+        });
+    }
     order_layers(&mut nodes, &edges, budgets);
     assign_coordinates(&mut nodes, &edges, layout, &metrics, budgets);
     // Star fans: park each parent on the cross-mid of its children so spokes
     // stay tip chords instead of wrapping around an off-axis hub.
     center_parents_over_children(&mut nodes, &edges);
+    let dir = layout.direction_or_default();
+    let vertical_flow = matches!(dir, LayoutDirection::Up | LayoutDirection::Down);
+    let node_gap = layout.node_spacing_or_default();
+    // Only re-separate / AABB on vertical packs — horizontal (Right/Left) already
+    // finished mark-align on the cross axis; a second resolve would reset Y.
+    if vertical_flow {
+        let max_layer = nodes.iter().map(|n| n.layer).max().unwrap_or(0);
+        for layer in 0..=max_layer {
+            resolve_cross_overlaps(&mut nodes, layer, node_gap, vertical_flow);
+        }
+        normalize_cross_origin(&mut nodes, vertical_flow);
+        separate_aabb_overlaps(&mut nodes, dir, node_gap);
+        normalize_cross_origin(&mut nodes, vertical_flow);
+    }
 
     let mut positions = HashMap::new();
     let mut layers = HashMap::new();
@@ -111,7 +140,7 @@ pub fn place_layered(
             continue;
         };
         let m = &metrics[ri];
-        let (x, y) = top_left_from_centers(n, layout.direction_or_default());
+        let (x, y) = top_left_from_centers(n, dir);
         positions.insert(m.id.clone(), (x, y));
         layers.insert(m.id.clone(), n.layer);
         max_r = max_r.max(x + m.w);
@@ -120,6 +149,7 @@ pub fn place_layered(
 
     // Co-endpoint stacks: share cross-axis mid (absorbs former post-ELK nudge).
     align_co_endpoint_mids(spec, &mut positions, &metrics, layout);
+    separate_position_overlaps(&mut positions, &metrics, node_gap);
 
     let mut max_r = 0.0_f64;
     let mut max_b = 0.0_f64;
@@ -260,10 +290,27 @@ fn local_caption_baseline(paint: Option<&DocPaint>) -> Option<f64> {
 /// One directed packing edge per layout-participating relation.
 /// Multi-endpoint: every source → every target (bundle span), sorted stably.
 fn packing_edges(spec: &DepictSpec, id_of: &HashMap<String, usize>) -> Vec<(usize, usize)> {
+    relation_pairs(spec, id_of, true)
+}
+
+/// Relations with `layout: false` — routing-only, but still scored for crossings.
+fn soft_order_edges(spec: &DepictSpec, id_of: &HashMap<String, usize>) -> Vec<(usize, usize)> {
+    relation_pairs(spec, id_of, false)
+}
+
+fn relation_pairs(
+    spec: &DepictSpec,
+    id_of: &HashMap<String, usize>,
+    layout_only: bool,
+) -> Vec<(usize, usize)> {
     let mut pairs: Vec<(usize, usize)> = Vec::new();
     let mut seen = HashSet::new();
     for e in spec.edges() {
-        if !e.participates_in_layout() {
+        let participates = e.participates_in_layout();
+        if layout_only && !participates {
+            continue;
+        }
+        if !layout_only && participates {
             continue;
         }
         for s in e.sources.as_slice() {
@@ -285,6 +332,44 @@ fn packing_edges(spec: &DepictSpec, id_of: &HashMap<String, usize>) -> Vec<(usiz
     }
     pairs.sort_unstable();
     pairs
+}
+
+/// Push targets so every forward layout edge goes to a strictly deeper layer.
+fn promote_strict_layers(
+    layer_of: &mut [usize],
+    forward: &[(usize, usize)],
+    hinted: &HashSet<usize>,
+) {
+    let n = layer_of.len();
+    for _ in 0..(n * n).max(1) {
+        let mut changed = false;
+        for &(s, t) in forward {
+            if hinted.contains(&t) {
+                continue;
+            }
+            if layer_of[t] <= layer_of[s] {
+                layer_of[t] = layer_of[s] + 1;
+                changed = true;
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+}
+
+fn compact_layer_indices(layer_of: &mut [usize]) {
+    let mut used: Vec<usize> = layer_of.to_vec();
+    used.sort_unstable();
+    used.dedup();
+    let map: HashMap<usize, usize> = used
+        .iter()
+        .enumerate()
+        .map(|(i, &l)| (l, i))
+        .collect();
+    for l in layer_of.iter_mut() {
+        *l = map[l];
+    }
 }
 
 /// DFS cycle break (DEPTH_FIRST semantics): keep real sources early.
@@ -418,7 +503,7 @@ fn insert_dummies(
     metrics: &[NodeMetrics],
     layer_of: &[usize],
     forward: &[(usize, usize)],
-    _feedback: &[(usize, usize)],
+    feedback: &[(usize, usize)],
 ) -> (Vec<PackNode>, Vec<PackEdge>) {
     let mut nodes: Vec<PackNode> = metrics
         .iter()
@@ -429,35 +514,43 @@ fn insert_dummies(
             w: m.w,
             h: m.h,
             layer: layer_of[i],
+            ord: 0,
             cross: 0.0,
             flow: 0.0,
         })
         .collect();
 
+    let mut oriented: Vec<(usize, usize)> = forward.to_vec();
+    for &(s, t) in feedback {
+        oriented.push((t, s));
+    }
+
     let mut edges = Vec::new();
     let mut dummy_i = 0usize;
-    for &(s, t) in forward {
+    for &(s, t) in &oriented {
         let ls = layer_of[s];
         let lt = layer_of[t];
-        if lt <= ls {
-            // Same layer or inverted after hints — treat as adjacent same-layer
-            // (crossing min still sees the edge once via a zero-span link).
+        if lt == ls {
             edges.push(PackEdge {
                 src: NodeKey::Real(s),
                 tgt: NodeKey::Real(t),
             });
             continue;
         }
-        if lt == ls + 1 {
+        let (lo, hi, a, b) = if lt > ls {
+            (ls, lt, s, t)
+        } else {
+            (lt, ls, t, s)
+        };
+        if hi == lo + 1 {
             edges.push(PackEdge {
-                src: NodeKey::Real(s),
-                tgt: NodeKey::Real(t),
+                src: NodeKey::Real(a),
+                tgt: NodeKey::Real(b),
             });
             continue;
         }
-        // Insert dummies on intermediate layers.
-        let mut prev = NodeKey::Real(s);
-        for layer in (ls + 1)..lt {
+        let mut prev = NodeKey::Real(a);
+        for layer in (lo + 1)..hi {
             let key = NodeKey::Dummy(dummy_i);
             dummy_i += 1;
             nodes.push(PackNode {
@@ -466,6 +559,7 @@ fn insert_dummies(
                 w: 0.0,
                 h: 0.0,
                 layer,
+                ord: 0,
                 cross: 0.0,
                 flow: 0.0,
             });
@@ -474,7 +568,7 @@ fn insert_dummies(
         }
         edges.push(PackEdge {
             src: prev,
-            tgt: NodeKey::Real(t),
+            tgt: NodeKey::Real(b),
         });
     }
     (nodes, edges)
@@ -482,7 +576,7 @@ fn insert_dummies(
 
 fn order_layers(nodes: &mut [PackNode], edges: &[PackEdge], budgets: &LayeredLayoutConfig) {
     let max_layer = nodes.iter().map(|n| n.layer).max().unwrap_or(0);
-    // Initial order: stable by tie / id within each layer.
+    let deeper_deg = deeper_neighbor_degree(nodes, edges);
     for layer in 0..=max_layer {
         let mut idx: Vec<usize> = nodes
             .iter()
@@ -491,21 +585,25 @@ fn order_layers(nodes: &mut [PackNode], edges: &[PackEdge], budgets: &LayeredLay
             .map(|(i, _)| i)
             .collect();
         idx.sort_by(|&a, &b| {
-            let ka = node_tie(nodes, a);
-            let kb = node_tie(nodes, b);
-            ka.cmp(&kb)
+            deeper_deg
+                .get(&nodes[a].key)
+                .copied()
+                .unwrap_or(0)
+                .cmp(&deeper_deg.get(&nodes[b].key).copied().unwrap_or(0))
+                .then_with(|| node_tie(nodes, a).cmp(&node_tie(nodes, b)))
         });
-        // Positions within layer are implicit via barycenter arrays below.
-        let _ = idx;
+        for (rank, &i) in idx.iter().enumerate() {
+            nodes[i].cross = rank as f64;
+        }
     }
 
     let sweeps = budgets.crossing_sweeps;
     for sweep in 0..sweeps {
-        let forward = sweep % 2 == 0;
+        let forward = sweep % 2 == 1; // reverse-first
         let layers: Box<dyn Iterator<Item = usize>> = if forward {
-            Box::new(0..=max_layer)
+            Box::new(1..=max_layer)
         } else {
-            Box::new((0..=max_layer).rev())
+            Box::new((0..max_layer).rev())
         };
         let mut any = false;
         for layer in layers {
@@ -513,10 +611,311 @@ fn order_layers(nodes: &mut [PackNode], edges: &[PackEdge], budgets: &LayeredLay
                 any = true;
             }
         }
+        if improve_order_by_swaps(nodes, edges) {
+            any = true;
+        }
         if !any && sweep > 0 {
             break;
         }
     }
+    for _ in 0..sweeps {
+        if !improve_order_by_swaps(nodes, edges) {
+            break;
+        }
+    }
+    exhaustive_order_small_layers(nodes, edges);
+    for layer in 0..=max_layer {
+        let mut idx: Vec<usize> = nodes
+            .iter()
+            .enumerate()
+            .filter(|(_, n)| n.layer == layer)
+            .map(|(i, _)| i)
+            .collect();
+        idx.sort_by(|&a, &b| {
+            nodes[a]
+                .cross
+                .partial_cmp(&nodes[b].cross)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| node_tie(nodes, a).cmp(&node_tie(nodes, b)))
+        });
+        for (ord, &i) in idx.iter().enumerate() {
+            nodes[i].ord = ord;
+            nodes[i].cross = ord as f64;
+        }
+    }
+}
+
+fn deeper_neighbor_degree(
+    nodes: &[PackNode],
+    edges: &[PackEdge],
+) -> HashMap<NodeKey, usize> {
+    let layer_of: HashMap<NodeKey, usize> = nodes.iter().map(|n| (n.key, n.layer)).collect();
+    let mut deg: HashMap<NodeKey, usize> = HashMap::new();
+    for e in edges {
+        let Some(&ls) = layer_of.get(&e.src) else { continue; };
+        let Some(&lt) = layer_of.get(&e.tgt) else { continue; };
+        if lt > ls {
+            *deg.entry(e.src).or_default() += 1;
+        } else if ls > lt {
+            *deg.entry(e.tgt).or_default() += 1;
+        }
+    }
+    deg
+}
+
+fn total_layer_crossings(nodes: &[PackNode], edges: &[PackEdge]) -> usize {
+    let pos: HashMap<NodeKey, (f64, f64)> = nodes
+        .iter()
+        .map(|n| (n.key, (n.cross, n.layer as f64)))
+        .collect();
+    let mut segs: Vec<((f64, f64), (f64, f64))> = Vec::with_capacity(edges.len());
+    for e in edges {
+        let Some(&p) = pos.get(&e.src) else { continue; };
+        let Some(&q) = pos.get(&e.tgt) else { continue; };
+        if (p.0 - q.0).abs() < 1e-12 && (p.1 - q.1).abs() < 1e-12 {
+            continue;
+        }
+        segs.push((p, q));
+    }
+    let mut x = 0usize;
+    for i in 0..segs.len() {
+        for j in (i + 1)..segs.len() {
+            if rank_segments_cross(segs[i].0, segs[i].1, segs[j].0, segs[j].1) {
+                x += 1;
+            }
+        }
+    }
+    x
+}
+
+fn rank_orient(a: (f64, f64), b: (f64, f64), c: (f64, f64)) -> f64 {
+    (b.0 - a.0) * (c.1 - a.1) - (b.1 - a.1) * (c.0 - a.0)
+}
+
+fn rank_segments_cross(
+    p: (f64, f64),
+    q: (f64, f64),
+    r: (f64, f64),
+    s: (f64, f64),
+) -> bool {
+    let o1 = rank_orient(p, q, r).signum();
+    let o2 = rank_orient(p, q, s).signum();
+    let o3 = rank_orient(r, s, p).signum();
+    let o4 = rank_orient(r, s, q).signum();
+    o1 != 0.0 && o2 != 0.0 && o3 != 0.0 && o4 != 0.0 && o1 != o2 && o3 != o4
+}
+
+fn improve_order_by_swaps(nodes: &mut [PackNode], edges: &[PackEdge]) -> bool {
+    let max_layer = nodes.iter().map(|n| n.layer).max().unwrap_or(0);
+    let mut moved = false;
+    for layer in 0..=max_layer {
+        let mut idx: Vec<usize> = nodes
+            .iter()
+            .enumerate()
+            .filter(|(_, n)| n.layer == layer)
+            .map(|(i, _)| i)
+            .collect();
+        if idx.len() < 2 {
+            continue;
+        }
+        idx.sort_by(|&a, &b| {
+            nodes[a]
+                .cross
+                .partial_cmp(&nodes[b].cross)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| node_tie(nodes, a).cmp(&node_tie(nodes, b)))
+        });
+        let mut improved = true;
+        while improved {
+            improved = false;
+            for k in 0..idx.len() - 1 {
+                if try_swap_if_better(nodes, edges, idx[k], idx[k + 1]) {
+                    idx.swap(k, k + 1);
+                    improved = true;
+                    moved = true;
+                }
+            }
+            if idx.len() <= 10 {
+                for a in 0..idx.len() {
+                    for b in (a + 2)..idx.len() {
+                        if try_swap_if_better(nodes, edges, idx[a], idx[b]) {
+                            idx.swap(a, b);
+                            improved = true;
+                            moved = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    moved
+}
+
+fn try_swap_if_better(
+    nodes: &mut [PackNode],
+    edges: &[PackEdge],
+    i: usize,
+    j: usize,
+) -> bool {
+    let before = order_cost(nodes, edges);
+    let ci = nodes[i].cross;
+    nodes[i].cross = nodes[j].cross;
+    nodes[j].cross = ci;
+    let after = order_cost(nodes, edges);
+    if after < before {
+        true
+    } else {
+        let ci = nodes[i].cross;
+        nodes[i].cross = nodes[j].cross;
+        nodes[j].cross = ci;
+        false
+    }
+}
+
+fn order_cost(nodes: &[PackNode], edges: &[PackEdge]) -> (usize, i32, i64) {
+    let xings = total_layer_crossings(nodes, edges);
+    let bundle = soft_same_side_penalty(nodes, edges);
+    let span = (total_rank_span(nodes, edges) * 1000.0).round() as i64;
+    (xings, bundle, span)
+}
+
+fn total_rank_span(nodes: &[PackNode], edges: &[PackEdge]) -> f64 {
+    let pos: HashMap<NodeKey, (f64, f64)> = nodes
+        .iter()
+        .map(|n| (n.key, (n.cross, n.layer as f64)))
+        .collect();
+    let mut span = 0.0_f64;
+    for e in edges {
+        let Some(&p) = pos.get(&e.src) else { continue; };
+        let Some(&q) = pos.get(&e.tgt) else { continue; };
+        span += (p.0 - q.0).hypot(p.1 - q.1);
+    }
+    span
+}
+
+fn soft_same_side_penalty(nodes: &[PackNode], edges: &[PackEdge]) -> i32 {
+    let cross_of: HashMap<NodeKey, f64> = nodes.iter().map(|n| (n.key, n.cross)).collect();
+    let layer_of: HashMap<NodeKey, usize> = nodes.iter().map(|n| (n.key, n.layer)).collect();
+    let mut layer_max: HashMap<usize, f64> = HashMap::new();
+    for n in nodes {
+        let e = layer_max.entry(n.layer).or_insert(0.0);
+        *e = e.max(n.cross);
+    }
+    let frac = |layer: usize, cross: f64| -> f64 {
+        let m = layer_max.get(&layer).copied().unwrap_or(0.0).max(1e-9);
+        cross / m
+    };
+    let mut penalty = 0_i32;
+    for n in nodes.iter() {
+        let mut by_layer: HashMap<usize, Vec<f64>> = HashMap::new();
+        for e in edges {
+            let other = if e.src == n.key {
+                e.tgt
+            } else if e.tgt == n.key {
+                e.src
+            } else {
+                continue;
+            };
+            let Some(&ol) = layer_of.get(&other) else { continue; };
+            if ol >= n.layer {
+                continue;
+            }
+            if let Some(&c) = cross_of.get(&other) {
+                by_layer.entry(ol).or_default().push(frac(ol, c));
+            }
+        }
+        let self_f = frac(n.layer, n.cross);
+        for nbrs in by_layer.values() {
+            if nbrs.len() < 2 {
+                continue;
+            }
+            let left = nbrs.iter().filter(|&&c| c < self_f - 1e-9).count();
+            let right = nbrs.iter().filter(|&&c| c > self_f + 1e-9).count();
+            if left == 0 || right == 0 {
+                penalty += (nbrs.len() as i32) - 1;
+            }
+        }
+    }
+    penalty
+}
+
+fn exhaustive_order_small_layers(nodes: &mut [PackNode], edges: &[PackEdge]) {
+    // 8! is fine once; skip when swaps already found a zero-crossing order.
+    if total_layer_crossings(nodes, edges) == 0 {
+        return;
+    }
+    const MAX_N: usize = 8;
+    let max_layer = nodes.iter().map(|n| n.layer).max().unwrap_or(0);
+    for layer in 0..=max_layer {
+        let mut idx: Vec<usize> = nodes
+            .iter()
+            .enumerate()
+            .filter(|(_, n)| n.layer == layer)
+            .map(|(i, _)| i)
+            .collect();
+        if idx.len() < 2 || idx.len() > MAX_N {
+            continue;
+        }
+        idx.sort_by(|&a, &b| {
+            nodes[a]
+                .cross
+                .partial_cmp(&nodes[b].cross)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| node_tie(nodes, a).cmp(&node_tie(nodes, b)))
+        });
+        let n = idx.len();
+        let mut best_perm: Vec<usize> = (0..n).collect();
+        let mut best_cost = {
+            for (rank, &i) in idx.iter().enumerate() {
+                nodes[i].cross = rank as f64;
+            }
+            order_cost(nodes, edges)
+        };
+        let mut perm: Vec<usize> = (0..n).collect();
+        let mut c = vec![0usize; n];
+        let mut i = 0;
+        while i < n {
+            if c[i] < i {
+                if i % 2 == 0 {
+                    perm.swap(0, i);
+                } else {
+                    perm.swap(c[i], i);
+                }
+                for (rank, &p) in perm.iter().enumerate() {
+                    nodes[idx[p]].cross = rank as f64;
+                }
+                let cost = order_cost(nodes, edges);
+                if cost < best_cost {
+                    best_cost = cost;
+                    best_perm = perm.clone();
+                }
+                c[i] += 1;
+                i = 0;
+            } else {
+                c[i] = 0;
+                i += 1;
+            }
+        }
+        for (rank, &p) in best_perm.iter().enumerate() {
+            nodes[idx[p]].cross = rank as f64;
+        }
+    }
+}
+
+fn layer_indices_in_order(nodes: &[PackNode], layer: usize) -> Vec<usize> {
+    let mut idx: Vec<usize> = nodes
+        .iter()
+        .enumerate()
+        .filter(|(_, n)| n.layer == layer)
+        .map(|(i, _)| i)
+        .collect();
+    idx.sort_by(|&a, &b| {
+        nodes[a]
+            .ord
+            .cmp(&nodes[b].ord)
+            .then_with(|| node_tie(nodes, a).cmp(&node_tie(nodes, b)))
+    });
+    idx
 }
 
 fn node_tie(nodes: &[PackNode], i: usize) -> (u64, String) {
@@ -541,8 +940,6 @@ fn barycenter_reorder(
     if layer_idx.len() < 2 {
         return false;
     }
-
-    // Neighbor positions = index order in adjacent layer.
     let adj_layer = if from_prev {
         layer.checked_sub(1)
     } else {
@@ -565,18 +962,12 @@ fn barycenter_reorder(
             .unwrap_or(std::cmp::Ordering::Equal)
             .then_with(|| node_tie(nodes, a).cmp(&node_tie(nodes, b)))
     });
-    // If cross not yet set, use stable index order.
-    if adj_nodes
-        .windows(2)
-        .all(|w| (nodes[w[0]].cross - nodes[w[1]].cross).abs() < 1e-12)
-    {
-        adj_nodes.sort_by(|&a, &b| node_tie(nodes, a).cmp(&node_tie(nodes, b)));
-    }
     for (rank, &i) in adj_nodes.iter().enumerate() {
         adj_pos.insert(nodes[i].key, rank as f64);
     }
 
-    let mut bary: Vec<(f64, u64, usize)> = Vec::with_capacity(layer_idx.len());
+    let mut bary: Vec<(f64, i64, usize)> = Vec::with_capacity(layer_idx.len());
+    let mut any_connected = false;
     for &i in &layer_idx {
         let key = nodes[i].key;
         let mut sum = 0.0;
@@ -598,21 +989,33 @@ fn barycenter_reorder(
             }
         }
         let bc = if cnt > 0.0 {
+            any_connected = true;
             sum / cnt
         } else {
-            // Keep relative place via tie.
-            node_tie(nodes, i).0 as f64
+            nodes[i].cross
         };
-        let tie = node_tie(nodes, i).0;
-        bary.push((bc, tie, i));
+        let stable = (nodes[i].cross * 1000.0).round() as i64;
+        bary.push((bc, stable, i));
     }
+    if !any_connected {
+        return false;
+    }
+    let first_bc = bary[0].0;
+    if bary.iter().all(|b| (b.0 - first_bc).abs() < 1e-9) {
+        return false;
+    }
+    layer_idx.sort_by(|&a, &b| {
+        nodes[a]
+            .cross
+            .partial_cmp(&nodes[b].cross)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     let before: Vec<usize> = layer_idx.clone();
     bary.sort_by(|a, b| {
         a.0.partial_cmp(&b.0)
             .unwrap_or(std::cmp::Ordering::Equal)
             .then_with(|| a.1.cmp(&b.1))
     });
-    // Assign provisional cross ranks for next sweep.
     for (rank, &(_, _, i)) in bary.iter().enumerate() {
         nodes[i].cross = rank as f64;
     }
@@ -722,19 +1125,7 @@ fn assign_coordinates(
 }
 
 fn pack_layer_cross(nodes: &mut [PackNode], layer: usize, node_gap: f64, vertical_flow: bool) {
-    let mut idx: Vec<usize> = nodes
-        .iter()
-        .enumerate()
-        .filter(|(_, n)| n.layer == layer)
-        .map(|(i, _)| i)
-        .collect();
-    idx.sort_by(|&a, &b| {
-        nodes[a]
-            .cross
-            .partial_cmp(&nodes[b].cross)
-            .unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| node_tie(nodes, a).cmp(&node_tie(nodes, b)))
-    });
+    let idx = layer_indices_in_order(nodes, layer);
     let mut cursor = 0.0_f64;
     for &i in &idx {
         let span = if vertical_flow {
@@ -753,20 +1144,8 @@ fn resolve_cross_overlaps(
     node_gap: f64,
     vertical_flow: bool,
 ) {
-    let mut idx: Vec<usize> = nodes
-        .iter()
-        .enumerate()
-        .filter(|(_, n)| n.layer == layer)
-        .map(|(i, _)| i)
-        .collect();
-    idx.sort_by(|&a, &b| {
-        nodes[a]
-            .cross
-            .partial_cmp(&nodes[b].cross)
-            .unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| node_tie(nodes, a).cmp(&node_tie(nodes, b)))
-    });
-    let mut cursor = f64::NEG_INFINITY;
+    let idx = layer_indices_in_order(nodes, layer);
+    let mut cursor = -node_gap;
     for &i in &idx {
         let span = if vertical_flow {
             nodes[i].w
@@ -774,11 +1153,27 @@ fn resolve_cross_overlaps(
             nodes[i].h
         };
         let mut top = nodes[i].cross - span * 0.5;
-        if cursor.is_finite() && top < cursor + node_gap {
+        if top < cursor + node_gap {
             top = cursor + node_gap;
         }
         cursor = top + span;
         nodes[i].cross = top + span * 0.5;
+    }
+}
+
+fn normalize_cross_origin(nodes: &mut [PackNode], vertical_flow: bool) {
+    let min_top = nodes
+        .iter()
+        .filter(|n| n.real.is_some())
+        .map(|n| {
+            let span = if vertical_flow { n.w } else { n.h };
+            n.cross - span * 0.5
+        })
+        .fold(f64::INFINITY, f64::min);
+    if min_top.is_finite() && min_top < 0.0 {
+        for n in nodes.iter_mut() {
+            n.cross -= min_top;
+        }
     }
 }
 
@@ -913,19 +1308,7 @@ fn apply_cross_marks_as_tops(
     align: LayerAlign,
     metrics: &[NodeMetrics],
 ) {
-    let mut idx: Vec<usize> = nodes
-        .iter()
-        .enumerate()
-        .filter(|(_, n)| n.layer == layer)
-        .map(|(i, _)| i)
-        .collect();
-    idx.sort_by(|&a, &b| {
-        nodes[a]
-            .cross
-            .partial_cmp(&nodes[b].cross)
-            .unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| node_tie(nodes, a).cmp(&node_tie(nodes, b)))
-    });
+    let idx = layer_indices_in_order(nodes, layer);
 
     // Auto mixed: unnamed cores sit on the mean named-baseline line.
     if matches!(align, LayerAlign::Auto) {
@@ -997,6 +1380,81 @@ fn mark_flow_local(m: &NodeMetrics, align: LayerAlign) -> (f64, bool) {
 }
 
 
+
+/// Last-line AABB separation for real tiles (order-preserving on cross, then flow).
+fn separate_aabb_overlaps(nodes: &mut [PackNode], dir: LayoutDirection, gap: f64) {
+    let vertical_flow = matches!(dir, LayoutDirection::Up | LayoutDirection::Down);
+    let max_layer = nodes.iter().map(|n| n.layer).max().unwrap_or(0);
+    for layer in 0..=max_layer {
+        resolve_cross_overlaps(nodes, layer, gap, vertical_flow);
+    }
+    // Push later layers down/right if they still collide with earlier ones.
+    let mut reals: Vec<usize> = nodes
+        .iter()
+        .enumerate()
+        .filter(|(_, n)| n.real.is_some())
+        .map(|(i, _)| i)
+        .collect();
+    reals.sort_by(|&a, &b| {
+        nodes[a]
+            .layer
+            .cmp(&nodes[b].layer)
+            .then_with(|| nodes[a].ord.cmp(&nodes[b].ord))
+    });
+    for i in 0..reals.len() {
+        for j in 0..i {
+            let (ia, ib) = (reals[j], reals[i]);
+            let (aw, ah) = (nodes[ia].w, nodes[ia].h);
+            let (bw, bh) = (nodes[ib].w, nodes[ib].h);
+            let (ax, ay) = if vertical_flow {
+                (nodes[ia].cross - aw * 0.5, nodes[ia].flow)
+            } else {
+                (nodes[ia].flow, nodes[ia].cross - ah * 0.5)
+            };
+            let (bx, by) = if vertical_flow {
+                (nodes[ib].cross - bw * 0.5, nodes[ib].flow)
+            } else {
+                (nodes[ib].flow, nodes[ib].cross - bh * 0.5)
+            };
+            let ox = (ax + aw).min(bx + bw) - ax.max(bx);
+            let oy = (ay + ah).min(by + bh) - ay.max(by);
+            if ox > gap && oy > gap {
+                if vertical_flow {
+                    nodes[ib].flow = ay + ah + gap;
+                } else {
+                    nodes[ib].flow = ax + aw + gap;
+                }
+            }
+        }
+    }
+}
+
+fn separate_position_overlaps(
+    positions: &mut HashMap<String, Pt>,
+    metrics: &[NodeMetrics],
+    gap: f64,
+) {
+    let mut ids: Vec<String> = metrics.iter().map(|m| m.id.clone()).collect();
+    ids.sort();
+    for i in 0..ids.len() {
+        for j in 0..i {
+            let (ia, ib) = (&ids[j], &ids[i]);
+            let Some(&(ax, ay)) = positions.get(ia.as_str()) else {
+                continue;
+            };
+            let Some(&(bx, by)) = positions.get(ib.as_str()) else {
+                continue;
+            };
+            let (aw, ah) = (metrics.iter().find(|m| m.id == *ia).map(|m| (m.w, m.h)).unwrap());
+            let (bw, bh) = (metrics.iter().find(|m| m.id == *ib).map(|m| (m.w, m.h)).unwrap());
+            let ox = (ax + aw).min(bx + bw) - ax.max(bx);
+            let oy = (ay + ah).min(by + bh) - ay.max(by);
+            if ox > gap && oy > gap {
+                positions.insert(ib.clone(), (bx, ay + ah + gap));
+            }
+        }
+    }
+}
 
 /// Shift each parent’s cross so it sits on the mean cross of its children
 /// (same layer-delta). Leaves child packing intact.

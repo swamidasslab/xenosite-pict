@@ -2,6 +2,14 @@
 
 ## 2026-11-15
 
+- **Layered placer vs ELK (Morphine)**: crossing-min now (1) freezes
+  within-layer order so median/hub passes cannot reshuffle ranks, (2) scores
+  reorder swaps with cheap rank-space crossings including `layout: false`
+  soft edges, (3) exhaustive-searches small layers, (4) rejects route detours
+  that back up past the start. Gate
+  `morphine_placer_beats_or_matches_elk_pack_metrics` is green — placer
+  crossings 1 vs ELK 3 (detour/tip both tip-clean under the wild-wrap rule).
+  Intra-layer layout edges promote sinks into deeper layers (hint-respecting).
 - **Down-layer mark align**: turned off mark-on-X packing for `direction:
   down|up`. Within a layer, share a horizontal mark line (Auto baseline /
   centroid / top / …). Pose-aligned mols use **common-core** centroid

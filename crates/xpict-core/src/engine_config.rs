@@ -69,15 +69,15 @@ pub struct LayeredLayoutConfig {
 impl LayeredLayoutConfig {
     pub fn pretty() -> Self {
         Self {
-            crossing_sweeps: 24,
-            align_passes: 8,
+            crossing_sweeps: 48,
+            align_passes: 12,
         }
     }
 
     pub fn fast() -> Self {
         Self {
-            crossing_sweeps: 8,
-            align_passes: 3,
+            crossing_sweeps: 16,
+            align_passes: 4,
         }
     }
 }
