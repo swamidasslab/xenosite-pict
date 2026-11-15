@@ -1,5 +1,6 @@
 # TODO
 
+- Layered placer: caption reach-back for cleaner centroid grids; optional router use of layer/face metadata; grow network-quality so oversized nets can leave elkrs
 - Prefer `LayoutOpts.quality: fast` for huge schemes when pretty routing is too slow; keep coefficient tuning in `EngineConfig`
 - Chem tree still uses bond centerlines for stereo wedges and Kekulé offset strokes
 - Raise xpict-core llvm-cov back toward 97% (caption, chrome_paint, layout_constraints)

@@ -668,6 +668,11 @@ pub struct MolNode {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub opts: Option<Opts>,
+    /// Exact layer index for layered scheme packing (0 = first along flow).
+    /// Omit → assigned by the layered placer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub layer: Option<u32>,
 }
 
 fn visible_omitted_or_true(v: &Option<bool>) -> bool {
@@ -1005,8 +1010,8 @@ pub struct EdgeNode {
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub edge_routing: Option<EdgeRouting>,
     /// When false, the edge still paints but is omitted from scheme mol
-    /// placement (ELK). Use for reverse / feedback arrows that should not
-    /// bump intended sources off the top layer. Omitted / null → true.
+    /// packing. Use for reverse / feedback arrows that should not bump
+    /// intended sources off the first layer. Omitted / null → true.
     #[serde(default, skip_serializing_if = "skip_edge_layout")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub layout: Option<bool>,
@@ -1033,7 +1038,7 @@ impl EdgeNode {
             .unwrap_or_else(|| scheme.edge_routing_or_default())
     }
 
-    /// Whether this edge participates in scheme mol placement (ELK).
+    /// Whether this edge participates in scheme mol packing.
     /// Omitted / null on the wire → true.
     pub fn participates_in_layout(&self) -> bool {
         self.layout.unwrap_or(true)
@@ -1118,11 +1123,8 @@ pub enum EdgeRouting {
 
 /// Placement algorithm for scheme layout.
 ///
-/// Hosts map these onto ELK (or another engine):
-/// - [`Self::Layered`] — Sugiyama / layered (default; best for reactions)
-/// - [`Self::Radial`] — hub-and-spoke / concentric rings (star-like nets)
-/// - [`Self::Force`] — force-directed (undirected / cyclic networks)
-/// - [`Self::Stress`] — stress majorization (compact network alternative)
+/// - [`Self::Layered`] — in-house Sugiyama / layered (default; reaction schemes)
+/// - [`Self::Radial`] / [`Self::Force`] / [`Self::Stress`] — delegated to ELK
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
@@ -1133,6 +1135,28 @@ pub enum LayoutAlgorithm {
     Radial,
     Force,
     Stress,
+}
+
+/// Cross-flow alignment of mols within a layered scheme column/row.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
+#[cfg_attr(feature = "codegen", ts(export))]
+pub enum LayerAlign {
+    /// Name/caption baseline when present, else chem centroid (mixed layers:
+    /// named share a baseline; unnamed centroids track the named mean).
+    #[default]
+    Auto,
+    /// Align on mol name/caption text baseline (falls back to centroid if none).
+    Baseline,
+    /// Align framed chem centroids.
+    Centroid,
+    /// Align tile AABB leading edge (top for right/left flow).
+    Top,
+    /// Align tile AABB trailing edge (bottom for right/left flow).
+    Bottom,
+    /// Align tile AABB midpoints.
+    Middle,
 }
 
 /// Coarse scheme engine preset — maps to Rust-only `EngineConfig`, not raw
@@ -1151,14 +1175,13 @@ pub enum LayoutQuality {
 
 /// Layout for [`DepictSpec::ReactionScheme`].
 ///
-/// Backend-agnostic knobs — hosts map these onto ELK, Dagre, or another engine.
 /// Defaults when omitted: [`LayoutDirection::Right`], [`EdgeRouting::Polyline`],
-/// [`LayoutAlgorithm::Layered`], [`LayoutQuality::Pretty`].
+/// [`LayoutAlgorithm::Layered`], [`LayerAlign::Auto`], [`LayoutQuality::Pretty`].
 /// Individual [`EdgeNode`]s may override [`Self::edge_routing`].
 ///
 /// Spacing (px, document space) controls packing tightness:
-/// - [`Self::node_spacing`] — gap between nodes in the same layer (default ~20)
-/// - [`Self::layer_spacing`] — gap between reactant/product layers (default ~48)
+/// - [`Self::node_spacing`] — gap between nodes in the same layer (default 32)
+/// - [`Self::layer_spacing`] — gap between reactant/product layers (default 48)
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "codegen", derive(JsonSchema, TS))]
 #[cfg_attr(feature = "codegen", ts(export))]
@@ -1171,7 +1194,7 @@ pub struct LayoutOpts {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub direction: Option<LayoutDirection>,
-    /// Shaft style (`polyline` / `orthogonal` / `splines`).
+    /// Shaft style (`polyline` / `orthogonal` / `splines`) — Rust paint only.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub edge_routing: Option<EdgeRouting>,
@@ -1183,6 +1206,10 @@ pub struct LayoutOpts {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub layer_spacing: Option<f64>,
+    /// Cross-flow mol alignment within a layer (`auto` / `baseline` / …).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub align: Option<LayerAlign>,
     /// Engine preset (`pretty` / `fast`). Omit → pretty. Does not expose
     /// solver coefficients — see `docs/dev/engine-constants.md`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1220,6 +1247,10 @@ impl LayoutOpts {
 
     pub fn quality_or_default(&self) -> LayoutQuality {
         self.quality.unwrap_or_default()
+    }
+
+    pub fn align_or_default(&self) -> LayerAlign {
+        self.align.unwrap_or_default()
     }
 
     /// Rust-only engine bundle selected by [`Self::quality`].

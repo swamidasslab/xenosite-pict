@@ -2,6 +2,15 @@
 
 ## 2026-11-15
 
+- **In-house layered scheme placer** (`doc/scheme_layered.rs`): default
+  `algorithm: layered` reaction schemes no longer call ELK. Sugiyama pack with
+  internal long-edge dummies, capped barycenter/median sweeps
+  (`EngineConfig.layered`), order-invariant id-canonical graph, and
+  `LayoutOpts.align` (`auto` / baseline / centroid / top / bottom / middle).
+  `MolNode.layer` forces a layer index. Oversized network schemes and
+  radial/force/stress still use elkrs for **positions only**; shafts stay on
+  `scheme_route`. EdgeRouting is Rust paint-only (no `elk.edgeRouting`).
+  Review gallery: `js/review/cases/scheme-layered/`.
 - Soft mol nudge is **opt-in / off by default** (`NudgeConfig.enabled`). Routing
   clears blocked chords without sliding blockers; `NudgeConfig::on()` for
   ablations. Regress: `disabled_nudge_leaves_positions_unchanged`.

@@ -313,6 +313,7 @@ class MolNode(StrictModel):
     halo: bool | None = None
     id: str | None = None
     label: Annotated[Label | None, Field(description='Caption: [`Label`] (string id, list, or `{id, pos?}` — text-node refs).')] = None
+    layer: Annotated[int | None, Field(description='Exact layer index for layered scheme packing (0 = first along flow). Omit → assigned by the layered placer.')] = None
     molfile: str | None = None
     name: Annotated[MolText | None, Field(description='Privileged figure name / caption painted inside the mol SVG (default below; vertical reaction schemes default to the right so the name is not in the arrow corridor).')] = None
     opts: Annotated[Opts | None, Field(description='Cascade patches for this node (list or singleton).')] = None
@@ -349,7 +350,7 @@ class EdgeNode(StrictModel):
     dashed: bool = False
     edge_routing: Annotated[EdgeRouting | None, Field(description='Per-edge override of scheme [`LayoutOpts::edge_routing`].')] = None
     label: Annotated[Label | None, Field(description='Label chrome: id / list / `{id, pos?}` / `{above,below,left,right}`.')] = None
-    layout: Annotated[bool | None, Field(description='When false, the edge still paints but is omitted from scheme mol placement (ELK). Use for reverse / feedback arrows that should not bump intended sources off the top layer. Omitted / null → true.')] = None
+    layout: Annotated[bool | None, Field(description='When false, the edge still paints but is omitted from scheme mol packing. Use for reverse / feedback arrows that should not bump intended sources off the first layer. Omitted / null → true.')] = None
     role: Annotated[str | None, Field(description='Optional semantic role (e.g. enzyme) — not drawn by default.')] = None
     stroke_width: float | None = None
 
@@ -404,6 +405,9 @@ class GroupNode(StrictModel):
 LayoutAlgorithm = Literal['layered', 'radial', 'force', 'stress']
 
 
+LayerAlign = Literal['auto', 'baseline', 'centroid', 'top', 'bottom', 'middle']
+
+
 LayoutDirection = Literal['right', 'left', 'up', 'down']
 
 
@@ -413,8 +417,9 @@ LayoutQuality = Literal['pretty', 'fast']
 class LayoutOpts(StrictModel):
     """Layout for [`DepictSpec::ReactionScheme`]."""
     algorithm: Annotated[LayoutAlgorithm | None, Field(description='Placement algorithm (`layered` / `radial` / `force` / `stress`).')] = None
+    align: Annotated[LayerAlign | None, Field(description='Cross-flow mol alignment within a layer (`auto` / `baseline` / …).')] = None
     direction: Annotated[LayoutDirection | None, Field(description='Flow axis (`right` / `left` / `up` / `down`).')] = None
-    edge_routing: Annotated[EdgeRouting | None, Field(description='Shaft style (`polyline` / `orthogonal` / `splines`).')] = None
+    edge_routing: Annotated[EdgeRouting | None, Field(description='Shaft style (`polyline` / `orthogonal` / `splines`) — Rust paint only.')] = None
     layer_spacing: Annotated[float | None, Field(description='Between-layer gap along the flow axis (px). Smaller → tighter pack.')] = None
     node_spacing: Annotated[float | None, Field(description='Within-layer node gap (px). Smaller → tighter pack.')] = None
     quality: Annotated[LayoutQuality | None, Field(description='Engine preset (`pretty` / `fast`). Omit → pretty. Does not expose solver coefficients — see `docs/dev/engine-constants.md`.')] = None

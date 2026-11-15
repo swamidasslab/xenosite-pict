@@ -20,6 +20,7 @@ mod align_pose_tests;
 #[cfg(test)]
 mod review_regress;
 mod scheme_layout;
+mod scheme_layered;
 mod scheme_nudge;
 mod scheme_route;
 #[cfg(test)]

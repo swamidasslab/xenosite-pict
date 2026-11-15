@@ -37,8 +37,8 @@ label?: Label,
 edge_routing?: EdgeRouting, 
 /**
  * When false, the edge still paints but is omitted from scheme mol
- * placement (ELK). Use for reverse / feedback arrows that should not
- * bump intended sources off the top layer. Omitted / null → true.
+ * packing. Use for reverse / feedback arrows that should not bump
+ * intended sources off the first layer. Omitted / null → true.
  */
 layout?: boolean, 
 /**

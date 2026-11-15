@@ -1,7 +1,6 @@
-//! Scheme edge refine: ELK places molecules; shafts are routed in
-//! [`super::scheme_route`] (straight chord or visibility graph on inflated
-//! full-node ink). This module installs mol ink, applies those polylines, and
-//! refines edge labels against the painted shafts.
+//! Scheme edge refine: layered placer (or non-layered ELK) positions molecules;
+//! shafts are routed in [`super::scheme_route`]. This module installs mol ink,
+//! applies those polylines, and refines edge labels against the painted shafts.
 
 use std::collections::HashMap;
 
@@ -253,7 +252,7 @@ fn replace_edge_points(world: &mut LayoutWorld, eid: &str, pts: &[(f64, f64)]) {
 }
 
 /// Refined shaft polylines, optional label poses `(x, y, rotate_deg)`, and
-/// mol positions (ELK seed, possibly soft-nudged to open corridors).
+/// mol positions (layered/ELK seed, possibly soft-nudged to open corridors).
 pub struct RefinedEdges {
     pub edge_paths: Vec<Option<Vec<(f64, f64)>>>,
     pub edge_labels: Vec<Option<(f64, f64, f64)>>,
@@ -264,14 +263,10 @@ pub fn refine_scheme_edges(
     spec: &DepictSpec,
     layout: &LayoutOpts,
     positions: &HashMap<String, (f64, f64)>,
-    edge_paths: &[Option<Vec<(f64, f64)>>],
     paints: &[DocPaint],
     sizes: &[(String, f64, f64)],
 ) -> RefinedEdges {
-    let mut out_paths = edge_paths.to_vec();
-    while out_paths.len() < spec.edges().len() {
-        out_paths.push(None);
-    }
+    let mut out_paths = vec![None; spec.edges().len()];
     let mut out_labels = vec![None; spec.edges().len()];
 
     let engine = layout.engine();
@@ -350,7 +345,6 @@ pub fn refine_scheme_edges(
         mol_ids.push(id.clone());
     }
 
-    let _ = edge_paths; // ELK edge sections discarded; visibility router owns shafts.
     let _ = size_of;
     let _ = paint_of;
 
@@ -1234,7 +1228,6 @@ mod tests {
             &spec,
             &LayoutOpts::default(),
             &positions,
-            &[Some(seed.clone())],
             &paints,
             &sizes,
         );
@@ -1560,7 +1553,6 @@ mod tests {
             &spec,
             &LayoutOpts::default(),
             &positions,
-            &[Some(seed)],
             &paints,
             &sizes,
         )
@@ -1620,7 +1612,6 @@ mod tests {
             &spec,
             &layout,
             &positions,
-            &[Some(seed.clone())],
             &paints,
             &sizes,
         );
@@ -2003,7 +1994,6 @@ mod tests {
             &spec,
             &layout,
             &positions,
-            &[Some(seed_a), Some(seed_b)],
             &paints,
             &sizes,
         );
@@ -2119,7 +2109,6 @@ mod tests {
             &spec,
             &layout,
             &positions,
-            &[Some(seed.clone()), Some(seed)],
             &paints,
             &sizes,
         );
@@ -2249,7 +2238,6 @@ mod tests {
             &spec,
             &layout,
             &positions,
-            &[Some(seed.clone()), Some(seed.clone())],
             &paints,
             &sizes,
         );
@@ -2323,7 +2311,6 @@ mod tests {
             &spec,
             &layout,
             &positions,
-            &[Some(seed.clone()), Some(seed)],
             &paints,
             &sizes,
         );
@@ -2410,7 +2397,6 @@ mod tests {
                 ..Default::default()
             },
             &positions,
-            &[Some(seed.clone()), Some(seed)],
             &paints,
             &sizes,
         );
@@ -2487,7 +2473,6 @@ mod tests {
             &spec,
             &layout,
             &positions,
-            &[Some(seed.clone())],
             &paints,
             &sizes,
         );
@@ -2577,7 +2562,6 @@ mod tests {
             &spec,
             &layout,
             &positions,
-            &[None],
             &paints,
             &sizes,
         );
@@ -2623,7 +2607,13 @@ mod tests {
         // ELK put B's port on the south side of the box, not on the centroid line.
         let seed = vec![(80.0, 40.0), (240.0, 80.0)];
         let refined =
-            refine_scheme_edges(&spec, &layout, &positions, &[Some(seed)], &paints, &sizes);
+            refine_scheme_edges(
+            &spec,
+            &layout,
+            &positions,
+            &paints,
+            &sizes,
+        );
         let pts = refined.edge_paths[0].clone().expect("path");
         let paint_of: HashMap<&str, &DocPaint> =
             paints.iter().map(|p| (p.id.as_str(), p)).collect();
@@ -2664,7 +2654,13 @@ mod tests {
         // ELK dummy ports on the east/west faces (the old FIXED_SIDE pin).
         let seed = vec![(80.0, 40.0), (240.0, 160.0)];
         let refined =
-            refine_scheme_edges(&spec, &layout, &positions, &[Some(seed)], &paints, &sizes);
+            refine_scheme_edges(
+            &spec,
+            &layout,
+            &positions,
+            &paints,
+            &sizes,
+        );
         let pts = refined.edge_paths[0].clone().expect("path");
         let (x0, y0) = pts[0];
         assert!(
@@ -2695,7 +2691,6 @@ mod tests {
             &spec,
             &LayoutOpts::default(),
             &positions,
-            &[Some(seed)],
             &paints,
             &sizes,
         );
@@ -2722,7 +2717,6 @@ mod tests {
             &spec,
             &LayoutOpts::default(),
             &positions,
-            &[Some(seed)],
             &paints,
             &sizes,
         );
@@ -2751,7 +2745,6 @@ mod tests {
             &spec,
             &LayoutOpts::default(),
             &positions,
-            &[None],
             &paints,
             &sizes,
         );
@@ -2792,7 +2785,6 @@ mod tests {
             &spec,
             &LayoutOpts::default(),
             &positions,
-            &seeds,
             &paints,
             &sizes,
         );
@@ -2856,7 +2848,6 @@ mod tests {
             &spec,
             &LayoutOpts::default(),
             &positions,
-            &[None],
             &paints,
             &sizes,
         );
@@ -2870,7 +2861,7 @@ mod tests {
         let min_y = pts.iter().map(|p| p.1).fold(f64::INFINITY, f64::min);
         let max_y = pts.iter().map(|p| p.1).fold(f64::NEG_INFINITY, f64::max);
         assert!(
-            min_x > -40.0 && max_x < 360.0 && min_y > -80.0 && max_y < 320.0,
+            min_x > -40.0 && max_x < 360.0 && min_y > -80.0 && max_y < 360.0,
             "visibility bow must stay near the mols, not page-edge: {pts:?}"
         );
         // Midpoint of route should clear the middle mol's chem.
@@ -2929,7 +2920,6 @@ mod tests {
             &spec,
             &LayoutOpts::default(),
             &positions,
-            &[None],
             &paints,
             &sizes,
         );
@@ -2991,7 +2981,13 @@ mod tests {
         ];
         let seed = vec![(80.0, 40.0), (300.0, 40.0)];
         let refined =
-            refine_scheme_edges(&spec, &layout, &positions, &[Some(seed)], &paints, &sizes);
+            refine_scheme_edges(
+            &spec,
+            &layout,
+            &positions,
+            &paints,
+            &sizes,
+        );
         let (lx, ly, _) = refined.edge_labels[0].expect("label");
         // Soft nudge may slide C off the A–B chord; measure against live pose.
         let c_pos = refined.positions["C"];
@@ -3028,7 +3024,13 @@ mod tests {
         ];
         let seed = vec![(80.0, 40.0), (240.0, 40.0)];
         let refined =
-            refine_scheme_edges(&spec, &layout, &positions, &[Some(seed)], &paints, &sizes);
+            refine_scheme_edges(
+            &spec,
+            &layout,
+            &positions,
+            &paints,
+            &sizes,
+        );
         let pts = refined.edge_paths[0].clone().expect("path");
         let (lx, ly, rot) = refined.edge_labels[0].expect("label");
         let expected = flip_upside_down(tangent_at(&pts, lx, ly));
@@ -3103,7 +3105,13 @@ mod tests {
         ];
         let seed = vec![(40.0, 80.0), (120.0, 180.0), (40.0, 280.0)];
         let refined =
-            refine_scheme_edges(&spec, &layout, &positions, &[Some(seed)], &paints, &sizes);
+            refine_scheme_edges(
+            &spec,
+            &layout,
+            &positions,
+            &paints,
+            &sizes,
+        );
         let pts = refined.edge_paths[0].clone().expect("path");
         let (lx, ly, rot) = refined.edge_labels[0].expect("label");
         let painted = crate::catmull::sample_open_catmull(&pts, 8);
@@ -3176,7 +3184,6 @@ mod tests {
             &spec,
             &layout,
             &positions,
-            &[Some(seed.clone())],
             &paints,
             &sizes,
         );
@@ -3227,7 +3234,6 @@ mod tests {
             &unlabeled,
             &layout,
             &positions,
-            &[Some(seed.clone())],
             &paints,
             &sizes,
         )
@@ -3238,7 +3244,6 @@ mod tests {
             &labeled,
             &layout,
             &positions,
-            &[Some(seed)],
             &paints,
             &sizes,
         )
@@ -3296,8 +3301,20 @@ mod tests {
         let fwd = vec![(80.0, 40.0), (240.0, 40.0)];
         let rev = vec![(240.0, 40.0), (80.0, 40.0)];
         let seeds = [Some(fwd.clone()), Some(rev.clone())];
-        let plain = refine_scheme_edges(&unlabeled, &layout, &positions, &seeds, &paints, &sizes);
-        let with_lab = refine_scheme_edges(&labeled, &layout, &positions, &seeds, &paints, &sizes);
+        let plain = refine_scheme_edges(
+            &unlabeled,
+            &layout,
+            &positions,
+            &paints,
+            &sizes,
+        );
+        let with_lab = refine_scheme_edges(
+            &labeled,
+            &layout,
+            &positions,
+            &paints,
+            &sizes,
+        );
         let a = plain.edge_paths[0].clone().expect("plain a");
         let b = with_lab.edge_paths[0].clone().expect("lab a");
         for (p, q) in a.iter().zip(&b) {

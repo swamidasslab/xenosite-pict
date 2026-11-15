@@ -1,0 +1,19 @@
+title: Explicit centroid align
+expect: Chem centroids share a horizontal line despite different box heights / names.
+spec:
+  type: reaction_scheme
+  layout:
+    align: centroid
+  children:
+    - type: mol
+      id: A
+      smiles: CCO
+      name: ethanol
+    - type: mol
+      id: B
+      smiles: c1ccccc1O
+      name: phenol
+    - type: edge
+      sources: A
+      targets: B
+      arrow: forward

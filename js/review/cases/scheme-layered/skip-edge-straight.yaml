@@ -1,0 +1,29 @@
+title: Skip-edge straighten
+expect: A→C skip over B stays nearly straight (internal dummies); B sits between layers.
+spec:
+  type: reaction_scheme
+  children:
+    - type: mol
+      id: A
+      smiles: CCO
+      name: A
+    - type: mol
+      id: B
+      smiles: CC=O
+      name: B
+    - type: mol
+      id: C
+      smiles: CC(=O)O
+      name: C
+    - type: edge
+      sources: A
+      targets: B
+      arrow: forward
+    - type: edge
+      sources: B
+      targets: C
+      arrow: forward
+    - type: edge
+      sources: A
+      targets: C
+      arrow: forward

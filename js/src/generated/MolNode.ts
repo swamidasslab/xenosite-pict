@@ -89,4 +89,9 @@ svg?: SvgTarget,
 /**
  * Cascade patches for this node (list or singleton).
  */
-opts?: Opts, };
+opts?: Opts, 
+/**
+ * Exact layer index for layered scheme packing (0 = first along flow).
+ * Omit → assigned by the layered placer.
+ */
+layer?: number, };

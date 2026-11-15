@@ -1,7 +1,8 @@
 //! Libavoid-style scheme shaft routing: straight chord first, else a
 //! visibility graph on inflated full-node-ink hulls with multi-penalty search.
 //!
-//! ELK places molecules only. Painted routes never reuse ELK edge sections.
+//! Layered placer (or non-layered ELK) positions molecules only. Painted
+//! routes never reuse layout edge sections.
 //!
 //! Intersection scoring uses **centroid→centroid pathways**. Tip hug (ink
 //! pose along the final approach) is a separate step and must not “clear”

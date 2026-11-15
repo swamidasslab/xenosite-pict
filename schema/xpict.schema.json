@@ -125,6 +125,15 @@
             }
           ]
         },
+        "layer": {
+          "description": "Exact layer index for layered scheme packing (0 = first along flow). Omit → assigned by the layered placer.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
         "molfile": {
           "type": [
             "string",
@@ -1152,6 +1161,15 @@
                 }
               ]
             },
+            "layer": {
+              "description": "Exact layer index for layered scheme packing (0 = first along flow). Omit → assigned by the layered placer.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint32",
+              "minimum": 0.0
+            },
             "molfile": {
               "type": [
                 "string",
@@ -1655,7 +1673,7 @@
           ]
         },
         "layout": {
-          "description": "When false, the edge still paints but is omitted from scheme mol placement (ELK). Use for reverse / feedback arrows that should not bump intended sources off the top layer. Omitted / null → true.",
+          "description": "When false, the edge still paints but is omitted from scheme mol packing. Use for reverse / feedback arrows that should not bump intended sources off the first layer. Omitted / null → true.",
           "type": [
             "boolean",
             "null"
@@ -1944,8 +1962,55 @@
         "auto"
       ]
     },
+    "LayerAlign": {
+      "description": "Cross-flow alignment of mols within a layered scheme column/row.",
+      "oneOf": [
+        {
+          "description": "Name/caption baseline when present, else chem centroid (mixed layers: named share a baseline; unnamed centroids track the named mean).",
+          "type": "string",
+          "enum": [
+            "auto"
+          ]
+        },
+        {
+          "description": "Align on mol name/caption text baseline (falls back to centroid if none).",
+          "type": "string",
+          "enum": [
+            "baseline"
+          ]
+        },
+        {
+          "description": "Align framed chem centroids.",
+          "type": "string",
+          "enum": [
+            "centroid"
+          ]
+        },
+        {
+          "description": "Align tile AABB leading edge (top for right/left flow).",
+          "type": "string",
+          "enum": [
+            "top"
+          ]
+        },
+        {
+          "description": "Align tile AABB trailing edge (bottom for right/left flow).",
+          "type": "string",
+          "enum": [
+            "bottom"
+          ]
+        },
+        {
+          "description": "Align tile AABB midpoints.",
+          "type": "string",
+          "enum": [
+            "middle"
+          ]
+        }
+      ]
+    },
     "LayoutAlgorithm": {
-      "description": "Placement algorithm for scheme layout.\n\nHosts map these onto ELK (or another engine): - [`Self::Layered`] — Sugiyama / layered (default; best for reactions) - [`Self::Radial`] — hub-and-spoke / concentric rings (star-like nets) - [`Self::Force`] — force-directed (undirected / cyclic networks) - [`Self::Stress`] — stress majorization (compact network alternative)",
+      "description": "Placement algorithm for scheme layout.\n\n- [`Self::Layered`] — in-house Sugiyama / layered (default; reaction schemes) - [`Self::Radial`] / [`Self::Force`] / [`Self::Stress`] — delegated to ELK",
       "type": "string",
       "enum": [
         "layered",
@@ -1965,7 +2030,7 @@
       ]
     },
     "LayoutOpts": {
-      "description": "Layout for [`DepictSpec::ReactionScheme`].\n\nBackend-agnostic knobs — hosts map these onto ELK, Dagre, or another engine. Defaults when omitted: [`LayoutDirection::Right`], [`EdgeRouting::Polyline`], [`LayoutAlgorithm::Layered`], [`LayoutQuality::Pretty`]. Individual [`EdgeNode`]s may override [`Self::edge_routing`].\n\nSpacing (px, document space) controls packing tightness: - [`Self::node_spacing`] — gap between nodes in the same layer (default ~20) - [`Self::layer_spacing`] — gap between reactant/product layers (default ~48)",
+      "description": "Layout for [`DepictSpec::ReactionScheme`].\n\nDefaults when omitted: [`LayoutDirection::Right`], [`EdgeRouting::Polyline`], [`LayoutAlgorithm::Layered`], [`LayerAlign::Auto`], [`LayoutQuality::Pretty`]. Individual [`EdgeNode`]s may override [`Self::edge_routing`].\n\nSpacing (px, document space) controls packing tightness: - [`Self::node_spacing`] — gap between nodes in the same layer (default 32) - [`Self::layer_spacing`] — gap between reactant/product layers (default 48)",
       "type": "object",
       "properties": {
         "algorithm": {
@@ -1973,6 +2038,17 @@
           "anyOf": [
             {
               "$ref": "#/definitions/LayoutAlgorithm"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "align": {
+          "description": "Cross-flow mol alignment within a layer (`auto` / `baseline` / …).",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/LayerAlign"
             },
             {
               "type": "null"
@@ -1991,7 +2067,7 @@
           ]
         },
         "edge_routing": {
-          "description": "Shaft style (`polyline` / `orthogonal` / `splines`).",
+          "description": "Shaft style (`polyline` / `orthogonal` / `splines`) — Rust paint only.",
           "anyOf": [
             {
               "$ref": "#/definitions/EdgeRouting"
@@ -2181,6 +2257,15 @@
               "type": "null"
             }
           ]
+        },
+        "layer": {
+          "description": "Exact layer index for layered scheme packing (0 = first along flow). Omit → assigned by the layered placer.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
         },
         "molfile": {
           "type": [

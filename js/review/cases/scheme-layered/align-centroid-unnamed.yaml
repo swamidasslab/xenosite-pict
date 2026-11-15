@@ -1,0 +1,17 @@
+title: Align centroids (unnamed)
+expect: Two unnamed mols on a chain share chem centroids vertically.
+spec:
+  type: reaction_scheme
+  layout:
+    align: centroid
+  children:
+    - type: mol
+      id: A
+      smiles: CCO
+    - type: mol
+      id: B
+      smiles: CC=O
+    - type: edge
+      sources: A
+      targets: B
+      arrow: forward

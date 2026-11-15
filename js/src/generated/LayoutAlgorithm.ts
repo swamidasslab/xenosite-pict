@@ -3,10 +3,7 @@
 /**
  * Placement algorithm for scheme layout.
  *
- * Hosts map these onto ELK (or another engine):
- * - [`Self::Layered`] — Sugiyama / layered (default; best for reactions)
- * - [`Self::Radial`] — hub-and-spoke / concentric rings (star-like nets)
- * - [`Self::Force`] — force-directed (undirected / cyclic networks)
- * - [`Self::Stress`] — stress majorization (compact network alternative)
+ * - [`Self::Layered`] — in-house Sugiyama / layered (default; reaction schemes)
+ * - [`Self::Radial`] / [`Self::Force`] / [`Self::Stress`] — delegated to ELK
  */
 export type LayoutAlgorithm = "layered" | "radial" | "force" | "stress";

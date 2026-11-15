@@ -1,0 +1,19 @@
+title: Align baselines (named chain)
+expect: Ethanol → acetaldehyde; name baselines share one horizontal line (layout.align auto).
+spec:
+  type: reaction_scheme
+  layout:
+    align: auto
+  children:
+    - type: mol
+      id: A
+      smiles: CCO
+      name: ethanol
+    - type: mol
+      id: B
+      smiles: CC=O
+      name: acetaldehyde
+    - type: edge
+      sources: A
+      targets: B
+      arrow: forward

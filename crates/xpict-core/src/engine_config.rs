@@ -18,6 +18,8 @@ pub struct EngineConfig {
     pub scheme: SchemeConfig,
     pub nudge: NudgeConfig,
     pub elk: ElkPolicyConfig,
+    /// Capped budgets for the in-house layered placer.
+    pub layered: LayeredLayoutConfig,
 }
 
 impl Default for EngineConfig {
@@ -36,6 +38,7 @@ impl EngineConfig {
             scheme: SchemeConfig::pretty(),
             nudge: NudgeConfig::default(),
             elk: ElkPolicyConfig::default(),
+            layered: LayeredLayoutConfig::pretty(),
         }
     }
 
@@ -48,9 +51,35 @@ impl EngineConfig {
             scheme: SchemeConfig::fast(),
             nudge: NudgeConfig::fast(),
             elk: ElkPolicyConfig::default(),
+            layered: LayeredLayoutConfig::fast(),
         }
     }
 
+}
+
+/// Bounded budgets for Sugiyama-style scheme packing (no unbounded search).
+#[derive(Debug, Clone, PartialEq)]
+pub struct LayeredLayoutConfig {
+    /// Max barycenter / median crossing sweeps (each direction counts).
+    pub crossing_sweeps: usize,
+    /// Max cross-axis alignment / straighten passes after order is fixed.
+    pub align_passes: usize,
+}
+
+impl LayeredLayoutConfig {
+    pub fn pretty() -> Self {
+        Self {
+            crossing_sweeps: 24,
+            align_passes: 8,
+        }
+    }
+
+    pub fn fast() -> Self {
+        Self {
+            crossing_sweeps: 8,
+            align_passes: 3,
+        }
+    }
 }
 
 /// Scheme shaft routing search / scoring.

@@ -1,0 +1,25 @@
+title: Spacing defaults (32 / 48)
+expect: Default node_spacing 32 and layer_spacing 48 — readable gaps like prior reaction schemes.
+spec:
+  type: reaction_scheme
+  children:
+    - type: mol
+      id: A
+      smiles: CCO
+      name: ethanol
+    - type: mol
+      id: B
+      smiles: CC=O
+      name: acetaldehyde
+    - type: mol
+      id: C
+      smiles: CC(=O)O
+      name: acetic acid
+    - type: edge
+      sources: A
+      targets: B
+      arrow: forward
+    - type: edge
+      sources: B
+      targets: C
+      arrow: forward

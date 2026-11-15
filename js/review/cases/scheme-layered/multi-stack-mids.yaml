@@ -1,0 +1,21 @@
+title: Multi-reactant mid align
+expect: A+B→C stacks share a cross-axis mid with the product (plus between reactants).
+spec:
+  type: reaction_scheme
+  children:
+    - type: mol
+      id: A
+      smiles: CCO
+      name: ethanol
+    - type: mol
+      id: B
+      smiles: O=C=O
+      name: CO2
+    - type: mol
+      id: C
+      smiles: CC(=O)O
+      name: acetic acid
+    - type: edge
+      sources: [A, B]
+      targets: C
+      arrow: forward

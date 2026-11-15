@@ -1,7 +1,8 @@
 //! Compose a reaction scheme into one [`Scene`]: place painted mols + edge overlays.
 //!
-//! [`super::render_doc`] paints each molecule independently. This module lays
-//! them out with ELK (tight row fallback) and strokes edges via [`crate::arrows`].
+//! [`super::render_doc`] paints each molecule independently. This module packs
+//! mols with the in-house layered placer (ELK only for non-layered algorithms),
+//! then strokes edges via [`crate::arrows`] after visibility routing.
 
 use std::collections::HashMap;
 
@@ -13,7 +14,9 @@ use crate::arrows::{
 use crate::debug_box::debug_rect;
 use crate::scene::{LayerName, Primitive, Scene, TextAnchor, Viewport};
 
-use super::{fit, DepictSpec, DocPaint, EdgeNode, EdgeRouting, LabelPos, LayoutOpts, Node};
+use super::{
+    fit, DepictSpec, DocPaint, EdgeNode, EdgeRouting, LabelPos, LayoutAlgorithm, LayoutOpts, Node,
+};
 
 const EDGE_LABEL_FONT_PX: f64 = 11.0;
 const EDGE_LABEL_PAD: f64 = 4.0;
@@ -119,14 +122,12 @@ fn compose_reaction(
     let placement = match layout_scheme(spec, layout, &sizes, paints) {
         Ok(p) => p,
         Err(_) => {
-            // ELK can still fail on exotic graphs; keep a row pack but run the
-            // same refine/router so multi-endpoint tips are not first→first.
+            // Placer / non-layered ELK can still fail; row pack + same refine.
             let row = row_placement(&sizes);
             let refined = super::scheme_layout::refine_scheme_edges(
                 spec,
                 layout,
                 &row.positions,
-                &row.edge_paths,
                 paints,
                 &sizes,
             );
@@ -194,13 +195,12 @@ fn compose_reaction(
             .cloned()
             .filter(|pts| pts.len() >= 2)
             .unwrap_or_else(|| {
-                // Refine always hugs centroid→centroid. Never paint ELK/box ports.
+                // Refine always hugs centroid→centroid.
                 let (x, y, w, h) = src_box;
                 let (x2, y2, w2, h2) = tgt_box;
                 vec![(x + w * 0.5, y + h * 0.5), (x2 + w2 * 0.5, y2 + h2 * 0.5)]
             });
-        // Orthogonal ELK jogs still flatten under KINK_PX. Polyline/splines
-        // keep refine vertices: collinear collapse undoes a chem-clearing bow.
+        // Orthogonal: kink-collapse at paint. Polyline/splines keep refine verts.
         let pts = if edge.edge_routing_or(layout) == EdgeRouting::Orthogonal {
             simplify_route(&route, KINK_PX)
         } else {
@@ -368,23 +368,39 @@ fn layout_scheme(
     sizes: &[(String, f64, f64)],
     paints: &[DocPaint],
 ) -> Result<Placement, String> {
-    let graph = build_elk_graph(spec, layout, sizes);
-    let laid = crate::elk::layout_json(&serde_json::to_string(&graph).map_err(|e| e.to_string())?)?;
-    let mut placement = parse_elk_placement(spec, &laid, sizes)?;
-    let refined = super::scheme_layout::refine_scheme_edges(
-        spec,
-        layout,
-        &placement.positions,
-        &placement.edge_paths,
-        paints,
-        sizes,
+    let use_layered_placer = matches!(
+        layout.algorithm_or_default(),
+        LayoutAlgorithm::Layered
+    ) && !super::scheme_layout::is_network_scheme(
+        sizes.len(),
+        spec.edges().len(),
+        &layout.engine(),
     );
-    placement.positions = refined.positions;
-    placement.edge_paths = refined.edge_paths;
-    placement.edge_labels = refined.edge_labels;
-    Ok(placement)
+    let positions = if use_layered_placer {
+        let placed = super::scheme_layered::place_layered(spec, layout, sizes, paints)?;
+        let _ = (placed.width, placed.height, &placed.layers);
+        placed.positions
+    } else {
+        // Non-layered algorithms, and oversized network schemes, use elkrs for
+        // node positions only (shafts still come from scheme_route).
+        let graph = build_elk_graph(spec, layout, sizes);
+        let laid =
+            crate::elk::layout_json(&serde_json::to_string(&graph).map_err(|e| e.to_string())?)?;
+        parse_elk_positions(&laid, sizes)?
+    };
+    let refined =
+        super::scheme_layout::refine_scheme_edges(spec, layout, &positions, paints, sizes);
+    Ok(Placement {
+        positions: refined.positions,
+        edge_paths: refined.edge_paths,
+        edge_labels: refined.edge_labels,
+        width: None,
+        height: None,
+    })
 }
 
+/// Build an ELK JSON graph for **non-layered** algorithms only (radial/force/stress).
+/// Edge routing / labels are omitted — Rust owns shafts and label pose.
 fn build_elk_graph(spec: &DepictSpec, layout: &LayoutOpts, sizes: &[(String, f64, f64)]) -> Value {
     let kind = if super::scheme_layout::is_network_scheme(
         sizes.len(),
@@ -410,8 +426,7 @@ fn build_elk_graph(spec: &DepictSpec, layout: &LayoutOpts, sizes: &[(String, f64
         .collect();
 
     // One ELK edge per unordered mol pair among layout-participating edges.
-    // Coterminal A→B / B→A (or two A→B) share a corridor; `layout: false`
-    // edges are omitted so reverse/feedback cannot bump sources off layer 0.
+    // Coterminal A→B / B→A share one packing relation; `layout: false` omitted.
     let reps = coterminal_elk_rep(spec);
     let mut edges = Vec::new();
     for (i, e) in spec.edges().iter().enumerate() {
@@ -421,12 +436,8 @@ fn build_elk_graph(spec: &DepictSpec, layout: &LayoutOpts, sizes: &[(String, f64
         if reps.get(i).copied() != Some(i) {
             continue;
         }
-        // Count every coterminal member (including paint-only) so a reverse
-        // with layout:false still keeps labels off the ELK corridor.
-        let n_members = reps.iter().filter(|&&r| r == i).count();
-        // ELK rejects hyperedges (A+B→C). Expand to binary edges so every
-        // endpoint participates in layering; facing tips + scheme-plus still
-        // come from the single author edge in refine/paint.
+        let _ = reps.iter().filter(|&&r| r == i).count();
+        // ELK rejects hyperedges (A+B→C). Expand to binary edges for packing.
         let sources = e.sources.as_slice();
         let targets = e.targets.as_slice();
         let pairs: Vec<(&str, &str)> = if sources.len() <= 1 && targets.len() <= 1 {
@@ -444,24 +455,11 @@ fn build_elk_graph(spec: &DepictSpec, layout: &LayoutOpts, sizes: &[(String, f64
             } else {
                 format!("e{i}_{pi}")
             };
-            let mut entry = json!({
+            edges.push(json!({
                 "id": eid,
                 "sources": [elk_src],
                 "targets": [elk_tgt],
-            });
-            // Group labels belong to the refine pass. One ELK label still widens
-            // the pack and bends the shared corridor. Attach only to the rep pair.
-            if pi == 0 && n_members <= 1 {
-                if let Some(labels) = elk_edge_labels(spec, e, &format!("e{i}")) {
-                    entry["labels"] = labels;
-                }
-            }
-            if let Some(r) = e.edge_routing {
-                entry["layoutOptions"] = json!({
-                    "elk.edgeRouting": routing_name(r),
-                });
-            }
-            edges.push(entry);
+            }));
         }
     }
 
@@ -529,41 +527,26 @@ fn coterminal_elk_rep(spec: &DepictSpec) -> Vec<usize> {
     rep
 }
 
-fn member_reverses_rep(member: &EdgeNode, rep: &EdgeNode) -> bool {
-    let (s, t) = edge_src_tgt(member);
-    let (rs, rt) = edge_src_tgt(rep);
-    s == rt && t == rs && s != t
-}
-
-fn routing_name(r: EdgeRouting) -> &'static str {
-    match r {
-        EdgeRouting::Orthogonal => "ORTHOGONAL",
-        EdgeRouting::Polyline => "POLYLINE",
-        EdgeRouting::Splines => "SPLINES",
+fn parse_elk_positions(
+    laid_json: &str,
+    sizes: &[(String, f64, f64)],
+) -> Result<HashMap<String, (f64, f64)>, String> {
+    let laid: Value = serde_json::from_str(laid_json).map_err(|e| e.to_string())?;
+    let mut positions = HashMap::new();
+    for (id, _, _) in sizes {
+        positions.insert(id.clone(), (0.0, 0.0));
     }
-}
-
-fn elk_edge_labels(spec: &DepictSpec, edge: &EdgeNode, edge_id: &str) -> Option<Value> {
-    let (text, pos) = resolve_edge_label(spec, edge);
-    let text = text?.trim().to_string();
-    if text.is_empty() {
-        return None;
-    }
-    let (w, h) = measure_label(&text);
-    let side = match pos.as_deref().unwrap_or("above") {
-        "below" | "right" => "ALWAYS_DOWN",
-        _ => "ALWAYS_UP",
-    };
-    Some(json!([{
-        "id": format!("{edge_id}_lab"),
-        "text": text,
-        "width": w,
-        "height": h,
-        "layoutOptions": {
-            "elk.edgeLabels.placement": "CENTER",
-            "elk.layered.edgeLabels.sideSelection": side,
+    if let Some(children) = laid.get("children").and_then(|c| c.as_array()) {
+        for c in children {
+            let Some(id) = c.get("id").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            let x = c.get("x").and_then(|v| v.as_f64()).unwrap_or(0.0);
+            let y = c.get("y").and_then(|v| v.as_f64()).unwrap_or(0.0);
+            positions.insert(id.to_string(), (x, y));
         }
-    }]))
+    }
+    Ok(positions)
 }
 
 fn measure_label(text: &str) -> (f64, f64) {
@@ -593,116 +576,6 @@ fn measure_label(text: &str) -> (f64, f64) {
         let h = EDGE_LABEL_FONT_PX + EDGE_LABEL_PAD;
         (w, h)
     }
-}
-
-fn parse_elk_placement(
-    spec: &DepictSpec,
-    laid_json: &str,
-    sizes: &[(String, f64, f64)],
-) -> Result<Placement, String> {
-    let laid: Value = serde_json::from_str(laid_json).map_err(|e| e.to_string())?;
-    let mut positions = HashMap::new();
-    for (id, _, _) in sizes {
-        positions.insert(id.clone(), (0.0, 0.0));
-    }
-    if let Some(children) = laid.get("children").and_then(|c| c.as_array()) {
-        for c in children {
-            let Some(id) = c.get("id").and_then(|v| v.as_str()) else {
-                continue;
-            };
-            let x = c.get("x").and_then(|v| v.as_f64()).unwrap_or(0.0);
-            let y = c.get("y").and_then(|v| v.as_f64()).unwrap_or(0.0);
-            positions.insert(id.to_string(), (x, y));
-        }
-    }
-
-    let edges_out = laid.get("edges").and_then(|e| e.as_array());
-    let reps = coterminal_elk_rep(spec);
-    let spec_edges = spec.edges();
-    let mut edge_paths = Vec::with_capacity(spec_edges.len());
-    for i in 0..spec_edges.len() {
-        let r = reps[i];
-        let eid = format!("e{r}");
-        let mut path = edges_out.and_then(|arr| {
-            arr.iter()
-                .find(|e| e.get("id").and_then(|v| v.as_str()) == Some(eid.as_str()))
-                .and_then(edge_path_from_elk)
-        });
-        if let (Some(pts), Some(member), Some(rep)) =
-            (path.as_mut(), spec_edges.get(i), spec_edges.get(r))
-        {
-            if member_reverses_rep(member, rep) {
-                pts.reverse();
-            }
-        }
-        edge_paths.push(path);
-    }
-
-    Ok(Placement {
-        positions,
-        edge_paths,
-        edge_labels: vec![],
-        width: laid.get("width").and_then(|v| v.as_f64()),
-        height: laid.get("height").and_then(|v| v.as_f64()),
-    })
-}
-
-fn edge_path_from_elk(edge: &Value) -> Option<Vec<(f64, f64)>> {
-    let sections = edge.get("sections")?.as_array()?;
-    if sections.is_empty() {
-        return None;
-    }
-    let mut path = Vec::new();
-    for sec in sections {
-        let pts = section_points(sec);
-        if pts.is_empty() {
-            continue;
-        }
-        if path.is_empty() {
-            path.extend(pts);
-        } else if pts[0] == *path.last().unwrap() {
-            path.extend(pts.into_iter().skip(1));
-        } else {
-            path.extend(pts);
-        }
-    }
-    if path.len() >= 2 {
-        Some(path)
-    } else {
-        None
-    }
-}
-
-fn section_points(section: &Value) -> Vec<(f64, f64)> {
-    let start = section.get("startPoint").unwrap_or(&Value::Null);
-    let end = section.get("endPoint").unwrap_or(&Value::Null);
-    let mut pts = vec![(
-        start.get("x").and_then(|v| v.as_f64()).unwrap_or(0.0),
-        start.get("y").and_then(|v| v.as_f64()).unwrap_or(0.0),
-    )];
-    if let Some(bends) = section.get("bendPoints").and_then(|b| b.as_array()) {
-        for bp in bends {
-            pts.push((
-                bp.get("x").and_then(|v| v.as_f64()).unwrap_or(0.0),
-                bp.get("y").and_then(|v| v.as_f64()).unwrap_or(0.0),
-            ));
-        }
-    }
-    pts.push((
-        end.get("x").and_then(|v| v.as_f64()).unwrap_or(0.0),
-        end.get("y").and_then(|v| v.as_f64()).unwrap_or(0.0),
-    ));
-    let mut cleaned = Vec::new();
-    for p in pts {
-        if cleaned
-            .last()
-            .map(|&(lx, ly): &(f64, f64)| (p.0 - lx).abs() > 1e-6 || (p.1 - ly).abs() > 1e-6)
-            .unwrap_or(true)
-        {
-            cleaned.push(p);
-        }
-    }
-    cleaned
 }
 
 fn resolve_edge_label(spec: &DepictSpec, edge: &EdgeNode) -> (Option<String>, Option<String>) {
@@ -1364,6 +1237,99 @@ mod tests {
         );
     }
 
+    fn pair_spec(labeled: bool) -> DepictSpec {
+        let mut children = vec![
+            Node::Mol(MolNode {
+                id: Some("A".into()),
+                smiles: Some("CCO".into()),
+                ..Default::default()
+            }),
+            Node::Mol(MolNode {
+                id: Some("B".into()),
+                smiles: Some("CC=O".into()),
+                ..Default::default()
+            }),
+        ];
+        if labeled {
+            children.push(Node::Text(TextNode {
+                type_: TextNodeKind::Text,
+                id: Some("ox".into()),
+                text: "ox".into(),
+                color: None,
+                scale: None,
+                margin: None,
+                opts: None,
+            }));
+            children.push(Node::Text(TextNode {
+                type_: TextNodeKind::Text,
+                id: Some("red".into()),
+                text: "red".into(),
+                color: None,
+                scale: None,
+                margin: None,
+                opts: None,
+            }));
+        }
+        children.push(Node::Edge(EdgeNode {
+            type_: EdgeNodeKind::Edge,
+            sources: MolIds::One("A".into()),
+            targets: MolIds::One("B".into()),
+            label: labeled.then_some(crate::doc::Label::Placed(crate::doc::LabelPlacement {
+                id: "ox".into(),
+                pos: Some(LabelPos::Above),
+            })),
+            edge_routing: None,
+            layout: None,
+            role: None,
+            arrow: EdgeArrow::Forward,
+            color: None,
+            stroke_width: None,
+            dashed: false,
+        }));
+        children.push(Node::Edge(EdgeNode {
+            type_: EdgeNodeKind::Edge,
+            sources: MolIds::One("B".into()),
+            targets: MolIds::One("A".into()),
+            label: labeled.then_some(crate::doc::Label::Placed(crate::doc::LabelPlacement {
+                id: "red".into(),
+                pos: Some(LabelPos::Below),
+            })),
+            edge_routing: None,
+            layout: None,
+            role: None,
+            arrow: EdgeArrow::Forward,
+            color: None,
+            stroke_width: None,
+            dashed: false,
+        }));
+        DepictSpec::ReactionScheme {
+            id: None,
+            children,
+            layout: None,
+            opts: None,
+            color: None,
+            scale: None,
+            aromatic: None,
+            debug_box: None,
+            debug_align: None,
+            pad: None,
+        svg: None,
+        }
+    }
+
+    fn overlay_shafts(scene: &Scene) -> Vec<Vec<(f64, f64)>> {
+        scene
+            .overlays
+            .iter()
+            .filter_map(|p| match p {
+                Primitive::Path {
+                    d, class: Some(c), ..
+                } if c.contains("edge") && !c.contains("head") => Some(path_coords(d)),
+                _ => None,
+            })
+            .collect()
+    }
+
     #[test]
     fn compose_empty_and_group_row() {
         let empty = compose_scheme(
@@ -1522,326 +1488,6 @@ mod tests {
     }
 
     #[test]
-    fn section_and_edge_path_parse() {
-        let sec = serde_json::json!({
-            "startPoint": {"x": 0.0, "y": 0.0},
-            "bendPoints": [{"x": 10.0, "y": 0.0}],
-            "endPoint": {"x": 10.0, "y": 10.0}
-        });
-        let pts = section_points(&sec);
-        assert_eq!(pts.len(), 3);
-        let edge = serde_json::json!({
-            "sections": [sec]
-        });
-        let path = edge_path_from_elk(&edge).unwrap();
-        assert!(path.len() >= 2);
-    }
-
-    #[test]
-    fn row_placement_and_halo_and_skip_edges() {
-        let p = row_placement(&[("a".into(), 10.0, 20.0), ("b".into(), 12.0, 40.0)]);
-        assert!(p.positions["a"].1 > 0.0); // shorter node is vertically centered
-        assert_eq!(p.positions["b"].1, 0.0);
-
-        let mut a = paint("A", 50.0, 40.0);
-        a.scene.halo.push(Primitive::Circle {
-            cx: 1.0,
-            cy: 1.0,
-            r: 2.0,
-            fill: Some("#fff".into()),
-            stroke: None,
-            stroke_width: 0.0,
-            opacity: 1.0,
-            class: Some("halo".into()),
-        });
-        // Empty viewports → scene_size uses scene width/height.
-        let bare = DocPaint {
-            id: "Z".into(),
-            frame_json: String::new(),
-            molecule: a.molecule.clone(),
-            scene: Scene {
-                width: 30.0,
-                height: 20.0,
-                x: 0.0,
-                y: 0.0,
-                viewports: vec![],
-                overlays: vec![],
-                halo: vec![],
-            },
-        };
-        let _ = scene_size(&bare.scene);
-
-        let spec = DepictSpec::ReactionScheme {
-            id: None,
-            children: vec![
-                Node::Mol(MolNode {
-                    id: Some("A".into()),
-                    smiles: Some("C".into()),
-                    ..Default::default()
-                }),
-                Node::Mol(MolNode {
-                    id: Some("B".into()),
-                    smiles: Some("O".into()),
-                    ..Default::default()
-                }),
-                Node::Text(TextNode {
-                    type_: TextNodeKind::Text,
-                    id: Some("lab".into()),
-                    text: "  ".into(), // empty after trim → no ELK label
-                    color: None,
-                    scale: None,
-                    margin: None,
-                    opts: None,
-                }),
-                Node::Edge(EdgeNode {
-                    type_: EdgeNodeKind::Edge,
-                    sources: MolIds::One("A".into()),
-                    targets: MolIds::One("B".into()),
-                    label: Some(crate::doc::Label::Placed(crate::doc::LabelPlacement {
-                        id: "lab".into(),
-                        pos: Some(LabelPos::Below),
-                    })),
-                    edge_routing: Some(EdgeRouting::Splines),
-                    layout: None,
-                    role: None,
-                    arrow: EdgeArrow::Line,
-                    color: Some("#06c".into()),
-                    stroke_width: Some(2.0),
-                    dashed: true,
-                }),
-                // Missing endpoint — skipped.
-                Node::Edge(EdgeNode {
-                    type_: EdgeNodeKind::Edge,
-                    sources: MolIds::One("A".into()),
-                    targets: MolIds::One("missing".into()),
-                    label: None,
-                    edge_routing: None,
-                    layout: None,
-                    role: None,
-                    arrow: EdgeArrow::Forward,
-                    color: None,
-                    stroke_width: None,
-                    dashed: false,
-                }),
-            ],
-            layout: Some(LayoutOpts {
-                edge_routing: Some(EdgeRouting::Polyline),
-                algorithm: Some(crate::doc::LayoutAlgorithm::Layered),
-                direction: Some(crate::doc::LayoutDirection::Down),
-                node_spacing: Some(16.0),
-                layer_spacing: Some(8.0),
-                quality: None,
-            }),
-            opts: None,
-            color: None,
-            scale: None,
-            aromatic: None,
-            debug_box: None,
-            debug_align: None,
-            pad: None,
-        svg: None,
-        };
-        let scene = compose_scheme(&spec, &[a, paint("B", 50.0, 40.0)]).unwrap();
-        assert!(
-            scene.viewports.iter().any(|vp| vp
-                .layers
-                .iter()
-                .any(|l| l.name == LayerName::Halo && !l.primitives.is_empty())),
-            "mol halo rides the viewport group, not a rewritten document path"
-        );
-        assert!(!scene.overlays.is_empty());
-        assert_eq!(routing_name(EdgeRouting::Orthogonal), "ORTHOGONAL");
-        assert_eq!(routing_name(EdgeRouting::Splines), "SPLINES");
-
-        // Label resolve edge cases.
-        let (t, _) = resolve_edge_label(
-            &spec,
-            &EdgeNode {
-                type_: EdgeNodeKind::Edge,
-                sources: MolIds::One("A".into()),
-                targets: MolIds::One("B".into()),
-                label: None,
-                edge_routing: None,
-                layout: None,
-                role: None,
-                arrow: EdgeArrow::Forward,
-                color: None,
-                stroke_width: None,
-                dashed: false,
-            },
-        );
-        assert!(t.is_none());
-
-        let empty_edge = serde_json::json!({"sections": []});
-        assert!(edge_path_from_elk(&empty_edge).is_none());
-        let multi = serde_json::json!({
-            "sections": [
-                {
-                    "startPoint": {"x": 0.0, "y": 0.0},
-                    "endPoint": {"x": 5.0, "y": 0.0}
-                },
-                {
-                    "startPoint": {"x": 5.0, "y": 0.0},
-                    "bendPoints": [{"x": 5.0, "y": 5.0}],
-                    "endPoint": {"x": 10.0, "y": 5.0}
-                }
-            ]
-        });
-        assert!(edge_path_from_elk(&multi).unwrap().len() >= 3);
-
-        let mut mr = 0.0;
-        let mut mb = 0.0;
-        expand_bounds_prim(
-            &Primitive::Circle {
-                cx: 9.0,
-                cy: 9.0,
-                r: 2.0,
-                fill: None,
-                stroke: None,
-                stroke_width: 0.0,
-                opacity: 1.0,
-                class: None,
-            },
-            &mut mr,
-            &mut mb,
-        );
-        assert!(mr > 9.0);
-    }
-
-    #[test]
-    fn compose_empty_mol_and_anchors() {
-        let mol = DepictSpec::Mol(MolNode {
-            smiles: Some("C".into()),
-            cxsmiles: None,
-            molfile: None,
-            id: None,
-            label: None,
-            name: None,
-            atom_number: None,
-            atom_label: None,
-            region: None,
-            circle: None,
-            callout: None,
-            star_labels: None,
-            align_to: None,
-            opts: None,
-            color: None,
-            scale: None,
-            weight: None,
-            halo: None,
-            aromatic: None,
-            debug_box: None,
-            debug_align: None,
-            pad: None,
-            shade: None,
-            ..Default::default()
-        });
-        let empty = compose_scheme(&mol, &[]).unwrap();
-        assert!(empty.viewports.is_empty());
-
-        assert_eq!(routing_name(EdgeRouting::Polyline), "POLYLINE");
-        match edge_prim_to_scene(&EdgePrim::Text {
-            x: 0.0,
-            y: 0.0,
-            text: "x".into(),
-            fill: "#000".into(),
-            font_size: 10.0,
-            anchor: "end".into(),
-            class: "c".into(),
-            rotate: 0.0,
-        }) {
-            Primitive::Text {
-                anchor: TextAnchor::End,
-                ..
-            } => {}
-            _ => panic!("end anchor"),
-        }
-
-        let mut a = paint("A", 40.0, 30.0);
-        a.scene.halo.push(Primitive::Text {
-            x: 0.0,
-            y: 0.0,
-            text: "h".into(),
-            fill: "#fff".into(),
-            font_size: 8.0,
-            anchor: TextAnchor::Start,
-            class: None,
-            rotate: None,
-        });
-        let row = place_row(&[a, paint("B", 40.0, 30.0)], 8.0);
-        assert_eq!(row.viewports.len(), 2);
-        assert!(
-            row.viewports.iter().any(|vp| vp
-                .layers
-                .iter()
-                .any(|l| l.name == LayerName::Halo && !l.primitives.is_empty())),
-            "row halo stays on the mol group"
-        );
-
-        // Relative path cmds left as-is; covers the else branch.
-        let rel = translate_prim(
-            &Primitive::Path {
-                d: "m 1 2 l 3 4".into(),
-                stroke: None,
-                fill: None,
-                stroke_width: 1.0,
-                opacity: 1.0,
-                stroke_dasharray: None,
-                stroke_linecap: None,
-                class: None,
-                data_text: None,
-            },
-            10.0,
-            10.0,
-        );
-        match rel {
-            Primitive::Path { d, .. } => {
-                assert!(d.contains('m') || d.contains('l') || d.contains('1'))
-            }
-            _ => panic!("path"),
-        }
-
-        let (none_t, _) = resolve_edge_label(
-            &DepictSpec::ReactionScheme {
-                id: None,
-                children: vec![],
-                layout: None,
-                opts: None,
-                color: None,
-                scale: None,
-                aromatic: None,
-                debug_box: None,
-                debug_align: None,
-                pad: None,
-            svg: None,
-            },
-            &EdgeNode {
-                type_: EdgeNodeKind::Edge,
-                sources: MolIds::One("A".into()),
-                targets: MolIds::One("B".into()),
-                label: Some(crate::doc::Label::Items(vec![])),
-                edge_routing: None,
-                layout: None,
-                role: None,
-                arrow: EdgeArrow::Forward,
-                color: None,
-                stroke_width: None,
-                dashed: false,
-            },
-        );
-        assert!(none_t.is_none());
-
-        let joined = edge_path_from_elk(&serde_json::json!({
-            "sections": [
-                {"startPoint":{"x":0,"y":0},"endPoint":{"x":1,"y":0}},
-                {"startPoint":{"x":2,"y":0},"endPoint":{"x":3,"y":0}}
-            ]
-        }))
-        .unwrap();
-        assert!(joined.len() >= 3);
-    }
-
-    #[test]
     fn compose_mol_root_passthrough() {
         let paints = vec![paint("m0", 50.0, 40.0)];
         let spec = DepictSpec::Mol(MolNode {
@@ -1936,172 +1582,6 @@ mod tests {
             (xa - xb).abs() > 1.0,
             "mols should keep distinct ELK x: {xa} vs {xb}"
         );
-    }
-
-    #[test]
-    fn scheme_keeps_elk_mol_positions() {
-        let spec = DepictSpec::ReactionScheme {
-            id: None,
-            children: vec![
-                Node::Mol(MolNode {
-                    id: Some("A".into()),
-                    smiles: Some("CCO".into()),
-                    ..Default::default()
-                }),
-                Node::Edge(EdgeNode {
-                    type_: EdgeNodeKind::Edge,
-                    sources: MolIds::One("A".into()),
-                    targets: MolIds::One("B".into()),
-                    label: None,
-                    edge_routing: None,
-                    layout: None,
-                    role: None,
-                    arrow: EdgeArrow::Forward,
-                    color: None,
-                    stroke_width: None,
-                    dashed: false,
-                }),
-                Node::Mol(MolNode {
-                    id: Some("B".into()),
-                    smiles: Some("CC=O".into()),
-                    ..Default::default()
-                }),
-            ],
-            layout: None,
-            opts: None,
-            color: None,
-            scale: None,
-            aromatic: None,
-            debug_box: None,
-            debug_align: None,
-            pad: None,
-        svg: None,
-        };
-        let paints = vec![paint("A", 120.0, 80.0), paint("B", 120.0, 80.0)];
-        let sizes: Vec<(String, f64, f64)> = paints
-            .iter()
-            .map(|p| (p.id.clone(), p.scene.width, p.scene.height))
-            .collect();
-        let layout = LayoutOpts::default();
-        let graph = build_elk_graph(&spec, &layout, &sizes);
-        let laid = crate::elk::layout_json(&serde_json::to_string(&graph).unwrap()).unwrap();
-        let elk = parse_elk_placement(&spec, &laid, &sizes).unwrap();
-        let scene = compose_scheme(&spec, &paints).expect("compose");
-        assert_eq!(scene.viewports.len(), elk.positions.len());
-        for vp in &scene.viewports {
-            let id = vp.id.as_deref().unwrap_or("?");
-            let (x, y) = elk.positions[id];
-            assert!(
-                (vp.x - x).abs() < 1e-9 && (vp.y - y).abs() < 1e-9,
-                "mol {id} moved: elk ({x},{y}) compose ({},{})",
-                vp.x,
-                vp.y
-            );
-        }
-    }
-
-    fn pair_spec(labeled: bool) -> DepictSpec {
-        let mut children = vec![
-            Node::Mol(MolNode {
-                id: Some("A".into()),
-                smiles: Some("CCO".into()),
-                ..Default::default()
-            }),
-            Node::Mol(MolNode {
-                id: Some("B".into()),
-                smiles: Some("CC=O".into()),
-                ..Default::default()
-            }),
-        ];
-        if labeled {
-            children.push(Node::Text(TextNode {
-                type_: TextNodeKind::Text,
-                id: Some("ox".into()),
-                text: "ox".into(),
-                color: None,
-                scale: None,
-                margin: None,
-                opts: None,
-            }));
-            children.push(Node::Text(TextNode {
-                type_: TextNodeKind::Text,
-                id: Some("red".into()),
-                text: "red".into(),
-                color: None,
-                scale: None,
-                margin: None,
-                opts: None,
-            }));
-        }
-        children.push(Node::Edge(EdgeNode {
-            type_: EdgeNodeKind::Edge,
-            sources: MolIds::One("A".into()),
-            targets: MolIds::One("B".into()),
-            label: labeled.then_some(crate::doc::Label::Placed(crate::doc::LabelPlacement {
-                id: "ox".into(),
-                pos: Some(LabelPos::Above),
-            })),
-            edge_routing: None,
-            layout: None,
-            role: None,
-            arrow: EdgeArrow::Forward,
-            color: None,
-            stroke_width: None,
-            dashed: false,
-        }));
-        children.push(Node::Edge(EdgeNode {
-            type_: EdgeNodeKind::Edge,
-            sources: MolIds::One("B".into()),
-            targets: MolIds::One("A".into()),
-            label: labeled.then_some(crate::doc::Label::Placed(crate::doc::LabelPlacement {
-                id: "red".into(),
-                pos: Some(LabelPos::Below),
-            })),
-            edge_routing: None,
-            layout: None,
-            role: None,
-            arrow: EdgeArrow::Forward,
-            color: None,
-            stroke_width: None,
-            dashed: false,
-        }));
-        DepictSpec::ReactionScheme {
-            id: None,
-            children,
-            layout: None,
-            opts: None,
-            color: None,
-            scale: None,
-            aromatic: None,
-            debug_box: None,
-            debug_align: None,
-            pad: None,
-        svg: None,
-        }
-    }
-
-    #[test]
-    fn coterminal_pair_skips_elk_edge_labels() {
-        let spec = pair_spec(true);
-        let paints = vec![paint("A", 80.0, 60.0), paint("B", 80.0, 60.0)];
-        let sizes: Vec<(String, f64, f64)> = paints
-            .iter()
-            .map(|p| (p.id.clone(), p.scene.width, p.scene.height))
-            .collect();
-        let graph = build_elk_graph(&spec, &LayoutOpts::default(), &sizes);
-        let edges = graph["edges"].as_array().expect("edges");
-        assert_eq!(
-            edges.len(),
-            1,
-            "ELK should see one edge for a coterminal pair: {edges:?}"
-        );
-        assert_eq!(edges[0]["id"], "e0");
-        for e in edges {
-            assert!(
-                e.get("labels").is_none(),
-                "coterminal labels must not go to ELK: {e}"
-            );
-        }
     }
 
     #[test]
@@ -2297,47 +1777,6 @@ mod tests {
             3,
             "feedback shaft still paints"
         );
-    }
-
-    #[test]
-    fn parse_copies_elk_path_onto_reverse_member() {
-        let spec = pair_spec(false);
-        let laid = serde_json::json!({
-            "id": "root",
-            "width": 200.0,
-            "height": 80.0,
-            "children": [
-                {"id": "A", "x": 0.0, "y": 0.0},
-                {"id": "B", "x": 100.0, "y": 0.0}
-            ],
-            "edges": [{
-                "id": "e0",
-                "sections": [{
-                    "startPoint": {"x": 80.0, "y": 30.0},
-                    "endPoint": {"x": 100.0, "y": 30.0}
-                }]
-            }]
-        })
-        .to_string();
-        let sizes = vec![("A".into(), 80.0, 60.0), ("B".into(), 80.0, 60.0)];
-        let p = parse_elk_placement(&spec, &laid, &sizes).expect("parse");
-        let a = p.edge_paths[0].clone().expect("rep");
-        let b = p.edge_paths[1].clone().expect("rev");
-        assert_eq!(a, vec![(80.0, 30.0), (100.0, 30.0)]);
-        assert_eq!(b, vec![(100.0, 30.0), (80.0, 30.0)]);
-    }
-
-    fn overlay_shafts(scene: &Scene) -> Vec<Vec<(f64, f64)>> {
-        scene
-            .overlays
-            .iter()
-            .filter_map(|p| match p {
-                Primitive::Path {
-                    d, class: Some(c), ..
-                } if c.contains("edge") && !c.contains("head") => Some(path_coords(d)),
-                _ => None,
-            })
-            .collect()
     }
 
     #[test]

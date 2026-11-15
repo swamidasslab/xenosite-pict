@@ -84,7 +84,8 @@ pub use doc::{
     AtomLabelSpec, AtomNumberBy, AtomNumberPolicy, AtomNumberSpec, CalloutField, CalloutSpec,
     CircleField, CircleSpec, CommonOpts, DepictSpec, DocPaint, EdgeArrow, EdgeNode, EdgeNodeKind,
     EdgeRouting, FillSpec, ForTypesPatch, Label, LabelItem, LabelLanes, LabelPlacement, LabelPos,
-    LabelRole, LayoutAlgorithm, LayoutDirection, LayoutOpts, LayoutQuality, MolIds, MolNode,
+    LabelRole, LayerAlign, LayoutAlgorithm, LayoutDirection, LayoutOpts, LayoutQuality, MolIds,
+    MolNode,
     MolNodeKind, MolOpts,
     MolOverlayFields, MolText, MolTextSpec, Node, NodeType, Opts, OptsPatch, RegionField,
     RegionSpec, RegionStyle, RegionTextPlace, ShadeSpec, ShadeStyle, StrokeSpec, TextNode,
@@ -106,7 +107,8 @@ pub use elk::{
     layout_json as elk_layout_json, scheme_layout_options, DiagramKind as ElkDiagramKind,
 };
 pub use engine_config::{
-    ArrowConfig, ElkPolicyConfig, EngineConfig, NudgeConfig, RouteConfig, SchemeConfig, SolveConfig,
+    ArrowConfig, ElkPolicyConfig, EngineConfig, LayeredLayoutConfig, NudgeConfig, RouteConfig,
+    SchemeConfig, SolveConfig,
 };
 pub use geom::{
     capsule_halo_path_d, disk_halo_path_d, douglas_peucker, douglas_peucker_closed,

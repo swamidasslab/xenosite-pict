@@ -1,0 +1,18 @@
+title: Mixed named / unnamed Auto
+expect: Named mol uses baseline; unnamed product centroid sits on that baseline line.
+spec:
+  type: reaction_scheme
+  layout:
+    align: auto
+  children:
+    - type: mol
+      id: A
+      smiles: CCO
+      name: ethanol
+    - type: mol
+      id: B
+      smiles: CC=O
+    - type: edge
+      sources: A
+      targets: B
+      arrow: forward

@@ -1,6 +1,8 @@
 //! Multi-molecule diagram placement via **elkrs** (native ELK).
 //!
-//! Used by [`crate::doc::compose_scheme`] for reaction_scheme documents.
+//! Used by [`crate::doc::compose_scheme`] for non-layered algorithms and
+//! oversized network schemes. Standard layered reactions use
+//! [`crate::doc::scheme_layered`].
 
 use std::collections::BTreeMap;
 
@@ -19,14 +21,6 @@ fn direction_elk(d: LayoutDirection) -> &'static str {
         LayoutDirection::Left => "LEFT",
         LayoutDirection::Up => "UP",
         LayoutDirection::Down => "DOWN",
-    }
-}
-
-fn routing_elk(r: EdgeRouting) -> &'static str {
-    match r {
-        EdgeRouting::Orthogonal => "ORTHOGONAL",
-        EdgeRouting::Polyline => "POLYLINE",
-        EdgeRouting::Splines => "SPLINES",
     }
 }
 
@@ -128,12 +122,7 @@ pub fn scheme_layout_options(kind: DiagramKind, opts: &LayoutOpts) -> BTreeMap<S
             direction_elk(opts.direction_or_default()).into(),
         );
     }
-    if opts.edge_routing.is_some() {
-        base.insert(
-            "elk.edgeRouting".into(),
-            routing_elk(opts.edge_routing_or_default()).into(),
-        );
-    }
+    // EdgeRouting is Rust paint/style only — do not feed elk.edgeRouting.
     if let Some(ns) = opts.node_spacing {
         base.insert("elk.spacing.nodeNode".into(), ns.to_string());
     }
@@ -210,18 +199,15 @@ mod tests {
             let m = scheme_layout_options(DiagramKind::Network, &opts);
             assert_eq!(m.get("elk.direction").unwrap(), want);
         }
-        for (r, want) in [
-            (EdgeRouting::Orthogonal, "ORTHOGONAL"),
-            (EdgeRouting::Polyline, "POLYLINE"),
-            (EdgeRouting::Splines, "SPLINES"),
-        ] {
-            let opts = LayoutOpts {
-                edge_routing: Some(r),
+        // EdgeRouting is Rust paint-only; scheme_layout_options keeps default POLYLINE.
+        let m = scheme_layout_options(
+            DiagramKind::Network,
+            &LayoutOpts {
+                edge_routing: Some(EdgeRouting::Orthogonal),
                 ..Default::default()
-            };
-            let m = scheme_layout_options(DiagramKind::Network, &opts);
-            assert_eq!(m.get("elk.edgeRouting").unwrap(), want);
-        }
+            },
+        );
+        assert_eq!(m.get("elk.edgeRouting").unwrap(), "POLYLINE");
         for (a, want) in [
             (LayoutAlgorithm::Layered, "layered"),
             (LayoutAlgorithm::Radial, "radial"),

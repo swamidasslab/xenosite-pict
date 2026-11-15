@@ -1,5 +1,5 @@
-//! Soft mol translation after ELK: open a clear shaft corridor when a small
-//! move helps, without packing mols into each other.
+//! Soft mol translation after packing: open a clear shaft corridor when a
+//! small move helps, without packing mols into each other.
 
 use std::collections::{HashMap, HashSet};
 

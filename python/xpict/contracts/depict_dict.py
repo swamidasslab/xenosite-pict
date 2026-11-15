@@ -299,6 +299,7 @@ class MolNodeDict(TypedDict, total=False):
     halo: NotRequired[bool]
     id: NotRequired[str]
     label: NotRequired[LabelDict]
+    layer: NotRequired[int]
     molfile: NotRequired[str]
     name: NotRequired[MolTextDict]
     opts: NotRequired[OptsDict]
@@ -375,6 +376,9 @@ class GroupNodeDict(TypedDict, total=False):
 LayoutAlgorithm = Literal['layered', 'radial', 'force', 'stress']
 
 
+LayerAlign = Literal['auto', 'baseline', 'centroid', 'top', 'bottom', 'middle']
+
+
 LayoutDirection = Literal['right', 'left', 'up', 'down']
 
 
@@ -384,6 +388,7 @@ LayoutQuality = Literal['pretty', 'fast']
 class LayoutOptsDict(TypedDict, total=False):
     """Layout for [`DepictSpec::ReactionScheme`]."""
     algorithm: NotRequired[LayoutAlgorithm]
+    align: NotRequired[LayerAlign]
     direction: NotRequired[LayoutDirection]
     edge_routing: NotRequired[EdgeRouting]
     layer_spacing: NotRequired[float]
