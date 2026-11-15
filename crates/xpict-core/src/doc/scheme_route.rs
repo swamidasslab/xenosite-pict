@@ -2375,65 +2375,87 @@ fn tile_clear_detour(
     None
 }
 
-/// Route around the union AABB of foreign tiles the tip chord punches.
+/// Route around the union AABB of foreign tiles the tip (or a candidate) hits.
+/// Expands the union when a candidate clips a new tile (dense Morphine rows).
 fn escape_around_blocking_tiles(
     start: Pt,
     goal: Pt,
     tiles: &[Obstacle],
     skip: &HashSet<&str>,
 ) -> Vec<Pt> {
-    let mut x0 = f64::INFINITY;
-    let mut y0 = f64::INFINITY;
-    let mut x1 = f64::NEG_INFINITY;
-    let mut y1 = f64::NEG_INFINITY;
-    let mut any = false;
+    let tip_len = dist(start, goal).max(1.0);
+    let mut union_ids: HashSet<String> = HashSet::new();
     for o in tiles {
         if skip.contains(o.mol_id.as_str()) {
             continue;
         }
-        // Use the same AABB sampler as the final tile gate.
-        if path_clears_tile_aabbs(&[start, goal], &[o.clone()], skip) {
-            continue;
+        if !path_clears_tile_aabbs(&[start, goal], std::slice::from_ref(o), skip) {
+            union_ids.insert(o.mol_id.clone());
         }
-        let (a, b, c, d) = o.aabb;
-        x0 = x0.min(a);
-        y0 = y0.min(b);
-        x1 = x1.max(c);
-        y1 = y1.max(d);
-        any = true;
     }
-    if !any {
+    if union_ids.is_empty() {
         return vec![start, goal];
     }
-    let pad = BOND_PX * 4.0;
-    // Expand past endpoints so a tip that starts just outside a blocker does
-    // not take a "side" route that steps *into* the tile first.
-    let left = x0.min(start.0).min(goal.0) - pad;
-    let right = x1.max(start.0).max(goal.0) + pad;
-    let top = y0.min(start.1).min(goal.1) - pad;
-    let bot = y1.max(start.1).max(goal.1) + pad;
-    let candidates = [
-        vec![start, (left, start.1), (left, goal.1), goal],
-        vec![start, (right, start.1), (right, goal.1), goal],
-        vec![start, (start.0, top), (goal.0, top), goal],
-        vec![start, (start.0, bot), (goal.0, bot), goal],
-        vec![start, (left, top), (right, top), goal],
-        vec![start, (left, bot), (right, bot), goal],
-    ];
-    let tip_len = dist(start, goal).max(1.0);
     let mut best: Option<(f64, Vec<Pt>)> = None;
-    for cand in candidates {
-        let pts = prune_close_controls(&cand, CLOSE_CTRL_PX);
-        if pts.len() < 3 || !path_clears_tile_aabbs(&pts, tiles, skip) {
-            continue;
+    for _ in 0..4 {
+        let mut x0 = f64::INFINITY;
+        let mut y0 = f64::INFINITY;
+        let mut x1 = f64::NEG_INFINITY;
+        let mut y1 = f64::NEG_INFINITY;
+        for o in tiles {
+            if !union_ids.contains(&o.mol_id) {
+                continue;
+            }
+            let (a, b, c, d) = o.aabb;
+            x0 = x0.min(a);
+            y0 = y0.min(b);
+            x1 = x1.max(c);
+            y1 = y1.max(d);
         }
-        let len = polyline_len(&pts);
-        if len > tip_len * 2.2 {
-            continue;
+        let pad = BOND_PX * 4.0;
+        let left = x0.min(start.0).min(goal.0) - pad;
+        let right = x1.max(start.0).max(goal.0) + pad;
+        let top = y0.min(start.1).min(goal.1) - pad;
+        let bot = y1.max(start.1).max(goal.1) + pad;
+        let candidates = [
+            vec![start, (left, start.1), (left, goal.1), goal],
+            vec![start, (right, start.1), (right, goal.1), goal],
+            vec![start, (start.0, top), (goal.0, top), goal],
+            vec![start, (start.0, bot), (goal.0, bot), goal],
+            vec![start, (left, top), (right, top), goal],
+            vec![start, (left, bot), (right, bot), goal],
+        ];
+        let mut grew = false;
+        for cand in candidates {
+            let pts = prune_close_controls(&cand, CLOSE_CTRL_PX);
+            if pts.len() < 3 {
+                continue;
+            }
+            let len = polyline_len(&pts);
+            if len > tip_len * 2.2 {
+                continue;
+            }
+            if path_clears_tile_aabbs(&pts, tiles, skip) {
+                let better = best.as_ref().map(|(bl, _)| len < *bl).unwrap_or(true);
+                if better {
+                    best = Some((len, pts));
+                }
+                continue;
+            }
+            // Candidate clipped new tiles — grow the union and retry.
+            for o in tiles {
+                if skip.contains(o.mol_id.as_str()) || union_ids.contains(&o.mol_id) {
+                    continue;
+                }
+                if !path_clears_tile_aabbs(&pts, std::slice::from_ref(o), skip)
+                    && union_ids.insert(o.mol_id.clone())
+                {
+                    grew = true;
+                }
+            }
         }
-        let better = best.as_ref().map(|(bl, _)| len < *bl).unwrap_or(true);
-        if better {
-            best = Some((len, pts));
+        if best.is_some() || !grew {
+            break;
         }
     }
     best.map(|(_, p)| p).unwrap_or_else(|| vec![start, goal])
@@ -3582,4 +3604,28 @@ mod tests {
         );
     }
 
+    #[test]
+    fn aabb_sampler_flags_1684_tip() {
+        let a = (723.66, 807.84);
+        let b = (447.09, 1007.08);
+        let tile = obstacle_with_hull(
+            "xbm:0001684".into(),
+            convex_hull_pts(&[
+                (439.83, 641.43),
+                (439.83 + 210.62, 641.43),
+                (439.83 + 210.62, 641.43 + 239.78),
+                (439.83, 641.43 + 239.78),
+            ]),
+        );
+        let skip: HashSet<&str> = ["i0", "xbm:0005110"].into_iter().collect();
+        assert!(
+            !path_clears_tile_aabbs(&[a, b], &[tile.clone()], &skip),
+            "1684 tip must be flagged by AABB sampler"
+        );
+        let detour = tile_clear_detour(a, b, &[], &[tile], &skip);
+        assert!(
+            detour.as_ref().is_some_and(|p| p.len() >= 3),
+            "tile_clear_detour must skirt 1684, got {detour:?}"
+        );
+    }
 }

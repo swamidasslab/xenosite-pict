@@ -223,6 +223,10 @@ fn compose_reaction(
 
         let (label_text, label_pos) = resolve_edge_label(spec, edge);
         let label_pose = placement.edge_labels.get(i).and_then(|p| *p);
+        // Tips stay Catmull-capable (degenerate to L). Bowed routes use
+        // polyline — Catmull sagitta was dipping into sibling tiles that
+        // the control polygon had cleared (Morphine fan).
+        let curve_catmull = pts.len() <= 2;
         let paint = EdgePaintIn {
             pts,
             arrow: edge.arrow,
@@ -233,9 +237,7 @@ fn compose_reaction(
             label: label_text,
             label_pos,
             index: i,
-            // Visibility routes + tip standoff: Catmull through controls with
-            // safe sagitta (see painted_shaft_d / safe scheme path).
-            curve_catmull: true,
+            curve_catmull,
             label_xy: label_pose.map(|(x, y, _)| (x, y)),
             label_rotate: label_pose.map(|(_, _, r)| r),
         };
