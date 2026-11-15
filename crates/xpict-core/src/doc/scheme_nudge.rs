@@ -104,12 +104,15 @@ pub fn propose_mol_nudges(
     engine: &EngineConfig,
 ) -> HashMap<String, Pt> {
     let nudge = &engine.nudge;
+    let mut pos = positions.clone();
+    if !nudge.enabled {
+        return pos;
+    }
     let mol_gap = SCHEME_INK_STANDOFF + nudge.mol_gap_extra;
     let size_of: HashMap<&str, (f64, f64)> = sizes
         .iter()
         .map(|(id, w, h)| (id.as_str(), (*w, *h)))
         .collect();
-    let mut pos = positions.clone();
     let edges = spec.edges();
     if edges.is_empty() || size_of.len() < 3 {
         return pos;
@@ -418,7 +421,8 @@ mod tests {
             ("B".into(), 80.0, 80.0),
             ("C".into(), 80.0, 80.0),
         ];
-        let eng = EngineConfig::pretty();
+        let mut eng = EngineConfig::pretty();
+        eng.nudge = crate::engine_config::NudgeConfig::on();
         let nudged = propose_mol_nudges(&spec, &positions, &sizes, &eng);
         let b0 = positions["B"];
         let b1 = nudged["B"];
@@ -437,6 +441,25 @@ mod tests {
     }
 
     #[test]
+    fn disabled_nudge_leaves_positions_unchanged() {
+        let spec = scheme(vec![mol("A"), mol("B"), mol("C"), edge("A", "C")]);
+        let positions = HashMap::from([
+            ("A".into(), (0.0, 0.0)),
+            ("B".into(), (100.0, 0.0)),
+            ("C".into(), (200.0, 0.0)),
+        ]);
+        let sizes = vec![
+            ("A".into(), 80.0, 80.0),
+            ("B".into(), 80.0, 80.0),
+            ("C".into(), 80.0, 80.0),
+        ];
+        let eng = EngineConfig::pretty();
+        assert!(!eng.nudge.enabled);
+        let nudged = propose_mol_nudges(&spec, &positions, &sizes, &eng);
+        assert_eq!(nudged, positions);
+    }
+
+    #[test]
     fn refuses_nudge_that_would_overlap() {
         // B is blocked on the chord but packed against another mol above —
         // only room downward; we still accept a safe direction. Pack *both*
@@ -449,7 +472,8 @@ mod tests {
             mol("D"),
             edge("A", "C"),
         ]);
-        let eng = EngineConfig::pretty();
+        let mut eng = EngineConfig::pretty();
+        eng.nudge = crate::engine_config::NudgeConfig::on();
         let mol_gap = SCHEME_INK_STANDOFF + eng.nudge.mol_gap_extra;
         let positions = HashMap::from([
             ("A".into(), (0.0, 100.0)),

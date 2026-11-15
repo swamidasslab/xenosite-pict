@@ -243,9 +243,11 @@ impl SchemeConfig {
     }
 }
 
-/// Soft mol nudge after ELK.
+/// Soft mol nudge after ELK. Off by default — routing should clear chords
+/// without sliding blockers; opt in via [`NudgeConfig::enabled`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct NudgeConfig {
+    pub enabled: bool,
     pub max_nudge: f64,
     pub steps: [f64; 4],
     pub mol_gap_extra: f64,
@@ -255,6 +257,7 @@ pub struct NudgeConfig {
 impl Default for NudgeConfig {
     fn default() -> Self {
         Self {
+            enabled: false,
             max_nudge: 3.0 * BOND_PX,
             steps: [0.5 * BOND_PX, BOND_PX, 2.0 * BOND_PX, 3.0 * BOND_PX],
             mol_gap_extra: 2.0,
@@ -269,6 +272,14 @@ impl NudgeConfig {
             max_nudge: BOND_PX,
             steps: [0.5 * BOND_PX, BOND_PX, BOND_PX, BOND_PX],
             max_passes: 2,
+            ..Self::default()
+        }
+    }
+
+    /// Opt-in preset with house step sizes (still used by nudge unit tests).
+    pub fn on() -> Self {
+        Self {
+            enabled: true,
             ..Self::default()
         }
     }

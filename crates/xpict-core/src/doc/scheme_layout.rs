@@ -275,8 +275,8 @@ pub fn refine_scheme_edges(
     let mut out_labels = vec![None; spec.edges().len()];
 
     let engine = layout.engine();
-    // Multi-endpoint stacks: align opposite-side group midpoints (not tops),
-    // then soft-nudge blockers to open clear chords.
+    // Multi-endpoint stacks: align opposite-side group midpoints (not tops).
+    // Soft mol nudge is opt-in (`EngineConfig.nudge.enabled`, off by default).
     let positions =
         super::scheme_nudge::align_co_endpoint_group_mids(spec, positions, sizes, layout);
     let positions = super::scheme_nudge::propose_mol_nudges(spec, &positions, sizes, &engine);

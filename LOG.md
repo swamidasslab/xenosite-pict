@@ -2,6 +2,9 @@
 
 ## 2026-11-15
 
+- Soft mol nudge is **opt-in / off by default** (`NudgeConfig.enabled`). Routing
+  clears blocked chords without sliding blockers; `NudgeConfig::on()` for
+  ablations. Regress: `disabled_nudge_leaves_positions_unchanged`.
 - Drop redundant elbows by **skip-testing** each control (neighbor chord clear
   + no extra X) instead of funnel string-pull. Ink-first passes in visibility,
   simplify, and post-tip-resnap. Regress: `skip_control_drops_redundant_first_elbow`.

@@ -34,7 +34,7 @@ Not published (`exclude_docs: dev/**`).
 | `SolveOpts` defaults + AL knobs | `layout_constraints.rs` → `EngineConfig::solve` | **internal** | |
 | Arrow kink / turn / head / dash | `arrows.rs` → `EngineConfig::arrow` | **internal** | Pub house consts remain aliases of defaults |
 | Scheme ink standoff, coterminal, network caps, label font | `scheme_layout.rs` → `EngineConfig::scheme` | **internal** | Standoff stays a pub const for tests |
-| Nudge max / steps | `scheme_nudge.rs` → `EngineConfig::nudge` | **internal** | |
+| Nudge (`enabled` default off; max / steps) | `scheme_nudge.rs` → `EngineConfig::nudge` | **internal** | |
 | ELK strategy strings / edgeEdge spacing | `elk.rs` → `EngineConfig::elk` | **internal** | |
 | `SCALE` / `FONT_FRAC` / `STROKE_FRAC` / shade fractions | `metrics.rs` | **metrics** | House style set |
 
