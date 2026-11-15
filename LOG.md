@@ -2,10 +2,9 @@
 
 ## 2026-11-15
 
-- Drop **tile-only elbows** with ink-first string-pull (visibility, simplify,
-  and post-tip-resnap). Morphine south bow’s first kink was unnecessary for
-  ink; tile-gated pull had kept it. Regress:
-  `ink_string_pull_drops_redundant_first_elbow`.
+- Drop redundant elbows by **skip-testing** each control (neighbor chord clear
+  + no extra X) instead of funnel string-pull. Ink-first passes in visibility,
+  simplify, and post-tip-resnap. Regress: `skip_control_drops_redundant_first_elbow`.
 - Visibility bug: same-owner **box→hull** stitches skipped the owner’s own
   ink, so A* could chord through a mol (Morphine i0→4956 through
   xbm:0002271). Reject those chords; tip/detour keeps an ink-clear south

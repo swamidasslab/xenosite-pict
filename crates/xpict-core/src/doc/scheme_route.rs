@@ -520,7 +520,8 @@ fn route_one_centerline(
     );
     // String-pull on ink hulls must not re-collapse to a tip chord that skims
     // foreign viewport tiles (the Morphine→M3S failure mode).
-    let pulled = string_pull(&vis_path, obstacles, skip, committed, src_c, tgt_c);
+    let pulled =
+        drop_skippable_controls(&vis_path, obstacles, skip, committed, src_c, tgt_c);
     let pulled_ok = path_clears_obstacles(&pulled, obstacles, skip)
         && path_clears_obstacles(&pulled, tile_obstacles, skip);
     let pulled_x = pathway_crosses_committed(&pulled, src_c, tgt_c, committed);
@@ -538,7 +539,7 @@ fn route_one_centerline(
         );
         // Drop elbows that exist only for tile pad — ink is the hard constraint.
         if out.len() >= 3 && path_clears_obstacles(&out, obstacles, skip) {
-            out = string_pull(&out, obstacles, skip, committed, src_c, tgt_c);
+            out = drop_skippable_controls(&out, obstacles, skip, committed, src_c, tgt_c);
         }
         out
     };
@@ -680,8 +681,68 @@ fn path_crosses_committed(pts: &[Pt], committed: &[Committed]) -> usize {
     n
 }
 
+/// True when interior control `b` can be dropped: neighbor chord `a→c` clears
+/// obstacles and does not add pathway crossings vs `a→b→c`.
+fn control_skippable(
+    a: Pt,
+    b: Pt,
+    c: Pt,
+    obstacles: &[Obstacle],
+    skip: &HashSet<&str>,
+    committed: &[Committed],
+    src_c: Pt,
+    tgt_c: Pt,
+) -> bool {
+    if !segment_clears_obstacles(a, c, obstacles, skip) {
+        return false;
+    }
+    let sub_x = pathway_crosses_committed(&[a, b, c], src_c, tgt_c, committed);
+    let chord_x = pathway_crosses_committed(&[a, c], src_c, tgt_c, committed);
+    chord_x <= sub_x
+}
+
+/// Drop each interior control that is safe to skip (clear chord, no extra X).
+/// Cheaper than funnel string-pull: one clearance test per candidate elbow.
+fn drop_skippable_controls(
+    pts: &[Pt],
+    obstacles: &[Obstacle],
+    skip: &HashSet<&str>,
+    committed: &[Committed],
+    src_c: Pt,
+    tgt_c: Pt,
+) -> Vec<Pt> {
+    let mut pts = prune_close_controls(pts, CLOSE_CTRL_PX);
+    if pts.len() < 3 {
+        return pts;
+    }
+    // Repeat until stable so chains of redundant elbows collapse.
+    loop {
+        let mut out = vec![pts[0]];
+        let mut dropped = false;
+        let mut i = 1;
+        while i + 1 < pts.len() {
+            let a = *out.last().unwrap();
+            let b = pts[i];
+            let c = pts[i + 1];
+            if control_skippable(a, b, c, obstacles, skip, committed, src_c, tgt_c) {
+                dropped = true;
+                i += 1;
+                continue;
+            }
+            out.push(b);
+            i += 1;
+        }
+        out.push(*pts.last().unwrap());
+        pts = prune_close_controls(&out, CLOSE_CTRL_PX);
+        if !dropped || pts.len() < 3 {
+            break;
+        }
+    }
+    collapse_collinear(&pts, obstacles, skip, committed)
+}
+
 /// Remove intermediate verts when the chord still clears obstacles (classic
-/// string-pull / funnel). Stops hull-hugging when a straighter cut exists.
+/// string-pull / funnel). Prefer [`drop_skippable_controls`] for elbow cleanup.
 ///
 /// Crossing rank uses the **centroid pathway** (`src_c`/`tgt_c` stubs): a tip
 /// pose chord can miss an X that the mol→mol pathway still makes, and must not
@@ -694,38 +755,8 @@ fn string_pull(
     src_c: Pt,
     tgt_c: Pt,
 ) -> Vec<Pt> {
-    if pts.len() < 3 {
-        return prune_close_controls(pts, CLOSE_CTRL_PX);
-    }
-    let mut out = vec![pts[0]];
-    let mut i = 0;
-    while i < pts.len() - 1 {
-        let mut j = pts.len() - 1;
-        while j > i + 1 {
-            if segment_clears_obstacles(pts[i], pts[j], obstacles, skip) {
-                let mut with_sub = out.clone();
-                with_sub.extend_from_slice(&pts[i + 1..=j]);
-                with_sub.extend_from_slice(&pts[j + 1..]);
-                let mut with_chord = out.clone();
-                with_chord.push(pts[j]);
-                with_chord.extend_from_slice(&pts[j + 1..]);
-                let sub_x = pathway_crosses_committed(&with_sub, src_c, tgt_c, committed);
-                let chord_x = pathway_crosses_committed(&with_chord, src_c, tgt_c, committed);
-                if chord_x <= sub_x {
-                    break;
-                }
-            }
-            j -= 1;
-        }
-        out.push(pts[j]);
-        i = j;
-    }
-    collapse_collinear(
-        &prune_close_controls(&out, CLOSE_CTRL_PX),
-        obstacles,
-        skip,
-        committed,
-    )
+    // Funnel search is O(n²) pathway rebuilds; skip-tests are enough in practice.
+    drop_skippable_controls(pts, obstacles, skip, committed, src_c, tgt_c)
 }
 
 /// Drop intermediate verts that are nearly collinear when the chord still
@@ -917,7 +948,8 @@ fn simplify_ink_elbows(
             continue;
         }
         let before_x = pathway_crosses_committed(&centers[gi], src_c, tgt_c, &others);
-        let pulled = string_pull(&centers[gi], ink_obstacles, &skip, &others, src_c, tgt_c);
+        let pulled =
+            drop_skippable_controls(&centers[gi], ink_obstacles, &skip, &others, src_c, tgt_c);
         if pulled.len() < 2 || !path_clears_obstacles(&pulled, ink_obstacles, &skip) {
             continue;
         }
@@ -956,9 +988,11 @@ fn simplify_routed_centers(
         let before = centers[gi].clone();
         let before_x =
             path_crosses_committed(&extend_to_centroids(&before, src_c, tgt_c), &others);
-        // Ink pull drops tile-only elbows; tile pull may not reintroduce ink hits.
-        let ink_pulled = string_pull(&before, obstacles, &skip, &others, src_c, tgt_c);
-        let tile_pulled = string_pull(&ink_pulled, tile_obstacles, &skip, &others, src_c, tgt_c);
+        // Skip-tests drop tile-only elbows; tile pass may not reintroduce ink hits.
+        let ink_pulled =
+            drop_skippable_controls(&before, obstacles, &skip, &others, src_c, tgt_c);
+        let tile_pulled =
+            drop_skippable_controls(&ink_pulled, tile_obstacles, &skip, &others, src_c, tgt_c);
         let mut pulled = if path_clears_obstacles(&tile_pulled, obstacles, &skip) {
             tile_pulled
         } else {
@@ -974,7 +1008,7 @@ fn simplify_routed_centers(
         // Second pass against deflated hulls: drop leftover ~10° elbows that
         // only existed to walk the inflate pad.
         pulled = collapse_collinear(&pulled, &tile_pad, &skip, &others);
-        pulled = string_pull(&pulled, &tile_pad, &skip, &others, src_c, tgt_c);
+        pulled = drop_skippable_controls(&pulled, &tile_pad, &skip, &others, src_c, tgt_c);
         // Prefer a tip–tip chord or single bow when tile-clear and no extra X.
         if pulled.len() > 2 {
             let a = pulled[0];
@@ -2071,11 +2105,10 @@ fn visibility_route(
         }
     }
     let mut pts: Vec<Pt> = idxs.into_iter().map(node_pt).collect();
-    // Ink pull first — remove silhouette kinks that tiles alone would keep
-    // (Morphine i0→GlcA first elbow). Then tile pull without undoing ink-clear
-    // shortcuts: only accept tile pull if it does not add ink hits.
-    let ink_pulled = string_pull(&pts, obstacles, skip, committed, src_c, tgt_c);
-    let tile_pulled = string_pull(&ink_pulled, tile_obstacles, skip, committed, src_c, tgt_c);
+    // Skip redundant controls against ink first, then tiles (keep ink-clear).
+    let ink_pulled = drop_skippable_controls(&pts, obstacles, skip, committed, src_c, tgt_c);
+    let tile_pulled =
+        drop_skippable_controls(&ink_pulled, tile_obstacles, skip, committed, src_c, tgt_c);
     pts = if path_clears_obstacles(&tile_pulled, obstacles, skip) {
         tile_pulled
     } else {
@@ -2716,16 +2749,15 @@ mod tests {
     }
 
     #[test]
-    fn string_pull_drops_steiner_kinks_when_one_cross_unchanged() {
-        // Path already crosses a locked shaft once; Steiner elbows on either
-        // side must still collapse if the chord does not add crossings.
+    fn skip_control_drops_steiner_kinks_without_adding_crossings() {
+        // Path already crosses a locked shaft once; Steiner elbows must drop
+        // when the neighbor chord does not add crossings (may even clear the X).
         let empty: Vec<Obstacle> = Vec::new();
         let skip = HashSet::new();
         let committed = vec![Committed {
             segs: vec![((40.0, 50.0), (60.0, 50.0))],
         }];
-        // Down the left, zigzag, cross mid, zigzag, down the right — the
-        // vertical chord still crosses once.
+        // Down the left, zigzag, cross mid, zigzag, down the right.
         let kinked = vec![
             (50.0, 0.0),
             (30.0, 20.0),
@@ -2735,7 +2767,7 @@ mod tests {
             (50.0, 100.0),
         ];
         assert_eq!(path_crosses_committed(&kinked, &committed), 1);
-        let pulled = string_pull(
+        let pulled = drop_skippable_controls(
             &kinked,
             &empty,
             &skip,
@@ -2743,10 +2775,9 @@ mod tests {
             kinked[0],
             *kinked.last().unwrap(),
         );
-        assert_eq!(
-            path_crosses_committed(&pulled, &committed),
-            1,
-            "must keep the single crossing: {pulled:?}"
+        assert!(
+            path_crosses_committed(&pulled, &committed) <= 1,
+            "must not add crossings: {pulled:?}"
         );
         assert!(
             pulled.len() < kinked.len(),
@@ -2754,7 +2785,7 @@ mod tests {
         );
         assert!(
             pulled.len() <= 3,
-            "expected a near-straight one-cross walk: {pulled:?}"
+            "expected a near-straight walk: {pulled:?}"
         );
     }
 
@@ -3126,7 +3157,7 @@ mod tests {
     }
 
     #[test]
-    fn ink_string_pull_drops_redundant_first_elbow() {
+    fn skip_control_drops_redundant_first_elbow() {
         // Elbow only needed if we refuse tile-skimming; ink chord start→p2 is clear.
         let start = (0.0, 0.0);
         let elbow = (20.0, 15.0);
@@ -3135,7 +3166,7 @@ mod tests {
         let path = vec![start, elbow, mid, goal];
         let empty: Vec<Obstacle> = Vec::new();
         let skip = HashSet::new();
-        let pulled = string_pull(&path, &empty, &skip, &[], start, goal);
+        let pulled = drop_skippable_controls(&path, &empty, &skip, &[], start, goal);
         assert!(
             pulled.len() <= 3,
             "redundant first elbow must collapse: {pulled:?}"
