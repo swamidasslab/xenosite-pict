@@ -2,11 +2,16 @@
 
 ## 2026-11-15
 
+- Tip/detour cost: among structure-clean candidates pick
+  `length + crossings×crossing_penalty`. Soft penalty keeps a short tip
+  that crosses a peer; hard penalty buys a longer bottom 2-bend that
+  clears it (`raising_crossing_penalty_switches_tip_to_bottom_two_bend`).
+  Morphine i0→4956 still has no *ink-clear* bottom walk (A*’s south path
+  clips xbm:0002271), so penalty alone cannot switch that fixture yet.
 - Tip/detour: **ink + foreign tiles beat pathway crossings**. Keep a wrap
   only when it clears chem ink the tip hits *and* does not skim tiles; if
   both punch ink, take the tip (Morphine dashed i0→GlcA was a wild wrap
-  still through ink). Ink-clear tip wins over ink-hitting bow even when
-  the bow has fewer edge crossings. Regress:
+  still through ink). Regress:
   `ink_hitting_wrap_collapses_to_tip_even_if_shorter_crossings`,
   `morphine_i0_to_glca_dashed_prefers_tip_over_ink_wrap`.
 - Tip unless detour *strictly improves* (ink clearance or fewer pathway

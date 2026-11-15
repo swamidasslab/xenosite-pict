@@ -31,6 +31,10 @@ thread_local! {
     /// active [`RouteConfig`] without threading it through every signature.
     static ACTIVE_ROUTE: std::cell::RefCell<Option<RouteConfig>> =
         const { std::cell::RefCell::new(None) };
+    /// Test-only patch for [`RouteConfig::crossing_penalty`] (tip↔detour sweep).
+    #[cfg(test)]
+    static CROSSING_PENALTY_OVERRIDE: std::cell::RefCell<Option<f64>> =
+        const { std::cell::RefCell::new(None) };
 }
 
 struct ActiveRouteGuard;
@@ -41,7 +45,30 @@ impl Drop for ActiveRouteGuard {
 }
 
 fn route() -> RouteConfig {
-    ACTIVE_ROUTE.with(|c| c.borrow().clone().unwrap_or_else(RouteConfig::pretty))
+    ACTIVE_ROUTE.with(|c| {
+        let mut r = c.borrow().clone().unwrap_or_else(RouteConfig::pretty);
+        #[cfg(test)]
+        CROSSING_PENALTY_OVERRIDE.with(|o| {
+            if let Some(p) = *o.borrow() {
+                r.crossing_penalty = p;
+            }
+        });
+        r
+    })
+}
+
+/// Run `f` with [`RouteConfig::crossing_penalty`] forced to `penalty`.
+#[cfg(test)]
+pub(crate) fn with_crossing_penalty<R>(penalty: f64, f: impl FnOnce() -> R) -> R {
+    struct Guard;
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            CROSSING_PENALTY_OVERRIDE.with(|o| *o.borrow_mut() = None);
+        }
+    }
+    CROSSING_PENALTY_OVERRIDE.with(|o| *o.borrow_mut() = Some(penalty));
+    let _g = Guard;
+    f()
 }
 struct ArrowGroup {
     members: Vec<usize>,
@@ -486,7 +513,7 @@ fn route_one_centerline(
     );
     // String-pull on ink hulls must not re-collapse to a tip chord that skims
     // foreign viewport tiles (the Morphine→M3S failure mode).
-    let pulled = string_pull(&vis_path, obstacles, skip, committed);
+    let pulled = string_pull(&vis_path, obstacles, skip, committed, src_c, tgt_c);
     let pulled_ok = path_clears_obstacles(&pulled, obstacles, skip)
         && path_clears_obstacles(&pulled, tile_obstacles, skip);
     let pulled_x = pathway_crosses_committed(&pulled, src_c, tgt_c, committed);
@@ -567,14 +594,15 @@ fn bow_ok_tile(tile_ok: bool, bow: &[Pt]) -> bool {
     tile_ok || bow.len() >= 3
 }
 
-/// Prefer the tip unless the detour *strictly improves* structure.
+/// Prefer the tip unless the detour *strictly improves* structure / cost.
 ///
 /// **Ink / structure beats line crossings.** A detour only wins when it clears
 /// chem ink the tip hits (and does not skim foreign tiles). Tip clearance is
 /// ink-only so padded viewport whitespace alone cannot force a hub wrap
-/// (network fan). If the tip is ink-clean, take it unless the detour is also
-/// structure-clean *and* has fewer pathway crossings. If both hit ink, tip —
-/// never keep a wild wrap that still punches molecules (Morphine i0→GlcA).
+/// (network fan). If both are structure-clean, pick lower
+/// `length + crossings×crossing_penalty` — raising the penalty eventually
+/// buys a longer 2-bend that clears peers. If both hit ink, tip — never keep
+/// a wild wrap that still punches molecules (Morphine i0→GlcA).
 fn prefer_tip_unless_detour_improves(
     start: Pt,
     goal: Pt,
@@ -601,7 +629,11 @@ fn prefer_tip_unless_detour_improves(
         (true, true) => {
             let tip_x = pathway_crosses_committed(&tip, src_c, tgt_c, committed);
             let det_x = pathway_crosses_committed(detour, src_c, tgt_c, committed);
-            if det_x < tip_x {
+            let tip_cost =
+                polyline_len(&tip) + tip_x as f64 * route().crossing_penalty;
+            let det_cost =
+                polyline_len(detour) + det_x as f64 * route().crossing_penalty;
+            if det_cost < tip_cost {
                 detour.to_vec()
             } else {
                 tip
@@ -635,13 +667,17 @@ fn path_crosses_committed(pts: &[Pt], committed: &[Committed]) -> usize {
 
 /// Remove intermediate verts when the chord still clears obstacles (classic
 /// string-pull / funnel). Stops hull-hugging when a straighter cut exists.
-/// A shortcut may keep existing crossings with committed shafts, but must not
-/// *add* any — otherwise a priced one-cross walk keeps every Steiner kink.
+///
+/// Crossing rank uses the **centroid pathway** (`src_c`/`tgt_c` stubs): a tip
+/// pose chord can miss an X that the mol→mol pathway still makes, and must not
+/// collapse a priced detour back onto that tip.
 fn string_pull(
     pts: &[Pt],
     obstacles: &[Obstacle],
     skip: &HashSet<&str>,
     committed: &[Committed],
+    src_c: Pt,
+    tgt_c: Pt,
 ) -> Vec<Pt> {
     if pts.len() < 3 {
         return prune_close_controls(pts, CLOSE_CTRL_PX);
@@ -651,10 +687,18 @@ fn string_pull(
     while i < pts.len() - 1 {
         let mut j = pts.len() - 1;
         while j > i + 1 {
-            let sub_x = path_crosses_committed(&pts[i..=j], committed);
-            let chord_x = path_crosses_committed(&[pts[i], pts[j]], committed);
-            if segment_clears_obstacles(pts[i], pts[j], obstacles, skip) && chord_x <= sub_x {
-                break;
+            if segment_clears_obstacles(pts[i], pts[j], obstacles, skip) {
+                let mut with_sub = out.clone();
+                with_sub.extend_from_slice(&pts[i + 1..=j]);
+                with_sub.extend_from_slice(&pts[j + 1..]);
+                let mut with_chord = out.clone();
+                with_chord.push(pts[j]);
+                with_chord.extend_from_slice(&pts[j + 1..]);
+                let sub_x = pathway_crosses_committed(&with_sub, src_c, tgt_c, committed);
+                let chord_x = pathway_crosses_committed(&with_chord, src_c, tgt_c, committed);
+                if chord_x <= sub_x {
+                    break;
+                }
             }
             j -= 1;
         }
@@ -859,7 +903,7 @@ fn simplify_routed_centers(
             path_crosses_committed(&extend_to_centroids(&before, src_c, tgt_c), &others);
         // Pull against tiles so ink-clear tip chords cannot erase a bow that
         // only existed to dodge viewport whitespace.
-        let mut pulled = string_pull(&before, tile_obstacles, &skip, &others);
+        let mut pulled = string_pull(&before, tile_obstacles, &skip, &others, src_c, tgt_c);
         pulled = cosmetic_douglas_peucker(
             &pulled,
             &others,
@@ -870,7 +914,7 @@ fn simplify_routed_centers(
         // Second pass against deflated hulls: drop leftover ~10° elbows that
         // only existed to walk the inflate pad.
         pulled = collapse_collinear(&pulled, &tile_pad, &skip, &others);
-        pulled = string_pull(&pulled, &tile_pad, &skip, &others);
+        pulled = string_pull(&pulled, &tile_pad, &skip, &others, src_c, tgt_c);
         // Prefer a tip–tip chord or single bow when tile-clear and no extra X.
         if pulled.len() > 2 {
             let a = pulled[0];
@@ -1956,7 +2000,7 @@ fn visibility_route(
     let mut pts: Vec<Pt> = idxs.into_iter().map(node_pt).collect();
     // Pull against tiles so a clear ink chord cannot re-collapse a walk that
     // was only needed to dodge viewport whitespace.
-    pts = string_pull(&pts, tile_obstacles, skip, committed);
+    pts = string_pull(&pts, tile_obstacles, skip, committed, src_c, tgt_c);
     if pts.len() < 2 {
         return fallback_bow(start, goal, tile_obstacles, skip, committed);
     }
@@ -2530,7 +2574,7 @@ mod tests {
             (20.0, 0.0),
             (30.0, 0.0),
         ];
-        let pulled = string_pull(&windy, &empty, &skip, &[]);
+        let pulled = string_pull(&windy, &empty, &skip, &[], windy[0], *windy.last().unwrap());
         assert_eq!(
             pulled.len(),
             2,
@@ -2611,7 +2655,14 @@ mod tests {
             (50.0, 100.0),
         ];
         assert_eq!(path_crosses_committed(&kinked, &committed), 1);
-        let pulled = string_pull(&kinked, &empty, &skip, &committed);
+        let pulled = string_pull(
+            &kinked,
+            &empty,
+            &skip,
+            &committed,
+            kinked[0],
+            *kinked.last().unwrap(),
+        );
         assert_eq!(
             path_crosses_committed(&pulled, &committed),
             1,
@@ -2642,7 +2693,14 @@ mod tests {
             1,
             "sanity: direct chord crosses"
         );
-        let pulled = string_pull(&detour, &empty, &skip, &committed);
+        let pulled = string_pull(
+            &detour,
+            &empty,
+            &skip,
+            &committed,
+            detour[0],
+            *detour.last().unwrap(),
+        );
         assert_eq!(
             path_crosses_committed(&pulled, &committed),
             0,
@@ -2957,6 +3015,45 @@ mod tests {
             start, goal, start, goal, &bow, &empty, &empty, &skip, &[],
         );
         assert_eq!(out, vec![start, goal], "mild non-improving bow → tip: {out:?}");
+    }
+
+    #[test]
+    fn raising_crossing_penalty_switches_tip_to_bottom_two_bend() {
+        // Tip chord crosses one locked peer; a 2-bend below clears. Cost is
+        // length + crossings×penalty — soft penalty keeps the tip, hard
+        // penalty buys the bottom bow.
+        let start = (0.0, 0.0);
+        let goal = (100.0, 0.0);
+        let bottom = vec![start, (0.0, 40.0), (100.0, 40.0), goal]; // len 180
+        let committed = vec![Committed {
+            segs: vec![((50.0, -20.0), (50.0, 20.0))], // crosses tip once
+        }];
+        let empty: Vec<Obstacle> = Vec::new();
+        let skip = HashSet::new();
+        assert_eq!(
+            pathway_crosses_committed(&[start, goal], start, goal, &committed),
+            1
+        );
+        assert_eq!(
+            pathway_crosses_committed(&bottom, start, goal, &committed),
+            0
+        );
+        // tip_cost = 100 + P; bottom_cost = 180. Switch when P > 80.
+        let low = with_crossing_penalty(40.0, || {
+            prefer_tip_unless_detour_improves(
+                start, goal, start, goal, &bottom, &empty, &empty, &skip, &committed,
+            )
+        });
+        assert_eq!(low, vec![start, goal], "soft penalty keeps tip: {low:?}");
+        let high = with_crossing_penalty(200.0, || {
+            prefer_tip_unless_detour_improves(
+                start, goal, start, goal, &bottom, &empty, &empty, &skip, &committed,
+            )
+        });
+        assert_eq!(
+            high, bottom,
+            "hard penalty buys the bottom 2-bend: {high:?}"
+        );
     }
 
     #[test]
