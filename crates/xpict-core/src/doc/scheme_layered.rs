@@ -121,18 +121,19 @@ pub fn place_layered(
     let dir = layout.direction_or_default();
     let vertical_flow = matches!(dir, LayoutDirection::Up | LayoutDirection::Down);
     let node_gap = layout.node_spacing_or_default();
-    // Long multi-layer edges: clear corridors first, then align (alignment
-    // must win — corridor clear used to undo the pull).
     if vertical_flow {
         clear_long_edge_corridors(&mut nodes, &edges, node_gap, vertical_flow);
+        // Slack-clamped pull toward mean real parents/children (dummies for
+        // corridor targets + layer occupancy). Never free-jump — that blew
+        // the pack when resolve cascaded rightward.
         for _ in 0..budgets.align_passes.max(3) {
             if !pull_cross_toward_neighbors(&mut nodes, &edges, node_gap, vertical_flow) {
                 break;
             }
-            let max_layer = nodes.iter().map(|n| n.layer).max().unwrap_or(0);
-            for layer in 0..=max_layer {
-                resolve_cross_overlaps(&mut nodes, layer, node_gap, vertical_flow);
-            }
+        }
+        let max_layer = nodes.iter().map(|n| n.layer).max().unwrap_or(0);
+        for layer in 0..=max_layer {
+            resolve_cross_overlaps(&mut nodes, layer, node_gap, vertical_flow);
         }
         normalize_cross_origin(&mut nodes, vertical_flow);
         separate_aabb_overlaps(&mut nodes, dir, node_gap);
@@ -2073,15 +2074,15 @@ fn separate_position_overlaps(
     }
 }
 
-/// Pull reals toward the mean of **real** parents/children (dummy chains
-/// contracted). Pull dummies toward the mean of their path's real endpoints.
-/// Sets targets freely; caller resolves same-layer overlaps. Returns whether
-/// any cross moved by more than 0.5px.
+/// Pull reals toward mean of real parents/children (dummy chains contracted).
+/// Pull dummies toward mean of their path's real endpoints. Each move is
+/// clamped to slack against **real** same-layer neighbors (dummies ignored
+/// for limits so gaps between reals are usable). Order is preserved.
 fn pull_cross_toward_neighbors(
     nodes: &mut [PackNode],
     edges: &[PackEdge],
-    _gap: f64,
-    _vertical_flow: bool,
+    gap: f64,
+    vertical_flow: bool,
 ) -> bool {
     let paths = real_real_paths(nodes, edges);
     let mut real_sum: HashMap<usize, (f64, usize)> = HashMap::new();
@@ -2103,25 +2104,88 @@ fn pull_cross_toward_neighbors(
         }
     }
 
-    let mut moved = false;
-    for (i, n) in nodes.iter_mut().enumerate() {
-        let target = if n.real.is_some() {
-            real_sum
-                .get(&i)
-                .filter(|(_, c)| *c > 0)
-                .map(|(s, c)| s / *c as f64)
+    let half = |n: &PackNode| -> f64 {
+        if vertical_flow {
+            n.w * 0.5
         } else {
-            dummy_target
-                .get(&i)
-                .filter(|(_, c)| *c > 0)
-                .map(|(s, c)| s / *c as f64)
-        };
-        let Some(target) = target else {
-            continue;
-        };
-        if (target - n.cross).abs() > 0.5 {
-            n.cross = target;
-            moved = true;
+            n.h * 0.5
+        }
+    };
+
+    let max_layer = nodes.iter().map(|n| n.layer).max().unwrap_or(0);
+    let mut moved = false;
+    for layer in 0..=max_layer {
+        // Reals only — slack ignores dummies so a child can slide under its
+        // parent when the gap is between real tiles.
+        let reals: Vec<usize> = layer_indices_in_order(nodes, layer)
+            .into_iter()
+            .filter(|&i| nodes[i].real.is_some())
+            .collect();
+        for (k, &i) in reals.iter().enumerate() {
+            let Some(&(sum, nmark)) = real_sum.get(&i) else {
+                continue;
+            };
+            if nmark == 0 {
+                continue;
+            }
+            let target = sum / nmark as f64;
+            let my_half = half(&nodes[i]);
+            let lo = if k > 0 {
+                let j = reals[k - 1];
+                nodes[j].cross + half(&nodes[j]) + gap + my_half
+            } else {
+                f64::NEG_INFINITY
+            };
+            let hi = if k + 1 < reals.len() {
+                let j = reals[k + 1];
+                nodes[j].cross - half(&nodes[j]) - gap - my_half
+            } else {
+                f64::INFINITY
+            };
+            if lo > hi {
+                continue;
+            }
+            let new_cross = target.clamp(lo, hi);
+            if (new_cross - nodes[i].cross).abs() > 0.5 {
+                nodes[i].cross = new_cross;
+                moved = true;
+            }
+        }
+
+        // Dummies: toward corridor mean, clamped by full layer order (incl. reals).
+        let idx = layer_indices_in_order(nodes, layer);
+        for (k, &i) in idx.iter().enumerate() {
+            if nodes[i].real.is_some() {
+                continue;
+            }
+            let Some(&(sum, nmark)) = dummy_target.get(&i) else {
+                continue;
+            };
+            if nmark == 0 {
+                continue;
+            }
+            let target = sum / nmark as f64;
+            let my_half = half(&nodes[i]);
+            let lo = if k > 0 {
+                let j = idx[k - 1];
+                nodes[j].cross + half(&nodes[j]) + gap + my_half
+            } else {
+                f64::NEG_INFINITY
+            };
+            let hi = if k + 1 < idx.len() {
+                let j = idx[k + 1];
+                nodes[j].cross - half(&nodes[j]) - gap - my_half
+            } else {
+                f64::INFINITY
+            };
+            if lo > hi {
+                continue;
+            }
+            let new_cross = target.clamp(lo, hi);
+            if (new_cross - nodes[i].cross).abs() > 0.5 {
+                nodes[i].cross = new_cross;
+                moved = true;
+            }
         }
     }
     moved
