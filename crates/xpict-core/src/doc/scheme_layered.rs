@@ -118,12 +118,18 @@ pub fn place_layered(
     append_soft_edges_with_dummies(&mut nodes, &mut edges, &layer_of, &soft);
     order_layers(&mut nodes, &edges, budgets);
     assign_coordinates(&mut nodes, &edges, layout, &metrics, budgets);
-    // Star fans: park each parent on the cross-mid of its children so spokes
-    // stay tip chords instead of wrapping around an off-axis hub.
-    center_parents_over_children(&mut nodes, &edges);
     let dir = layout.direction_or_default();
     let vertical_flow = matches!(dir, LayoutDirection::Up | LayoutDirection::Down);
     let node_gap = layout.node_spacing_or_default();
+    // Pull each node toward mean parent/child cross, clamped by same-layer
+    // slack so order and non-overlap stay intact (no arrow geometry).
+    if vertical_flow {
+        for _ in 0..budgets.align_passes.max(2) {
+            if !pull_cross_toward_neighbors(&mut nodes, &edges, node_gap, vertical_flow) {
+                break;
+            }
+        }
+    }
     // Long multi-layer edges need a clear cross-axis corridor — nudge real
     // tiles that sit on the parent→child lerp off the shaft line.
     if vertical_flow {
@@ -2075,46 +2081,85 @@ fn separate_position_overlaps(
     }
 }
 
-/// Shift each parent’s cross so it sits on the mean cross of its children
-/// (same layer-delta). Leaves child packing intact.
-fn center_parents_over_children(nodes: &mut [PackNode], edges: &[PackEdge]) {
-    let cross_of: HashMap<NodeKey, f64> = nodes.iter().map(|n| (n.key, n.cross)).collect();
+/// Pull each node's cross toward the mean of adjacent-layer neighbors
+/// (parents and/or children), clamped to same-layer left/right slack so
+/// frozen order never breaks and boxes do not overlap.
+fn pull_cross_toward_neighbors(
+    nodes: &mut [PackNode],
+    edges: &[PackEdge],
+    gap: f64,
+    vertical_flow: bool,
+) -> bool {
+    let max_layer = nodes.iter().map(|n| n.layer).max().unwrap_or(0);
     let layer_of: HashMap<NodeKey, usize> = nodes.iter().map(|n| (n.key, n.layer)).collect();
-    let mut shift: HashMap<NodeKey, f64> = HashMap::new();
-    for n in nodes.iter() {
-        let mut child_cross = Vec::new();
-        for e in edges {
-            let other = if e.src == n.key {
-                e.tgt
-            } else if e.tgt == n.key {
-                e.src
-            } else {
-                continue;
-            };
-            let Some(&ol) = layer_of.get(&other) else {
-                continue;
-            };
-            if ol <= n.layer {
-                continue;
-            }
-            if let Some(&c) = cross_of.get(&other) {
-                child_cross.push(c);
-            }
-        }
-        if child_cross.len() < 2 {
+    let mut nbr_sum: HashMap<NodeKey, (f64, usize)> = HashMap::new();
+    for e in edges {
+        let Some(&ls) = layer_of.get(&e.src) else {
+            continue;
+        };
+        let Some(&lt) = layer_of.get(&e.tgt) else {
+            continue;
+        };
+        if ls == lt {
             continue;
         }
-        let mean = child_cross.iter().sum::<f64>() / child_cross.len() as f64;
-        let delta = mean - n.cross;
-        if delta.abs() > 0.5 {
-            shift.insert(n.key, delta);
+        let si = nodes.iter().position(|n| n.key == e.src);
+        let ti = nodes.iter().position(|n| n.key == e.tgt);
+        let (Some(si), Some(ti)) = (si, ti) else {
+            continue;
+        };
+        let e_src = nbr_sum.entry(e.src).or_insert((0.0, 0));
+        e_src.0 += nodes[ti].cross;
+        e_src.1 += 1;
+        let e_tgt = nbr_sum.entry(e.tgt).or_insert((0.0, 0));
+        e_tgt.0 += nodes[si].cross;
+        e_tgt.1 += 1;
+    }
+
+    let half = |n: &PackNode| -> f64 {
+        if vertical_flow {
+            n.w * 0.5
+        } else {
+            n.h * 0.5
+        }
+    };
+
+    let mut moved = false;
+    for layer in 0..=max_layer {
+        let idx = layer_indices_in_order(nodes, layer);
+        for (k, &i) in idx.iter().enumerate() {
+            let Some(&(sum, nmark)) = nbr_sum.get(&nodes[i].key) else {
+                continue;
+            };
+            if nmark == 0 {
+                continue;
+            }
+            let target = sum / nmark as f64;
+
+            let my_half = half(&nodes[i]);
+            let lo = if k > 0 {
+                let j = idx[k - 1];
+                nodes[j].cross + half(&nodes[j]) + gap + my_half
+            } else {
+                f64::NEG_INFINITY
+            };
+            let hi = if k + 1 < idx.len() {
+                let j = idx[k + 1];
+                nodes[j].cross - half(&nodes[j]) - gap - my_half
+            } else {
+                f64::INFINITY
+            };
+            if lo > hi {
+                continue;
+            }
+            let new_cross = target.clamp(lo, hi);
+            if (new_cross - nodes[i].cross).abs() > 0.5 {
+                nodes[i].cross = new_cross;
+                moved = true;
+            }
         }
     }
-    for n in nodes.iter_mut() {
-        if let Some(d) = shift.get(&n.key) {
-            n.cross += *d;
-        }
-    }
+    moved
 }
 
 /// Real→real endpoints of each edge path after contracting dummy chains.
