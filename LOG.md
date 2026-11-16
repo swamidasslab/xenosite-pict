@@ -2,6 +2,11 @@
 
 ## 2026-11-15
 
+- **Place-dirty bows: chem silhouette, not AABB corners**: `fallback_bow`
+  was seeding padded place-box corners when a tip punched a viewport, so
+  Morphine fans looked rectangular. Now project that mol's chem-hull verts
+  radially past the place AABB + clearance; place boxes stay an accept gate
+  only. Gates: sky/pink/1684 bow units assert elbows are off AABB corners.
 - **Morphine order 3→1 chord crossings**: Unit-dummy `total_layer_crossings`
   sat at 1 and refused the norcodeine↔i0 leg swap. Real→real *chord*
   crossings (collapse dummy chains) match the scheme: baseline 3, after

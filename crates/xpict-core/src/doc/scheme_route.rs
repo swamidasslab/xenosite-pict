@@ -1697,6 +1697,75 @@ fn simplified_standoff_hull(ink_pts: &[Pt], standoff: f64, max_verts: usize) -> 
     inflate_convex(&simple, standoff)
 }
 
+/// Push chem-hull verts radially from the place-box center until each clears
+/// the padded AABB. Elbows track the chem silhouette, not box corners.
+fn project_hull_outside_place(chem: &[Pt], place: (f64, f64, f64, f64), clearance: f64) -> Vec<Pt> {
+    let (x0, y0, x1, y1) = place;
+    if x1 - x0 < 4.0 || y1 - y0 < 4.0 || chem.is_empty() {
+        return Vec::new();
+    }
+    let cx = 0.5 * (x0 + x1);
+    let cy = 0.5 * (y0 + y1);
+    let outside = |q: Pt| {
+        q.0 < x0 - clearance
+            || q.0 > x1 + clearance
+            || q.1 < y0 - clearance
+            || q.1 > y1 + clearance
+    };
+    let mut out = Vec::with_capacity(chem.len());
+    for &p in chem {
+        if outside(p) {
+            out.push(p);
+            continue;
+        }
+        let mut dx = p.0 - cx;
+        let mut dy = p.1 - cy;
+        let len = dx.hypot(dy);
+        if len < 1e-9 {
+            // Degenerate: push toward the nearest place edge.
+            let to_l = p.0 - x0;
+            let to_r = x1 - p.0;
+            let to_t = p.1 - y0;
+            let to_b = y1 - p.1;
+            let m = to_l.min(to_r).min(to_t).min(to_b);
+            if (m - to_l).abs() < 1e-9 {
+                dx = -1.0;
+                dy = 0.0;
+            } else if (m - to_r).abs() < 1e-9 {
+                dx = 1.0;
+                dy = 0.0;
+            } else if (m - to_t).abs() < 1e-9 {
+                dx = 0.0;
+                dy = -1.0;
+            } else {
+                dx = 0.0;
+                dy = 1.0;
+            }
+        } else {
+            dx /= len;
+            dy /= len;
+        }
+        let mut q = p;
+        let mut advanced = false;
+        for step in 1..=128 {
+            q = (p.0 + dx * step as f64, p.1 + dy * step as f64);
+            if outside(q) {
+                out.push(q);
+                advanced = true;
+                break;
+            }
+        }
+        if !advanced {
+            // Fallback: land on the padded place boundary along this ray.
+            out.push((
+                p.0 + dx * ((x1 - x0) + (y1 - y0) + clearance),
+                p.1 + dy * ((x1 - x0) + (y1 - y0) + clearance),
+            ));
+        }
+    }
+    out
+}
+
 struct VisGraph {
     pts: Vec<Pt>,
     owner: Vec<Option<String>>,
@@ -2400,10 +2469,10 @@ fn fallback_bow(
         }
     };
 
-    // 1) Seed elbows at visible ports on simplified hulls (+ slight standoff).
-    // Chem ring first; if the tip punches a place box whose chem ports sit
-    // inside that box, also seed a coarse place-footprint hull (≤4 verts) —
-    // still a simplified convex hull, not dense curve sampling / free invents.
+    // 1) Seed elbows at visible ports on simplified chem hulls (+ standoff).
+    // Never seed place-AABB corners — those look like box routing. When a tip
+    // punches a place box, project that mol's chem-hull verts radially outward
+    // until they clear the place AABB + clearance (silhouette-shaped ports).
     let try_ring = |best: &mut Option<(usize, f64, f64, Vec<Pt>)>, ring: &[Pt]| {
         for &bow in ring {
             if !segment_clears_obstacles(start, bow, hull_obstacles, skip)
@@ -2429,7 +2498,6 @@ fn fallback_bow(
         };
         try_ring(&mut best, ring);
     }
-    // Coarse place-footprint (4 verts + standoff) — not dense sampling.
     let p = route().routing_clearance;
     for o in place_tiles {
         if skip.contains(o.mol_id.as_str()) {
@@ -2438,17 +2506,17 @@ fn fallback_bow(
         if path_clears_tile_aabbs(&[start, goal], std::slice::from_ref(o), skip) {
             continue;
         }
-        let (x0, y0, x1, y1) = o.placement_aabb;
-        if x1 - x0 < 4.0 || y1 - y0 < 4.0 {
+        let chem = if o.tip_hull.len() >= 3 {
+            &o.tip_hull
+        } else if o.hull.len() >= 3 {
+            &o.hull
+        } else {
             continue;
+        };
+        let ports = project_hull_outside_place(chem, o.placement_aabb, p);
+        if !ports.is_empty() {
+            try_ring(&mut best, &ports);
         }
-        let ring = [
-            (x0 - p, y0 - p),
-            (x1 + p, y0 - p),
-            (x1 + p, y1 + p),
-            (x0 - p, y1 + p),
-        ];
-        try_ring(&mut best, &ring);
     }
     if let Some((x, w, _, pts)) = best.as_ref() {
         if *x == 0 && *w == 0.0 {
@@ -3589,36 +3657,80 @@ mod tests {
         );
     }
 
+    /// Irregular chem silhouette inside a place box (not a rectangle).
+    fn chem_hex_in_place(place: (f64, f64, f64, f64)) -> Vec<Pt> {
+        let (x0, y0, x1, y1) = place;
+        let cx = 0.5 * (x0 + x1);
+        let cy = 0.5 * (y0 + y1);
+        let rx = (x1 - x0) * 0.28;
+        let ry = (y1 - y0) * 0.32;
+        simplified_standoff_hull(
+            &[
+                (cx, cy - ry),
+                (cx + rx * 0.9, cy - ry * 0.4),
+                (cx + rx * 0.55, cy + ry * 0.85),
+                (cx - rx * 0.2, cy + ry),
+                (cx - rx, cy + ry * 0.15),
+                (cx - rx * 0.65, cy - ry * 0.55),
+            ],
+            4.0,
+            8,
+        )
+    }
+
+    fn place_pad_ring(place: (f64, f64, f64, f64), pad: f64) -> Vec<Pt> {
+        let (x0, y0, x1, y1) = place;
+        convex_hull_pts(&[
+            (x0 - pad, y0 - pad),
+            (x1 + pad, y0 - pad),
+            (x1 + pad, y1 + pad),
+            (x0 - pad, y1 + pad),
+        ])
+    }
+
+    fn elbow_near_aabb_corner(ctrl: Pt, place: (f64, f64, f64, f64), pad: f64) -> bool {
+        let (x0, y0, x1, y1) = place;
+        let corners = [
+            (x0 - pad, y0 - pad),
+            (x1 + pad, y0 - pad),
+            (x1 + pad, y1 + pad),
+            (x0 - pad, y1 + pad),
+        ];
+        corners
+            .iter()
+            .any(|&c| (ctrl.0 - c.0).hypot(ctrl.1 - c.1) < 6.0)
+    }
+
     #[test]
     fn morphine_sky_tip_through_8306_prefers_bow() {
         let a = (844.06, 139.03);
         let b = (1782.20, 400.47);
-        // Production: simplified chem hull + slight standoff (ports == blocker).
         let place = (1548.55, 317.65, 1548.55 + 218.6, 317.65 + 229.2);
-        let ring = simplified_standoff_hull(
-            &[
-                (place.0, place.1),
-                (place.2, place.1),
-                (place.2, place.3),
-                (place.0, place.3),
-            ],
-            8.0,
-            8,
-        );
-        let tile = obstacle_tile("xbm:0008306".into(), ring.clone(), ring, place);
+        let chem = chem_hex_in_place(place);
+        let pad = place_pad_ring(place, 8.0);
+        let ink = obstacle_with_hulls("xbm:0008306".into(), chem.clone(), chem.clone());
+        let tile = obstacle_tile("xbm:0008306".into(), pad, chem, place);
         let skip: HashSet<&str> = ["xbm:0004961", "xbm:0006520"].into_iter().collect();
         assert!(!path_clears_tile_aabbs(&[a, b], &[tile.clone()], &skip));
-        let bow = fallback_bow(a, b, &[tile.clone()], &[tile.clone()], &skip, &[]);
+        // Production: ink = chem hull, place = AABB gate (not AABB ports).
+        let bow = fallback_bow(a, b, &[ink], &[tile.clone()], &skip, &[]);
         assert!(bow.len() >= 3, "bow: {bow:?}");
         assert!(
             !detour_backs_up_past_start(a, b, &bow),
             "visible-port bow must not hub-wrap: {bow:?}"
         );
-        // Elbow on the simplified hull port by 8306 — not a free-space invent.
         let ctrl = bow[1];
         assert!(
-            ctrl.1 > 200.0 && ctrl.1 < 600.0 && ctrl.0 > 1500.0,
-            "bow elbow should be a visible port by 8306, got {ctrl:?}"
+            ctrl.0 > 1400.0 && ctrl.1 < 600.0,
+            "bow elbow should stay by 8306 (not a page wrap), got {ctrl:?}"
+        );
+        assert!(
+            !elbow_near_aabb_corner(ctrl, place, 8.0),
+            "elbow must not sit on place-AABB corner: {ctrl:?}"
+        );
+        assert!(
+            path_clears_tile_aabbs(&bow, &[tile.clone()], &skip),
+            "bow must clear place: {bow:?}"
         );
         let out = prefer_tip_unless_detour_improves(
             a, b, a, b, &bow, &[], &[tile], &skip, &[],
@@ -3631,27 +3743,16 @@ mod tests {
         let a = (839.99, 165.09);
         let b = (1218.87, 372.44);
         let place = (987.5, 334.5, 987.5 + 208.5, 334.5 + 214.7);
-        let ring = simplified_standoff_hull(
-            &[
-                (place.0, place.1),
-                (place.2, place.1),
-                (place.2, place.3),
-                (place.0, place.3),
-            ],
-            8.0,
-            8,
-        );
-        let tile = obstacle_tile("xbm:0004955".into(), ring.clone(), ring, place);
+        let chem = chem_hex_in_place(place);
+        let pad = place_pad_ring(place, 8.0);
+        let ink = obstacle_with_hulls("xbm:0004955".into(), chem.clone(), chem.clone());
+        let tile = obstacle_tile("xbm:0004955".into(), pad, chem, place);
         let skip: HashSet<&str> = ["xbm:0004961", "xbm:0004960"].into_iter().collect();
         assert!(
             !path_clears_tile_aabbs(&[a, b], &[tile.clone()], &skip),
             "placement AABB must flag pink tip"
         );
-        assert!(
-            !segment_clears_obstacles(a, b, &[tile.clone()], &skip),
-            "standoff hull must block pink tip"
-        );
-        let bow = fallback_bow(a, b, &[tile.clone()], &[tile.clone()], &skip, &[]);
+        let bow = fallback_bow(a, b, &[ink], &[tile.clone()], &skip, &[]);
         assert!(bow.len() >= 3, "bow: {bow:?}");
         assert!(
             path_clears_tile_aabbs(&bow, &[tile.clone()], &skip),
@@ -3660,6 +3761,11 @@ mod tests {
         assert!(
             !detour_backs_up_past_start(a, b, &bow),
             "side bow must not count as hub wrap: {bow:?}"
+        );
+        assert!(
+            !elbow_near_aabb_corner(bow[1], place, 8.0),
+            "elbow must not sit on place-AABB corner: {:?}",
+            bow[1]
         );
         let out = prefer_tip_unless_detour_improves(
             a, b, a, b, &bow, &[], &[tile], &skip, &[],
@@ -3676,27 +3782,25 @@ mod tests {
         let a = (723.66, 807.84);
         let b = (447.09, 1007.08);
         let place = (439.83, 641.43, 439.83 + 210.62, 641.43 + 239.78);
-        let ring = simplified_standoff_hull(
-            &[
-                (place.0, place.1),
-                (place.2, place.1),
-                (place.2, place.3),
-                (place.0, place.3),
-            ],
-            8.0,
-            8,
-        );
-        let tile = obstacle_tile("xbm:0001684".into(), ring.clone(), ring, place);
+        let chem = chem_hex_in_place(place);
+        let pad = place_pad_ring(place, 8.0);
+        let ink = obstacle_with_hulls("xbm:0001684".into(), chem.clone(), chem.clone());
+        let tile = obstacle_tile("xbm:0001684".into(), pad, chem, place);
         let skip: HashSet<&str> = ["i0", "xbm:0005110"].into_iter().collect();
         assert!(
             !path_clears_tile_aabbs(&[a, b], &[tile.clone()], &skip),
             "1684 tip must be flagged by AABB sampler"
         );
-        let bow = fallback_bow(a, b, &[tile.clone()], &[tile.clone()], &skip, &[]);
+        let bow = fallback_bow(a, b, &[ink], &[tile.clone()], &skip, &[]);
         assert!(bow.len() >= 3, "visible-port bow: {bow:?}");
         assert!(
             !detour_backs_up_past_start(a, b, &bow),
             "1684 bow must not hub-wrap: {bow:?}"
+        );
+        assert!(
+            !elbow_near_aabb_corner(bow[1], place, 8.0),
+            "elbow must not sit on place-AABB corner: {:?}",
+            bow[1]
         );
         let out = prefer_tip_unless_detour_improves(
             a, b, a, b, &bow, &[], &[tile], &skip, &[],
