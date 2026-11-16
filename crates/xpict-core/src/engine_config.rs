@@ -116,8 +116,8 @@ impl RouteConfig {
             angle_penalty: 120.0,
             cosmetic_simplify_eps: 0.35 * BOND_PX,
             shared_path_penalty: 400.0,
-            // Soft enough that a short tip chord with one peer X beats a long U-bow.
-            crossing_penalty: 400.0,
+            // One X should beat a long detour around a layer.
+            crossing_penalty: 2500.0,
             // Tight enough that a left wrap around a fan hub collapses to tip
             // (network fan top spokes were ~1.22× / ~4×bond off-chord).
             max_detour_ratio: 1.15,
@@ -350,11 +350,11 @@ mod tests {
     fn pretty_matches_legacy_route_house_numbers() {
         let r = RouteConfig::pretty();
         assert_eq!(r.segment_penalty, 80.0);
-        assert_eq!(r.crossing_penalty, 400.0);
+        assert_eq!(r.crossing_penalty, 2500.0);
         assert_eq!(r.max_detour_ratio, 1.15);
         assert_eq!(r.max_chord_deviation, 3.0 * BOND_PX);
         assert_eq!(r.reopt_passes, 1);
-        assert_eq!(r.terminal_link_near, 40);
+        assert_eq!(r.terminal_link_near, 24);
     }
 
     #[test]

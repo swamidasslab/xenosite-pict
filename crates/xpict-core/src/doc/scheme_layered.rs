@@ -1,8 +1,8 @@
 //! In-house layered (Sugiyama) mol placement for standard reaction schemes.
 //!
-//! Emits mol top-left positions only. Long-edge dummy nodes are internal for
-//! crossing minimization and cross-axis straighten — never route waypoints.
-//! Edge shafts stay on [`super::scheme_route`].
+//! Emits mol top-left positions plus long-edge **dummy waypoints** for the
+//! router: multi-layer shafts follow the dummy chain instead of a tip chord
+//! that cuts intermediate layers.
 
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
@@ -22,6 +22,9 @@ pub struct LayeredPlacement {
     pub height: f64,
     /// Layer index per real mol id (after hints / longest-path).
     pub layers: HashMap<String, usize>,
+    /// Intermediate dummy centers for multi-layer real→real edges, keyed by
+    /// `(src_id, tgt_id)` in shallow→deep order (empty if adjacent layers).
+    pub route_waypoints: HashMap<(String, String), Vec<Pt>>,
 }
 
 #[derive(Clone)]
@@ -80,6 +83,7 @@ pub fn place_layered(
             width: 0.0,
             height: 0.0,
             layers: HashMap::new(),
+            route_waypoints: HashMap::new(),
         });
     }
 
@@ -165,12 +169,222 @@ pub fn place_layered(
         max_b = max_b.max(y + m.h);
     }
 
+    // Which edges span >1 layer (dummy chains), then place waypoints from
+    // *final* mol positions into intermediate-layer gaps — Sugiyama dummy
+    // pack centers go stale after corridor clear / co-endpoint / AABB nudges.
+    let multi = multi_layer_edge_keys(&nodes, &edges, &metrics);
+    let route_waypoints =
+        gap_route_waypoints(&multi, &positions, &layers, &metrics, dir);
+
     Ok(LayeredPlacement {
         positions,
         width: max_r,
         height: max_b,
         layers,
+        route_waypoints,
     })
+}
+
+/// Real→real edges that traverse at least one intermediate layer.
+fn multi_layer_edge_keys(
+    nodes: &[PackNode],
+    edges: &[PackEdge],
+    metrics: &[NodeMetrics],
+) -> Vec<(String, String, usize, usize)> {
+    let idx_of: HashMap<NodeKey, usize> = nodes
+        .iter()
+        .enumerate()
+        .map(|(i, n)| (n.key, i))
+        .collect();
+    let mut out_adj: HashMap<NodeKey, Vec<NodeKey>> = HashMap::new();
+    for e in edges {
+        out_adj.entry(e.src).or_default().push(e.tgt);
+    }
+    let mut out = Vec::new();
+    let mut seen = HashSet::new();
+    for n in nodes {
+        let Some(si) = n.real else {
+            continue;
+        };
+        let mut stack: Vec<(NodeKey, bool)> = out_adj
+            .get(&n.key)
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|k| (k, false))
+            .collect();
+        let mut visited = HashSet::new();
+        visited.insert(n.key);
+        while let Some((k, via_dummy)) = stack.pop() {
+            if !visited.insert(k) {
+                continue;
+            }
+            let Some(&j) = idx_of.get(&k) else {
+                continue;
+            };
+            if let Some(ti) = nodes[j].real {
+                if via_dummy && nodes[j].layer > n.layer {
+                    let key = (metrics[si].id.clone(), metrics[ti].id.clone());
+                    if seen.insert(key.clone()) {
+                        out.push((key.0, key.1, n.layer, nodes[j].layer));
+                    }
+                }
+                continue;
+            }
+            if let Some(nbrs) = out_adj.get(&k) {
+                for &nbr in nbrs {
+                    stack.push((nbr, true));
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Waypoints on each intermediate layer: snap the parent→child cross lerp into
+/// the nearest gap between real tiles (document space after final nudges).
+fn gap_route_waypoints(
+    multi: &[(String, String, usize, usize)],
+    positions: &HashMap<String, Pt>,
+    layers: &HashMap<String, usize>,
+    metrics: &[NodeMetrics],
+    dir: LayoutDirection,
+) -> HashMap<(String, String), Vec<Pt>> {
+    let vertical_flow = matches!(dir, LayoutDirection::Up | LayoutDirection::Down);
+    let size_of: HashMap<&str, (f64, f64)> = metrics
+        .iter()
+        .map(|m| (m.id.as_str(), (m.w, m.h)))
+        .collect();
+
+    // Per layer: sorted (cross0, cross1, flow_mid) of real tiles.
+    let mut layer_tiles: HashMap<usize, Vec<(f64, f64, f64)>> = HashMap::new();
+    for (id, &layer) in layers {
+        let Some(&(x, y)) = positions.get(id) else {
+            continue;
+        };
+        let Some(&(w, h)) = size_of.get(id.as_str()) else {
+            continue;
+        };
+        let (c0, c1, fmid) = if vertical_flow {
+            (x, x + w, y + h * 0.5)
+        } else {
+            (y, y + h, x + w * 0.5)
+        };
+        layer_tiles
+            .entry(layer)
+            .or_default()
+            .push((c0, c1, fmid));
+    }
+    for tiles in layer_tiles.values_mut() {
+        tiles.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+    }
+
+    let mut out: HashMap<(String, String), Vec<Pt>> = HashMap::new();
+    for (src, tgt, ls, lt) in multi {
+        if *lt <= *ls + 1 {
+            continue;
+        }
+        let Some(src_c) = mol_cross_flow(src, positions, &size_of, vertical_flow) else {
+            continue;
+        };
+        let Some(tgt_c) = mol_cross_flow(tgt, positions, &size_of, vertical_flow) else {
+            continue;
+        };
+        let mut wps = Vec::new();
+        for layer in (ls + 1)..*lt {
+            let t = (layer - ls) as f64 / (lt - ls) as f64;
+            let ideal_cross = src_c.0 + (tgt_c.0 - src_c.0) * t;
+            let Some(tiles) = layer_tiles.get(&layer) else {
+                // Empty intermediate: keep lerp on both axes.
+                let ideal_flow = src_c.1 + (tgt_c.1 - src_c.1) * t;
+                wps.push(pt_from_cross_flow(ideal_cross, ideal_flow, vertical_flow));
+                continue;
+            };
+            let (cross, flow) = snap_to_layer_gap(ideal_cross, tiles);
+            wps.push(pt_from_cross_flow(cross, flow, vertical_flow));
+        }
+        if !wps.is_empty() {
+            out.insert((src.clone(), tgt.clone()), wps);
+        }
+    }
+    out
+}
+
+fn mol_cross_flow(
+    id: &str,
+    positions: &HashMap<String, Pt>,
+    size_of: &HashMap<&str, (f64, f64)>,
+    vertical_flow: bool,
+) -> Option<(f64, f64)> {
+    let &(x, y) = positions.get(id)?;
+    let &(w, h) = size_of.get(id)?;
+    if vertical_flow {
+        Some((x + w * 0.5, y + h * 0.5))
+    } else {
+        Some((y + h * 0.5, x + w * 0.5))
+    }
+}
+
+fn pt_from_cross_flow(cross: f64, flow: f64, vertical_flow: bool) -> Pt {
+    if vertical_flow {
+        (cross, flow)
+    } else {
+        (flow, cross)
+    }
+}
+
+/// Nearest inter-tile gap mid to `ideal_cross`; fall back to layer span ends.
+fn snap_to_layer_gap(ideal_cross: f64, tiles: &[(f64, f64, f64)]) -> (f64, f64) {
+    let flow = {
+        let sum: f64 = tiles.iter().map(|t| t.2).sum();
+        sum / tiles.len() as f64
+    };
+    if tiles.len() < 2 {
+        let mid = 0.5 * (tiles[0].0 + tiles[0].1);
+        return (mid, flow);
+    }
+    let mut best_cross = 0.5 * (tiles[0].1 + tiles[1].0);
+    let mut best_d = (best_cross - ideal_cross).abs();
+    for w in tiles.windows(2) {
+        let gap_lo = w[0].1;
+        let gap_hi = w[1].0;
+        let mid = if gap_hi >= gap_lo {
+            0.5 * (gap_lo + gap_hi)
+        } else {
+            // Overlap: sit on the shared boundary.
+            0.5 * (gap_lo + gap_hi)
+        };
+        let d = (mid - ideal_cross).abs();
+        if d < best_d {
+            best_d = d;
+            best_cross = mid;
+        }
+    }
+    // Also consider just outside the leftmost / rightmost tile when the lerp
+    // lands past the row — keeps long fans from stealing an interior gap.
+    let left_out = tiles[0].0 - (tiles[1].0 - tiles[0].1).abs().max(1.0) * 0.5;
+    let right_out = tiles[tiles.len() - 1].1
+        + (tiles[tiles.len() - 1].0 - tiles[tiles.len() - 2].1)
+            .abs()
+            .max(1.0)
+            * 0.5;
+    for cand in [left_out, right_out] {
+        let d = (cand - ideal_cross).abs();
+        if d < best_d {
+            best_d = d;
+            best_cross = cand;
+        }
+    }
+    // Prefer an interior gap when ideal sits inside some gap span.
+    for w in tiles.windows(2) {
+        let gap_lo = w[0].1.min(w[1].0);
+        let gap_hi = w[0].1.max(w[1].0);
+        if ideal_cross >= gap_lo && ideal_cross <= gap_hi {
+            return (ideal_cross.clamp(gap_lo, gap_hi), flow);
+        }
+    }
+    let _ = best_d;
+    (best_cross, flow)
 }
 
 fn collect_metrics(
@@ -217,12 +431,8 @@ fn local_chem_centroid(paint: Option<&DocPaint>, w: f64, h: f64) -> Pt {
     let Some(paint) = paint else {
         return (w * 0.5, h * 0.5);
     };
-    if paint.molecule.atoms.is_empty() {
-        return (w * 0.5, h * 0.5);
-    }
-    // When pose-aligned, the packing "centroid" is the common core (matched
-    // atoms), not the mean of every atom — substituents must not drag the mark.
-    let (ax, ay) = if let Some(dbg) = paint.molecule.align_debug.as_ref() {
+    // Packing mark: pose-aligned common core when tagged; else shaft center.
+    if let Some(dbg) = paint.molecule.align_debug.as_ref() {
         let mut sx = 0.0_f64;
         let mut sy = 0.0_f64;
         let mut n = 0_usize;
@@ -237,26 +447,22 @@ fn local_chem_centroid(paint: Option<&DocPaint>, w: f64, h: f64) -> Pt {
             }
         }
         if n > 0 {
-            (sx / n as f64, sy / n as f64)
-        } else {
-            mean_atom_xy(paint)
+            let (ax, ay) = (sx / n as f64, sy / n as f64);
+            let (lx, ly) = paint
+                .scene
+                .viewports
+                .first()
+                .map(|v| v.local_origin())
+                .unwrap_or((0.0, 0.0));
+            let s = paint.molecule.diagram_scale();
+            let (fx, fy) = crate::depict::frame_offset(&paint.molecule);
+            return (
+                lx - paint.scene.x + s * (fx + ax),
+                ly - paint.scene.y + s * (fy + ay),
+            );
         }
-    } else {
-        mean_atom_xy(paint)
-    };
-    let lx = paint.scene.viewports.first().map(|v| v.x).unwrap_or(0.0);
-    let ly = paint.scene.viewports.first().map(|v| v.y).unwrap_or(0.0);
-    let ox = lx - paint.scene.x;
-    let oy = ly - paint.scene.y;
-    let s = paint.molecule.scale.max(1e-9);
-    (ox + s * ax, oy + s * ay)
-}
-
-fn mean_atom_xy(paint: &DocPaint) -> Pt {
-    let n = paint.molecule.atoms.len() as f64;
-    let sx: f64 = paint.molecule.atoms.iter().map(|a| a.x).sum();
-    let sy: f64 = paint.molecule.atoms.iter().map(|a| a.y).sum();
-    (sx / n, sy / n)
+    }
+    paint.center()
 }
 
 fn local_caption_baseline(paint: Option<&DocPaint>) -> Option<f64> {

@@ -1934,6 +1934,8 @@ fn hull_aabb(hull: &[Pt]) -> (f64, f64, f64, f64) {
     (x0, y0, x1, y1)
 }
 
+/// Chem silhouette samples — **not** AABB corners (placement/glyph boxes pulled
+/// many Morphine hulls to phantom upper-left verts and page-scale spans).
 fn collect_ink_points(world: &LayoutWorld, under: &str) -> Vec<Pt> {
     let mut pts = Vec::new();
     let mut stack = vec![under.to_string()];
@@ -1945,19 +1947,17 @@ fn collect_ink_points(world: &LayoutWorld, under: &str) -> Vec<Pt> {
             stack.extend(n.children.iter().cloned());
             continue;
         }
-        match n.world_shape() {
-            Shape::Point { x, y } => {
-                if n.object_type != super::layout_constraints::ObjectType::Group {
-                    pts.push((x, y));
-                }
+        if n.object_type == super::layout_constraints::ObjectType::Group {
+            if let Shape::PointSet(p) = n.world_shape() {
+                pts.extend(p);
             }
-            Shape::Aabb(a) => {
-                if a.width() > 1e-9 || a.height() > 1e-9 {
-                    pts.push((a.x0, a.y0));
-                    pts.push((a.x1, a.y0));
-                    pts.push((a.x1, a.y1));
-                    pts.push((a.x0, a.y1));
-                }
+            continue;
+        }
+        match n.world_shape() {
+            Shape::Point { x, y } => pts.push((x, y)),
+            Shape::Line { x0, y0, x1, y1 } => {
+                pts.push((x0, y0));
+                pts.push((x1, y1));
             }
             Shape::Polyline(p) | Shape::PointSet(p) => pts.extend(p),
             Shape::Circle { cx, cy, r } => {
@@ -1967,6 +1967,7 @@ fn collect_ink_points(world: &LayoutWorld, under: &str) -> Vec<Pt> {
                     pts.push((cx + r * t.cos(), cy + r * t.sin()));
                 }
             }
+            Shape::Aabb(_) => {}
             _ => {}
         }
     }

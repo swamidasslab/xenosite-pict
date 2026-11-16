@@ -23,6 +23,7 @@ mod scheme_layout;
 mod scheme_layered;
 mod scheme_nudge;
 mod scheme_route;
+mod scheme_route_simple;
 #[cfg(test)]
 mod scheme_xenobase;
 mod spec;
@@ -449,6 +450,42 @@ pub struct DocPaint {
     pub scene: Scene,
     /// Unscaled pose frame JSON (filled by [`depict`]; empty from [`render_doc`]).
     pub frame_json: String,
+}
+
+impl DocPaint {
+    /// Shaft / arrow target in **tile-local** space (add mol top-left for
+    /// document). Mean of atom coordinates after scale+fit — not the ink or
+    /// AABB center. Override path later when a custom hub is needed.
+    pub fn center(&self) -> (f64, f64) {
+        let mol = &self.molecule;
+        let scene = &self.scene;
+        let (lx, ly) = scene
+            .viewports
+            .first()
+            .map(|vp| vp.local_origin())
+            .unwrap_or((0.0, 0.0));
+        let s = mol.diagram_scale();
+        if mol.atoms.is_empty() {
+            return (
+                lx - scene.x + scene.width * 0.5,
+                ly - scene.y + scene.height * 0.5,
+            );
+        }
+        let n = mol.atoms.len() as f64;
+        let ax = mol.atoms.iter().map(|a| a.x).sum::<f64>() / n;
+        let ay = mol.atoms.iter().map(|a| a.y).sum::<f64>() / n;
+        let (fx, fy) = crate::depict::frame_offset(mol);
+        (
+            lx - scene.x + s * (fx + ax),
+            ly - scene.y + s * (fy + ay),
+        )
+    }
+
+    /// Document-space shaft target for a mol placed at `tile_tl`.
+    pub fn center_in_document(&self, tile_tl: (f64, f64)) -> (f64, f64) {
+        let (cx, cy) = self.center();
+        (tile_tl.0 + cx, tile_tl.1 + cy)
+    }
 }
 
 /// Paint each mol in a document from already-laid coords.

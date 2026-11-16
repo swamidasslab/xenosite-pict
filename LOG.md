@@ -2,6 +2,27 @@
 
 ## 2026-11-16
 
+- **Centroid↔centroid temp edge**: Pass 0 already took visible tip chords;
+  pass 1 peer costs (crossing_penalty) forced a one-vert dogleg on every
+  spoke. Gate the temp edge with `points_visible` (ignore obstacles that
+  contain an endpoint — centroids sit in overlapping inflate). After A*,
+  keep the visible tip unless a detour strictly cuts peer crossings.
+  Morphine debug: 13 tip / 6 detour (was 0 / 19).
+- **Lean parallel router (`scheme_route_simple`)**: Tip chord if ink-clear,
+  else visibility on `inflate(full chem hull)` with subsampled ports. No
+  AABB gates, fallback bows, tip resnap, or reoptimize. `refine_scheme_edges`
+  calls the simple path; old `scheme_route` kept for delete later.
+  `layout.debug_route` / `XPICT_DEBUG_ROUTE` paints hulls (blue), ports,
+  centroid chords (magenta), tips (orange), tip-chords (green) / detours
+  (vermillion). Artifact: `artifacts/morphine-route-debug.svg`.
+- **Routing hull AABB bug**: `collect_ink_points` stamped AABB corners
+  (placement/glyph/caption boxes), so many Morphine hulls grew phantom
+  upper-left verts and page-scale spans. Hull samples are now bonds, atom
+  disks, and chem PointSets only — same fix in old `scheme_route`.
+- **Multi-layer dummy waypoints**: `place_layered` exports Sugiyama dummy
+  centers as `route_waypoints`; lean router prefers tip → dummies → tip
+  (vis-repair per segment) over long tip chords through intermediate layers.
+  Debug paints dummies yellow (`debug-route-dummy`).
 - **Orange Morphine→4955 tip off centroid ray**: `resnap_tips_to_approach_rays`
   aimed bowed tips at the first elbow (`toward_start=next`), so Morphine's
   leave tip sat ~40px lateral of the Morphine→4955 chord. Always pose tips

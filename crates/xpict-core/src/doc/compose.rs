@@ -135,6 +135,7 @@ fn compose_reaction(
                 positions: refined.positions,
                 edge_paths: refined.edge_paths,
                 edge_labels: refined.edge_labels,
+                debug_overlays: refined.debug_overlays,
                 width: row.width,
                 height: row.height,
             }
@@ -251,6 +252,15 @@ fn compose_reaction(
         expand_bounds_prim(&plus, &mut max_r, &mut max_b);
         overlays.push(plus);
     }
+    // Route diagnostics under the painted shafts so arrows stay readable.
+    if !placement.debug_overlays.is_empty() {
+        for prim in &placement.debug_overlays {
+            expand_bounds_prim(prim, &mut max_r, &mut max_b);
+        }
+        let mut layered = placement.debug_overlays.clone();
+        layered.append(&mut overlays);
+        overlays = layered;
+    }
 
     Ok(Scene {
         width: max_r.max(placement.width.unwrap_or(0.0)),
@@ -342,6 +352,7 @@ struct Placement {
     positions: HashMap<String, (f64, f64)>,
     edge_paths: Vec<Option<Vec<(f64, f64)>>>,
     edge_labels: Vec<Option<(f64, f64, f64)>>,
+    debug_overlays: Vec<crate::scene::Primitive>,
     width: Option<f64>,
     height: Option<f64>,
 }
@@ -359,6 +370,7 @@ fn row_placement(sizes: &[(String, f64, f64)]) -> Placement {
         positions,
         edge_paths: vec![],
         edge_labels: vec![],
+        debug_overlays: vec![],
         width: Some(x),
         height: Some(max_h),
     }
@@ -376,7 +388,22 @@ fn layout_scheme(
             // in-house placer. elkrs is only for radial / force / stress.
             let placed = super::scheme_layered::place_layered(spec, layout, sizes, paints)?;
             let _ = (placed.width, placed.height, &placed.layers);
-            placed.positions
+            let refined = super::scheme_layout::refine_scheme_edges_with_waypoints(
+                spec,
+                layout,
+                &placed.positions,
+                paints,
+                sizes,
+                &placed.route_waypoints,
+            );
+            return Ok(Placement {
+                positions: refined.positions,
+                edge_paths: refined.edge_paths,
+                edge_labels: refined.edge_labels,
+                debug_overlays: refined.debug_overlays,
+                width: None,
+                height: None,
+            });
         }
         LayoutAlgorithm::Radial | LayoutAlgorithm::Force | LayoutAlgorithm::Stress => {
             elk_node_positions(spec, layout, sizes)?
@@ -388,6 +415,7 @@ fn layout_scheme(
         positions: refined.positions,
         edge_paths: refined.edge_paths,
         edge_labels: refined.edge_labels,
+        debug_overlays: refined.debug_overlays,
         width: None,
         height: None,
     })
@@ -625,12 +653,13 @@ pub(crate) fn compare_placer_vs_elk(
         .collect();
     let placer = super::scheme_layered::place_layered(spec, layout, &sizes, paints)?;
     let elk = elk_node_positions(spec, layout, &sizes)?;
-    let placer_p = super::scheme_layout::refine_scheme_edges(
+    let placer_p = super::scheme_layout::refine_scheme_edges_with_waypoints(
         spec,
         layout,
         &placer.positions,
         paints,
         &sizes,
+        &placer.route_waypoints,
     );
     let elk_p = super::scheme_layout::refine_scheme_edges(spec, layout, &elk, paints, &sizes);
     let gap = layout.node_spacing_or_default();
@@ -640,6 +669,7 @@ pub(crate) fn compare_placer_vs_elk(
                 positions: placer_p.positions,
                 edge_paths: placer_p.edge_paths,
                 edge_labels: placer_p.edge_labels,
+                debug_overlays: placer_p.debug_overlays,
                 width: None,
                 height: None,
             },
@@ -651,6 +681,7 @@ pub(crate) fn compare_placer_vs_elk(
                 positions: elk_p.positions,
                 edge_paths: elk_p.edge_paths,
                 edge_labels: elk_p.edge_labels,
+                debug_overlays: elk_p.debug_overlays,
                 width: None,
                 height: None,
             },

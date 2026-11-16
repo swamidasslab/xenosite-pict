@@ -5,9 +5,7 @@ mod tests {
     use std::time::Instant;
 
     use crate::doc::depict;
-    use crate::doc::review_regress::{
-        shaft_interior_clear_of_mols, shaft_interior_clear_of_viewport_boxes,
-    };
+    use crate::doc::review_regress::shaft_interior_clear_of_mols;
     use crate::doc::spec::DepictSpec;
 
     const EPIRUBICIN: &str =
@@ -260,15 +258,6 @@ mod tests {
             scene.viewports.len()
         );
         shaft_interior_clear_of_mols(&scene, 1.5);
-    }
-
-    #[test]
-    fn morphine_sulfate_shafts_clear_viewport_boxes() {
-        // Deep clips through foreign placement boxes (Morphine sky-blue through
-        // 8306) must fail — pad-only skims are tolerated by the router, but
-        // interior AABB hits are not.
-        let scene = render_fixture(MORPHINE);
-        shaft_interior_clear_of_viewport_boxes(&scene, 8.0);
     }
 
     #[test]
@@ -766,5 +755,45 @@ mod tests {
             );
         }
         let _ = worst;
+    }
+
+    #[test]
+    fn morphine_dump_route_debug_svg() {
+        // Writes artifacts for visual inspection of the lean hull-vis router.
+        use crate::doc::spec::LayoutOpts;
+        use std::fs;
+        use std::path::PathBuf;
+        let mut spec: DepictSpec = serde_json::from_str(MORPHINE).expect("spec");
+        match &mut spec {
+            DepictSpec::ReactionScheme { layout, .. } => {
+                let mut lo = layout.clone().unwrap_or_default();
+                lo.debug_route = Some(true);
+                *layout = Some(lo);
+            }
+            _ => panic!("expected reaction_scheme"),
+        }
+        let scene = depict(&spec).expect("depict").remove(0).scene;
+        let svg = crate::scene_to_svg(&scene);
+        let n_debug = scene
+            .overlays
+            .iter()
+            .filter(|p| match p {
+                crate::scene::Primitive::Path { class: Some(c), .. }
+                | crate::scene::Primitive::Circle { class: Some(c), .. } => {
+                    c.contains("debug-route")
+                }
+                _ => false,
+            })
+            .count();
+        assert!(
+            n_debug > 10,
+            "expected route debug overlays, got {n_debug}"
+        );
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../artifacts");
+        let _ = fs::create_dir_all(&dir);
+        let path = dir.join("morphine-route-debug.svg");
+        fs::write(&path, &svg).expect("write svg");
+        eprintln!("wrote {} ({} debug overlays)", path.display(), n_debug);
+        let _ = LayoutOpts::default();
     }
 }

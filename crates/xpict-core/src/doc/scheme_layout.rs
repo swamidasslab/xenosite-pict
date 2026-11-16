@@ -257,6 +257,8 @@ pub struct RefinedEdges {
     pub edge_paths: Vec<Option<Vec<(f64, f64)>>>,
     pub edge_labels: Vec<Option<(f64, f64, f64)>>,
     pub positions: HashMap<String, (f64, f64)>,
+    /// Route diagnostics when `layout.debug_route` is on.
+    pub debug_overlays: Vec<crate::scene::Primitive>,
 }
 
 pub fn refine_scheme_edges(
@@ -265,6 +267,19 @@ pub fn refine_scheme_edges(
     positions: &HashMap<String, (f64, f64)>,
     paints: &[DocPaint],
     sizes: &[(String, f64, f64)],
+) -> RefinedEdges {
+    refine_scheme_edges_with_waypoints(spec, layout, positions, paints, sizes, &HashMap::new())
+}
+
+/// Like [`refine_scheme_edges`], with Sugiyama dummy waypoints for multi-layer
+/// shafts (from [`super::scheme_layered::LayeredPlacement::route_waypoints`]).
+pub fn refine_scheme_edges_with_waypoints(
+    spec: &DepictSpec,
+    layout: &LayoutOpts,
+    positions: &HashMap<String, (f64, f64)>,
+    paints: &[DocPaint],
+    sizes: &[(String, f64, f64)],
+    route_waypoints: &HashMap<(String, String), Vec<(f64, f64)>>,
 ) -> RefinedEdges {
     let mut out_paths = vec![None; spec.edges().len()];
     let mut out_labels = vec![None; spec.edges().len()];
@@ -356,7 +371,9 @@ pub fn refine_scheme_edges(
         true,
     );
 
-    let routed = super::scheme_route::route_scheme_edges(
+    let debug_route = layout.debug_route.unwrap_or(false)
+        || std::env::var_os("XPICT_DEBUG_ROUTE").is_some();
+    let routed = super::scheme_route_simple::route_scheme_edges(
         spec,
         &positions,
         paints,
@@ -364,6 +381,8 @@ pub fn refine_scheme_edges(
         &world,
         &mol_ids,
         &engine,
+        route_waypoints,
+        debug_route,
     );
     for (i, path) in routed.paths.iter().enumerate() {
         let eid = format!("scheme/edges/e{i}");
@@ -535,6 +554,7 @@ pub fn refine_scheme_edges(
         edge_paths: out_paths,
         edge_labels: out_labels,
         positions,
+        debug_overlays: routed.debug,
     }
 }
 
@@ -554,16 +574,11 @@ fn mol_centroid(
     sizes: &HashMap<&str, (f64, f64)>,
     id: &str,
 ) -> (f64, f64) {
+    let (x, y) = positions.get(id).copied().unwrap_or((0.0, 0.0));
     if let Some(paint) = paints.get(id) {
-        if !paint.molecule.atoms.is_empty() {
-            let (x, y) = positions.get(id).copied().unwrap_or((0.0, 0.0));
-            let n = paint.molecule.atoms.len() as f64;
-            let sx: f64 = paint.molecule.atoms.iter().map(|a| a.x).sum();
-            let sy: f64 = paint.molecule.atoms.iter().map(|a| a.y).sum();
-            return chem_to_document(paint, (x, y), sx / n, sy / n);
-        }
+        return paint.center_in_document((x, y));
     }
-    let (x, y, w, h) = mol_box(positions, sizes, id);
+    let (_, _, w, h) = mol_box(positions, sizes, id);
     (x + w * 0.5, y + h * 0.5)
 }
 

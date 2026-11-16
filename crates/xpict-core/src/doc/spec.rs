@@ -1215,6 +1215,10 @@ pub struct LayoutOpts {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "codegen", ts(optional))]
     pub quality: Option<LayoutQuality>,
+    /// Paint scheme-route diagnostics (hulls, centroid chords, tips, detours).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "codegen", ts(optional))]
+    pub debug_route: Option<bool>,
 }
 
 impl LayoutOpts {
