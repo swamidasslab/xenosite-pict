@@ -15,6 +15,7 @@ export type ReviewGroup =
   | "align"
   | "scheme"
   | "scheme-layered"
+  | "xenobase"
   | "compose";
 
 export const GROUP_TITLE: Record<ReviewGroup, string> = {
@@ -31,6 +32,7 @@ export const GROUP_TITLE: Record<ReviewGroup, string> = {
   align: "Align",
   scheme: "Schemes",
   "scheme-layered": "Layered layout",
+  xenobase: "Xenobase networks",
   compose: "Compose (group / grid)",
 };
 
@@ -48,6 +50,7 @@ export const GROUP_ORDER: ReviewGroup[] = [
   "align",
   "scheme",
   "scheme-layered",
+  "xenobase",
   "compose",
 ];
 

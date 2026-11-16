@@ -1,0 +1,316 @@
+{
+  "title": "Apremilast (xenobase)",
+  "expect": "Xenobase sample (22 mols) \u2014 review placement + routing for issues; scroll if large.",
+  "spec": {
+    "type": "reaction_scheme",
+    "color": "currentColor",
+    "layout": {
+      "direction": "down",
+      "layer_spacing": 60,
+      "node_spacing": 50
+    },
+    "children": [
+      {
+        "type": "mol",
+        "id": "m0",
+        "smiles": "C(C)Oc3c(ccc(c3)C(N2C(=O)c1c(cccc1C2=O)NC(=O)C)CS(=O)(=O)C)O[*] |$;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;GlcA$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m1",
+        "smiles": "C(O)C(=O)Nc1cccc2C(=O)N(C(CS(=O)(=O)C)c3ccc(O)c(c3)OCC)C(=O)c12",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m2",
+        "smiles": "C(Oc1c(O)ccc(C(NC(=O)c2c(c(NC(C)=O)ccc2)C(O)=O)CS(C)(=O)=O)c1)C",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m3",
+        "smiles": "C(S(C)(=O)=O)C(c3cc(c(OC)cc3)OCC)N2C(=O)c1c(C2=O)cccc1NC(C)=O",
+        "halo": false,
+        "name": "Apremilast"
+      },
+      {
+        "type": "mol",
+        "id": "m4",
+        "smiles": "C2(=O)c1c(cccc1C(N2C(CS(=O)(C)=O)c3ccc(c(c3)O[*])OC)=O)NC(=O)C |$;;;;;;;;;;;;;;;;;;;;;;;GlcA;;;;;;;$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m5",
+        "smiles": "CCOc1cc(C(CS(C)(=O)=O)NC(c2c(c(NC(C)=O)ccc2)C(=O)O)=O)ccc1O[*] |$;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;GlcA$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m6",
+        "smiles": "N2(C(c3c(N)cccc3C2=O)=O)C(CS(C)(=O)=O)c1ccc(O)c(c1)O",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m7",
+        "smiles": "N3(C(c2c(C3=O)c(N)ccc2)=O)C(CS(C)(=O)=O)c1ccc(OC)c(OCC)c1",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m8",
+        "smiles": "N3(C(c2cccc(NC(C)=O)c2C3=O)=O)C(c1ccc(O)c(c1)O)CS(C)(=O)=O",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m9",
+        "smiles": "Nc3c2C(=O)N(C(c2ccc3)=O)C(c1ccc(O)c(OCC)c1)CS(=O)(=O)C",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m10",
+        "smiles": "Nc3cccc1c3C(=O)N(C(CS(=O)(=O)C)c2cc(OCC)c(cc2)O[*])C1=O |$;;;;;;;;;;;;;;;;;;;;;;;;;;GlcA;;$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m11",
+        "smiles": "O=C(NC(c2cc(O)c(cc2)OC)CS(=O)(C)=O)c1c(c(NC(=O)C)ccc1)C(=O)O",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m12",
+        "smiles": "OC(=O)c1c(cccc1C(=O)O)NC(=O)C",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m13",
+        "smiles": "OC(c1c(NC(CO)=O)cccc1C(=O)O)=O",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m14",
+        "smiles": "Oc2cc1C(=O)N(C(CS(=O)(=O)C)c3cc(OCC)c(cc3)OC)C(=O)c1c(c2)N",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m15",
+        "smiles": "Oc3c(cc(cc3)C(CS(C)(=O)=O)N2C(=O)c1c(C2=O)c(NC(=O)C)ccc1)OCC",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m16",
+        "smiles": "c1(C(NC(=O)c2c(c(NC(C)=O)ccc2)C(=O)O)CS(C)(=O)=O)ccc(OC)c(OCC)c1",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m17",
+        "smiles": "c1c(C(N3C(=O)c2c(NC(=O)C)cccc2C3=O)CS(=O)(=O)C)cc(O)c(c1)OC",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m18",
+        "smiles": "c1cc(C(N2C(c3cccc(c3C2=O)NC(=O)CO)=O)CS(C)(=O)=O)cc(c1OC)OCC",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m19",
+        "smiles": "c2c(NC(=O)CO)c3C(=O)N(C(c3cc2)=O)C(CS(C)(=O)=O)c1cc(c(cc1)O)O",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m20",
+        "smiles": "c2c1C(=O)N(C(CS(=O)(=O)C)c3cc(c(O)cc3)OCC)C(=O)c1c(cc2O)N",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m21",
+        "smiles": "c3cc2c(c(c3)NC(=O)CO[*])C(=O)N(C2=O)C(CS(=O)(=O)C)c1ccc(c(c1)OCC)OC |$;;;;;;;;;;;GlcA;;;;;;;;;;;;;;;;;;;;;;$|",
+        "halo": false
+      },
+      {
+        "type": "edge",
+        "sources": "m3",
+        "targets": "m0",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m3",
+        "targets": "m1",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m3",
+        "targets": "m2",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m3",
+        "targets": "m4",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m3",
+        "targets": "m5",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m3",
+        "targets": "m6",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m3",
+        "targets": "m7",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m3",
+        "targets": "m8",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m3",
+        "targets": "m9",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m3",
+        "targets": "m10",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m3",
+        "targets": "m11",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m3",
+        "targets": "m12",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m3",
+        "targets": "m13",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m3",
+        "targets": "m14",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m3",
+        "targets": "m15",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m3",
+        "targets": "m16",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m3",
+        "targets": "m17",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m3",
+        "targets": "m18",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m3",
+        "targets": "m19",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m3",
+        "targets": "m20",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m3",
+        "targets": "m21",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      }
+    ]
+  }
+}

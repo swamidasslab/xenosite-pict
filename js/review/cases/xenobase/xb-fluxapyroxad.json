@@ -1,0 +1,1004 @@
+{
+  "title": "Fluxapyroxad (xenobase)",
+  "expect": "Xenobase sample (58 mols) \u2014 review placement + routing for issues; scroll if large.",
+  "spec": {
+    "type": "reaction_scheme",
+    "color": "currentColor",
+    "layout": {
+      "direction": "down",
+      "layer_spacing": 60,
+      "node_spacing": 50
+    },
+    "children": [
+      {
+        "type": "mol",
+        "id": "m0",
+        "smiles": "C(=O)(O)c1c[nH]nc1C(F)F",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m1",
+        "smiles": "C(F)(F)c1c(C(O)=O)cn(n1)C",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m2",
+        "smiles": "C(Nc2cc(O)ccc2-c3cc(c(F)c(F)c3)F)(c1c[nH]nc1C(F)F)=O",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m3",
+        "smiles": "C1(C(OC(Oc2c(-c3ccc(O)cc3NC(c4c(C(F)F)nn(C)c4)=O)ccc(F)c2F)C(C1O)C(O)=O)O)O",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m4",
+        "smiles": "C1(C(OC(Oc3ccc(c(NC(c4c(nn(c4)C)C(F)F)=O)c3)-c2ccc(F)c(F)c2)C(C1O)C(O)=O)O)O",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m5",
+        "smiles": "C1(Oc2c(c(F)ccc2-c3c(NC(=O)c4c(nn(C)c4)C(F)F)cccc3)F)OC(O)C(O)C(O)C1C(=O)O",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m6",
+        "smiles": "C4(O)C(C(C(C(O4)Oc2ccc(-c3c(O)c(F)c(c(c3)F)F)c(c2)NC(c1c(C(F)F)nn(c1)C)=O)C(O)=O)O)O",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m7",
+        "smiles": "CSc3c(F)c(F)c(F)cc3-c1c(NC(c2c(nn(C)c2)C(F)F)=O)cc(cc1)O[*] |$;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;GlcA$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m8",
+        "smiles": "Cn3nc(C(F)F)c(c3)C(=O)Nc2cc(O)ccc2-c1c(c(F)c(F)c(c1)F)[*] |$;;;;;;;;;;;;;;;;;;;;;;;;;;;;Cys$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m9",
+        "smiles": "Cn3nc(c(c3)C(=O)Nc1ccccc1-c2cc(c(c(c2)F)F)F)C(F)F",
+        "halo": false,
+        "name": "fluxapyroxad"
+      },
+      {
+        "type": "mol",
+        "id": "m10",
+        "smiles": "Cn3nc(c(c3)C(=O)Nc2cc(OS(=O)(=O)O)ccc2-c1ccc(c(F)c1)F)C(F)F",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m11",
+        "smiles": "FC(c1c(C(=O)Nc2ccccc2-c3c([*])c(c(F)c(c3)F)F)c[nH]n1)F |$;;;;;;;;;;;;;;;Cys;;;;;;;;;;;$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m12",
+        "smiles": "FC(c1c(C(Nc3cc([*])ccc3-c2c(c(c(F)c(F)c2)F)O)=O)c[nH]n1)F |$;;;;;;;;;Cys;;;;;;;;;;;;;;;;;;$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m13",
+        "smiles": "Fc1c(cc(-c3ccc([*])cc3NC(=O)c2c(C(F)F)n[nH]c2)cc1F)F |$;;;;;;;;;Cys;;;;;;;;;;;;;;;;;$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m14",
+        "smiles": "Fc2c(F)c(F)c(c(-c4ccccc4NC(=O)c3c(nn(C)c3)C(F)F)c2)OC1C(C(O)=O)C(O)C(C(O)O1)O",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m15",
+        "smiles": "Fc3c(F)c(F)cc(c3O)-c1c(NC(=O)c2c(nn(c2)C)C(F)F)cc(OC)cc1",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m16",
+        "smiles": "N(C(=O)c3cn(C)nc3C(F)F)c1cc([*])ccc1-c2cc(F)c(F)c(F)c2 |$;;;;;;;;;;;;;;;Cys;;;;;;;;;;;;$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m17",
+        "smiles": "N(c2c(-c3cc(F)c(F)c(c3)F)cccc2)C(=O)C1=CNNC1C(O)=O",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m18",
+        "smiles": "N(c2c(-c4c(c(F)c(cc4)F)OC3C(C(O)C(O)C(O3)O)C(O)=O)cccc2)C(=O)c1c[nH]nc1C(F)F",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m19",
+        "smiles": "N(c3ccccc3-c2cc(F)c(c(F)c2OS(O)(=O)=O)F)C(=O)c1cn(C)nc1C(F)F",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m20",
+        "smiles": "O(C4C(C(O)=O)C(O)C(C(O)O4)O)c2ccc(-c3cc(c(c(F)c3)F)F)c(c2)NC(c1c[nH]nc1C(F)F)=O",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m21",
+        "smiles": "O1C(Oc2c(c(F)c(F)cc2-c3c(NC(c4c(n[nH]c4)C(F)F)=O)cccc3)F)C(C(C(O)C1O)O)C(=O)O",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m22",
+        "smiles": "O4C(C(C(C(C4O)O)O)C(O)=O)Oc3cc(c(cc3)-c2ccc(F)c(F)c2)NC(=O)c1c[nH]nc1C(F)F",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m23",
+        "smiles": "O=C(c3c(C(F)F)nn(C)c3)Nc2c(ccc(O)c2)-c1cc(F)c(F)cc1",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m24",
+        "smiles": "O=C(c3c[nH]nc3C(F)F)Nc2c(cccc2)-c1cc(F)c(F)c(F)c1OS(=O)(=O)O",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m25",
+        "smiles": "O=C(c4cn(nc4C(F)F)C)Nc3c(ccc(c3)OC2OC(O)C(O)C(O)C2C(=O)O)-c1ccc(F)c(F)c1O",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m26",
+        "smiles": "OC4C(C(C(OC4O)Oc2ccc(-c3ccc(F)c(F)c3[*])c(c2)NC(=O)c1cn(C)nc1C(F)F)C(O)=O)O |$;;;;;;;;;;;;;;;;;;;;;Cys;;;;;;;;;;;;;;;;;;$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m27",
+        "smiles": "OS(Oc3c(ccc(c3F)F)-c2c(cccc2)NC(c1cn(C)nc1C(F)F)=O)(=O)=O",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m28",
+        "smiles": "Oc3c(ccc(F)c3F)-c1ccccc1NC(=O)c2c(C(F)F)nn(C)c2",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m29",
+        "smiles": "S(=O)(=O)(O)Oc2cc(NC(=O)c3c[nH]nc3C(F)F)c(cc2)-c1cc(F)c(F)c(F)c1",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m30",
+        "smiles": "S(C)c1c(-c3c(cc(O)cc3)NC(=O)c2c(nn(C)c2)C(F)F)ccc(F)c1F",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m31",
+        "smiles": "[*]c3c(F)c(c(cc3-c2c(cc(O)cc2)NC(=O)c1c(n[nH]c1)C(F)F)F)F |$Cys;;;;;;;;;;;;;;;;;;;;;;;;;;;$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m32",
+        "smiles": "[*]c3c(c(F)c(F)cc3-c1ccccc1NC(=O)c2cn(C)nc2C(F)F)F |$Cys;;;;;;;;;;;;;;;;;;;;;;;;;;;$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m33",
+        "smiles": "c1(-c3ccccc3NC(=O)c2c(n[nH]c2)C(F)F)c(c(c(F)c(F)c1)F)O",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m34",
+        "smiles": "c1(C(F)F)nn(C)cc1C(=O)Nc2c(-c3c(c(F)c(F)c(F)c3)O[*])ccc(c2)SC |$;;;;;;;;;;;;;;;;;;;;;;;;GlcA;;;;;;$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m35",
+        "smiles": "c1(C(Nc3c(ccc(c3)SC)-c2ccc(F)c(F)c2O)=O)cn(C)nc1C(F)F",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m36",
+        "smiles": "c1(F)c(F)c(F)cc(-c2c(NC(c3c(n[nH]c3)C(F)F)=O)cc(O[*])cc2)c1SC |$;;;;;;;;;;;;;;;;;;;;;;;;GlcA;;;;;$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m37",
+        "smiles": "c1(O)c(F)c(F)ccc1-c2c(NC(=O)c3cn(C)nc3C(F)F)cc([*])cc2 |$;;;;;;;;;;;;;;;;;;;;;;;;;Cys;;$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m38",
+        "smiles": "c1(OC4OC(C(C(O)C4C(=O)O)O)O)c(F)c(F)ccc1-c2c(NC(c3cn(C)nc3C(F)F)=O)cc([*])cc2 |$;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;Cys;;$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m39",
+        "smiles": "c1(n[nH]cc1C(=O)Nc3c(ccc(O)c3)-c2cc(F)c(F)c(F)c2SC)C(F)F",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m40",
+        "smiles": "c1c(c(F)c(F)cc1-c3c(cc(O[*])cc3)NC(=O)c2c(nn(C)c2)C(F)F)F |$;;;;;;;;;;;;;GlcA;;;;;;;;;;;;;;;$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m41",
+        "smiles": "c1cc(-c2ccc(O)cc2NC(c3c(C(F)F)nn(C)c3)=O)c([*])c(c1F)F |$;;;;;;;;;;;;;;;;;;;;;;;Cys;;;;$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m42",
+        "smiles": "c2(C(F)F)n[nH]c(c2C(Nc3ccccc3-c4cc(F)c(c(c4)F)F)=O)OC1C(C(=O)O)C(O)C(C(O)O1)O",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m43",
+        "smiles": "c2(O)ccc(-c3c(SC)c(F)c(F)c(c3)F)c(c2)NC(=O)c1cn(nc1C(F)F)C",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m44",
+        "smiles": "c2(ccccc2-c3c(O)c(c(F)c(c3)F)F)NC(=O)c1c(C(F)F)nn(c1)C",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m45",
+        "smiles": "c2c(cc(NC(c3c(C(F)F)nn(C)c3)=O)c(c2)-c1cc(F)c(F)c(c1O)F)SC",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m46",
+        "smiles": "c2c(ccc(c2NC(=O)c3c[nH]nc3C(F)F)-c1c(c(F)c(F)c(c1)F)O[*])SC |$;;;;;;;;;;;;;;;;;;;;;;;;;;;GlcA;;$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m47",
+        "smiles": "c3(F)c(F)c(F)cc(c3O)-c1cc(c(cc1NC(c2c(n[nH]c2)C(F)F)=O)O)SC",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m48",
+        "smiles": "c3(F)cc(c(O)c(c3F)F)-c2c(cc([*])cc2)NC(c1c(C(F)F)nn(C)c1)=O |$;;;;;;;;;;;;;;Cys;;;;;;;;;;;;;;$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m49",
+        "smiles": "c3(c(c(O)c(c(F)c3F)F)-c2c(cc(cc2)O)NC(c1c[nH]nc1C(F)F)=O)SC",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m50",
+        "smiles": "c3(c(cc(cc3)OS(O)(=O)=O)NC(=O)c2cn(C)nc2C(F)F)-c1cc(F)c(F)c(c1)F",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m51",
+        "smiles": "c3(c(cn(n3)C)C(=O)Nc2c(ccc(O)c2)-c1cc(F)c(F)c(F)c1OC)C(F)F",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m52",
+        "smiles": "c3(ccc(c(c3)NC(c2c(n[nH]c2)C(F)F)=O)-c1cc(c(F)c(c1O)F)F)SC",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m53",
+        "smiles": "c3(cn(C)nc3C(F)F)C(=O)Nc1cc(ccc1-c2c(c(F)c(F)cc2)SCC(N)C([*])=O)O |$;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;Gly;;$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m54",
+        "smiles": "c3c(F)c(c(c(c3)-c2c(cc(cc2)SCC(C(=O)[*])N)NC(c1cn(C)nc1C(F)F)=O)O)F |$;;;;;;;;;;;;;;;;;;Gly;;;;;;;;;;;;;;;$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m55",
+        "smiles": "c3c(cc(F)c(F)c3F)-c1c(NC(c2c(n[nH]c2)C(F)F)=O)cccc1",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m56",
+        "smiles": "c3c(cc(F)c(c3F)F)-c1c(NC(=O)c2c(C(F)F)nn(c2)C)ccc(O)c1",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m57",
+        "smiles": "c4(c(cc(F)c(F)c4F)-c2c(NC(c3cn(C)nc3C(F)F)=O)cc(O)cc2)OC1OC(C(C(O)C1C(O)=O)O)O",
+        "halo": false
+      },
+      {
+        "type": "edge",
+        "sources": "m1",
+        "targets": "m0",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m2",
+        "targets": "m20",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m2",
+        "targets": "m24",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m2",
+        "targets": "m29",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m2",
+        "targets": "m31",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m2",
+        "targets": "m47",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m2",
+        "targets": "m49",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m4",
+        "targets": "m22",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m5",
+        "targets": "m18",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m7",
+        "targets": "m36",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m8",
+        "targets": "m43",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m9",
+        "targets": "m1",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m9",
+        "targets": "m16",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m9",
+        "targets": "m23",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m9",
+        "targets": "m28",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m9",
+        "targets": "m32",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m9",
+        "targets": "m44",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m9",
+        "targets": "m55",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m9",
+        "targets": "m56",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m11",
+        "targets": "m31",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m12",
+        "targets": "m52",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m13",
+        "targets": "m12",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m14",
+        "targets": "m3",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m16",
+        "targets": "m13",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m16",
+        "targets": "m48",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m23",
+        "targets": "m4",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m23",
+        "targets": "m10",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m23",
+        "targets": "m53",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m28",
+        "targets": "m5",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m28",
+        "targets": "m27",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m28",
+        "targets": "m54",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m31",
+        "targets": "m39",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m32",
+        "targets": "m8",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m32",
+        "targets": "m11",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m33",
+        "targets": "m12",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m33",
+        "targets": "m21",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m33",
+        "targets": "m24",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m33",
+        "targets": "m47",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m33",
+        "targets": "m49",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m34",
+        "targets": "m46",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m37",
+        "targets": "m35",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m37",
+        "targets": "m38",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m39",
+        "targets": "m36",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m40",
+        "targets": "m25",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m41",
+        "targets": "m26",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m41",
+        "targets": "m30",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m43",
+        "targets": "m7",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m43",
+        "targets": "m39",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m44",
+        "targets": "m3",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m44",
+        "targets": "m6",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m44",
+        "targets": "m14",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m44",
+        "targets": "m15",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m44",
+        "targets": "m19",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m44",
+        "targets": "m25",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m44",
+        "targets": "m28",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m44",
+        "targets": "m48",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m44",
+        "targets": "m51",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m44",
+        "targets": "m57",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m45",
+        "targets": "m34",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m45",
+        "targets": "m52",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m48",
+        "targets": "m45",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m52",
+        "targets": "m46",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m53",
+        "targets": "m41",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m54",
+        "targets": "m37",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m55",
+        "targets": "m0",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m55",
+        "targets": "m2",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m55",
+        "targets": "m17",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m55",
+        "targets": "m33",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m55",
+        "targets": "m42",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m56",
+        "targets": "m3",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m56",
+        "targets": "m6",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m56",
+        "targets": "m8",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m56",
+        "targets": "m14",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m56",
+        "targets": "m15",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m56",
+        "targets": "m23",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m56",
+        "targets": "m25",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m56",
+        "targets": "m40",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m56",
+        "targets": "m50",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m56",
+        "targets": "m51",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m56",
+        "targets": "m57",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      }
+    ]
+  }
+}

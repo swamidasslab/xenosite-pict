@@ -2,6 +2,10 @@
 
 ## 2026-11-16
 
+- Gallery: new `cases/xenobase/` group (14 networks — morphine, steroids,
+  pesticides, drugs from fixtures + `networks.jsonl` sample). Review figures
+  keep native SVG size with `overflow: auto` + `max-height` so large nets
+  scroll instead of shrinking. Open `?group=xenobase`.
 - Peer cost: sharing a vis-graph / pathway vertex now pays `crossing_penalty`
   (proper-segment cross missed endpoint meets at a common hull Steiner).
   Debug marks those too. Unit: `shared_hull_vertex_counts_as_crossing`.

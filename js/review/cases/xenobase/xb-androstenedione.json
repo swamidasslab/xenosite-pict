@@ -1,0 +1,1324 @@
+{
+  "title": "Androstenedione (xenobase)",
+  "expect": "xbn:0001658 Intermediates on \u2014 steroid net; feedback arrows stay tame (no page-top U-loops).",
+  "spec": {
+    "type": "reaction_scheme",
+    "color": "currentColor",
+    "children": [
+      {
+        "type": "mol",
+        "id": "xbm:0004799",
+        "smiles": "OC4C2(C)C(CC4)C1CCC3=CC(=O)CCC3(C1CC2)C",
+        "halo": false,
+        "name": "testosterone",
+        "align_to": "xbm:0001658",
+        "circle": [
+          {
+            "atoms": [
+              10
+            ],
+            "bonds": [],
+            "stroke": {
+              "color": "#0072b2",
+              "width": 4.8
+            }
+          },
+          {
+            "atoms": [
+              11
+            ],
+            "bonds": [],
+            "stroke": {
+              "color": "#0072b2",
+              "width": 4.8
+            }
+          },
+          {
+            "atoms": [
+              0
+            ],
+            "bonds": [],
+            "stroke": {
+              "color": "#d55e00",
+              "width": 4.8
+            }
+          },
+          {
+            "atoms": [
+              14
+            ],
+            "bonds": [],
+            "stroke": {
+              "color": "#009e73",
+              "width": 4.8
+            }
+          },
+          {
+            "atoms": [],
+            "bonds": [
+              [
+                0,
+                1
+              ]
+            ],
+            "stroke": {
+              "color": "#cc79a7",
+              "width": 4.8
+            }
+          },
+          {
+            "atoms": [
+              13
+            ],
+            "bonds": [],
+            "stroke": {
+              "color": "#e69f00",
+              "width": 4.8
+            }
+          },
+          {
+            "atoms": [
+              14
+            ],
+            "bonds": [],
+            "stroke": {
+              "color": "#e69f00",
+              "width": 4.8
+            },
+            "scale": 1.4
+          },
+          {
+            "atoms": [],
+            "bonds": [
+              [
+                0,
+                1
+              ]
+            ],
+            "stroke": {
+              "color": "#e69f00",
+              "width": 4.8
+            },
+            "scale": 1.4
+          },
+          {
+            "atoms": [],
+            "bonds": [
+              [
+                11,
+                12
+              ]
+            ],
+            "stroke": {
+              "color": "#e69f00",
+              "width": 4.8
+            }
+          },
+          {
+            "atoms": [
+              6
+            ],
+            "bonds": [],
+            "stroke": {
+              "color": "#56b4e9",
+              "width": 4.8
+            }
+          },
+          {
+            "atoms": [
+              5
+            ],
+            "bonds": [],
+            "stroke": {
+              "color": "#0072b2",
+              "width": 4.8
+            }
+          },
+          {
+            "atoms": [
+              9
+            ],
+            "bonds": [],
+            "stroke": {
+              "color": "#d55e00",
+              "width": 4.8
+            }
+          },
+          {
+            "atoms": [
+              0
+            ],
+            "bonds": [],
+            "stroke": {
+              "color": "#009e73",
+              "width": 4.8
+            },
+            "scale": 1.4
+          }
+        ]
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0001550",
+        "smiles": "C12CCc4c(ccc(c4)O)C1CCC3(C)C(C(CC23)O)=O",
+        "halo": false,
+        "align_to": "xbm:0001949"
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0001537",
+        "smiles": "C12C3C(c4c(cc(OS(=O)(=O)O)cc4)CC3)CCC1(C)C(=O)CC2",
+        "halo": false,
+        "name": "Estrone sulfuric acid",
+        "align_to": "xbm:0001695"
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0001954",
+        "smiles": "C2CC4(C)C(CCC4C3CCc1cc(O[*])ccc1C23)O |$;;;;;;;;;;;;;;;GlcA;;;;;$|",
+        "halo": false,
+        "align_to": "xbm:0001695",
+        "region": [
+          {
+            "style": "bezier",
+            "atoms": [
+              15
+            ],
+            "exclude": [],
+            "padding": 18,
+            "fill": {
+              "color": "#7b61ff",
+              "opacity": 0.25
+            }
+          }
+        ]
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0001694",
+        "smiles": "C1CC4(C(C(CC4=O)O)C2C1c3ccc(cc3CC2)O)C",
+        "halo": false,
+        "align_to": "xbm:0001949"
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0002100",
+        "smiles": "C3CC1(C)C(C4CCc2cc(O[*])ccc2C34)CCC1=O |$;;;;;;;;;;;;GlcA;;;;;;;;$|",
+        "halo": false,
+        "name": "Estrone glucuronide",
+        "align_to": "xbm:0001949",
+        "region": [
+          {
+            "style": "bezier",
+            "atoms": [
+              12
+            ],
+            "exclude": [],
+            "padding": 18,
+            "fill": {
+              "color": "#7b61ff",
+              "opacity": 0.25
+            }
+          }
+        ]
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0001556",
+        "smiles": "C12c4c(cc(O)c(c4)O)CCC1C3CCC(C3(C)CC2)O",
+        "halo": false,
+        "align_to": "xbm:0001695",
+        "circle": [
+          {
+            "atoms": [
+              8
+            ],
+            "bonds": [],
+            "stroke": {
+              "color": "#0072b2",
+              "width": 4.8
+            }
+          },
+          {
+            "atoms": [
+              8
+            ],
+            "bonds": [],
+            "stroke": {
+              "color": "#d55e00",
+              "width": 4.8
+            },
+            "scale": 1.4
+          },
+          {
+            "atoms": [
+              5
+            ],
+            "bonds": [],
+            "stroke": {
+              "color": "#009e73",
+              "width": 4.8
+            }
+          }
+        ]
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0008388",
+        "smiles": "c34CCC1C(c3cc(c(c4)OC)O)CCC2(C)C(CCC12)O",
+        "halo": false,
+        "align_to": "xbm:0001556"
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0005287",
+        "smiles": "[*]OC1C2(C)C(C3CCc4c(ccc(c4)O)C3CC2)CC1 |$GlcA;;;;;;;;;;;;;;;;;;;;$|",
+        "halo": false,
+        "align_to": "xbm:0001695",
+        "region": [
+          {
+            "style": "bezier",
+            "atoms": [
+              0
+            ],
+            "exclude": [],
+            "padding": 18,
+            "fill": {
+              "color": "#7b61ff",
+              "opacity": 0.25
+            }
+          }
+        ]
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0001555",
+        "smiles": "C12c4c(cc(O)c(c4)O)CCC1C3C(C)(C(CC3)=O)CC2",
+        "halo": false,
+        "align_to": "xbm:0001949",
+        "circle": [
+          {
+            "atoms": [
+              8
+            ],
+            "bonds": [],
+            "stroke": {
+              "color": "#0072b2",
+              "width": 4.8
+            }
+          },
+          {
+            "atoms": [
+              5
+            ],
+            "bonds": [],
+            "stroke": {
+              "color": "#d55e00",
+              "width": 4.8
+            }
+          },
+          {
+            "atoms": [
+              8
+            ],
+            "bonds": [],
+            "stroke": {
+              "color": "#009e73",
+              "width": 4.8
+            },
+            "scale": 1.4
+          }
+        ]
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0007892",
+        "smiles": "c24c(cc(OC)c(c4)O)C1CCC3(C)C(CCC3C1CC2)O",
+        "halo": false,
+        "align_to": "xbm:0001556",
+        "circle": [
+          {
+            "atoms": [
+              8
+            ],
+            "bonds": [],
+            "stroke": {
+              "width": 4.8
+            }
+          }
+        ]
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0004761",
+        "smiles": "OC1C2C(CCC3C2CCC4=CC(=O)CCC34C)(C)C(C1)O",
+        "halo": false,
+        "align_to": "xbm:0004799"
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0002091",
+        "smiles": "C3C2C1(C)CCC(C=C1C(O)CC2C4CCC(C4(C3)C)=O)=O",
+        "halo": false,
+        "align_to": "xbm:0001658"
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0002073",
+        "smiles": "C34CCC1C(C3(C)CCC(O)C4)CCC2(C)C(CCC12)O",
+        "halo": false,
+        "name": "Androstanediol",
+        "align_to": "xbm:0001559"
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0004800",
+        "smiles": "OC4C3(C)CCC1C(C3CC4)CC(C2=CC(=O)CCC12C)O",
+        "halo": false,
+        "align_to": "xbm:0004799"
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0007894",
+        "smiles": "c24c(cc(c(c4)O[*])OC)C1CCC3(C)C(CCC3C1CC2)O |$;;;;;;;GlcA;;;;;;;;;;;;;;;$|",
+        "halo": false,
+        "align_to": "xbm:0007892",
+        "region": [
+          {
+            "style": "bezier",
+            "atoms": [
+              7
+            ],
+            "exclude": [],
+            "padding": 18,
+            "fill": {
+              "color": "#7b61ff",
+              "opacity": 0.25
+            }
+          }
+        ]
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0001690",
+        "smiles": "C1CC3C(CCc4c3ccc(c4)O)C2C1(C(C(C2)O)O)C",
+        "halo": false,
+        "name": "Estriol",
+        "align_to": "xbm:0001695",
+        "circle": [
+          {
+            "atoms": [
+              9
+            ],
+            "bonds": [],
+            "stroke": {
+              "width": 4.8
+            }
+          }
+        ]
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0001929",
+        "smiles": "C2C3c4c(cc(O)c(c4)O[*])CCC3C1CCC(C1(C)C2)=O |$;;;;;;;;;;GlcA;;;;;;;;;;;$|",
+        "halo": false,
+        "align_to": "xbm:0001555",
+        "region": [
+          {
+            "style": "bezier",
+            "atoms": [
+              10
+            ],
+            "exclude": [],
+            "padding": 18,
+            "fill": {
+              "color": "#7b61ff",
+              "opacity": 0.25
+            }
+          }
+        ]
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0001658",
+        "smiles": "C1CC(C=C2CCC4C(CCC3(C(=O)CCC34)C)C12C)=O",
+        "halo": false,
+        "name": "androstenedione",
+        "circle": [
+          {
+            "atoms": [
+              3
+            ],
+            "bonds": [],
+            "stroke": {
+              "color": "#0072b2",
+              "width": 4.8
+            }
+          },
+          {
+            "atoms": [
+              4
+            ],
+            "bonds": [],
+            "stroke": {
+              "color": "#0072b2",
+              "width": 4.8
+            }
+          },
+          {
+            "atoms": [
+              1
+            ],
+            "bonds": [],
+            "stroke": {
+              "color": "#d55e00",
+              "width": 4.8
+            }
+          },
+          {
+            "atoms": [
+              20
+            ],
+            "bonds": [],
+            "stroke": {
+              "color": "#d55e00",
+              "width": 4.8
+            }
+          },
+          {
+            "atoms": [],
+            "bonds": [
+              [
+                10,
+                9
+              ]
+            ],
+            "stroke": {
+              "color": "#d55e00",
+              "width": 4.8
+            }
+          },
+          {
+            "atoms": [],
+            "bonds": [
+              [
+                0,
+                1
+              ]
+            ],
+            "stroke": {
+              "color": "#d55e00",
+              "width": 4.8
+            }
+          },
+          {
+            "atoms": [
+              5
+            ],
+            "bonds": [],
+            "stroke": {
+              "color": "#009e73",
+              "width": 4.8
+            }
+          },
+          {
+            "atoms": [
+              12
+            ],
+            "bonds": [],
+            "stroke": {
+              "color": "#cc79a7",
+              "width": 4.8
+            }
+          },
+          {
+            "atoms": [
+              13
+            ],
+            "bonds": [],
+            "stroke": {
+              "color": "#cc79a7",
+              "width": 4.8
+            }
+          }
+        ]
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0001931",
+        "smiles": "C2C3c4c(cc(c(OC)c4)O[*])CCC3C1CCC(C1(C)C2)=O |$;;;;;;;;;;;GlcA;;;;;;;;;;;$|",
+        "halo": false,
+        "align_to": "xbm:0001932",
+        "region": [
+          {
+            "style": "bezier",
+            "atoms": [
+              11
+            ],
+            "exclude": [],
+            "padding": 18,
+            "fill": {
+              "color": "#7b61ff",
+              "opacity": 0.25
+            }
+          }
+        ]
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0001949",
+        "smiles": "C2CC1(C)C(C3CCc4c(ccc(c4)O)C23)CCC1=O",
+        "halo": false,
+        "name": "estrone",
+        "align_to": "xbm:0001658",
+        "circle": [
+          {
+            "atoms": [
+              17
+            ],
+            "bonds": [],
+            "stroke": {
+              "color": "#0072b2",
+              "width": 4.8
+            }
+          },
+          {
+            "atoms": [
+              11
+            ],
+            "bonds": [],
+            "stroke": {
+              "color": "#d55e00",
+              "width": 4.8
+            }
+          },
+          {
+            "atoms": [
+              16
+            ],
+            "bonds": [],
+            "stroke": {
+              "color": "#009e73",
+              "width": 4.8
+            }
+          },
+          {
+            "atoms": [
+              18
+            ],
+            "bonds": [],
+            "stroke": {
+              "color": "#cc79a7",
+              "width": 4.8
+            }
+          },
+          {
+            "atoms": [
+              19
+            ],
+            "bonds": [],
+            "stroke": {
+              "color": "#cc79a7",
+              "width": 4.8
+            }
+          },
+          {
+            "atoms": [
+              14
+            ],
+            "bonds": [],
+            "stroke": {
+              "color": "#e69f00",
+              "width": 4.8
+            }
+          },
+          {
+            "atoms": [
+              13
+            ],
+            "bonds": [],
+            "stroke": {
+              "color": "#56b4e9",
+              "width": 4.8
+            }
+          },
+          {
+            "atoms": [
+              6
+            ],
+            "bonds": [],
+            "stroke": {
+              "color": "#0072b2",
+              "width": 4.8
+            }
+          },
+          {
+            "atoms": [
+              7
+            ],
+            "bonds": [],
+            "stroke": {
+              "color": "#d55e00",
+              "width": 4.8
+            }
+          }
+        ]
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0001934",
+        "smiles": "C2C4(C(CC(C4O)O)C1CCC3=CC(=O)CCC3(C1C2)C)C",
+        "halo": false,
+        "align_to": "xbm:0004799"
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0007893",
+        "smiles": "c24c(cc(c(c4)O)O[*])C1CCC3(C)C(CCC3C1CC2)O |$;;;;;;;;GlcA;;;;;;;;;;;;;$|",
+        "halo": false,
+        "align_to": "xbm:0001556",
+        "region": [
+          {
+            "style": "bezier",
+            "atoms": [
+              8
+            ],
+            "exclude": [],
+            "padding": 18,
+            "fill": {
+              "color": "#7b61ff",
+              "opacity": 0.25
+            }
+          }
+        ]
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0001547",
+        "smiles": "C12CCC4(C)C(CCC4C1CCC3C2(CCC(C3)=O)C)O",
+        "halo": false,
+        "name": "Androstanolone",
+        "align_to": "xbm:0004799"
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0005096",
+        "smiles": "Oc3ccc2C4CCC1(C)C(C4CCc2c3O)CCC1=O",
+        "halo": false,
+        "align_to": "xbm:0001949",
+        "circle": [
+          {
+            "atoms": [
+              16
+            ],
+            "bonds": [],
+            "stroke": {
+              "color": "#0072b2",
+              "width": 4.8
+            }
+          },
+          {
+            "atoms": [
+              16
+            ],
+            "bonds": [],
+            "stroke": {
+              "color": "#d55e00",
+              "width": 4.8
+            },
+            "scale": 1.4
+          }
+        ]
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0001558",
+        "smiles": "C13C(C4(C)CCC(C=C4CC3)=O)CCC2(C)C1CCC2OS(=O)(=O)O",
+        "halo": false,
+        "name": "Testosterone sulfate",
+        "align_to": "xbm:0004799"
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0005097",
+        "smiles": "Oc3ccc2C4CCC1(C)C(C4CCc2c3OC)CCC1=O",
+        "halo": false,
+        "align_to": "xbm:0005096"
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0001932",
+        "smiles": "C2C3c4c(cc(c(c4)OC)O)CCC3C1CCC(C1(C)C2)=O",
+        "halo": false,
+        "align_to": "xbm:0001555",
+        "circle": [
+          {
+            "atoms": [
+              10
+            ],
+            "bonds": [],
+            "stroke": {
+              "width": 4.8
+            }
+          }
+        ]
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0007794",
+        "smiles": "c2(cc3CC(C4C1CCC(C1(C)CCC4c3cc2)=O)O)O",
+        "halo": false,
+        "align_to": "xbm:0001949"
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0005293",
+        "smiles": "[*]OC4C3(C)CCC1C(C3CC4)CCC2=CC(=O)CCC12C |$GlcA;;;;;;;;;;;;;;;;;;;;;$|",
+        "halo": false,
+        "align_to": "xbm:0004799",
+        "region": [
+          {
+            "style": "bezier",
+            "atoms": [
+              0
+            ],
+            "exclude": [],
+            "padding": 18,
+            "fill": {
+              "color": "#7b61ff",
+              "opacity": 0.25
+            }
+          }
+        ]
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0001889",
+        "smiles": "C24c1c(CCC2C3C(C)(CC4)C(C(O)C3)O)cc(O)c(c1)O",
+        "halo": false,
+        "align_to": "xbm:0001690"
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0005049",
+        "smiles": "Oc2ccc1C3CCC4(C)C(CCC4C3CCc1c2O)O",
+        "halo": false,
+        "align_to": "xbm:0001695"
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0008384",
+        "smiles": "c34C(CC1C(c3ccc(O)c4)CCC2(C)C(=O)CCC12)O",
+        "halo": false,
+        "align_to": "xbm:0001949"
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0001561",
+        "smiles": "C13C4(CC(C(=O)C=C4CCC1C2C(C)(CC3)C(CC2)O)O)C",
+        "halo": false,
+        "align_to": "xbm:0004799"
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0001695",
+        "smiles": "C1CC4(C)C(CCC4C2CCc3c(ccc(c3)O)C12)O",
+        "halo": false,
+        "name": "estradiol",
+        "align_to": "xbm:0001949",
+        "circle": [
+          {
+            "atoms": [
+              17
+            ],
+            "bonds": [],
+            "stroke": {
+              "color": "#0072b2",
+              "width": 4.8
+            }
+          },
+          {
+            "atoms": [],
+            "bonds": [
+              [
+                0,
+                1
+              ]
+            ],
+            "stroke": {
+              "color": "#0072b2",
+              "width": 4.8
+            }
+          },
+          {
+            "atoms": [
+              14
+            ],
+            "bonds": [],
+            "stroke": {
+              "color": "#d55e00",
+              "width": 4.8
+            }
+          },
+          {
+            "atoms": [
+              5
+            ],
+            "bonds": [],
+            "stroke": {
+              "color": "#009e73",
+              "width": 4.8
+            }
+          },
+          {
+            "atoms": [],
+            "bonds": [
+              [
+                4,
+                19
+              ]
+            ],
+            "stroke": {
+              "color": "#cc79a7",
+              "width": 4.8
+            }
+          },
+          {
+            "atoms": [
+              17
+            ],
+            "bonds": [],
+            "stroke": {
+              "color": "#e69f00",
+              "width": 4.8
+            },
+            "scale": 1.4
+          },
+          {
+            "atoms": [
+              16
+            ],
+            "bonds": [],
+            "stroke": {
+              "color": "#56b4e9",
+              "width": 4.8
+            }
+          },
+          {
+            "atoms": [
+              19
+            ],
+            "bonds": [],
+            "stroke": {
+              "color": "#0072b2",
+              "width": 4.8
+            }
+          }
+        ]
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0001930",
+        "smiles": "C2C3c4c(cc(OC)c(O)c4)CCC3C1CCC(C1(C)C2)=O",
+        "halo": false,
+        "align_to": "xbm:0001555"
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0005021",
+        "smiles": "Oc2c(c3CCC4C1CCC(C1(C)CCC4c3cc2)=O)O[*] |$;;;;;;;;;;;;;;;;;;;;;GlcA$|",
+        "halo": false,
+        "align_to": "xbm:0005096",
+        "region": [
+          {
+            "style": "bezier",
+            "atoms": [
+              21
+            ],
+            "exclude": [],
+            "padding": 18,
+            "fill": {
+              "color": "#7b61ff",
+              "opacity": 0.25
+            }
+          }
+        ]
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0001559",
+        "smiles": "C13C(C4CCC2(C)C(C4CC3)CCC2=O)(CCC(C1)=O)C",
+        "halo": false,
+        "name": "Androstanedione",
+        "align_to": "xbm:0001658"
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0001555",
+        "targets": "xbm:0001929",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "#0072b2",
+        "stroke_width": 4.8
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0001555",
+        "targets": "xbm:0001930",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "#d55e00",
+        "stroke_width": 4.8
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0001555",
+        "targets": "xbm:0001932",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "#009e73",
+        "stroke_width": 4.8
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0001556",
+        "targets": "xbm:0007892",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "#0072b2",
+        "stroke_width": 4.8
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0001556",
+        "targets": "xbm:0007893",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "#d55e00",
+        "stroke_width": 4.8
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0001556",
+        "targets": "xbm:0008388",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "#009e73",
+        "stroke_width": 4.8
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0001658",
+        "targets": "xbm:0001559",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "#0072b2",
+        "stroke_width": 4.8
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0001658",
+        "targets": "xbm:0001949",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "#d55e00",
+        "stroke_width": 4.8
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0001658",
+        "targets": "xbm:0002091",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "#009e73",
+        "stroke_width": 4.8
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0001658",
+        "targets": "xbm:0004799",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "#cc79a7",
+        "stroke_width": 4.8
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0001690",
+        "targets": "xbm:0001889",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "currentColor",
+        "stroke_width": 4.8
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0001695",
+        "targets": "xbm:0001537",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "#0072b2",
+        "stroke_width": 4.8
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0001695",
+        "targets": "xbm:0001556",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "#d55e00",
+        "stroke_width": 4.8
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0001695",
+        "targets": "xbm:0001690",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "#009e73",
+        "stroke_width": 4.8
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0001695",
+        "targets": "xbm:0001949",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "#cc79a7",
+        "stroke_width": 4.8,
+        "layout": false
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0001695",
+        "targets": "xbm:0001954",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "#e69f00",
+        "stroke_width": 4.8
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0001695",
+        "targets": "xbm:0005049",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "#56b4e9",
+        "stroke_width": 4.8
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0001695",
+        "targets": "xbm:0005287",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "#0072b2",
+        "stroke_width": 4.8
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0001932",
+        "targets": "xbm:0001931",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "currentColor",
+        "stroke_width": 4.8
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0001949",
+        "targets": "xbm:0001550",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "#0072b2",
+        "stroke_width": 4.8
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0001949",
+        "targets": "xbm:0001555",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "#d55e00",
+        "stroke_width": 4.8
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0001949",
+        "targets": "xbm:0001694",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "#009e73",
+        "stroke_width": 4.8
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0001949",
+        "targets": "xbm:0001695",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "#cc79a7",
+        "stroke_width": 4.8
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0001949",
+        "targets": "xbm:0002100",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "#e69f00",
+        "stroke_width": 4.8
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0001949",
+        "targets": "xbm:0005096",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "#56b4e9",
+        "stroke_width": 4.8
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0001949",
+        "targets": "xbm:0007794",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "#0072b2",
+        "stroke_width": 4.8
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0001949",
+        "targets": "xbm:0008384",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "#d55e00",
+        "stroke_width": 4.8
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0004799",
+        "targets": "xbm:0001547",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "#0072b2",
+        "stroke_width": 4.8
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0004799",
+        "targets": "xbm:0001558",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "#d55e00",
+        "stroke_width": 4.8
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0004799",
+        "targets": "xbm:0001561",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "#009e73",
+        "stroke_width": 4.8
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0004799",
+        "targets": "xbm:0001658",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "#cc79a7",
+        "stroke_width": 4.8,
+        "layout": false
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0004799",
+        "targets": "xbm:0001695",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "#e69f00",
+        "stroke_width": 4.8
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0004799",
+        "targets": "xbm:0001934",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "#56b4e9",
+        "stroke_width": 4.8
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0004799",
+        "targets": "xbm:0004761",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "#0072b2",
+        "stroke_width": 4.8
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0004799",
+        "targets": "xbm:0004800",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "#d55e00",
+        "stroke_width": 4.8
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0004799",
+        "targets": "xbm:0005293",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "#009e73",
+        "stroke_width": 4.8
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0005096",
+        "targets": "xbm:0005021",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "#0072b2",
+        "stroke_width": 4.8
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0005096",
+        "targets": "xbm:0005097",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "#d55e00",
+        "stroke_width": 4.8
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0007892",
+        "targets": "xbm:0007894",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "currentColor",
+        "stroke_width": 4.8
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0001559",
+        "targets": "xbm:0002073",
+        "arrow": "forward",
+        "dashed": true,
+        "color": "#9a9a9a",
+        "stroke_width": 2.4
+      }
+    ],
+    "layout": {
+      "direction": "down",
+      "layer_spacing": 60,
+      "node_spacing": 50
+    }
+  }
+}

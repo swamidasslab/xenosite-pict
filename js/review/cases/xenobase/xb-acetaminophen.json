@@ -1,0 +1,120 @@
+{
+  "title": "Acetaminophen (xenobase)",
+  "expect": "Xenobase sample (8 mols) \u2014 review placement + routing for issues; scroll if large.",
+  "spec": {
+    "type": "reaction_scheme",
+    "color": "currentColor",
+    "layout": {
+      "direction": "down",
+      "layer_spacing": 60,
+      "node_spacing": 50
+    },
+    "children": [
+      {
+        "type": "mol",
+        "id": "m0",
+        "smiles": "C=1C(C=CC(C=1)=O)=NC(C)=O",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m1",
+        "smiles": "N(C(=O)C)c1ccc(OS(=O)(=O)O)cc1",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m2",
+        "smiles": "N(c1cc(O)c(O)cc1)C(C)=O",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m3",
+        "smiles": "O(C(=O)C(N)CS)c1ccc(cc1)NC(=O)C",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m4",
+        "smiles": "[*]Oc1ccc(NC(=O)C)cc1 |$GlcA;;;;;;;;;;;$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m5",
+        "smiles": "c1c(c(cc(c1)NC(C)=O)[*])O |$;;;;;;;;;;GSH;$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m6",
+        "smiles": "c1c(c(cc(c1)NC(C)=O)[*])O |$;;;;;;;;;;NAC;$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m7",
+        "smiles": "c1cc(ccc1NC(C)=O)O",
+        "halo": false,
+        "name": "Acetaminophen"
+      },
+      {
+        "type": "edge",
+        "sources": "m0",
+        "targets": "m5",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m5",
+        "targets": "m6",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m7",
+        "targets": "m0",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m7",
+        "targets": "m1",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m7",
+        "targets": "m2",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m7",
+        "targets": "m3",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m7",
+        "targets": "m4",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      }
+    ]
+  }
+}

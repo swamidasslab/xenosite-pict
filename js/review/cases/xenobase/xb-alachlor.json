@@ -1,0 +1,586 @@
+{
+  "title": "Alachlor (xenobase)",
+  "expect": "Xenobase sample (39 mols) \u2014 review placement + routing for issues; scroll if large.",
+  "spec": {
+    "type": "reaction_scheme",
+    "color": "currentColor",
+    "layout": {
+      "direction": "down",
+      "layer_spacing": 60,
+      "node_spacing": 50
+    },
+    "children": [
+      {
+        "type": "mol",
+        "id": "m0",
+        "smiles": "C(C(=O)Nc1c(CC)cccc1C(C)O)S(=O)(=O)C",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m1",
+        "smiles": "C(C)c1c(NC(=O)CS(=O)(=O)C)c(ccc1)CC",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m2",
+        "smiles": "C(C[*])(=O)Nc1c(CC)cccc1CC |$;;GSH;;;;;;;;;;;;$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m3",
+        "smiles": "C(C[*])(=O)Nc1c(CC)cccc1CC |$;;NAC;;;;;;;;;;;;$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m4",
+        "smiles": "C(O)(C)c1cccc(CC)c1N(C(=O)CS(=O)(=O)C)COC",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m5",
+        "smiles": "C(O)(C)c1cccc(c1NC(=O)CS(C)(=O)=O)C(C)O",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m6",
+        "smiles": "C(c1c(c(cc(c1)OS(=O)(O)=O)CC)N)C",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m7",
+        "smiles": "C(c1cccc(c1N(C(CS)=O)COC)CC)C",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m8",
+        "smiles": "CC(c1c(N(C(=O)C[S+]([O-])C)COC)c(CC)ccc1)O",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m9",
+        "smiles": "CC(c1c(N(COC)C(CCl)=O)c(CC)ccc1)O",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m10",
+        "smiles": "CC(c1cccc(c1NC(=O)C[*])CC)O |$;;;;;;;;;;;;GSH;;;$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m11",
+        "smiles": "CC(c1cccc(c1NC(=O)C[*])CC)O |$;;;;;;;;;;;;NAC;;;$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m12",
+        "smiles": "CC(c1cccc(c1NC(=O)C[S+]([O-])C)CC)O",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m13",
+        "smiles": "CC(c1cccc(c1NC(CCl)=O)CC)O",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m14",
+        "smiles": "CCc1c(N)c(CC)ccc1",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m15",
+        "smiles": "CCc1c(c(C(O[*])C)ccc1)NC(=O)CS(C)(=O)=O |$;;;;;;;GlcA;;;;;;;;;;;;$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m16",
+        "smiles": "CCc1cccc(c1N(CO)C(=O)CCl)CC",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m17",
+        "smiles": "CCc1cccc(c1NCOC)CC",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m18",
+        "smiles": "COCN(C(=O)CCl)c1c(CC)cccc1CC",
+        "halo": false,
+        "name": "Alachlor"
+      },
+      {
+        "type": "mol",
+        "id": "m19",
+        "smiles": "COCN(c1c(CC)cccc1CC)C(=O)CS(C)(=O)=O",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m20",
+        "smiles": "N(COC)(C(=O)CSC)c1c(CC)cccc1CC",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m21",
+        "smiles": "N(COC)(c1c(cccc1C(O)C)C(O)C)C(=O)CS(C)(=O)=O",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m22",
+        "smiles": "NC(C([*])=O)CSCC(=O)N(c1c(CC)cccc1CC)COC |$;;;Gly;;;;;;;;;;;;;;;;;;;;$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m23",
+        "smiles": "O(CN(C(CO)=O)c1c(CC)cccc1CC)C",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m24",
+        "smiles": "O(CN(c1c(cccc1CC)CC)C(=O)C[*])C |$;;;;;;;;;;;;;;;;Cys;$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m25",
+        "smiles": "O(CN(c1c(cccc1CC)CC)C(=O)C[*])C |$;;;;;;;;;;;;;;;;GSH;$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m26",
+        "smiles": "O(CN(c1c(cccc1CC)CC)C(=O)C[*])C |$;;;;;;;;;;;;;;;;NAC;$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m27",
+        "smiles": "O=C(CS(=O)(C)=O)Nc1c(cccc1CC)CCO",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m28",
+        "smiles": "O=C(N(COC)c1c(CC)cccc1C(O)C)C[*] |$;;;;;;;;;;;;;;;;;;GSH$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m29",
+        "smiles": "O=C(N(COC)c1c(CC)cccc1C(O)C)C[*] |$;;;;;;;;;;;;;;;;;;NAC$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m30",
+        "smiles": "O=C(N(c1c(CC)cccc1CC)COC)C[S+](C)[O-]",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m31",
+        "smiles": "[O-][S+](CC(=O)Nc1c(CC)cccc1CC)C",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m32",
+        "smiles": "c1(CC(O)=O)c(c(CC)ccc1)NC(CS(=O)(=O)C)=O",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m33",
+        "smiles": "c1(CC)cccc(c1NC(CCl)=O)CC",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m34",
+        "smiles": "c1(CC)cccc(c1NC(CSC)=O)CC",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m35",
+        "smiles": "c1cc(CC)c(N(C(C)=O)COC)c(c1)CC",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m36",
+        "smiles": "c1cc(CC)c(N(COC)C(=O)C[S+]([O-])CC(C(O)=O)NC(C)=O)c(CC)c1",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m37",
+        "smiles": "c1cc(c(N(COC)C(CCl)=O)c(c1)C(C)O[*])CC |$;;;;;;;;;;;;;;;;;GlcA;;$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m38",
+        "smiles": "c1cc(c(N(COC)C(CS[*])=O)c(c1)CC)CC |$;;;;;;;;;;;GlcA;;;;;;;$|",
+        "halo": false
+      },
+      {
+        "type": "edge",
+        "sources": "m0",
+        "targets": "m5",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m0",
+        "targets": "m15",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m1",
+        "targets": "m0",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m1",
+        "targets": "m27",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m2",
+        "targets": "m3",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m3",
+        "targets": "m34",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m4",
+        "targets": "m21",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m7",
+        "targets": "m20",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m7",
+        "targets": "m38",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m9",
+        "targets": "m28",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m9",
+        "targets": "m37",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m10",
+        "targets": "m11",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m11",
+        "targets": "m12",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m13",
+        "targets": "m10",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m14",
+        "targets": "m6",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m16",
+        "targets": "m33",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m18",
+        "targets": "m9",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m18",
+        "targets": "m16",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m18",
+        "targets": "m17",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m18",
+        "targets": "m25",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m18",
+        "targets": "m33",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m18",
+        "targets": "m35",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m19",
+        "targets": "m1",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m19",
+        "targets": "m4",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m20",
+        "targets": "m30",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m21",
+        "targets": "m5",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m22",
+        "targets": "m24",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m24",
+        "targets": "m26",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m25",
+        "targets": "m22",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m26",
+        "targets": "m7",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m26",
+        "targets": "m36",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m27",
+        "targets": "m32",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m28",
+        "targets": "m29",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m29",
+        "targets": "m8",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m30",
+        "targets": "m19",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m31",
+        "targets": "m1",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m33",
+        "targets": "m2",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m33",
+        "targets": "m13",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m33",
+        "targets": "m14",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m34",
+        "targets": "m12",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m34",
+        "targets": "m31",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m35",
+        "targets": "m23",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      }
+    ]
+  }
+}

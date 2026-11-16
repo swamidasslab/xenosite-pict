@@ -1,0 +1,306 @@
+{
+  "title": "Morphine sulfate (xenobase)",
+  "expect": "xbn:0004961 Intermediates on \u2014 dense Morphine fan; arrows clear sibling boxes (no shaft through N-oxide / sulfates).",
+  "spec": {
+    "type": "reaction_scheme",
+    "color": "currentColor",
+    "children": [
+      {
+        "type": "mol",
+        "id": "xbm:0002207",
+        "smiles": "C5=CC2C34c1c(OC4C5O)c(OC)ccc1CC2N(C)CC3",
+        "halo": false,
+        "name": "Codeine sulfate"
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0005110",
+        "smiles": "Oc5c4c1c(cc5)CC3NCCC12C(O4)C(O)C=CC23",
+        "halo": false,
+        "name": "Normorphine"
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0001685",
+        "smiles": "C1CC23c5c4CC(C2C=CC(C3Oc5c(O[*])cc4)O)N1 |$;;;;;;;;;;;;;;;;GlcA;;;;$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0008306",
+        "smiles": "c3(O[*])ccc1c4C25CCN(C)C(C5C=CC(C2Oc34)O)C1 |$;;GlcA;;;;;;;;;;;;;;;;;;;$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0002271",
+        "smiles": "C=3C(O[*])C5C24c1c(O5)c(OC)ccc1CC(N(C)CC4)C2C=3 |$;;;GlcA;;;;;;;;;;;;;;;;;;;$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0002220",
+        "smiles": "C5CC12C4C=CC(C1Oc3c(ccc(CC4N5C)c23)OS(=O)(=O)O)OS(=O)(=O)O",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0008653",
+        "smiles": "c4(O[*])ccc1c5C23CCN(C)C(C2C=CC(O[*])C3Oc45)C1 |$;;GlcA;;;;;;;;;;;;;;;;GlcA;;;;$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0007817",
+        "smiles": "c2(ccc4c3C15C(C(N(C)CC5)C4)C=CC(C1Oc23)O)OS(=O)(=O)O",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0004961",
+        "smiles": "Oc1c4c2C35CCN(C)C(C5C=CC(C3O4)O)Cc2cc1",
+        "halo": false,
+        "name": "Morphine sulfate"
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0005077",
+        "smiles": "Oc3c4OC1C(O[*])C=CC5C2NCCC15c4c(cc3)C2 |$;;;;;;;GlcA;;;;;;;;;;;;;$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0001684",
+        "smiles": "C1CC23c5c4CC(C2C=CC(C3Oc5c(OC)cc4)O)N1",
+        "halo": false,
+        "name": "norcodeine"
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0004955",
+        "smiles": "Oc1c3OC5C24CCN(C)C(C4C=CC5OC(C)=O)Cc(c23)cc1",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0004960",
+        "smiles": "Oc1c3c5c(CC4[N+](C)([O-])CCC25C4C=CC(C2O3)O)cc1",
+        "halo": false,
+        "name": "Morphine N-oxide"
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0004956",
+        "smiles": "Oc1c3OC5C24CCN(C)C(C4C=CC5O[*])Cc(c23)cc1 |$;;;;;;;;;;;;;;;;GlcA;;;;;$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0001696",
+        "smiles": "C1CC45c3c2CC(C5C=CC(O[*])C4Oc3c(OC)cc2)N1 |$;;;;;;;;;;;;GlcA;;;;;;;;;$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "xbm:0006520",
+        "smiles": "c14c5CC3N(CCC12C(Oc4c(O)cc5)C(OS(=O)(=O)O)C=CC23)C",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "i0",
+        "smiles": "C4=CC1C23CCN(C1C=C5C2=C(C(=O)C=C5)OC3C4O)C",
+        "halo": false,
+        "color": "#9a9a9a"
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0002207",
+        "targets": "xbm:0001684",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "#0072b2",
+        "stroke_width": 4.8
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0002207",
+        "targets": "xbm:0002271",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "#e69f00",
+        "stroke_width": 4.8
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0002207",
+        "targets": "xbm:0004961",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "#009e73",
+        "stroke_width": 4.8,
+        "layout": false
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0004961",
+        "targets": "xbm:0002207",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "#0072b2",
+        "stroke_width": 4.8
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0004961",
+        "targets": "xbm:0004955",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "#e69f00",
+        "stroke_width": 4.8
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0004961",
+        "targets": "xbm:0004956",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "#009e73",
+        "stroke_width": 4.8
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0004961",
+        "targets": "xbm:0004960",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "#cc79a7",
+        "stroke_width": 4.8
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0004961",
+        "targets": "xbm:0005110",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "#d55e00",
+        "stroke_width": 4.8
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0004961",
+        "targets": "xbm:0006520",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "#56b4e9",
+        "stroke_width": 4.8
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0004961",
+        "targets": "xbm:0007817",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "#f0e442",
+        "stroke_width": 4.8
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0004961",
+        "targets": "xbm:0008306",
+        "arrow": "forward",
+        "dashed": false,
+        "color": "#0072b2",
+        "stroke_width": 4.8
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0002207",
+        "targets": "i0",
+        "arrow": "forward",
+        "dashed": true,
+        "color": "#9a9a9a",
+        "stroke_width": 2.4
+      },
+      {
+        "type": "edge",
+        "sources": "i0",
+        "targets": "xbm:0005110",
+        "arrow": "forward",
+        "dashed": true,
+        "color": "#9a9a9a",
+        "stroke_width": 2.4,
+        "layout": false
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0005110",
+        "targets": "xbm:0001685",
+        "arrow": "forward",
+        "dashed": true,
+        "color": "#9a9a9a",
+        "stroke_width": 2.4
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0001684",
+        "targets": "xbm:0001696",
+        "arrow": "forward",
+        "dashed": true,
+        "color": "#9a9a9a",
+        "stroke_width": 2.4
+      },
+      {
+        "type": "edge",
+        "sources": "i0",
+        "targets": "xbm:0004956",
+        "arrow": "forward",
+        "dashed": true,
+        "color": "#9a9a9a",
+        "stroke_width": 2.4,
+        "layout": false
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0004956",
+        "targets": "xbm:0008653",
+        "arrow": "forward",
+        "dashed": true,
+        "color": "#9a9a9a",
+        "stroke_width": 2.4
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0007817",
+        "targets": "xbm:0002220",
+        "arrow": "forward",
+        "dashed": true,
+        "color": "#9a9a9a",
+        "stroke_width": 2.4
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0005110",
+        "targets": "xbm:0005077",
+        "arrow": "forward",
+        "dashed": true,
+        "color": "#9a9a9a",
+        "stroke_width": 2.4
+      },
+      {
+        "type": "edge",
+        "sources": "xbm:0008306",
+        "targets": "xbm:0008653",
+        "arrow": "forward",
+        "dashed": true,
+        "color": "#9a9a9a",
+        "stroke_width": 2.4
+      }
+    ],
+    "layout": {
+      "direction": "down",
+      "layer_spacing": 60,
+      "node_spacing": 50
+    }
+  }
+}

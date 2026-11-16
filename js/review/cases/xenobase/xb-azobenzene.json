@@ -1,0 +1,656 @@
+{
+  "title": "Azobenzene (xenobase)",
+  "expect": "Xenobase sample (44 mols) \u2014 review placement + routing for issues; scroll if large.",
+  "spec": {
+    "type": "reaction_scheme",
+    "color": "currentColor",
+    "layout": {
+      "direction": "down",
+      "layer_spacing": 60,
+      "node_spacing": 50
+    },
+    "children": [
+      {
+        "type": "mol",
+        "id": "m0",
+        "smiles": "C(=O)(Nc1ccc(-c2ccc(cc2)N)cc1)C",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m1",
+        "smiles": "C(=O)=O",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m2",
+        "smiles": "C(N(c1ccccc1)O)(C)=O",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m3",
+        "smiles": "C(Nc1ccccc1)(CCC)=O",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m4",
+        "smiles": "C=1C(C=CC(C=1)=O)=NC(C)=O",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m5",
+        "smiles": "CC(=O)Nc1ccc(-c2ccc(c(O)c2)NC(=O)C)cc1",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m6",
+        "smiles": "CNc1ccc(O)cc1",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m7",
+        "smiles": "CNc1ccccc1",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m8",
+        "smiles": "N(C(=O)C)c1c(cccc1)O",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m9",
+        "smiles": "N(C(=O)C)c1ccc(OS(=O)(=O)O)cc1",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m10",
+        "smiles": "N(c1cc(O)c(O)cc1)C(C)=O",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m11",
+        "smiles": "N(c1cccc(OS(=O)(=O)O)c1)C(C)=O",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m12",
+        "smiles": "N(c2ccccc2)Nc1ccccc1",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m13",
+        "smiles": "Nc1ccccc1",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m14",
+        "smiles": "O(C(=O)C(N)CS)c1ccc(cc1)NC(=O)C",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m15",
+        "smiles": "ON(C(=O)C)c2ccc(cc2)-c1ccc(NC(C)=O)cc1",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m16",
+        "smiles": "OS(Oc2c(N)ccc(c2)-c1ccc(N)cc1)(=O)=O",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m17",
+        "smiles": "Oc1ccc(cc1)N",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m18",
+        "smiles": "S(=O)(O)(Nc1ccccc1)=O",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m19",
+        "smiles": "[*]Nc1ccc(O)cc1 |$NAC;;;;;;;;$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m20",
+        "smiles": "[*]Oc1ccc(NC(=O)C)cc1 |$GlcA;;;;;;;;;;;$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m21",
+        "smiles": "c1(-c2ccc(cc2)N(O)C(C)=O)ccc(N)cc1",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m22",
+        "smiles": "c1(-c2ccc(cc2)N)ccc(N[*])cc1 |$;;;;;;;;;;;;GlcA;;$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m23",
+        "smiles": "c1(NO)ccccc1",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m24",
+        "smiles": "c1(N[*])ccc(-c2ccc(cc2)NC(=O)C)cc1 |$;;GlcA;;;;;;;;;;;;;;;$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m25",
+        "smiles": "c1(c(cccc1)O)N",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m26",
+        "smiles": "c1c(-c2ccc(cc2)NC(C)=O)ccc(c1)NC(=O)C",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m27",
+        "smiles": "c1c(NC(C)=O)cccc1O[*] |$;;;;;;;;;;;GlcA$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m28",
+        "smiles": "c1c(O)cc(N)cc1",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m29",
+        "smiles": "c1c(O[*])cccc1N |$;;;GlcA;;;;;$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m30",
+        "smiles": "c1c(c(cc(c1)NC(C)=O)[*])O |$;;;;;;;;;;GSH;$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m31",
+        "smiles": "c1c(c(cc(c1)NC(C)=O)[*])O |$;;;;;;;;;;NAC;$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m32",
+        "smiles": "c1c(cc(NC(C)=O)cc1)O",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m33",
+        "smiles": "c1c(cccc1N)OS(O)(=O)=O",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m34",
+        "smiles": "c1cc(-c2ccc(N=N)cc2)ccc1N=N",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m35",
+        "smiles": "c1cc(-c2ccc(cc2)N)ccc1N",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m36",
+        "smiles": "c1cc(N=Nc2c(cccc2)O)ccc1",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m37",
+        "smiles": "c1cc(ccc1N=Nc2ccccc2)O[*] |$;;;;;;;;;;;;;;;GlcA$|",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m38",
+        "smiles": "c1cc(ccc1NC(C)=O)O",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m39",
+        "smiles": "c1ccc(N=Nc2ccc(O)cc2)cc1",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m40",
+        "smiles": "c1cccc(NC(C)=O)c1",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m41",
+        "smiles": "c1ccccc1N=Nc2ccccc2",
+        "halo": false,
+        "name": "Azobenzene"
+      },
+      {
+        "type": "mol",
+        "id": "m42",
+        "smiles": "c2(NC(C)=O)ccc(cc2)-c1ccc(cc1)NO",
+        "halo": false
+      },
+      {
+        "type": "mol",
+        "id": "m43",
+        "smiles": "c2(cc(O)c(N)cc2)-c1ccc(cc1)N",
+        "halo": false
+      },
+      {
+        "type": "edge",
+        "sources": "m0",
+        "targets": "m24",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m4",
+        "targets": "m30",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m7",
+        "targets": "m6",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m7",
+        "targets": "m13",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m13",
+        "targets": "m1",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m13",
+        "targets": "m3",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m13",
+        "targets": "m7",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m13",
+        "targets": "m8",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m13",
+        "targets": "m17",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m13",
+        "targets": "m18",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m13",
+        "targets": "m19",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m13",
+        "targets": "m23",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m13",
+        "targets": "m28",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m13",
+        "targets": "m38",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m13",
+        "targets": "m40",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m17",
+        "targets": "m19",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m17",
+        "targets": "m38",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m28",
+        "targets": "m29",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m28",
+        "targets": "m32",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m28",
+        "targets": "m33",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m30",
+        "targets": "m31",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m32",
+        "targets": "m11",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m32",
+        "targets": "m27",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m35",
+        "targets": "m0",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m35",
+        "targets": "m5",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m35",
+        "targets": "m15",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m35",
+        "targets": "m16",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m35",
+        "targets": "m21",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m35",
+        "targets": "m22",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m35",
+        "targets": "m26",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m35",
+        "targets": "m34",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m35",
+        "targets": "m42",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m35",
+        "targets": "m43",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m38",
+        "targets": "m4",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m38",
+        "targets": "m9",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m38",
+        "targets": "m10",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m38",
+        "targets": "m14",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m38",
+        "targets": "m20",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m39",
+        "targets": "m37",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m40",
+        "targets": "m2",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m40",
+        "targets": "m38",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m41",
+        "targets": "m12",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m41",
+        "targets": "m13",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m41",
+        "targets": "m25",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m41",
+        "targets": "m35",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m41",
+        "targets": "m36",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      },
+      {
+        "type": "edge",
+        "sources": "m41",
+        "targets": "m39",
+        "arrow": "forward",
+        "stroke_width": 4.8,
+        "color": "currentColor"
+      }
+    ]
+  }
+}

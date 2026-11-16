@@ -163,14 +163,24 @@ button:hover, .btn:hover { border-color: var(--accent); }
   background: #fff;
   padding: 0.5rem;
   overflow: auto;
-  display: inline-block;
+  display: block;
+  width: 100%;
   max-width: 100%;
+  /* Cap viewport so huge xenobase nets scroll inside the figure */
+  max-height: min(85vh, 1200px);
   line-height: 0;
   min-height: 3rem;
 }
 .xpict-depict { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: flex-end; }
 .xpict-cell { line-height: 0; }
+/* Default cells shrink to column width; review figures keep native SVG size
+   so large schemes stay scrollable instead of unreadably scaled down. */
 .xpict-cell svg { max-width: 100%; height: auto; display: block; }
+.review-figure .xpict-cell svg {
+  max-width: none;
+  width: auto;
+  height: auto;
+}
 .xpict-pending { color: var(--muted); margin: 0; line-height: 1.4; min-height: 1.2em; }
 .xpict-error { color: var(--problem); white-space: pre-wrap; }
 
