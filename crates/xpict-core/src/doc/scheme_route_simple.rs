@@ -45,13 +45,11 @@ struct ArrowGroup {
     reversed: Vec<bool>,
 }
 
-/// Inflated full-ink hull: collision tests + visible Steiner vertices.
+/// Inflated full-ink hull: collision tests + Steiner ring (= `hull`).
 #[derive(Clone)]
 struct Obstacle {
     mol_id: String,
     hull: Vec<Pt>,
-    /// Full inflated hull ring (Steiner verts). Same as `hull`.
-    verts: Vec<Pt>,
     aabb: (f64, f64, f64, f64),
 }
 
@@ -186,7 +184,7 @@ pub fn route_scheme_edges(
     if debug {
         for o in &obstacles {
             debug_prims.push(poly_closed(&o.hull, dbg::HULL, 2.5, 0.55, "debug-route-hull"));
-            for &p in &o.verts {
+            for &p in &o.hull {
                 debug_prims.push(dot(p, 3.5, dbg::HULL, 0.65, "debug-route-hull-vert"));
             }
         }
@@ -665,7 +663,7 @@ fn build_visibility_graph(obstacles: &[Obstacle]) -> VisGraph {
     let mut ranges: Vec<(usize, usize)> = Vec::new();
     for o in obstacles {
         let start = pts.len();
-        for &p in &o.verts {
+        for &p in &o.hull {
             pts.push(p);
             owner.push(o.mol_id.clone());
         }
@@ -836,14 +834,10 @@ fn build_obstacles(
         if hull.len() < 3 {
             continue;
         }
-        // Full ring as Steiner verts — subsampling consecutive verts makes
-        // chords through the hull interior, which routes must never walk.
-        let verts = hull.clone();
         let aabb = hull_aabb(&hull);
         out.push(Obstacle {
             mol_id: id.clone(),
             hull,
-            verts,
             aabb,
         });
     }
@@ -915,7 +909,6 @@ fn collect_ink_points(world: &LayoutWorld, under: &str) -> Vec<Pt> {
                     pts.push((a.x0, a.y1));
                 }
             }
-            _ => {}
         }
     }
     pts
@@ -1409,7 +1402,6 @@ mod tests {
         Obstacle {
             mol_id: id.into(),
             aabb: hull_aabb(&hull),
-            verts: hull.clone(),
             hull,
         }
     }

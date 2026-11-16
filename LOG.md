@@ -2,6 +2,11 @@
 
 ## 2026-11-16
 
+- **Lean router working on Morphine** (17 tip / 2 detour): re-route excludes
+  self from peer costs; `crossing_penalty` 400; tip-hug only after pathways
+  lock. Complexity vs old `scheme_route.rs`: **1465 / 3903 lines (38%)**,
+  **1335 / 3447** nonempty non-comment (39%), **44 / 78** top-level fns
+  (56%), **47k / 135k** bytes (35%). Old file kept for delete later.
 - **Lean router = stated algorithm only**: Two passes on **centroid pathways**;
   tip-hug only after pathways lock; full hull rings (no subsample); full
   inter/terminal visibility (no k-nearest caps); temp centroid edge iff
