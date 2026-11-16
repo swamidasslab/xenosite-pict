@@ -241,21 +241,23 @@ pub fn route_scheme_edges(
         skips.push(skip_owned);
     }
 
-    // Pass 0: route without peer costs. Pass 1+: frozen costs from previous
-    // pass's **centroid pathways**. Tips are not posed until pathways lock.
+    // Pass 0: no peer costs. Pass 1+: costs from the previous pass's centroid
+    // pathways, excluding self (re-routing must not pay for its own prior path).
+    // Tips are not posed until pathways lock.
     const ROUTE_PASSES: usize = 2;
     for pass in 0..ROUTE_PASSES {
-        let mut edge_extras = EdgeExtras::default();
-        let committed: Vec<Vec<Pt>> = group_pathways
-            .iter()
-            .filter(|c| c.len() >= 2)
-            .cloned()
-            .collect();
-        for c in &committed {
-            edge_extras.note_pathway(&vis, c);
-        }
-
+        let prev = group_pathways.clone();
         for (gi, group) in groups.iter().enumerate() {
+            let committed: Vec<Vec<Pt>> = prev
+                .iter()
+                .enumerate()
+                .filter(|(j, c)| *j != gi && c.len() >= 2)
+                .map(|(_, c)| c.clone())
+                .collect();
+            let mut edge_extras = EdgeExtras::default();
+            for c in &committed {
+                edge_extras.note_pathway(&vis, c);
+            }
             let (src_c, tgt_c, _, _, _, _) = &group_meta[gi];
             let skip: HashSet<&str> = skips[gi].iter().map(String::as_str).collect();
             group_pathways[gi] = visibility_route(
