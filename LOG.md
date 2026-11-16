@@ -2,6 +2,11 @@
 
 ## 2026-11-16
 
+- **Checkpoint**: lean hull-vis router is in good shape on Morphine (17 tip /
+  2 detour, paint-time simplify off, self excluded from re-route costs,
+  `crossing_penalty` 400). Cross-axis parent/child pull experiments reverted
+  — free mean + resolve flung tiles; slack-clamp barely moved flush packs.
+  Placement align remains a follow-up.
 - **Lean router working on Morphine** (17 tip / 2 detour): re-route excludes
   self from peer costs; `crossing_penalty` 400; tip-hug only after pathways
   lock. Complexity vs old `scheme_route.rs`: **1465 / 3903 lines (38%)**,
