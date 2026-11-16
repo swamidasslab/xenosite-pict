@@ -409,6 +409,83 @@ mod tests {
     }
 
     #[test]
+    fn morphine_orange_leave_tip_on_centroid_ray() {
+        // Morphine→4955 (#e69f00) may bow around a sibling tile, but the leave
+        // tip on Morphine must still sit on the Morphine→4955 centroid ray.
+        use crate::scene::Primitive;
+        let scene = render_fixture(MORPHINE);
+        let mut orange: Option<Vec<(f64, f64)>> = None;
+        for p in &scene.overlays {
+            let Primitive::Path {
+                d,
+                class: Some(c),
+                stroke: Some(color),
+                ..
+            } = p
+            else {
+                continue;
+            };
+            if color != "#e69f00" || !c.contains("edge") || c.contains("head") {
+                continue;
+            }
+            let nums: Vec<f64> = {
+                let mut out = Vec::new();
+                let mut cur = String::new();
+                for ch in d.chars() {
+                    if ch.is_ascii_digit() || ch == '.' || ch == '-' || ch == '+' || ch == 'e' || ch == 'E'
+                    {
+                        cur.push(ch);
+                    } else if !cur.is_empty() {
+                        if let Ok(v) = cur.parse() {
+                            out.push(v);
+                        }
+                        cur.clear();
+                    }
+                }
+                if !cur.is_empty() {
+                    if let Ok(v) = cur.parse() {
+                        out.push(v);
+                    }
+                }
+                out
+            };
+            let mut pts = Vec::new();
+            let mut i = 0;
+            while i + 1 < nums.len() {
+                pts.push((nums[i], nums[i + 1]));
+                i += 2;
+            }
+            // Fan spoke is the longer / rightward orange path.
+            if pts.last().map(|p| p.0).unwrap_or(0.0) > 1000.0 {
+                orange = Some(pts);
+                break;
+            }
+        }
+        let pts = orange.expect("orange #e69f00 Morphine→4955 shaft");
+        let morph = scene
+            .viewports
+            .iter()
+            .find(|v| v.id.as_deref() == Some("xbm:0004961"))
+            .expect("morphine viewport");
+        let tgt = scene
+            .viewports
+            .iter()
+            .find(|v| v.id.as_deref() == Some("xbm:0004955"))
+            .expect("4955 viewport");
+        let ca = (morph.x + morph.width * 0.5, morph.y + morph.height * 0.5);
+        let cb = (tgt.x + tgt.width * 0.5, tgt.y + tgt.height * 0.5);
+        let tip = pts[0];
+        let dx = cb.0 - ca.0;
+        let dy = cb.1 - ca.1;
+        let len = dx.hypot(dy).max(1e-9);
+        let lat = ((tip.0 - ca.0) * dy - (tip.1 - ca.1) * dx).abs() / len;
+        assert!(
+            lat < 18.0,
+            "Morphine leave tip must sit on Morphine→4955 centroid ray: lat={lat:.1} tip={tip:?} ca={ca:?} cb={cb:?} pts={pts:?}"
+        );
+    }
+
+    #[test]
     fn morphine_i0_to_glca_dashed_takes_ink_clear_south_bow() {
         // Tip chord for dashed i0→xbm:0004956 punches chem; the south bow must
         // clear ink (and may skim tiles). A prior bug let same-owner box→hull
@@ -613,7 +690,9 @@ mod tests {
             elk.crossings
         );
         assert!(
-            placer.mean_tip_aim + 0.02 >= elk.mean_tip_aim,
+            // Radial tips on bows trade a little last-segment-vs-chord cosine
+            // for leave/arrive tips that sit on the group-centroid ray.
+            placer.mean_tip_aim + 0.03 >= elk.mean_tip_aim,
             "placer tip aim {:.3} < elk {:.3}",
             placer.mean_tip_aim,
             elk.mean_tip_aim

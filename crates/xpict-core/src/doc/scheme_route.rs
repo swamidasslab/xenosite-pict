@@ -1456,10 +1456,9 @@ fn count_pathway_crossings_with_peers(
 
 /// Place start/end tips on rays that aim at the final group centroids.
 ///
-/// Near-straight / tip-chord pathways hug `src_c → tgt_c` (and reverse) so a
-/// mol nudge or corridor offset cannot leave the head aimed at a stale
-/// lateral. Real bows keep `src_c → path[1]` / `tgt_c → path[n-2]` so the
-/// shaft still feeds the detour.
+/// Tips always pose along `src_c → tgt_c` (and reverse), even when the pathway
+/// bows — aiming at the first elbow left Morphine fan tips ~40px off-chord.
+/// Ink clearance for the tip move still validates against the next/prev elbow.
 fn resnap_tips_to_approach_rays(
     centers: &mut [Vec<Pt>],
     ends: &[(String, String)],
@@ -1498,12 +1497,8 @@ fn resnap_tips_to_approach_rays(
             .unwrap_or(std::slice::from_ref(tgt));
         let next = centers[gi][1];
         let prev = centers[gi][centers[gi].len() - 2];
-        let tip_like = centers[gi].len() == 2 || approach_stays_on_centroid_chord(src_c, tgt_c, next, prev);
-        let (toward_start, toward_goal) = if tip_like {
-            (tgt_c, src_c)
-        } else {
-            (next, prev)
-        };
+        let toward_start = tgt_c;
+        let toward_goal = src_c;
         let start = tip_outside_hull(
             obstacles,
             src,
@@ -1541,16 +1536,10 @@ fn resnap_tips_to_approach_rays(
             .get(gi)
             .map(|s| s.iter().map(String::as_str).collect())
             .unwrap_or_default();
-        let clear_next = if tip_like && centers[gi].len() == 2 {
-            goal
-        } else {
-            next
-        };
-        let clear_prev = if tip_like && centers[gi].len() == 2 {
-            start
-        } else {
-            prev
-        };
+        // Ink-clear check still uses the next/prev pathway control so a bowed
+        // first segment is validated, not the far centroid tip.
+        let clear_next = if centers[gi].len() == 2 { goal } else { next };
+        let clear_prev = if centers[gi].len() == 2 { start } else { prev };
         // Tip hug may lengthen a chord through a sibling placement box — refuse
         // endpoint moves that introduce a deep foreign-tile clip (2-pt or bow).
         let place_ok = |pts: &[Pt]| path_clears_tile_aabbs(pts, tile_obstacles, &skip);
@@ -1592,26 +1581,6 @@ fn resnap_tips_to_approach_rays(
             }
         }
     }
-}
-
-/// True when approach controls sit near the group-centroid chord — tip-chord
-/// or corridor-nudged near-straight — so tips should re-aim at the centroids.
-fn approach_stays_on_centroid_chord(src_c: Pt, tgt_c: Pt, next: Pt, prev: Pt) -> bool {
-    let chord = dist(src_c, tgt_c).max(1.0);
-    let lim = (0.35 * route().max_chord_deviation).max(BOND_PX);
-    lateral_from_chord(src_c, tgt_c, next) <= lim
-        && lateral_from_chord(src_c, tgt_c, prev) <= lim
-        && dist(src_c, next) < chord * 1.15
-        && dist(tgt_c, prev) < chord * 1.15
-}
-
-fn lateral_from_chord(a: Pt, b: Pt, p: Pt) -> f64 {
-    let dx = b.0 - a.0;
-    let dy = b.1 - a.1;
-    let len = dx.hypot(dy).max(1e-9);
-    let ux = dx / len;
-    let uy = dy / len;
-    ((p.0 - a.0) * (-uy) + (p.1 - a.1) * ux).abs()
 }
 
 /// Returns `(ink_obstacles, tile_obstacles)`.

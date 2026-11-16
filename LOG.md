@@ -1,5 +1,14 @@
 # Lab log
 
+## 2026-11-16
+
+- **Orange Morphine→4955 tip off centroid ray**: `resnap_tips_to_approach_rays`
+  aimed bowed tips at the first elbow (`toward_start=next`), so Morphine's
+  leave tip sat ~40px lateral of the Morphine→4955 chord. Always pose tips
+  along opposite group centroids; ink-clear still validates tip→elbow.
+  Gate: `morphine_orange_leave_tip_on_centroid_ray`. Placer tip-aim slack
+  0.02→0.03 (radial bows trade a little last-segment-vs-chord cosine).
+
 ## 2026-11-15
 
 - **No post-placement route cost search for Morphine sky**: Tip lock ignored
