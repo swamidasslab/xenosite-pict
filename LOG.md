@@ -2,14 +2,19 @@
 
 ## 2026-11-15
 
+- **Simplified hull + slight standoff**: Vis graph / ink obstacle = chem
+  convex hull → ≤8 verts (no dense curve sampling) → `routing_clearance`
+  standoff. Fallback bows use the same; when a tip punches a place box whose
+  chem ports sit inside it, also seed a ≤4-vert place-footprint hull +
+  standoff (still simplified convex, not free-space invents). Place AABBs
+  only gate acceptance; never re-collapse to a tip that punches a sibling.
 - **Nearly-horizontal light blue (`#56b4e9`) through sibling tiles**: Live
   review wasm had Morphine→6520 as a shallow tip cutting `8306` (and pink
   through `4955`, dashed through `1684`). Chem assert was vacuous
   (`point_to_seg` ≥0 vs `clash=-1.5`). Fix: positive chem clearance + endpoint
-  skip; restore viewport AABB gate; tip lock requires placement-AABB clear;
-  place-dirty tips route on a **tile visibility graph** so elbows land on
-  visible hull/box ports (not free perpendicular invents at y≪0). Softened
-  `detour_backs_up` to chord-projection reverse, not “above start”.
+  skip; restore viewport AABB gate; tip lock requires placement-AABB clear.
+  Softened `detour_backs_up` to chord-projection reverse, not “above start”.
+  (Tile-vis experiment superseded by hull-vis entry above.)
 - **Restore ELK-era edges on layered pack**: Layers stay on `place_layered`.
   Router rolled back to `761e959^` tip/ink policy — `keep_draft` / `prefer_tip`
   do not force wraps for tile whitespace; dropped `short_tile_bow` / AABB final

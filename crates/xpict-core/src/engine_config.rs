@@ -126,10 +126,12 @@ impl RouteConfig {
             frame_margin: BOND_PX * 4.0,
             reopt_passes: 1,
             reopt_max_steps: 12,
+            // Slight standoff off chem ink — not a tile pad.
             routing_clearance: 0.5 * BOND_PX + 0.5 * 1.6,
-            terminal_link_near: 40,
-            max_hull_verts: 24,
-            inter_vis_near: 10,
+            terminal_link_near: 24,
+            // Coarse vis ports: simplified hull, not dense curve sampling.
+            max_hull_verts: 8,
+            inter_vis_near: 8,
             frame_hull_near: 4,
             nudge_px: 8.0,
             coterminal_lane_px: 8.0,
@@ -141,8 +143,8 @@ impl RouteConfig {
         Self {
             reopt_passes: 0,
             reopt_max_steps: 0,
-            terminal_link_near: 16,
-            max_hull_verts: 12,
+            terminal_link_near: 12,
+            max_hull_verts: 6,
             inter_vis_near: 4,
             frame_hull_near: 2,
             ..Self::pretty()
