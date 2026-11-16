@@ -2,6 +2,9 @@
 
 ## 2026-11-16
 
+- Peer cost: sharing a vis-graph / pathway vertex now pays `crossing_penalty`
+  (proper-segment cross missed endpoint meets at a common hull Steiner).
+  Debug marks those too. Unit: `shared_hull_vertex_counts_as_crossing`.
 - Reverted uncommitted cross-axis placement experiments (`scheme_layered`:
   corridor-off, dummy pack skip, lone-parent / child centering, COM-preserve
   resolve). Morphine tips back to **17/2** with the multi-pass router.

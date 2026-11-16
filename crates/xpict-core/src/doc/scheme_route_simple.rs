@@ -343,7 +343,8 @@ pub fn route_scheme_edges(
             debug_prims.push(poly_open(center, color, 3.5, 0.85, None, cls));
         }
         // Intersections on centroid pathways (ignore hits inside either edge's
-        // source/target hulls — same rule as peer-cost).
+        // source/target hulls — same rule as peer-cost). Shared vis-graph
+        // vertices count too (proper-cross misses endpoint meets).
         let mut hits = Vec::new();
         for i in 0..n_groups {
             if group_pathways[i].len() < 2 {
@@ -367,15 +368,29 @@ pub fn route_scheme_edges(
                         }
                     }
                 }
+                for &p in &group_pathways[i] {
+                    if point_in_skip_hull(p, &obstacles, &skip_ij) {
+                        continue;
+                    }
+                    if point_is_pathway_vertex(p, &group_pathways[j]) {
+                        hits.push(p);
+                    }
+                }
             }
         }
+        hits.sort_by(|a, b| {
+            a.0.partial_cmp(&b.0)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then(a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+        });
+        hits.dedup_by(|a, b| nearly_same_pt(*a, *b));
         for &p in &hits {
             push_cross_mark(&mut debug_prims, p);
         }
         let n_tip = group_pathways.iter().filter(|p| p.len() == 2).count();
         let n_detour = group_pathways.len().saturating_sub(n_tip);
         eprintln!(
-            "route debug: {n_tip} tip chords, {n_detour} hull detours, {} proper pathway intersections",
+            "route debug: {n_tip} tip chords, {n_detour} hull detours, {} pathway intersections (incl. shared verts)",
             hits.len()
         );
     }
@@ -601,6 +616,15 @@ fn pathway_improve_score(pathway: &[Pt], src: Pt, tgt: Pt) -> f64 {
     pathway_geom_len(pathway) - tip
 }
 
+fn nearly_same_pt(a: Pt, b: Pt) -> bool {
+    dist(a, b) < 1e-6
+}
+
+/// True when `p` is a vertex of `pathway` (Steiner / centroid sample).
+fn point_is_pathway_vertex(p: Pt, pathway: &[Pt]) -> bool {
+    pathway.iter().any(|&q| nearly_same_pt(p, q))
+}
+
 fn segment_cross_cost(
     u: Pt,
     v: Pt,
@@ -620,6 +644,16 @@ fn segment_cross_cost(
                 if point_in_skip_hull(p, obstacles, skip) {
                     continue;
                 }
+                c += pen;
+            }
+        }
+        // Sharing a hull Steiner (or any pathway vertex) is also a conflict —
+        // proper-segment tests miss endpoint meets at a common vis-graph node.
+        for &end in &[u, v] {
+            if point_in_skip_hull(end, obstacles, skip) {
+                continue;
+            }
+            if point_is_pathway_vertex(end, other) {
                 c += pen;
             }
         }
@@ -1488,6 +1522,36 @@ mod tests {
             path.len(),
             2,
             "clear centroid chord must be the temp direct edge: {path:?}"
+        );
+    }
+
+    #[test]
+    fn shared_hull_vertex_counts_as_crossing() {
+        let _guard = ActiveRouteGuard;
+        ACTIVE_ROUTE.with(|c| *c.borrow_mut() = Some(RouteConfig::pretty()));
+        let pen = route().crossing_penalty;
+        assert!(pen > 0.0);
+        // Foreign Steiner Q on a committed pathway; candidate segment ends at Q.
+        // Proper-cross is false (endpoint meet) — must still pay.
+        let q = (50.0, 50.0);
+        let committed = vec![vec![(0.0, 50.0), q, (100.0, 50.0)]];
+        let obstacles: Vec<Obstacle> = Vec::new();
+        let skip: HashSet<&str> = HashSet::new();
+        let cost = segment_cross_cost((50.0, 0.0), q, &committed, &obstacles, &skip);
+        assert!(
+            cost >= pen - 1e-9,
+            "shared vis vertex must cost a crossing, got {cost} (pen={pen})"
+        );
+        let clear = segment_cross_cost(
+            (50.0, 0.0),
+            (50.0, 10.0),
+            &committed,
+            &obstacles,
+            &skip,
+        );
+        assert!(
+            clear < 1e-9,
+            "segment that misses the shared vertex must be free, got {clear}"
         );
     }
 }
