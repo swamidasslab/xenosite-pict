@@ -2,9 +2,10 @@
 //!
 //! One hull visibility graph. Per arrow: strip start/end hull verts; centroids
 //! link only to foreign hulls; A* minimizes length + crossings + shared length.
-//! Two passes with frozen costs from the previous pass's **pathed** (tip-hugged)
-//! centerlines so order does not hide intersections. No tip-chord shortcut and
-//! no path simplification.
+//! Two passes freeze peer costs from the previous pass's **centroid pathways**
+//! (never tip-pulled shafts — tips are posed only after all pathways lock).
+//! Visibility verts are the full inflated hull ring (no subsample chords
+//! through the interior).
 
 use std::collections::{HashMap, HashSet};
 
@@ -49,7 +50,7 @@ struct ArrowGroup {
 struct Obstacle {
     mol_id: String,
     hull: Vec<Pt>,
-    /// Subsample of `hull` for the visibility graph (not pathway endpoints).
+    /// Full inflated hull ring (Steiner verts). Same as `hull`.
     verts: Vec<Pt>,
     aabb: (f64, f64, f64, f64),
 }
@@ -79,8 +80,8 @@ impl EdgeExtras {
             .unwrap_or(0.0)
     }
 
-    /// Accrue shared-segment costs for a committed **pathed** shaft.
-    /// Crossings are scored live against pathed polylines during A*.
+    /// Accrue shared-segment costs for a committed **centroid pathway**.
+    /// Crossings are scored live against pathway polylines during A*.
     fn note_pathway(&mut self, vis: &VisGraph, pathway: &[Pt]) {
         if pathway.len() < 2 || vis.edges.is_empty() {
             return;
@@ -241,11 +242,11 @@ pub fn route_scheme_edges(
     }
 
     // Pass 0: route without peer costs. Pass 1+: frozen costs from previous
-    // pass's tip-hugged (pathed) centerlines — order-independent within a pass.
+    // pass's **centroid pathways**. Tips are not posed until pathways lock.
     const ROUTE_PASSES: usize = 2;
-    for pass in 0..ROUTE_PASSES {
+    for _pass in 0..ROUTE_PASSES {
         let mut edge_extras = EdgeExtras::default();
-        let committed: Vec<Vec<Pt>> = group_centers
+        let committed: Vec<Vec<Pt>> = group_pathways
             .iter()
             .filter(|c| c.len() >= 2)
             .cloned()
@@ -255,9 +256,9 @@ pub fn route_scheme_edges(
         }
 
         for (gi, group) in groups.iter().enumerate() {
-            let (src_c, tgt_c, clash, min_shaft, src_ids, tgt_ids) = &group_meta[gi];
+            let (src_c, tgt_c, _, _, _, _) = &group_meta[gi];
             let skip: HashSet<&str> = skips[gi].iter().map(String::as_str).collect();
-            let mut pathway = visibility_route(
+            group_pathways[gi] = visibility_route(
                 *src_c,
                 *tgt_c,
                 &vis,
@@ -266,32 +267,24 @@ pub fn route_scheme_edges(
                 &edge_extras,
                 &committed,
             );
-            // Visible centroid chord wins unless a detour strictly clears more
-            // peer crossings (pass 1 peer costs otherwise force a pointless
-            // one-vert dogleg on every spoke).
-            if points_visible(*src_c, *tgt_c, &obstacles, &skip) {
-                let tip = vec![*src_c, *tgt_c];
-                let tip_x = pathway_crossings(&tip, &committed);
-                let det_x = pathway_crossings(&pathway, &committed);
-                if tip_x <= det_x {
-                    pathway = tip;
-                }
-            }
-            let center = tip_hug_pathway(
-                &pathway,
-                world,
-                src_ids,
-                tgt_ids,
-                &centroids,
-                *src_c,
-                *tgt_c,
-                *clash,
-                *min_shaft,
-            );
-            group_pathways[gi] = pathway;
-            group_centers[gi] = center;
             let _ = group;
         }
+    }
+
+    // Pose tips only after every pathway is final.
+    for (gi, _) in groups.iter().enumerate() {
+        let (src_c, tgt_c, clash, min_shaft, src_ids, tgt_ids) = &group_meta[gi];
+        group_centers[gi] = tip_hug_pathway(
+            &group_pathways[gi],
+            world,
+            src_ids,
+            tgt_ids,
+            &centroids,
+            *src_c,
+            *tgt_c,
+            *clash,
+            *min_shaft,
+        );
     }
 
     if debug {
@@ -332,26 +325,23 @@ pub fn route_scheme_edges(
             };
             debug_prims.push(poly_open(center, color, 1.8, 0.75, None, cls));
         }
-        // Mark every proper intersection the peer-cost detector sees on the
-        // tip-hugged centerlines (same polylines A* prices against).
-        let centers: Vec<&[Pt]> = group_centers
+        // Intersections on centroid pathways — same polylines A* prices against.
+        let paths: Vec<&[Pt]> = group_pathways
             .iter()
             .filter(|c| c.len() >= 2)
             .map(|c| c.as_slice())
             .collect();
-        let hits = collect_polyline_intersections(&centers);
+        let hits = collect_polyline_intersections(&paths);
         for &p in &hits {
             push_cross_mark(&mut debug_prims, p);
         }
         let n_tip = group_pathways.iter().filter(|p| p.len() == 2).count();
         let n_detour = group_pathways.len().saturating_sub(n_tip);
         eprintln!(
-            "route debug: {n_tip} tip chords, {n_detour} hull detours, {} proper intersections",
+            "route debug: {n_tip} tip chords, {n_detour} hull detours, {} proper pathway intersections",
             hits.len()
         );
     }
-
-    nudge_shared_corridors(&mut group_centers);
 
     let edge_list = spec.edges();
     for (gi, group) in groups.iter().enumerate() {
@@ -414,7 +404,7 @@ fn lookup_waypoints(
 
 /// A* on the shared hull graph with start/end owners stripped. Centroids link
 /// only to foreign hull verts. Hull–hull edges pay cached share extras;
-/// every candidate segment pays live crossing/share vs **pathed** `committed`.
+/// every candidate segment pays live crossing/share vs **pathway** `committed`.
 fn visibility_route(
     start: Pt,
     goal: Pt,
@@ -530,7 +520,7 @@ fn segment_cross_cost(u: Pt, v: Pt, committed: &[Vec<Pt>]) -> f64 {
     c
 }
 
-/// Crossing + shared-length cost vs already-routed **pathed** lines.
+/// Crossing + shared-length cost vs already-routed **centroid pathways**.
 fn segment_peer_cost(u: Pt, v: Pt, committed: &[Vec<Pt>]) -> f64 {
     let share_pen = route().shared_path_penalty;
     let mut c = segment_cross_cost(u, v, committed);
@@ -548,7 +538,7 @@ fn segment_peer_cost(u: Pt, v: Pt, committed: &[Vec<Pt>]) -> f64 {
     c
 }
 
-/// Visible foreign hull verts for a centroid terminal (local Steiner indices).
+/// All visible foreign hull verts for a centroid terminal (local Steiner indices).
 fn link_terminal_filtered(
     hub: Pt,
     vis: &VisGraph,
@@ -556,45 +546,21 @@ fn link_terminal_filtered(
     obstacles: &[Obstacle],
     skip: &HashSet<&str>,
 ) -> Vec<(usize, f64)> {
-    let mut cands: Vec<(f64, usize, usize)> = Vec::new();
+    let mut out = Vec::new();
     for (g, &p) in vis.pts.iter().enumerate() {
         let Some(local) = local_of_global[g] else {
             continue;
         };
-        cands.push((dist(hub, p), local, g));
-    }
-    cands.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
-    let mut out = Vec::new();
-    for (len, local, g) in cands {
-        if out.len() >= route().terminal_link_near {
-            break;
-        }
-        if points_visible(hub, vis.pts[g], obstacles, skip) {
-            out.push((local, len));
+        if points_visible(hub, p, obstacles, skip) {
+            out.push((local, dist(hub, p)));
         }
     }
     out
 }
 
-/// Open-segment visibility between two points, ignoring `skip` owners.
-///
-/// Endpoints often sit inside their own (skipped) hulls and may also lie in
-/// overlapping inflated neighbors — those containing obstacles do not block.
-/// A foreign hull blocks only when the chord pierces it with both endpoints
-/// outside.
+/// Hull visibility between two points, ignoring `skip` owners.
 fn points_visible(a: Pt, b: Pt, obstacles: &[Obstacle], skip: &HashSet<&str>) -> bool {
-    for o in obstacles {
-        if skip.contains(o.mol_id.as_str()) {
-            continue;
-        }
-        if point_in_convex(a, &o.hull) || point_in_convex(b, &o.hull) {
-            continue;
-        }
-        if segment_hits_convex_aabb(a, b, &o.hull, o.aabb) {
-            return false;
-        }
-    }
-    true
+    segment_clears_obstacles(a, b, obstacles, skip)
 }
 
 fn build_visibility_graph(obstacles: &[Obstacle]) -> VisGraph {
@@ -623,40 +589,30 @@ fn build_visibility_graph(obstacles: &[Obstacle]) -> VisGraph {
         edges.push(undirected_edge(i, j));
     };
 
-    for (ri, &(lo, hi)) in ranges.iter().enumerate() {
+    // Hull boundary rings always — along the silhouette, never through it.
+    for &(lo, hi) in &ranges {
         let m = hi - lo;
         if m < 2 {
             continue;
         }
-        let skip: HashSet<&str> = [obstacles[ri].mol_id.as_str()].into_iter().collect();
         for k in 0..m {
             let i = lo + k;
             let j = lo + (k + 1) % m;
-            if segment_clears_obstacles(pts[i], pts[j], obstacles, &skip) {
-                add(i, j, dist(pts[i], pts[j]));
-            }
+            add(i, j, dist(pts[i], pts[j]));
         }
     }
 
+    // Full inter-hull visibility (no k-nearest cap).
     let empty = HashSet::new();
     for i in 0..n {
         let oi = owner[i].as_str();
-        let mut cands: Vec<(f64, usize)> = Vec::new();
         for j in (i + 1)..n {
             if owner[j].as_str() == oi {
                 continue;
             }
-            cands.push((dist(pts[i], pts[j]), j));
-        }
-        cands.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
-        let mut kept = 0usize;
-        for (len, j) in cands {
-            if kept >= route().inter_vis_near {
-                break;
-            }
+            let len = dist(pts[i], pts[j]);
             if segment_clears_obstacles(pts[i], pts[j], obstacles, &empty) {
                 add(i, j, len);
-                kept += 1;
             }
         }
     }
@@ -718,38 +674,6 @@ fn tip_hug_pathway(
     out
 }
 
-fn pathway_crossings(path: &[Pt], committed: &[Vec<Pt>]) -> usize {
-    let mut n = 0;
-    for other in committed {
-        n += count_poly_crossings(path, other);
-    }
-    n
-}
-
-fn pathway_share_len(path: &[Pt], committed: &[Vec<Pt>]) -> f64 {
-    let mut total = 0.0;
-    for other in committed {
-        for w in path.windows(2) {
-            for v in other.windows(2) {
-                total += collinear_overlap_len(w[0], w[1], v[0], v[1]);
-            }
-        }
-    }
-    total
-}
-
-fn count_poly_crossings(a: &[Pt], b: &[Pt]) -> usize {
-    let mut n = 0;
-    for w in a.windows(2) {
-        for v in b.windows(2) {
-            if segments_properly_cross(w[0], w[1], v[0], v[1]) {
-                n += 1;
-            }
-        }
-    }
-    n
-}
-
 /// All proper intersection points among polylines (pairwise, no self).
 fn collect_polyline_intersections(paths: &[&[Pt]]) -> Vec<Pt> {
     let mut hits = Vec::new();
@@ -805,10 +729,6 @@ fn push_cross_mark(out: &mut Vec<Primitive>, p: Pt) {
     ));
 }
 
-fn polyline_len(pts: &[Pt]) -> f64 {
-    pts.windows(2).map(|w| dist(w[0], w[1])).sum()
-}
-
 fn build_obstacles(
     mol_ids: &[String],
     world: &LayoutWorld,
@@ -817,7 +737,6 @@ fn build_obstacles(
     inflate: f64,
 ) -> Vec<Obstacle> {
     let mut out = Vec::with_capacity(mol_ids.len());
-    let max_verts = route().max_hull_verts.max(3);
     for id in mol_ids {
         let under = format!("scheme/mols/{id}");
         let ink_pts = collect_ink_points(world, &under);
@@ -838,7 +757,9 @@ fn build_obstacles(
         if hull.len() < 3 {
             continue;
         }
-        let verts = subsample_convex_ring(&hull, max_verts);
+        // Full ring as Steiner verts — subsampling consecutive verts makes
+        // chords through the hull interior, which routes must never walk.
+        let verts = hull.clone();
         let aabb = hull_aabb(&hull);
         out.push(Obstacle {
             mol_id: id.clone(),
@@ -848,88 +769,6 @@ fn build_obstacles(
         });
     }
     out
-}
-
-fn subsample_convex_ring(hull: &[Pt], max_verts: usize) -> Vec<Pt> {
-    let n = hull.len();
-    if n <= max_verts || max_verts < 3 {
-        return hull.to_vec();
-    }
-    let mut out = Vec::with_capacity(max_verts);
-    for i in 0..max_verts {
-        out.push(hull[(i * n) / max_verts]);
-    }
-    out
-}
-
-fn nudge_shared_corridors(centers: &mut [Vec<Pt>]) {
-    // Coterminal groups already lane-offset at paint; here nudge near-parallel
-    // 2-pt centerlines that share a corridor so they do not sit on top of each other.
-    let n = centers.len();
-    if n < 2 {
-        return;
-    }
-    let mut used = vec![false; n];
-    for i in 0..n {
-        if used[i] || centers[i].len() != 2 {
-            continue;
-        }
-        let mut bundle = vec![i];
-        for j in (i + 1)..n {
-            if used[j] || centers[j].len() != 2 {
-                continue;
-            }
-            if polylines_share_corridor(&centers[i], &centers[j]) {
-                bundle.push(j);
-            }
-        }
-        if bundle.len() < 2 {
-            continue;
-        }
-        for &k in &bundle {
-            used[k] = true;
-        }
-        let (nx, ny) = corridor_normal(&centers[bundle[0]]);
-        let offs = lane_offsets(bundle.len());
-        for (lane, &gi) in bundle.iter().enumerate() {
-            let o = offs[lane];
-            if centers[gi].len() == 2 {
-                centers[gi][0].0 += nx * o;
-                centers[gi][0].1 += ny * o;
-                centers[gi][1].0 += nx * o;
-                centers[gi][1].1 += ny * o;
-            }
-        }
-    }
-}
-
-fn polylines_share_corridor(a: &[Pt], b: &[Pt]) -> bool {
-    if a.len() < 2 || b.len() < 2 {
-        return false;
-    }
-    let am = polyline_mid(a);
-    let bm = polyline_mid(b);
-    let (anx, any) = corridor_normal(a);
-    let lat = ((bm.0 - am.0) * anx + (bm.1 - am.1) * any).abs();
-    lat < route().coterminal_lane_px * 1.5
-        && (dist(a[0], b[0]) + dist(*a.last().unwrap(), *b.last().unwrap())
-            < dist(a[0], *b.last().unwrap()) + dist(*a.last().unwrap(), b[0]) + BOND_PX
-            || dist(a[0], *b.last().unwrap()) + dist(*a.last().unwrap(), b[0])
-                < dist(a[0], b[0]) + dist(*a.last().unwrap(), *b.last().unwrap()) + BOND_PX)
-}
-
-fn corridor_normal(pts: &[Pt]) -> (f64, f64) {
-    let a = pts[0];
-    let b = *pts.last().unwrap();
-    let (dx, dy) = (b.0 - a.0, b.1 - a.1);
-    let l = dx.hypot(dy).max(1e-9);
-    (-dy / l, dx / l)
-}
-
-fn polyline_mid(pts: &[Pt]) -> Pt {
-    let a = pts[0];
-    let b = *pts.last().unwrap();
-    (0.5 * (a.0 + b.0), 0.5 * (a.1 + b.1))
 }
 
 fn lane_offsets(n: usize) -> Vec<f64> {
@@ -1030,44 +869,6 @@ fn inflate_convex(hull: &[Pt], dist: f64) -> Vec<Pt> {
         out.push((cur.0 + ux * s, cur.1 + uy * s));
     }
     out
-}
-
-fn tip_outside_hull(obstacles: &[Obstacle], mol: &str, tip: Pt, centroid: Pt, toward: Pt) -> Pt {
-    let Some(o) = obstacles.iter().find(|o| o.mol_id == mol) else {
-        return tip;
-    };
-    let hull = &o.hull;
-    if !point_in_convex(tip, hull) {
-        return tip;
-    }
-    let dx = toward.0 - centroid.0;
-    let dy = toward.1 - centroid.1;
-    let span = dx.hypot(dy).max(BOND_PX * 8.0);
-    let l = dx.hypot(dy).max(1e-9);
-    let ux = dx / l;
-    let uy = dy / l;
-    let at = |t: f64| (centroid.0 + ux * t, centroid.1 + uy * t);
-    let mut lo = ((tip.0 - centroid.0) * ux + (tip.1 - centroid.1) * uy).max(0.0);
-    let mut hi = span.max(lo + BOND_PX);
-    if !point_in_convex(at(hi), hull) {
-        for _ in 0..32 {
-            let mid = 0.5 * (lo + hi);
-            if point_in_convex(at(mid), hull) {
-                lo = mid;
-            } else {
-                hi = mid;
-            }
-        }
-        return at(hi);
-    }
-    for k in 1..16 {
-        let t = span + (k as f64) * BOND_PX * 2.0;
-        let p = at(t);
-        if !point_in_convex(p, hull) {
-            return p;
-        }
-    }
-    tip
 }
 
 fn tip_pose(
@@ -1183,11 +984,6 @@ fn segment_clears_obstacles(a: Pt, b: Pt, obstacles: &[Obstacle], skip: &HashSet
         }
     }
     true
-}
-
-fn path_clears_obstacles(pts: &[Pt], obstacles: &[Obstacle], skip: &HashSet<&str>) -> bool {
-    pts.windows(2)
-        .all(|w| segment_clears_obstacles(w[0], w[1], obstacles, skip))
 }
 
 fn segment_hits_convex_aabb(a: Pt, b: Pt, hull: &[Pt], aabb: (f64, f64, f64, f64)) -> bool {
@@ -1540,7 +1336,7 @@ mod tests {
     }
 
     #[test]
-    fn points_visible_allows_centroids_buried_in_overlap() {
+    fn points_visible_blocks_foreign_hull_even_if_endpoint_buried() {
         // A and B side by side; C overlaps both centroids via inflate.
         let a = square("A", 0.0, 0.0, 10.0);
         let b = square("B", 20.0, 0.0, 10.0);
@@ -1554,8 +1350,14 @@ mod tests {
             "sanity: start buried in C"
         );
         assert!(
-            points_visible(start, goal, &obstacles, &skip),
-            "buried-in-neighbor must not kill clear centroid chord"
+            !points_visible(start, goal, &obstacles, &skip),
+            "buried-in-neighbor must block — that chord cuts C's chem"
+        );
+        // Owners only: clear gap, no foreign hull.
+        let ab = vec![obstacles[0].clone(), obstacles[1].clone()];
+        assert!(
+            points_visible(start, goal, &ab, &skip),
+            "owner-only skip must allow the clear centroid chord"
         );
         // Blocker between A and B with endpoints outside it.
         let wall = square("W", 12.0, 0.0, 6.0); // x 12..18, y 0..6 — pierces y=5 chord

@@ -2,12 +2,11 @@
 
 ## 2026-11-16
 
-- **Centroid↔centroid temp edge**: Pass 0 already took visible tip chords;
-  pass 1 peer costs (crossing_penalty) forced a one-vert dogleg on every
-  spoke. Gate the temp edge with `points_visible` (ignore obstacles that
-  contain an endpoint — centroids sit in overlapping inflate). After A*,
-  keep the visible tip unless a detour strictly cuts peer crossings.
-  Morphine debug: 13 tip / 6 detour (was 0 / 19).
+- **Lean router = stated algorithm only**: Two passes on **centroid pathways**;
+  tip-hug only after pathways lock; full hull rings (no subsample); full
+  inter/terminal visibility (no k-nearest caps); temp centroid edge iff
+  `points_visible`. Removed tip-preference override, corridor nudge, and
+  tip-pulled peer costs.
 - **Lean parallel router (`scheme_route_simple`)**: Tip chord if ink-clear,
   else visibility on `inflate(full chem hull)` with subsampled ports. No
   AABB gates, fallback bows, tip resnap, or reoptimize. `refine_scheme_edges`
