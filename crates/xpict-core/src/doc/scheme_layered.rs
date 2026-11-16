@@ -118,19 +118,20 @@ pub fn place_layered(
     append_soft_edges_with_dummies(&mut nodes, &mut edges, &layer_of, &soft);
     order_layers(&mut nodes, &edges, budgets);
     assign_coordinates(&mut nodes, &edges, layout, &metrics, budgets);
+    // Star fans: park each parent on the cross-mid of its children so spokes
+    // stay tip chords instead of wrapping around an off-axis hub.
+    center_parents_over_children(&mut nodes, &edges);
     let dir = layout.direction_or_default();
     let vertical_flow = matches!(dir, LayoutDirection::Up | LayoutDirection::Down);
     let node_gap = layout.node_spacing_or_default();
+    // Long multi-layer edges need a clear cross-axis corridor — nudge real
+    // tiles that sit on the parent→child lerp off the shaft line.
     if vertical_flow {
         clear_long_edge_corridors(&mut nodes, &edges, node_gap, vertical_flow);
-        // Slack-clamped pull toward mean real parents/children (dummies for
-        // corridor targets + layer occupancy). Never free-jump — that blew
-        // the pack when resolve cascaded rightward.
-        for _ in 0..budgets.align_passes.max(3) {
-            if !pull_cross_toward_neighbors(&mut nodes, &edges, node_gap, vertical_flow) {
-                break;
-            }
-        }
+    }
+    // Only re-separate / AABB on vertical packs — horizontal (Right/Left) already
+    // finished mark-align on the cross axis; a second resolve would reset Y.
+    if vertical_flow {
         let max_layer = nodes.iter().map(|n| n.layer).max().unwrap_or(0);
         for layer in 0..=max_layer {
             resolve_cross_overlaps(&mut nodes, layer, node_gap, vertical_flow);
@@ -2074,176 +2075,46 @@ fn separate_position_overlaps(
     }
 }
 
-/// Pull reals toward mean of real parents/children (dummy chains contracted).
-/// Pull dummies toward mean of their path's real endpoints. Each move is
-/// clamped to slack against **real** same-layer neighbors (dummies ignored
-/// for limits so gaps between reals are usable). Order is preserved.
-fn pull_cross_toward_neighbors(
-    nodes: &mut [PackNode],
-    edges: &[PackEdge],
-    gap: f64,
-    vertical_flow: bool,
-) -> bool {
-    let paths = real_real_paths(nodes, edges);
-    let mut real_sum: HashMap<usize, (f64, usize)> = HashMap::new();
-    let mut dummy_target: HashMap<usize, (f64, usize)> = HashMap::new();
-    for (src_i, tgt_i, dummies) in &paths {
-        let sc = nodes[*src_i].cross;
-        let tc = nodes[*tgt_i].cross;
-        let e = real_sum.entry(*src_i).or_insert((0.0, 0));
-        e.0 += tc;
-        e.1 += 1;
-        let e = real_sum.entry(*tgt_i).or_insert((0.0, 0));
-        e.0 += sc;
-        e.1 += 1;
-        let corridor = 0.5 * (sc + tc);
-        for &di in dummies {
-            let e = dummy_target.entry(di).or_insert((0.0, 0));
-            e.0 += corridor;
-            e.1 += 1;
-        }
-    }
-
-    let half = |n: &PackNode| -> f64 {
-        if vertical_flow {
-            n.w * 0.5
-        } else {
-            n.h * 0.5
-        }
-    };
-
-    let max_layer = nodes.iter().map(|n| n.layer).max().unwrap_or(0);
-    let mut moved = false;
-    for layer in 0..=max_layer {
-        // Reals only — slack ignores dummies so a child can slide under its
-        // parent when the gap is between real tiles.
-        let reals: Vec<usize> = layer_indices_in_order(nodes, layer)
-            .into_iter()
-            .filter(|&i| nodes[i].real.is_some())
-            .collect();
-        for (k, &i) in reals.iter().enumerate() {
-            let Some(&(sum, nmark)) = real_sum.get(&i) else {
+/// Shift each parent’s cross so it sits on the mean cross of its children
+/// (same layer-delta). Leaves child packing intact.
+fn center_parents_over_children(nodes: &mut [PackNode], edges: &[PackEdge]) {
+    let cross_of: HashMap<NodeKey, f64> = nodes.iter().map(|n| (n.key, n.cross)).collect();
+    let layer_of: HashMap<NodeKey, usize> = nodes.iter().map(|n| (n.key, n.layer)).collect();
+    let mut shift: HashMap<NodeKey, f64> = HashMap::new();
+    for n in nodes.iter() {
+        let mut child_cross = Vec::new();
+        for e in edges {
+            let other = if e.src == n.key {
+                e.tgt
+            } else if e.tgt == n.key {
+                e.src
+            } else {
                 continue;
             };
-            if nmark == 0 {
+            let Some(&ol) = layer_of.get(&other) else {
+                continue;
+            };
+            if ol <= n.layer {
                 continue;
             }
-            let target = sum / nmark as f64;
-            let my_half = half(&nodes[i]);
-            let lo = if k > 0 {
-                let j = reals[k - 1];
-                nodes[j].cross + half(&nodes[j]) + gap + my_half
-            } else {
-                f64::NEG_INFINITY
-            };
-            let hi = if k + 1 < reals.len() {
-                let j = reals[k + 1];
-                nodes[j].cross - half(&nodes[j]) - gap - my_half
-            } else {
-                f64::INFINITY
-            };
-            if lo > hi {
-                continue;
-            }
-            let new_cross = target.clamp(lo, hi);
-            if (new_cross - nodes[i].cross).abs() > 0.5 {
-                nodes[i].cross = new_cross;
-                moved = true;
+            if let Some(&c) = cross_of.get(&other) {
+                child_cross.push(c);
             }
         }
-
-        // Dummies: toward corridor mean, clamped by full layer order (incl. reals).
-        let idx = layer_indices_in_order(nodes, layer);
-        for (k, &i) in idx.iter().enumerate() {
-            if nodes[i].real.is_some() {
-                continue;
-            }
-            let Some(&(sum, nmark)) = dummy_target.get(&i) else {
-                continue;
-            };
-            if nmark == 0 {
-                continue;
-            }
-            let target = sum / nmark as f64;
-            let my_half = half(&nodes[i]);
-            let lo = if k > 0 {
-                let j = idx[k - 1];
-                nodes[j].cross + half(&nodes[j]) + gap + my_half
-            } else {
-                f64::NEG_INFINITY
-            };
-            let hi = if k + 1 < idx.len() {
-                let j = idx[k + 1];
-                nodes[j].cross - half(&nodes[j]) - gap - my_half
-            } else {
-                f64::INFINITY
-            };
-            if lo > hi {
-                continue;
-            }
-            let new_cross = target.clamp(lo, hi);
-            if (new_cross - nodes[i].cross).abs() > 0.5 {
-                nodes[i].cross = new_cross;
-                moved = true;
-            }
-        }
-    }
-    moved
-}
-
-/// Each forward real→real path after contracting dummies: `(src, tgt, dummy idxs)`.
-fn real_real_paths(
-    nodes: &[PackNode],
-    edges: &[PackEdge],
-) -> Vec<(usize, usize, Vec<usize>)> {
-    let idx_of: HashMap<NodeKey, usize> = nodes
-        .iter()
-        .enumerate()
-        .map(|(i, n)| (n.key, i))
-        .collect();
-    let mut out_adj: HashMap<NodeKey, Vec<NodeKey>> = HashMap::new();
-    for e in edges {
-        out_adj.entry(e.src).or_default().push(e.tgt);
-    }
-    let mut paths = Vec::new();
-    let mut seen = HashSet::new();
-    for (i, n) in nodes.iter().enumerate() {
-        if n.real.is_none() {
+        if child_cross.len() < 2 {
             continue;
         }
-        // DFS with path of dummy indices.
-        let mut stack: Vec<(NodeKey, Vec<usize>)> = out_adj
-            .get(&n.key)
-            .cloned()
-            .unwrap_or_default()
-            .into_iter()
-            .map(|k| (k, Vec::new()))
-            .collect();
-        let mut visited = HashSet::new();
-        visited.insert(n.key);
-        while let Some((k, dummies)) = stack.pop() {
-            if !visited.insert(k) {
-                continue;
-            }
-            let Some(&j) = idx_of.get(&k) else {
-                continue;
-            };
-            if nodes[j].real.is_some() {
-                if nodes[j].layer > n.layer && seen.insert((i, j)) {
-                    paths.push((i, j, dummies));
-                }
-                continue;
-            }
-            let mut next_dummies = dummies;
-            next_dummies.push(j);
-            if let Some(nbrs) = out_adj.get(&k) {
-                for &nbr in nbrs {
-                    stack.push((nbr, next_dummies.clone()));
-                }
-            }
+        let mean = child_cross.iter().sum::<f64>() / child_cross.len() as f64;
+        let delta = mean - n.cross;
+        if delta.abs() > 0.5 {
+            shift.insert(n.key, delta);
         }
     }
-    paths
+    for n in nodes.iter_mut() {
+        if let Some(d) = shift.get(&n.key) {
+            n.cross += *d;
+        }
+    }
 }
 
 /// Real→real endpoints of each edge path after contracting dummy chains.
