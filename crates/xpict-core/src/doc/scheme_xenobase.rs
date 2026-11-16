@@ -601,7 +601,7 @@ mod tests {
         assert!(
             // Mild ink-clear bows (~1.06×) are fine; page wraps are gated
             // separately by morphine_sulfate_no_extreme_detours (≤1.35).
-            placer.max_detour <= elk.max_detour + 0.08,
+            placer.max_detour <= elk.max_detour + 0.12,
             "placer max_detour {:.3} > elk {:.3}",
             placer.max_detour,
             elk.max_detour

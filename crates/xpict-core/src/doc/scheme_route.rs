@@ -300,19 +300,18 @@ pub fn route_scheme_edges(
         let skip: HashSet<&str> = skips[gi].iter().map(String::as_str).collect();
         let clash = clashes[gi];
 
-        // Lock a straight tip when it clears foreign ink *and* does not cut
-        // through a foreign placement AABB. Padded tile hulls alone must not
-        // force wraps (network fan), but deep interior clips through a sibling
-        // box (Morphine sky-blue → far child via 8306) must not lock as a tip.
-        let keep_draft = draft_cross[gi] == 0
-            && segment_clears_obstacles(start, goal, &obstacles, &skip)
-            && path_clears_tile_aabbs(&[start, goal], &tile_obstacles, &skip)
-            && path_crosses_committed(&[src_c, tgt_c], &committed) == 0;
+        // Lock a straight tip when the *tip* clears foreign ink + place boxes
+        // and does not cross already-committed tip shafts. Do **not** require
+        // zero centroid-pathway draft crossings — that forced Morphine's
+        // sky-blue into a free-space length search and over-bent a place-clear
+        // tip. Post-placement routing is geometric, not a cost minimizer.
+        let tip_ink_ok = segment_clears_obstacles(start, goal, &obstacles, &skip);
+        let tip_place_ok = path_clears_tile_aabbs(&[start, goal], &tile_obstacles, &skip);
+        let tip_peer_ok = path_crosses_committed(&[start, goal], &committed) == 0;
+        let keep_draft = tip_ink_ok && tip_place_ok && tip_peer_ok;
         let center = if keep_draft {
             vec![start, goal]
         } else {
-            // Against locked centroid pathways: detour, but fall back to the tip
-            // chord when the walk is excessively long / bowed (accept peer X).
             route_one_centerline(
                 start,
                 goal,
@@ -400,22 +399,29 @@ pub fn route_scheme_edges(
         &tile_obstacles,
         &skips,
     );
-    // Collapse page-scale hub wraps to tip — but keep a bow that is the only
-    // way to clear a foreign placement AABB (Morphine sky-blue through 8306).
+    // Resnap can drag a previously place-clear bow so a segment clips a
+    // sibling box (Morphine sky through 8306). Repair geometrically: tip if
+    // clear, else a tight hull/first-escape bow — no cost minimization.
     for gi in 0..group_centers.len() {
-        if group_centers[gi].len() < 3 {
+        if group_centers[gi].len() < 2 {
             continue;
         }
         let a = group_centers[gi][0];
         let b = *group_centers[gi].last().unwrap();
-        if !detour_backs_up_past_start(a, b, &group_centers[gi]) {
-            continue;
-        }
         let skip: HashSet<&str> = skips[gi].iter().map(String::as_str).collect();
         let tip = [a, b];
-        if path_clears_tile_aabbs(&tip, &tile_obstacles, &skip) {
+        let tip_ok = segment_clears_obstacles(a, b, &obstacles, &skip)
+            && path_clears_tile_aabbs(&tip, &tile_obstacles, &skip);
+        if tip_ok {
             group_centers[gi] = vec![a, b];
+            continue;
         }
+        if path_clears_tile_aabbs(&group_centers[gi], &tile_obstacles, &skip)
+            && path_clears_obstacles(&group_centers[gi], &obstacles, &skip)
+        {
+            continue;
+        }
+        group_centers[gi] = fallback_bow(a, b, &obstacles, &tile_obstacles, &skip, &[]);
     }
 
     let edge_list = spec.edges();
@@ -550,27 +556,7 @@ fn route_one_centerline(
         return prune_close_controls(&[start, goal], CLOSE_CTRL_PX);
     }
 
-    let vis_path = visibility_route(
-        start,
-        goal,
-        src_c,
-        tgt_c,
-        src,
-        tgt,
-        skip,
-        vis,
-        obstacles,
-        tile_obstacles,
-        committed,
-    );
-    // String-pull on ink hulls; prefer_tip decides tip vs detour.
-    let pulled =
-        drop_skippable_controls(&vis_path, obstacles, skip, committed, src_c, tgt_c);
     let place_ok = |p: &[Pt]| path_clears_tile_aabbs(p, tile_obstacles, skip);
-    let pulled_ok = path_clears_obstacles(&pulled, obstacles, skip)
-        && path_clears_obstacles(&pulled, tile_obstacles, skip)
-        && place_ok(&pulled);
-    let pulled_x = pathway_crosses_committed(&pulled, src_c, tgt_c, committed);
     let finish = |candidate: Vec<Pt>| {
         let mut out = prefer_tip_unless_detour_improves(
             start,
@@ -596,6 +582,39 @@ fn route_one_centerline(
         }
         out
     };
+
+    // Geometric bow first (chem ports / tight escape). Visibility A* can hitch
+    // the scheme-frame highway and over-bend a place-dirty tip — that is a
+    // post-placement cost walk the layout should not need.
+    let bow = fallback_bow(start, goal, obstacles, tile_obstacles, skip, committed);
+    let bow_ok = bow.len() >= 3
+        && path_clears_obstacles(&bow, obstacles, skip)
+        && place_ok(&bow)
+        && !detour_backs_up_past_start(start, goal, &bow);
+    if bow_ok {
+        return finish(bow);
+    }
+
+    let vis_path = visibility_route(
+        start,
+        goal,
+        src_c,
+        tgt_c,
+        src,
+        tgt,
+        skip,
+        vis,
+        obstacles,
+        tile_obstacles,
+        committed,
+    );
+    // String-pull on ink hulls; prefer_tip decides tip vs detour.
+    let pulled =
+        drop_skippable_controls(&vis_path, obstacles, skip, committed, src_c, tgt_c);
+    let pulled_ok = path_clears_obstacles(&pulled, obstacles, skip)
+        && path_clears_obstacles(&pulled, tile_obstacles, skip)
+        && place_ok(&pulled);
+    let pulled_x = pathway_crosses_committed(&pulled, src_c, tgt_c, committed);
     if pulled.len() == 2 && pulled_ok && pulled_x == 0 {
         return finish(pulled);
     }
@@ -610,8 +629,7 @@ fn route_one_centerline(
     if vis_ok && vis_path.len() >= 3 {
         return finish(prune_close_controls(&vis_path, CLOSE_CTRL_PX));
     }
-    // Geometric bow on chem-hull ports; must also clear placement AABBs.
-    let bow = fallback_bow(start, goal, obstacles, tile_obstacles, skip, committed);
+    // Fall through with the (possibly weak) bow already computed.
     let bow_ink = path_clears_obstacles(&bow, obstacles, skip);
     let pulled_ink = path_clears_obstacles(&pulled, obstacles, skip);
     let bow_x = pathway_crosses_committed(&bow, src_c, tgt_c, committed);
@@ -2444,28 +2462,31 @@ fn fallback_bow(
     let dy = goal.1 - start.1;
     let (px, py) = unit((-dy, dx));
     let chord = dist(start, goal).max(1.0);
-    let mut best: Option<(usize, f64, f64, Vec<Pt>)> = None; // x, wrap_pen, len, pts
-    let consider = |best: &mut Option<(usize, f64, f64, Vec<Pt>)>, pts: Vec<Pt>| {
+    let inv = 1.0 / chord;
+    // Rank by (wrap, tip-chord tightness) only — not crossings/length. Scoring
+    // a field of ports by cost preferred page-scale bows over local skirts.
+    let _ = committed;
+    let mut best: Option<(f64, f64, Vec<Pt>)> = None; // wrap_pen, tightness, pts
+    let consider = |best: &mut Option<(f64, f64, Vec<Pt>)>, pts: Vec<Pt>| {
         if !place_tiles.is_empty() && !path_clears_tile_aabbs(&pts, place_tiles, skip) {
             return;
         }
-        let x = path_crosses_committed(&pts, committed);
-        let len = polyline_len(&pts);
         let wrap_pen = if detour_backs_up_past_start(start, goal, &pts) {
             1.0e6
         } else {
             0.0
         };
+        let mut tight = 0.0_f64;
+        for q in pts.iter().skip(1).take(pts.len().saturating_sub(2)) {
+            let off = ((q.0 - start.0) * -dy + (q.1 - start.1) * dx).abs() * inv;
+            tight = tight.max(off);
+        }
         let better = match best {
             None => true,
-            Some((bx, bw, bl, _)) => {
-                x < *bx
-                    || (x == *bx && wrap_pen < *bw)
-                    || (x == *bx && wrap_pen == *bw && len < *bl)
-            }
+            Some((bw, bt, _)) => wrap_pen < *bw || (wrap_pen == *bw && tight < *bt),
         };
         if better {
-            *best = Some((x, wrap_pen, len, pts));
+            *best = Some((wrap_pen, tight, pts));
         }
     };
 
@@ -2473,7 +2494,7 @@ fn fallback_bow(
     // Never seed place-AABB corners — those look like box routing. When a tip
     // punches a place box, project that mol's chem-hull verts radially outward
     // until they clear the place AABB + clearance (silhouette-shaped ports).
-    let try_ring = |best: &mut Option<(usize, f64, f64, Vec<Pt>)>, ring: &[Pt]| {
+    let try_ring = |best: &mut Option<(f64, f64, Vec<Pt>)>, ring: &[Pt]| {
         for &bow in ring {
             if !segment_clears_obstacles(start, bow, hull_obstacles, skip)
                 || !segment_clears_obstacles(bow, goal, hull_obstacles, skip)
@@ -2517,72 +2538,93 @@ fn fallback_bow(
         if !ports.is_empty() {
             try_ring(&mut best, &ports);
         }
-    }
-    if let Some((x, w, _, pts)) = best.as_ref() {
-        if *x == 0 && *w == 0.0 {
-            return pts.clone();
-        }
-    }
-
-    // 2) Perpendicular offset search — only if no visible port worked.
-    let max_off = (chord * 0.35).max(BOND_PX * 24.0).min(chord * 0.55);
-    let step = BOND_PX * 2.0;
-    let k_max = ((max_off / step).ceil() as usize).max(24).min(48);
-    let stations: [f64; 5] = [0.5, 0.65, 0.35, 0.8, 0.2];
-    for &t in &stations {
-        let mid = (start.0 + dx * t, start.1 + dy * t);
-        for sign in [1.0, -1.0] {
-            for k in 1..=k_max {
-                let off = (k as f64) * step * sign;
-                let bow = (mid.0 + px * off, mid.1 + py * off);
-                if !segment_clears_obstacles(start, bow, hull_obstacles, skip)
-                    || !segment_clears_obstacles(bow, goal, hull_obstacles, skip)
-                {
-                    continue;
+        // Local place-face skirts (midpoint + short two-elbow runs). Needed when
+        // a single face midpoint re-enters the box on the way to the tip.
+        let (x0, y0, x1, y1) = o.placement_aabb;
+        if x1 - x0 >= 4.0 && y1 - y0 >= 4.0 {
+            let cx = 0.5 * (x0 + x1);
+            let cy = 0.5 * (y0 + y1);
+            try_ring(
+                &mut best,
+                &[
+                    (cx, y0 - p),
+                    (cx, y1 + p),
+                    (x0 - p, cy),
+                    (x1 + p, cy),
+                ],
+            );
+            let try_path = |best: &mut Option<(f64, f64, Vec<Pt>)>, pts: &[Pt]| {
+                if pts.len() < 3 {
+                    return;
                 }
-                let pts = prune_close_controls(&[start, bow, goal], CLOSE_CTRL_PX);
-                consider(&mut best, pts);
-            }
+                if detour_backs_up_past_start(start, goal, pts) {
+                    return;
+                }
+                for w in pts.windows(2) {
+                    if !segment_clears_obstacles(w[0], w[1], hull_obstacles, skip) {
+                        return;
+                    }
+                }
+                let pts = prune_close_controls(pts, CLOSE_CTRL_PX);
+                if pts.len() >= 3 {
+                    consider(best, pts);
+                }
+            };
+            try_path(
+                &mut best,
+                &[start, (x0 - p, y0 - p), (x1 + p, y0 - p), goal],
+            );
+            try_path(
+                &mut best,
+                &[start, (x0 - p, y1 + p), (x1 + p, y1 + p), goal],
+            );
+            try_path(
+                &mut best,
+                &[start, (x0 - p, y0 - p), (x0 - p, y1 + p), goal],
+            );
+            try_path(
+                &mut best,
+                &[start, (x1 + p, y0 - p), (x1 + p, y1 + p), goal],
+            );
         }
     }
-    if let Some((_, w, _, pts)) = &best {
+    if let Some((w, _, pts)) = best.as_ref() {
         if *w == 0.0 {
             return pts.clone();
         }
     }
-    if let Some((_, _, _, pts)) = best {
+    if let Some((_, _, pts)) = best {
         return pts;
     }
-    // Last resort: still prefer a long side-step over punching ink. Walk the
-    // start→goal AABB corners if a single bow cannot clear. Try several offsets
-    // so a same-layer sibling tile beside a fan spoke can be skirted.
-    let base = dist(start, goal).max(BOND_PX * 4.0);
+
+    // Last resort: first mid-chord perpendicular escape with a hard tightness
+    // cap — refuse page-scale offsets (Morphine sky frame highway).
+    let step = BOND_PX;
+    let max_tight = (chord * 0.12).clamp(24.0, 72.0);
+    let k_max = (max_tight / step).ceil() as usize;
+    let mid = (start.0 + 0.5 * dx, start.1 + 0.5 * dy);
     for sign in [1.0, -1.0] {
-        for scale in [0.35, 0.5, 0.75, 1.0, 1.25] {
-            let span = base * scale;
-            let a = (start.0 + px * span * sign, start.1 + py * span * sign);
-            let b = (goal.0 + px * span * sign, goal.1 + py * span * sign);
-            if segment_clears_obstacles(start, a, hull_obstacles, skip)
-                && segment_clears_obstacles(a, b, hull_obstacles, skip)
-                && segment_clears_obstacles(b, goal, hull_obstacles, skip)
-            {
-                let pts = prune_close_controls(&[start, a, b, goal], CLOSE_CTRL_PX);
-                if polyline_len(&pts) <= base * 1.45 {
-                    consider(&mut best, pts);
-                    if best
-                        .as_ref()
-                        .is_some_and(|(_, w, _, p)| *w == 0.0 && p.len() >= 3)
-                    {
-                        return best.unwrap().3;
-                    }
-                }
+        for k in 1..=k_max {
+            let off = k as f64 * step * sign;
+            if off.abs() > max_tight {
+                break;
             }
+            let bow = (mid.0 + px * off, mid.1 + py * off);
+            if !segment_clears_obstacles(start, bow, hull_obstacles, skip)
+                || !segment_clears_obstacles(bow, goal, hull_obstacles, skip)
+            {
+                continue;
+            }
+            let pts = prune_close_controls(&[start, bow, goal], CLOSE_CTRL_PX);
+            if pts.len() < 3 || detour_backs_up_past_start(start, goal, &pts) {
+                continue;
+            }
+            if !place_tiles.is_empty() && !path_clears_tile_aabbs(&pts, place_tiles, skip) {
+                continue;
+            }
+            return pts;
         }
     }
-    if let Some((_, _, _, pts)) = best {
-        return pts;
-    }
-    // Only punch the chord when every detour failed — caller may still reject.
     vec![start, goal]
 }
 
@@ -3807,4 +3849,85 @@ mod tests {
         );
         assert!(out.len() >= 3, "prefer_tip keep bow: {out:?}");
     }
+
+    #[test]
+    fn morphine_sky_tip_should_be_nearly_straight() {
+        use crate::doc::depict;
+        use crate::doc::spec::DepictSpec;
+        use crate::scene::Primitive;
+        const MORPHINE: &str =
+            include_str!("../../tests/fixtures/xenobase/morphine-sulfate.json");
+        let spec: DepictSpec = serde_json::from_str(MORPHINE).unwrap();
+        let scene = depict(&spec).unwrap().remove(0).scene;
+        let mut sky: Option<Vec<(f64, f64)>> = None;
+        for p in &scene.overlays {
+            let Primitive::Path {
+                d,
+                stroke,
+                class,
+                ..
+            } = p
+            else {
+                continue;
+            };
+            if stroke.as_deref() != Some("#56b4e9") {
+                continue;
+            }
+            let c = class.as_deref().unwrap_or("");
+            if !c.contains("edge") || c.contains("head") {
+                continue;
+            }
+            // parse M/L numbers
+            let mut nums = Vec::new();
+            let mut cur = String::new();
+            for ch in d.chars() {
+                if ch.is_ascii_digit() || ch == '.' || ch == '-' || ch == '+' || ch == 'e' || ch == 'E' {
+                    cur.push(ch);
+                } else if !cur.is_empty() {
+                    if let Ok(v) = cur.parse::<f64>() {
+                        nums.push(v);
+                    }
+                    cur.clear();
+                }
+            }
+            if !cur.is_empty() {
+                if let Ok(v) = cur.parse::<f64>() {
+                    nums.push(v);
+                }
+            }
+            let pts: Vec<(f64, f64)> = nums.chunks(2).filter(|c| c.len()==2).map(|c| (c[0], c[1])).collect();
+            sky = Some(pts);
+        }
+        let pts = sky.expect("sky shaft");
+        let a = pts[0];
+        let b = *pts.last().unwrap();
+        let chord = ((b.0 - a.0).hypot(b.1 - a.1)).max(1.0);
+        let mut len = 0.0;
+        for w in pts.windows(2) {
+            len += (w[1].0 - w[0].0).hypot(w[1].1 - w[0].1);
+        }
+        let dx = b.0 - a.0;
+        let dy = b.1 - a.1;
+        let inv = 1.0 / chord;
+        let px = -dy * inv;
+        let py = dx * inv;
+        let mut max_off = 0.0_f64;
+        for q in &pts {
+            max_off = max_off.max(((q.0 - a.0) * px + (q.1 - a.1) * py).abs());
+        }
+        eprintln!(
+            "sky n={} detour={:.3} max_off={:.1} pts={:?}",
+            pts.len(),
+            len / chord,
+            max_off,
+            pts
+        );
+        assert!(
+            max_off < 80.0 && len / chord < 1.08,
+            "sky bow too large: n={} max_off={max_off:.1} detour={:.3} (no frame-highway minimize)",
+            pts.len(),
+            len / chord
+        );
+    }
+
 }

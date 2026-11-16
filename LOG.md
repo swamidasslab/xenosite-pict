@@ -2,6 +2,12 @@
 
 ## 2026-11-15
 
+- **No post-placement route cost search for Morphine sky**: Tip lock ignored
+  `draft_cross==0` (centroid X forced a detour). `fallback_bow` ranks by
+  tip-chord tightness, not crossings/length; try geometric bow *before*
+  vis A* (frame highway was the tall bend). Place-dirty skirts = chem
+  projection + face midpoints / short face runs; capped first-escape only.
+  Gate: `morphine_sky_tip_should_be_nearly_straight` (max_off&lt;80, detour&lt;1.08).
 - **Place-dirty bows: chem silhouette, not AABB corners**: `fallback_bow`
   was seeding padded place-box corners when a tip punched a viewport, so
   Morphine fans looked rectangular. Now project that mol's chem-hull verts
