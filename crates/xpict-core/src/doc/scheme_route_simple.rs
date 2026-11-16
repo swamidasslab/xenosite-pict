@@ -2,10 +2,9 @@
 //!
 //! One hull visibility graph. Per arrow: strip start/end hull verts; centroids
 //! link only to foreign hulls; A* minimizes length + crossings + shared length.
-//! Two passes freeze peer costs from the previous pass's **centroid pathways**
-//! (never tip-pulled shafts — tips are posed only after all pathways lock).
-//! Visibility verts are the full inflated hull ring (no subsample chords
-//! through the interior).
+//! Several Gauss–Seidel passes on **centroid pathways**, worst-detour first
+//! within each pass (tips posed only after pathways lock). Visibility verts
+//! are the full inflated hull ring (no subsample chords through the interior).
 
 use std::collections::{HashMap, HashSet};
 
@@ -239,19 +238,34 @@ pub fn route_scheme_edges(
         skips.push(skip_owned);
     }
 
-    // Pass 0: no peer costs. Pass 1+: costs from the previous pass's centroid
-    // pathways, excluding self (re-routing must not pay for its own prior path).
-    // Tips are not posed until pathways lock.
-    const ROUTE_PASSES: usize = 2;
+    // Pass 0: every group with no peer costs (independent tips/detours).
+    // Later passes: Gauss–Seidel, smallest excess-over-tip first (tips before
+    // wild walks) so short paths re-lock against live peers, then detours adapt.
+    const ROUTE_PASSES: usize = 4;
     for pass in 0..ROUTE_PASSES {
-        let prev = group_pathways.clone();
-        for (gi, group) in groups.iter().enumerate() {
-            let committed: Vec<Vec<Pt>> = prev
-                .iter()
-                .enumerate()
-                .filter(|(j, c)| *j != gi && c.len() >= 2)
-                .map(|(_, c)| c.clone())
-                .collect();
+        let mut order: Vec<usize> = (0..n_groups).collect();
+        if pass > 0 {
+            order.sort_by(|&a, &b| {
+                let sa =
+                    pathway_improve_score(&group_pathways[a], group_meta[a].0, group_meta[a].1);
+                let sb =
+                    pathway_improve_score(&group_pathways[b], group_meta[b].0, group_meta[b].1);
+                sa.partial_cmp(&sb)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .then(a.cmp(&b))
+            });
+        }
+        for &gi in &order {
+            let committed: Vec<Vec<Pt>> = if pass == 0 {
+                Vec::new()
+            } else {
+                group_pathways
+                    .iter()
+                    .enumerate()
+                    .filter(|(j, c)| *j != gi && c.len() >= 2)
+                    .map(|(_, c)| c.clone())
+                    .collect()
+            };
             let mut edge_extras = EdgeExtras::default();
             for c in &committed {
                 edge_extras.note_pathway(&vis, c);
@@ -267,7 +281,6 @@ pub fn route_scheme_edges(
                 &edge_extras,
                 &committed,
             );
-            let _ = group;
         }
         if debug {
             let n_tip = group_pathways.iter().filter(|p| p.len() == 2).count();
@@ -571,6 +584,21 @@ fn pathway_cost(
     pts.windows(2)
         .map(|w| dist(w[0], w[1]) + segment_peer_cost(w[0], w[1], committed, obstacles, skip))
         .sum()
+}
+
+fn pathway_geom_len(pts: &[Pt]) -> f64 {
+    pts.windows(2)
+        .map(|w| dist(w[0], w[1]))
+        .sum()
+}
+
+/// Excess length over the centroid chord — higher ⇒ re-route sooner.
+fn pathway_improve_score(pathway: &[Pt], src: Pt, tgt: Pt) -> f64 {
+    let tip = dist(src, tgt);
+    if pathway.len() < 2 {
+        return tip;
+    }
+    pathway_geom_len(pathway) - tip
 }
 
 fn segment_cross_cost(

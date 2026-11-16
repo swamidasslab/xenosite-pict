@@ -2,6 +2,11 @@
 
 ## 2026-11-16
 
+- Router multi-pass: 4× Gauss–Seidel after a peer-free pass 0; later passes
+  order by excess length over centroid tip (tips first). Morphine under current
+  placement stays at **13 tip / 6 detour** — pass 0 already ink-blocked on those
+  six, so extra passes do not recover tips. Wild walks are obstacle A*, not
+  peer-cost tip→detour conversion (tips-first holds 13 across passes).
 - **Checkpoint**: lean hull-vis router is in good shape on Morphine (17 tip /
   2 detour, paint-time simplify off, self excluded from re-route costs,
   `crossing_penalty` 400). Cross-axis parent/child pull experiments reverted
