@@ -185,14 +185,14 @@ pub fn route_scheme_edges(
     let vis = build_visibility_graph(&obstacles);
     if debug {
         for o in &obstacles {
-            debug_prims.push(poly_closed(&o.hull, dbg::HULL, 1.2, 0.55, "debug-route-hull"));
+            debug_prims.push(poly_closed(&o.hull, dbg::HULL, 2.5, 0.55, "debug-route-hull"));
             for &p in &o.verts {
-                debug_prims.push(dot(p, 2.2, dbg::HULL, 0.65, "debug-route-hull-vert"));
+                debug_prims.push(dot(p, 3.5, dbg::HULL, 0.65, "debug-route-hull-vert"));
             }
         }
         for id in mol_ids {
             if let Some(&c) = centroids.get(id) {
-                debug_prims.push(dot(c, 3.0, dbg::CHORD, 0.85, "debug-route-centroid"));
+                debug_prims.push(dot(c, 4.5, dbg::CHORD, 0.85, "debug-route-centroid"));
             }
         }
     }
@@ -244,7 +244,7 @@ pub fn route_scheme_edges(
     // Pass 0: route without peer costs. Pass 1+: frozen costs from previous
     // pass's **centroid pathways**. Tips are not posed until pathways lock.
     const ROUTE_PASSES: usize = 2;
-    for _pass in 0..ROUTE_PASSES {
+    for pass in 0..ROUTE_PASSES {
         let mut edge_extras = EdgeExtras::default();
         let committed: Vec<Vec<Pt>> = group_pathways
             .iter()
@@ -268,6 +268,10 @@ pub fn route_scheme_edges(
                 &committed,
             );
             let _ = group;
+        }
+        if debug {
+            let n_tip = group_pathways.iter().filter(|p| p.len() == 2).count();
+            eprintln!("route debug pass={pass}: {n_tip}/{} tip chords", group_pathways.len());
         }
     }
 
@@ -296,25 +300,25 @@ pub fn route_scheme_edges(
             debug_prims.push(poly_open(
                 &[src_c, tgt_c],
                 dbg::CHORD,
-                1.0,
-                0.45,
-                Some("3 2"),
+                2.5,
+                0.55,
+                Some("5 3"),
                 "debug-route-chord",
             ));
             debug_prims.push(poly_open(
                 pathway,
                 dbg::PATHWAY,
-                1.2,
-                0.55,
-                Some("2 2"),
+                3.0,
+                0.7,
+                Some("4 3"),
                 "debug-route-pathway",
             ));
             if let (Some(&a), Some(&b)) = (center.first(), center.last()) {
-                debug_prims.push(dot(a, 3.5, dbg::TIP, 0.9, "debug-route-tip"));
-                debug_prims.push(dot(b, 3.5, dbg::TIP, 0.9, "debug-route-tip"));
+                debug_prims.push(dot(a, 5.5, dbg::TIP, 0.95, "debug-route-tip"));
+                debug_prims.push(dot(b, 5.5, dbg::TIP, 0.95, "debug-route-tip"));
             }
             for &p in &lookup_waypoints(route_waypoints, &src, &tgt) {
-                debug_prims.push(dot(p, 4.0, dbg::DUMMY, 0.95, "debug-route-dummy"));
+                debug_prims.push(dot(p, 6.0, dbg::DUMMY, 0.95, "debug-route-dummy"));
             }
             let tip_ok = pathway.len() == 2;
             let color = if tip_ok { dbg::CENTER } else { dbg::DIRTY };
@@ -323,15 +327,35 @@ pub fn route_scheme_edges(
             } else {
                 "debug-route-center detour"
             };
-            debug_prims.push(poly_open(center, color, 1.8, 0.75, None, cls));
+            debug_prims.push(poly_open(center, color, 3.5, 0.85, None, cls));
         }
-        // Intersections on centroid pathways — same polylines A* prices against.
-        let paths: Vec<&[Pt]> = group_pathways
-            .iter()
-            .filter(|c| c.len() >= 2)
-            .map(|c| c.as_slice())
-            .collect();
-        let hits = collect_polyline_intersections(&paths);
+        // Intersections on centroid pathways (ignore hits inside either edge's
+        // source/target hulls — same rule as peer-cost).
+        let mut hits = Vec::new();
+        for i in 0..n_groups {
+            if group_pathways[i].len() < 2 {
+                continue;
+            }
+            for j in (i + 1)..n_groups {
+                if group_pathways[j].len() < 2 {
+                    continue;
+                }
+                let skip_ij: HashSet<&str> = skips[i]
+                    .iter()
+                    .chain(skips[j].iter())
+                    .map(String::as_str)
+                    .collect();
+                for w in group_pathways[i].windows(2) {
+                    for v in group_pathways[j].windows(2) {
+                        if let Some(p) = segment_intersection_point(w[0], w[1], v[0], v[1]) {
+                            if !point_in_skip_hull(p, &obstacles, &skip_ij) {
+                                hits.push(p);
+                            }
+                        }
+                    }
+                }
+            }
+        }
         for &p in &hits {
             push_cross_mark(&mut debug_prims, p);
         }
@@ -457,19 +481,31 @@ fn visibility_route(
                 0 => {
                     for &(j, len) in &start_links {
                         let pv = vis.pts[global_of_local[j]];
-                        nbrs.push((j + 2, len + segment_peer_cost(start, pv, committed)));
+                        nbrs.push((
+                            j + 2,
+                            len + segment_peer_cost(start, pv, committed, obstacles, skip),
+                        ));
                     }
                     if let Some(len) = direct {
-                        nbrs.push((1, len + segment_peer_cost(start, goal, committed)));
+                        nbrs.push((
+                            1,
+                            len + segment_peer_cost(start, goal, committed, obstacles, skip),
+                        ));
                     }
                 }
                 1 => {
                     for &(j, len) in &goal_links {
                         let pv = vis.pts[global_of_local[j]];
-                        nbrs.push((j + 2, len + segment_peer_cost(goal, pv, committed)));
+                        nbrs.push((
+                            j + 2,
+                            len + segment_peer_cost(goal, pv, committed, obstacles, skip),
+                        ));
                     }
                     if let Some(len) = direct {
-                        nbrs.push((0, len + segment_peer_cost(start, goal, committed)));
+                        nbrs.push((
+                            0,
+                            len + segment_peer_cost(start, goal, committed, obstacles, skip),
+                        ));
                     }
                 }
                 _ => {
@@ -479,15 +515,27 @@ fn visibility_route(
                             nbrs.push((
                                 lj + 2,
                                 len + edge_extras.get(g, gj)
-                                    + segment_cross_cost(vis.pts[g], vis.pts[gj], committed),
+                                    + segment_cross_cost(
+                                        vis.pts[g],
+                                        vis.pts[gj],
+                                        committed,
+                                        obstacles,
+                                        skip,
+                                    ),
                             ));
                         }
                     }
                     if let Some(len) = to_start[u - 2] {
-                        nbrs.push((0, len + segment_peer_cost(node_pt(u), start, committed)));
+                        nbrs.push((
+                            0,
+                            len + segment_peer_cost(node_pt(u), start, committed, obstacles, skip),
+                        ));
                     }
                     if let Some(len) = to_goal[u - 2] {
-                        nbrs.push((1, len + segment_peer_cost(node_pt(u), goal, committed)));
+                        nbrs.push((
+                            1,
+                            len + segment_peer_cost(node_pt(u), goal, committed, obstacles, skip),
+                        ));
                     }
                 }
             }
@@ -498,13 +546,40 @@ fn visibility_route(
         |&u| ordered_float(dist(node_pt(u), goal)),
         |&g| g == 1,
     );
-    let Some((idxs, _)) = path else {
-        return vec![start, goal];
+    let astar_pts: Vec<Pt> = match path {
+        Some((idxs, _)) => idxs.into_iter().map(node_pt).collect(),
+        None => vec![start, goal],
     };
-    idxs.into_iter().map(node_pt).collect()
+    // Prefer visible centroid↔centroid when its cost beats (or ties) A*.
+    if points_visible(start, goal, obstacles, skip) {
+        let tip = vec![start, goal];
+        let tip_cost = pathway_cost(&tip, committed, obstacles, skip);
+        let astar_cost = pathway_cost(&astar_pts, committed, obstacles, skip);
+        if tip_cost <= astar_cost {
+            return tip;
+        }
+    }
+    astar_pts
 }
 
-fn segment_cross_cost(u: Pt, v: Pt, committed: &[Vec<Pt>]) -> f64 {
+fn pathway_cost(
+    pts: &[Pt],
+    committed: &[Vec<Pt>],
+    obstacles: &[Obstacle],
+    skip: &HashSet<&str>,
+) -> f64 {
+    pts.windows(2)
+        .map(|w| dist(w[0], w[1]) + segment_peer_cost(w[0], w[1], committed, obstacles, skip))
+        .sum()
+}
+
+fn segment_cross_cost(
+    u: Pt,
+    v: Pt,
+    committed: &[Vec<Pt>],
+    obstacles: &[Obstacle],
+    skip: &HashSet<&str>,
+) -> f64 {
     let pen = route().crossing_penalty;
     if pen <= 0.0 {
         return 0.0;
@@ -512,7 +587,11 @@ fn segment_cross_cost(u: Pt, v: Pt, committed: &[Vec<Pt>]) -> f64 {
     let mut c = 0.0;
     for other in committed {
         for w in other.windows(2) {
-            if segments_properly_cross(u, v, w[0], w[1]) {
+            if let Some(p) = segment_intersection_point(u, v, w[0], w[1]) {
+                // Fan spokes meet inside source/target hulls — not a route crossing.
+                if point_in_skip_hull(p, obstacles, skip) {
+                    continue;
+                }
                 c += pen;
             }
         }
@@ -521,9 +600,15 @@ fn segment_cross_cost(u: Pt, v: Pt, committed: &[Vec<Pt>]) -> f64 {
 }
 
 /// Crossing + shared-length cost vs already-routed **centroid pathways**.
-fn segment_peer_cost(u: Pt, v: Pt, committed: &[Vec<Pt>]) -> f64 {
+fn segment_peer_cost(
+    u: Pt,
+    v: Pt,
+    committed: &[Vec<Pt>],
+    obstacles: &[Obstacle],
+    skip: &HashSet<&str>,
+) -> f64 {
     let share_pen = route().shared_path_penalty;
-    let mut c = segment_cross_cost(u, v, committed);
+    let mut c = segment_cross_cost(u, v, committed, obstacles, skip);
     if share_pen <= 0.0 {
         return c;
     }
@@ -536,6 +621,15 @@ fn segment_peer_cost(u: Pt, v: Pt, committed: &[Vec<Pt>]) -> f64 {
         }
     }
     c
+}
+
+fn point_in_skip_hull(p: Pt, obstacles: &[Obstacle], skip: &HashSet<&str>) -> bool {
+    for o in obstacles {
+        if skip.contains(o.mol_id.as_str()) && point_in_convex(p, &o.hull) {
+            return true;
+        }
+    }
+    false
 }
 
 /// All visible foreign hull verts for a centroid terminal (local Steiner indices).
@@ -674,23 +768,6 @@ fn tip_hug_pathway(
     out
 }
 
-/// All proper intersection points among polylines (pairwise, no self).
-fn collect_polyline_intersections(paths: &[&[Pt]]) -> Vec<Pt> {
-    let mut hits = Vec::new();
-    for i in 0..paths.len() {
-        for j in (i + 1)..paths.len() {
-            for w in paths[i].windows(2) {
-                for v in paths[j].windows(2) {
-                    if let Some(p) = segment_intersection_point(w[0], w[1], v[0], v[1]) {
-                        hits.push(p);
-                    }
-                }
-            }
-        }
-    }
-    hits
-}
-
 /// Intersection of AB and CD when [`segments_properly_cross`] is true.
 fn segment_intersection_point(a: Pt, b: Pt, c: Pt, d: Pt) -> Option<Pt> {
     if !segments_properly_cross(a, b, c, d) {
@@ -709,12 +786,12 @@ fn segment_intersection_point(a: Pt, b: Pt, c: Pt, d: Pt) -> Option<Pt> {
 }
 
 fn push_cross_mark(out: &mut Vec<Primitive>, p: Pt) {
-    let s = 7.0;
-    out.push(dot(p, 5.0, dbg::CROSS, 0.95, "debug-route-cross"));
+    let s = 10.0;
+    out.push(dot(p, 7.0, dbg::CROSS, 0.95, "debug-route-cross"));
     out.push(poly_open(
         &[(p.0 - s, p.1 - s), (p.0 + s, p.1 + s)],
         dbg::CROSS_CORE,
-        2.4,
+        4.0,
         1.0,
         None,
         "debug-route-cross-x",
@@ -722,7 +799,7 @@ fn push_cross_mark(out: &mut Vec<Primitive>, p: Pt) {
     out.push(poly_open(
         &[(p.0 - s, p.1 + s), (p.0 + s, p.1 - s)],
         dbg::CROSS_CORE,
-        2.4,
+        4.0,
         1.0,
         None,
         "debug-route-cross-x",
