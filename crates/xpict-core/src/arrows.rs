@@ -673,12 +673,12 @@ fn harpoon_poly(
 
 /// Build overlay primitives for one edge given a resolved route.
 pub fn edge_primitives(edge: &EdgePaintIn) -> Vec<EdgePrim> {
-    // Catmull: drop clustered controls (squiggle / head on a stub chord)
-    // but do not flatten a small bow as a collinear kink.
+    // Router owns the control polygon. Catmull still drops clustered controls
+    // (squiggle / head on a stub chord); no kink/collinear simplify at paint.
     let pts = if edge.curve_catmull {
         prune_close_controls(&edge.pts, CLOSE_CTRL_PX)
     } else {
-        simplify_route(&edge.pts, KINK_PX)
+        edge.pts.clone()
     };
     if polyline_length(&pts) < 4.0 {
         return Vec::new();

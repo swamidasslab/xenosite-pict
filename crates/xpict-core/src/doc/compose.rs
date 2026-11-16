@@ -8,9 +8,7 @@ use std::collections::{HashMap, HashSet};
 
 use serde_json::{json, Value};
 
-use crate::arrows::{
-    edge_primitives as paint_edge, simplify_route, EdgePaintIn, EdgePrim, KINK_PX,
-};
+use crate::arrows::{edge_primitives as paint_edge, EdgePaintIn, EdgePrim};
 use crate::debug_box::debug_rect;
 use crate::scene::{LayerName, Primitive, Scene, TextAnchor, Viewport};
 
@@ -201,12 +199,8 @@ fn compose_reaction(
                 let (x2, y2, w2, h2) = tgt_box;
                 vec![(x + w * 0.5, y + h * 0.5), (x2 + w2 * 0.5, y2 + h2 * 0.5)]
             });
-        // Orthogonal: kink-collapse at paint. Polyline/splines keep refine verts.
-        let pts = if edge.edge_routing_or(layout) == EdgeRouting::Orthogonal {
-            simplify_route(&route, KINK_PX)
-        } else {
-            simplify_route(&route, 0.0)
-        };
+        // Router owns the control polygon; compose paints it as-is.
+        let pts = route;
         let route_len: f64 = pts
             .windows(2)
             .map(|w| {
