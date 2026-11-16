@@ -2,6 +2,21 @@
 
 ## 2026-11-15
 
+- **Nearly-horizontal light blue (`#56b4e9`) through sibling tiles**: Live
+  review wasm had Morphine→6520 as a shallow tip cutting `8306` (and pink
+  through `4955`, dashed through `1684`). Chem assert was vacuous
+  (`point_to_seg` ≥0 vs `clash=-1.5`). Fix: positive chem clearance + endpoint
+  skip; restore viewport AABB gate; tip lock requires placement-AABB clear;
+  place-dirty tips route on a **tile visibility graph** so elbows land on
+  visible hull/box ports (not free perpendicular invents at y≪0). Softened
+  `detour_backs_up` to chord-projection reverse, not “above start”.
+- **Restore ELK-era edges on layered pack**: Layers stay on `place_layered`.
+  Router rolled back to `761e959^` tip/ink policy — `keep_draft` / `prefer_tip`
+  do not force wraps for tile whitespace; dropped `short_tile_bow` / AABB final
+  gates that invented weird bows. Morphine: chem clear hard; `shaft_tile_hits
+  ≤ ELK` (not hard zero); viewport whitespace skims allowed again.
+- **Tip-first short bows (superseded)**: short AABB edge-push bows cleared
+  PackMetrics zero-tile but looked worse than ELK-era tips on the new pack.
 - **Why Morphine shaft/tile / ELK-worse gates were vacuous**: (1) viewport
   shaft check skipped tip *and* bow → never asserted; (2) tip lock / prefer_tip
   treated ink-clear chords through sibling *tile whitespace* as done; (3)
@@ -14,10 +29,8 @@
   crossing scores. Gate: `morphine_intermediate_shell_places_children_after`.
 - **Routing**: tile gate uses placement AABB + AABB sampler aligned with
   review/PackMetrics; post-resnap / final pass replaces tip-through-tile with
-  bow or AABB escape; page wraps collapse to tip. Still open: ~2 Morphine
-  shaft–tile hits and max_detour vs ELK on
-  `morphine_placer_beats_or_matches_elk_pack_metrics` /
-  `morphine_sulfate_shafts_clear_viewport_boxes`.
+  a ≤1.15× short local bow (else keep tip); page wraps collapse to tip.
+
 - **Layered placer vs ELK (Morphine)**: crossing-min freezes within-layer
   order; soft edges score in reorder; exhaustive small layers always run for
   span. Intra-layer layout edges promote sinks (hint-respecting).

@@ -228,17 +228,43 @@ pub(super) fn shaft_interior_clear_of_viewport_boxes(scene: &Scene, inset: f64) 
     }
 }
 
-/// Interior shaft samples must not sit inside another molecule's skeleton.
+/// Interior shaft samples must stay clear of foreign molecule bond ink.
+///
+/// `clash` is the **minimum** unsigned clearance to bond centerlines (use a
+/// positive value such as `1.5`). Point–segment distance is always ≥ 0, so a
+/// negative clash made this assert vacuous.
+///
+/// Endpoint tiles are skipped (tips hug owner ink). A short tip arc inset
+/// avoids false positives at the attach points; intermediate foreign tiles
+/// near a destination are still checked.
 pub(super) fn shaft_interior_clear_of_mols(scene: &Scene, clash: f64) {
-    let mol_ids: Vec<String> = scene
+    debug_assert!(
+        clash >= 0.0,
+        "clash must be a non-negative clearance; got {clash}"
+    );
+    let mols: Vec<(String, f64, f64, f64, f64)> = scene
         .viewports
         .iter()
-        .filter_map(|v| v.id.clone())
+        .filter_map(|v| {
+            let id = v.id.clone()?;
+            Some((id, v.x, v.y, v.width, v.height))
+        })
         .collect();
+    let in_box = |p: (f64, f64), x: f64, y: f64, w: f64, h: f64| {
+        p.0 >= x && p.0 <= x + w && p.1 >= y && p.1 <= y + h
+    };
     for d in overlay_edge_paths(scene) {
         let pts = sample_path(&d);
         if pts.len() < 2 {
             continue;
+        }
+        let start = pts[0];
+        let end = pts[pts.len() - 1];
+        let mut endpoint_ids = std::collections::HashSet::new();
+        for (id, x, y, w, h) in &mols {
+            if in_box(start, *x, *y, *w, *h) || in_box(end, *x, *y, *w, *h) {
+                endpoint_ids.insert(id.clone());
+            }
         }
         let mut acc = 0.0_f64;
         let mut segs: Vec<((f64, f64), (f64, f64), f64)> = Vec::new();
@@ -250,7 +276,7 @@ pub(super) fn shaft_interior_clear_of_mols(scene: &Scene, clash: f64) {
         if acc < 8.0 {
             continue;
         }
-        let skip = (acc * 0.18).max(6.0);
+        let skip = (acc * 0.08).max(4.0).min(18.0);
         let mut along = 0.0;
         for (a, b, len) in segs {
             let n = ((len / 3.0).ceil() as usize).max(1);
@@ -261,20 +287,21 @@ pub(super) fn shaft_interior_clear_of_mols(scene: &Scene, clash: f64) {
                 if s < skip || s > acc - skip {
                     continue;
                 }
-                for id in &mol_ids {
-                    if let Some(vp) = scene.viewports.iter().find(|v| v.id.as_deref() == Some(id)) {
-                        let inset = 8.0;
-                        let inside = p.0 > vp.x + inset
-                            && p.0 < vp.x + vp.width - inset
-                            && p.1 > vp.y + inset
-                            && p.1 < vp.y + vp.height - inset;
-                        if inside {
-                            let dist = skeleton_signed(scene, id, p);
-                            assert!(
-                                dist > clash,
-                                "shaft interior {p:?} sits in {id} box (bond d={dist:.1}) path={d}"
-                            );
-                        }
+                for (id, x, y, w, h) in &mols {
+                    if endpoint_ids.contains(id) {
+                        continue;
+                    }
+                    let inset = 8.0;
+                    let inside = p.0 > *x + inset
+                        && p.0 < *x + *w - inset
+                        && p.1 > *y + inset
+                        && p.1 < *y + *h - inset;
+                    if inside {
+                        let dist = skeleton_signed(scene, id, p);
+                        assert!(
+                            dist > clash,
+                            "shaft interior {p:?} sits in {id} box (bond d={dist:.1}, need >{clash}) path={d}"
+                        );
                     }
                 }
             }
@@ -725,13 +752,13 @@ fn multi_reactant_product_aligns_to_source_group_mid() {
 
 #[test]
 fn multi_product_shafts_clear_chem() {
-    shaft_interior_clear_of_mols(&render_json(multi_product_spec()), -1.5);
+    shaft_interior_clear_of_mols(&render_json(multi_product_spec()), 1.5);
 }
 
 #[test]
 fn multi_reactant_shafts_clear_chem() {
     let scene = render_json(multi_reactant_spec());
-    shaft_interior_clear_of_mols(&scene, -1.5);
+    shaft_interior_clear_of_mols(&scene, 1.5);
     // Hyperedge ELK failure used to fall back to first→first (A→C through B).
     assert_shaft_starts_past_source_group(&scene, &["A", "B"], "C");
 }
@@ -739,7 +766,7 @@ fn multi_reactant_shafts_clear_chem() {
 #[test]
 fn multi_both_shafts_clear_chem() {
     let scene = render_json(multi_both_spec());
-    shaft_interior_clear_of_mols(&scene, -1.5);
+    shaft_interior_clear_of_mols(&scene, 1.5);
     assert_shaft_starts_past_source_group(&scene, &["A", "B"], "C");
 }
 
@@ -769,5 +796,5 @@ fn assert_shaft_starts_past_source_group(scene: &Scene, sources: &[&str], _tgt: 
 
 #[test]
 fn fan_shafts_clear_chem() {
-    shaft_interior_clear_of_mols(&render_json(fan_spec()), -1.5);
+    shaft_interior_clear_of_mols(&render_json(fan_spec()), 1.5);
 }

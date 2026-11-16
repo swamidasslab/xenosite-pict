@@ -87,6 +87,9 @@ struct Obstacle {
     tip_hull: Vec<Pt>,
     /// Cached AABB of `hull` for fast segment reject.
     aabb: (f64, f64, f64, f64),
+    /// Unpadded placement box for PackMetrics / viewport shaft checks.
+    /// Equals `aabb` when the hull was not routing-padded.
+    placement_aabb: (f64, f64, f64, f64),
 }
 
 fn obstacle_with_hull(mol_id: String, hull: Vec<Pt>) -> Obstacle {
@@ -97,6 +100,7 @@ fn obstacle_with_hull(mol_id: String, hull: Vec<Pt>) -> Obstacle {
         hull,
         tip_hull,
         aabb,
+        placement_aabb: aabb,
     }
 }
 
@@ -107,6 +111,23 @@ fn obstacle_with_hulls(mol_id: String, hull: Vec<Pt>, tip_hull: Vec<Pt>) -> Obst
         hull,
         tip_hull,
         aabb,
+        placement_aabb: aabb,
+    }
+}
+
+fn obstacle_tile(
+    mol_id: String,
+    padded_hull: Vec<Pt>,
+    tip_hull: Vec<Pt>,
+    placement: (f64, f64, f64, f64),
+) -> Obstacle {
+    let aabb = hull_aabb(&padded_hull);
+    Obstacle {
+        mol_id,
+        hull: padded_hull,
+        tip_hull,
+        aabb,
+        placement_aabb: placement,
     }
 }
 
@@ -174,8 +195,10 @@ pub fn route_scheme_edges(
     }
     let groups = coterminal_groups(&spec.edges(), &seeds);
 
-    // Visibility graph once per scheme (shared obstacle hull verts).
+    // Visibility graphs once per scheme: ink hulls + tile/placement ports.
+    // Tile vis supplies elbows when a tip is ink-clean but cuts a sibling box.
     let vis = build_visibility_graph(&obstacles);
+    let tile_vis = build_visibility_graph(&tile_obstacles);
 
     // ---- Pass 1: draft every group as a *centroid→centroid* chord.
     // Intersections are measured on these pathways — never on shortened tips.
@@ -279,12 +302,13 @@ pub fn route_scheme_edges(
         let skip: HashSet<&str> = skips[gi].iter().map(String::as_str).collect();
         let clash = clashes[gi];
 
-        // Lock a straight tip chord only when it clears foreign ink *and*
-        // foreign tiles, and the centroid pathway has no crossings. Tip-through
-        // sibling tile whitespace (Morphine hub fan) must not lock early.
+        // Lock a straight tip when it clears foreign ink *and* does not cut
+        // through a foreign placement AABB. Padded tile hulls alone must not
+        // force wraps (network fan), but deep interior clips through a sibling
+        // box (Morphine sky-blue → far child via 8306) must not lock as a tip.
         let keep_draft = draft_cross[gi] == 0
             && segment_clears_obstacles(start, goal, &obstacles, &skip)
-            && segment_clears_obstacles(start, goal, &tile_obstacles, &skip)
+            && path_clears_tile_aabbs(&[start, goal], &tile_obstacles, &skip)
             && path_crosses_committed(&[src_c, tgt_c], &committed) == 0;
         let center = if keep_draft {
             vec![start, goal]
@@ -305,6 +329,7 @@ pub fn route_scheme_edges(
                 &obstacles,
                 &tile_obstacles,
                 &vis,
+                &tile_vis,
                 &committed,
             )
         };
@@ -332,6 +357,7 @@ pub fn route_scheme_edges(
         &obstacles,
         &tile_obstacles,
         &vis,
+        &tile_vis,
     );
 
     // Final string-pull / collinear collapse must not *add* pathway crossings
@@ -370,8 +396,7 @@ pub fn route_scheme_edges(
         spec,
         &groups,
     );
-    // Tip resnap moves endpoints — drop elbows that are now ink-redundant,
-    // but never re-collapse into a foreign viewport tile.
+    // Tip resnap moves endpoints — drop elbows that are now ink-redundant.
     simplify_ink_elbows(
         &mut group_centers,
         &group_centroids,
@@ -379,25 +404,20 @@ pub fn route_scheme_edges(
         &tile_obstacles,
         &skips,
     );
-    // Final gates after every pull/resnap: drop page wraps, then clear tiles.
+    // Collapse page-scale hub wraps to tip — but keep a bow that is the only
+    // way to clear a foreign placement AABB (Morphine sky-blue through 8306).
     for gi in 0..group_centers.len() {
-        if group_centers[gi].len() < 2 {
+        if group_centers[gi].len() < 3 {
+            continue;
+        }
+        let a = group_centers[gi][0];
+        let b = *group_centers[gi].last().unwrap();
+        if !detour_backs_up_past_start(a, b, &group_centers[gi]) {
             continue;
         }
         let skip: HashSet<&str> = skips[gi].iter().map(String::as_str).collect();
-        let a = group_centers[gi][0];
-        let b = *group_centers[gi].last().unwrap();
-        let wrap = detour_backs_up_past_start(a, b, &group_centers[gi]);
-        let tile_hit = !path_clears_tile_aabbs(&group_centers[gi], &tile_obstacles, &skip);
-        if !wrap && !tile_hit {
-            continue;
-        }
-        if let Some(detour) =
-            tile_clear_detour(a, b, &obstacles, &tile_obstacles, &skip)
-        {
-            group_centers[gi] = detour;
-        } else if wrap {
-            // Prefer a tip over a page-scale U-loop; tile hit may remain.
+        let tip = [a, b];
+        if path_clears_tile_aabbs(&tip, &tile_obstacles, &skip) {
             group_centers[gi] = vec![a, b];
         }
     }
@@ -504,8 +524,9 @@ fn pathway_crosses_committed(
     path_crosses_committed(&extend_to_centroids(path, src_c, tgt_c), committed)
 }
 
-/// Straight chord first when it also clears already-locked pathways; else
-/// visibility + string-pull. Crossing rank is always on the centroid pathway.
+/// Straight tip when ink- and place-clear; else visibility + string-pull.
+/// When the tip cuts a sibling placement box, route on the *tile* visibility
+/// graph so elbows land on visible hull/box ports (not free-space invents).
 fn route_one_centerline(
     start: Pt,
     goal: Pt,
@@ -520,35 +541,72 @@ fn route_one_centerline(
     obstacles: &[Obstacle],
     tile_obstacles: &[Obstacle],
     vis: &VisGraph,
+    tile_vis: &VisGraph,
     committed: &[Committed],
 ) -> Vec<Pt> {
     let _ = (world, mol_ids, clash); // tip ink already posed; hulls pad structure
-    // Straight tip only when ink *and* foreign tiles are clear. Ink-only tips
-    // through sibling viewports (Morphine hub fan) must enter the detour path.
+    // Straight tip when ink-clean and clear of foreign placement boxes.
+    // Padded hull skims alone must not reject (network fan); deep AABB clips must.
     let ink_clear = segment_clears_obstacles(start, goal, obstacles, skip);
-    let tile_clear = segment_clears_obstacles(start, goal, tile_obstacles, skip);
+    let place_clear = path_clears_tile_aabbs(&[start, goal], tile_obstacles, skip);
     let crosses_locked = pathway_crosses_committed(&[start, goal], src_c, tgt_c, committed) > 0;
     // Pass-2 must actually re-route against the locked set. An ink-clear tip
     // chord that still crosses on the centroid pathway is not done.
-    if ink_clear && tile_clear && !crosses_locked {
+    if ink_clear && place_clear && !crosses_locked {
         return prune_close_controls(&[start, goal], CLOSE_CTRL_PX);
     }
 
-    let vis_path = visibility_route(
-        start,
-        goal,
-        src_c,
-        tgt_c,
-        src,
-        tgt,
-        skip,
-        vis,
-        obstacles,
-        tile_obstacles,
-        committed,
-    );
-    // String-pull on ink hulls must not re-collapse to a tip chord that skims
-    // foreign viewport tiles (the Morphine→M3S failure mode).
+    // Place-dirty tip: walk visible tile ports first (user: elbow at a visible point).
+    let vis_path = if !place_clear {
+        let tile_path = visibility_route(
+            start,
+            goal,
+            src_c,
+            tgt_c,
+            src,
+            tgt,
+            skip,
+            tile_vis,
+            tile_obstacles,
+            tile_obstacles,
+            committed,
+        );
+        if tile_path.len() >= 3
+            && path_clears_obstacles(&tile_path, obstacles, skip)
+            && path_clears_tile_aabbs(&tile_path, tile_obstacles, skip)
+        {
+            tile_path
+        } else {
+            visibility_route(
+                start,
+                goal,
+                src_c,
+                tgt_c,
+                src,
+                tgt,
+                skip,
+                vis,
+                obstacles,
+                tile_obstacles,
+                committed,
+            )
+        }
+    } else {
+        visibility_route(
+            start,
+            goal,
+            src_c,
+            tgt_c,
+            src,
+            tgt,
+            skip,
+            vis,
+            obstacles,
+            tile_obstacles,
+            committed,
+        )
+    };
+    // String-pull on ink hulls; prefer_tip decides tip vs detour.
     let pulled =
         drop_skippable_controls(&vis_path, obstacles, skip, committed, src_c, tgt_c);
     let pulled_ok = path_clears_obstacles(&pulled, obstacles, skip)
@@ -566,31 +624,28 @@ fn route_one_centerline(
             skip,
             committed,
         );
-        // Ink-only string-pull must not re-collapse a tile-clear detour into a
-        // tip chord through sibling viewport whitespace.
+        // Drop elbows that exist only for tile pad — ink is the hard constraint,
+        // but do not re-collapse onto a tip that cuts a foreign placement box.
         if out.len() >= 3 && path_clears_obstacles(&out, obstacles, skip) {
             let pulled =
                 drop_skippable_controls(&out, obstacles, skip, committed, src_c, tgt_c);
-            let out_tile = path_clears_obstacles(&out, tile_obstacles, skip);
-            let pulled_tile = path_clears_obstacles(&pulled, tile_obstacles, skip);
-            if pulled_tile || !out_tile {
+            if path_clears_tile_aabbs(&pulled, tile_obstacles, skip)
+                || !path_clears_tile_aabbs(&out, tile_obstacles, skip)
+            {
                 out = pulled;
             }
         }
         out
     };
-    let not_page_wrap = |p: &[Pt]| !detour_backs_up_past_start(start, goal, p);
     if pulled.len() == 2 && pulled_ok && pulled_x == 0 {
         return finish(pulled);
     }
 
     // Visibility walk already clear and crossing-optimal — skip the bow search.
     // Vis graph edges only avoid ink; reject walks that still skim tiles.
-    // Also reject page-scale wraps here — prefer a local tile bow later.
     let vis_ok = path_clears_obstacles(&vis_path, obstacles, skip)
-        && path_clears_obstacles(&vis_path, tile_obstacles, skip)
-        && not_page_wrap(&vis_path);
-    if pulled_ok && pulled_x == 0 && pulled.len() >= 2 && not_page_wrap(&pulled) {
+        && path_clears_obstacles(&vis_path, tile_obstacles, skip);
+    if pulled_ok && pulled_x == 0 && pulled.len() >= 2 {
         return finish(pulled);
     }
     if vis_ok && vis_path.len() >= 3 {
@@ -624,15 +679,15 @@ fn route_one_centerline(
         (false, true) => bow,
         (false, false) => {
             let vis = prune_close_controls(&vis_path, CLOSE_CTRL_PX);
-            if vis.len() >= 3 && not_page_wrap(&vis) {
+            if vis.len() >= 3 {
                 vis
-            } else if bow.len() >= 3 && not_page_wrap(&bow) {
+            } else if bow.len() >= 3 {
                 bow
-            } else if pulled.len() >= 3 && not_page_wrap(&pulled) {
+            } else if pulled.len() >= 3 {
                 pulled
             } else {
                 let forced = fallback_bow(start, goal, tile_obstacles, skip, committed);
-                if forced.len() >= 3 && not_page_wrap(&forced) {
+                if forced.len() >= 3 {
                     forced
                 } else {
                     vec![start, goal]
@@ -640,16 +695,7 @@ fn route_one_centerline(
             }
         }
     };
-    let mut out = finish(candidate);
-    // Last resort: tip/vis still skim sibling tiles (same-layer Morphine fan).
-    if !path_clears_obstacles(&out, tile_obstacles, skip) {
-        if let Some(detour) =
-            tile_clear_detour(start, goal, obstacles, tile_obstacles, skip)
-        {
-            out = detour;
-        }
-    }
-    out
+    finish(candidate)
 }
 
 fn bow_ok_tile(tile_ok: bool, bow: &[Pt]) -> bool {
@@ -658,11 +704,10 @@ fn bow_ok_tile(tile_ok: bool, bow: &[Pt]) -> bool {
 
 /// Prefer the tip unless the detour *strictly improves* structure / cost.
 ///
-/// **Ink and foreign tiles beat line crossings.** A tip that skims sibling
-/// viewport whitespace (Morphine hub spokes through deeper shells) loses to any
-/// tile-clear detour. Page-scale wraps that back up past the start only collapse
-/// to tip when the tip itself is tile-clear. If both hit ink, tip — never keep a
-/// wild wrap that still punches molecules.
+/// Tip/ink policy: an ink-hitting tip loses to an ink-clear detour; both
+/// ink-clean → prefer tip unless the tip cuts a foreign *placement* AABB
+/// (deep sibling clip) and the detour clears that box without a hub wrap.
+/// Padded tile hull skims alone must not force a wrap (network fan).
 fn prefer_tip_unless_detour_improves(
     start: Pt,
     goal: Pt,
@@ -680,44 +725,50 @@ fn prefer_tip_unless_detour_improves(
     let tip = vec![start, goal];
     let tip_ink_ok = path_clears_obstacles(&tip, ink_obstacles, skip);
     let det_ink_ok = path_clears_obstacles(detour, ink_obstacles, skip);
+    let tip_place_ok = path_clears_tile_aabbs(&tip, tile_obstacles, skip);
     let tip_tile_ok = path_clears_obstacles(&tip, tile_obstacles, skip);
     let det_tile_ok = path_clears_obstacles(detour, tile_obstacles, skip);
     match (tip_ink_ok, det_ink_ok) {
-        // Ink-clear detour wins — unless it backs up *and* the tip is already
-        // tile-clear (then the wrap is gratuitous).
         (false, true) => {
-            if tip_tile_ok && detour_backs_up_past_start(start, goal, detour) {
+            // Ink-clear detour wins unless it is a page-scale hub wrap.
+            if detour_backs_up_past_start(start, goal, detour) {
                 tip
             } else {
                 detour.to_vec()
             }
         }
-        (true, false) => tip, // detour punches ink — tip wins (caller may bow)
+        (true, false) => {
+            // Tip ink-clean but cuts a sibling placement box: keep the detour
+            // when it is not a hub wrap (Morphine sky-blue through 8306).
+            if !tip_place_ok && !detour_backs_up_past_start(start, goal, detour) {
+                detour.to_vec()
+            } else {
+                tip
+            }
+        }
         (false, false) => tip, // both dirty — tip is simpler than a wild wrap
         (true, true) => {
-            // Both ink-clean.
-            if tip_tile_ok && !det_tile_ok {
-                return tip;
-            }
-            // Tip through foreign tile whitespace loses to a *moderate*
-            // tile-clear detour. Page-scale wraps (backs-up / >1.45×) stay tip
-            // so extreme-detour gates still catch placement bugs.
-            if !tip_tile_ok
-                && det_tile_ok
-                && !detour_backs_up_past_start(start, goal, detour)
-                && polyline_len(detour) <= polyline_len(&tip) * 1.45
-            {
-                return detour.to_vec();
+            // Deep placement-box clip beats tip length. Prefer a place-clear
+            // detour even when it peeks outside the start→goal box — punching
+            // a sibling mol is worse than a long skirt.
+            if !tip_place_ok {
+                if path_clears_tile_aabbs(detour, tile_obstacles, skip)
+                    || !detour_backs_up_past_start(start, goal, detour)
+                {
+                    return detour.to_vec();
+                }
             }
             if detour_backs_up_past_start(start, goal, detour) {
                 return tip;
             }
+            // Both ink-clean: padded tile hull alone must not force a wrap.
+            if tip_tile_ok && !det_tile_ok {
+                return tip;
+            }
             let tip_x = pathway_crosses_committed(&tip, src_c, tgt_c, committed);
             let det_x = pathway_crosses_committed(detour, src_c, tgt_c, committed);
-            let tip_cost =
-                polyline_len(&tip) + tip_x as f64 * route().crossing_penalty;
-            let det_cost =
-                polyline_len(detour) + det_x as f64 * route().crossing_penalty;
+            let tip_cost = polyline_len(&tip) + tip_x as f64 * route().crossing_penalty;
+            let det_cost = polyline_len(detour) + det_x as f64 * route().crossing_penalty;
             if det_cost < tip_cost {
                 detour.to_vec()
             } else {
@@ -727,24 +778,21 @@ fn prefer_tip_unless_detour_improves(
     }
 }
 
-/// Backs up past the start away from the goal on either axis, or wanders far
-/// outside the start→goal box (hub wraps above the page, reverse edges looping
-/// under a whole layer).
+/// True when a detour reverses along the start→goal chord or wanders far
+/// outside the start→goal box (page-scale hub wraps). Lateral peeks above or
+/// beside the start to skirt a sibling tile are *not* backs-ups — axis-aligned
+/// "above start" checks were rejecting Morphine side bows and collapsing them
+/// onto tip-through-tile chords.
 fn detour_backs_up_past_start(start: Pt, goal: Pt, detour: &[Pt]) -> bool {
     let dx = goal.0 - start.0;
     let dy = goal.1 - start.1;
+    let chord = dist(start, goal).max(1.0);
+    let ux = dx / chord;
+    let uy = dy / chord;
     let back_pad = 40.0;
     for &p in detour {
-        if dy > 0.0 && p.1 < start.1 - back_pad {
-            return true;
-        }
-        if dy < 0.0 && p.1 > start.1 + back_pad {
-            return true;
-        }
-        if dx > 0.0 && p.0 < start.0 - back_pad {
-            return true;
-        }
-        if dx < 0.0 && p.0 > start.0 + back_pad {
+        let along = (p.0 - start.0) * ux + (p.1 - start.1) * uy;
+        if along < -back_pad {
             return true;
         }
     }
@@ -752,7 +800,6 @@ fn detour_backs_up_past_start(start: Pt, goal: Pt, detour: &[Pt]) -> bool {
     let max_x = start.0.max(goal.0);
     let min_y = start.1.min(goal.1);
     let max_y = start.1.max(goal.1);
-    let chord = dist(start, goal).max(1.0);
     let pad = chord * 0.25 + 80.0;
     for &p in detour {
         if p.0 < min_x - pad || p.0 > max_x + pad || p.1 < min_y - pad || p.1 > max_y + pad {
@@ -762,8 +809,10 @@ fn detour_backs_up_past_start(start: Pt, goal: Pt, detour: &[Pt]) -> bool {
     false
 }
 
-/// Strict interior AABB samples — matches PackMetrics / review viewport checks
-/// more closely than convex-hull membership (which can miss shallow clips).
+/// Strict interior AABB samples against **placement** boxes — matches
+/// PackMetrics / review viewport checks more closely than convex-hull
+/// membership (which can miss shallow clips). Used to reject tip chords that
+/// cut through a sibling mol box even when padded-hull / ink checks pass.
 fn path_clears_tile_aabbs(pts: &[Pt], tiles: &[Obstacle], skip: &HashSet<&str>) -> bool {
     if pts.len() < 2 {
         return true;
@@ -792,7 +841,10 @@ fn path_clears_tile_aabbs(pts: &[Pt], tiles: &[Obstacle], skip: &HashSet<&str>) 
                 if skip.contains(o.mol_id.as_str()) {
                     continue;
                 }
-                let (x0, y0, x1, y1) = o.aabb;
+                let (x0, y0, x1, y1) = o.placement_aabb;
+                if x1 - x0 < inset * 2.0 || y1 - y0 < inset * 2.0 {
+                    continue;
+                }
                 if q.0 > x0 + inset && q.0 < x1 - inset && q.1 > y0 + inset && q.1 < y1 - inset
                 {
                     return false;
@@ -1011,12 +1063,15 @@ fn pad_tolerant_obstacles(obstacles: &[Obstacle], shrink: f64) -> Vec<Obstacle> 
     obstacles
         .iter()
         .map(|o| {
-            obstacle_with_hulls(
+            let mut out = obstacle_with_hulls(
                 o.mol_id.clone(),
                 inflate_convex(&o.hull, -shrink),
                 inflate_convex(&o.tip_hull, -shrink),
-            )
-        })        .collect()
+            );
+            out.placement_aabb = o.placement_aabb;
+            out
+        })
+        .collect()
 }
 
 fn point_line_dist(p: Pt, a: Pt, b: Pt) -> f64 {
@@ -1095,6 +1150,7 @@ fn simplify_ink_elbows(
         }
         let before_x = pathway_crosses_committed(&centers[gi], src_c, tgt_c, &others);
         let before_tile = path_clears_obstacles(&centers[gi], tile_obstacles, &skip);
+        let before_place = path_clears_tile_aabbs(&centers[gi], tile_obstacles, &skip);
         let pulled =
             drop_skippable_controls(&centers[gi], ink_obstacles, &skip, &others, src_c, tgt_c);
         if pulled.len() < 2 || !path_clears_obstacles(&pulled, ink_obstacles, &skip) {
@@ -1102,10 +1158,12 @@ fn simplify_ink_elbows(
         }
         let after_x = pathway_crosses_committed(&pulled, src_c, tgt_c, &others);
         let after_tile = path_clears_obstacles(&pulled, tile_obstacles, &skip);
-        // Ink-only pull must not turn a tile-clear bow into a tip-through-tile.
+        let after_place = path_clears_tile_aabbs(&pulled, tile_obstacles, &skip);
+        // Ink-only pull must not turn a place/tile-clear bow into a tip-through-box.
         if after_x <= before_x
             && pulled.len() <= centers[gi].len()
             && (after_tile || !before_tile)
+            && (after_place || !before_place)
         {
             centers[gi] = pulled;
         }
@@ -1304,6 +1362,7 @@ fn reoptimize_crossing_routes(
     obstacles: &[Obstacle],
     tile_obstacles: &[Obstacle],
     vis: &VisGraph,
+    tile_vis: &VisGraph,
 ) {
     let n = centers.len();
     if n < 2 {
@@ -1372,6 +1431,7 @@ fn reoptimize_crossing_routes(
             obstacles,
             tile_obstacles,
             vis,
+            tile_vis,
             &peers,
         );
         if candidate.len() < 2 {
@@ -1519,25 +1579,43 @@ fn resnap_tips_to_approach_rays(
         } else {
             prev
         };
-        if segment_clears_obstacles(start, clear_next, obstacles, &empty) {
+        // Tip hug may lengthen a chord through a sibling placement box — refuse
+        // endpoint moves that introduce a deep foreign-tile clip (2-pt or bow).
+        let place_ok = |pts: &[Pt]| path_clears_tile_aabbs(pts, tile_obstacles, &skip);
+        let before = centers[gi].clone();
+        let try_start = {
+            let mut cand = before.clone();
+            cand[0] = start;
+            cand
+        };
+        if segment_clears_obstacles(start, clear_next, obstacles, &empty)
+            && (place_ok(&try_start) || !place_ok(&before))
+        {
             centers[gi][0] = start;
         }
-        if segment_clears_obstacles(clear_prev, goal, obstacles, &empty) {
+        let try_goal = {
+            let mut cand = centers[gi].clone();
+            let last = cand.len() - 1;
+            cand[last] = goal;
+            cand
+        };
+        if segment_clears_obstacles(clear_prev, goal, obstacles, &empty)
+            && (place_ok(&try_goal) || !place_ok(&centers[gi]))
+        {
             let last = centers[gi].len() - 1;
             centers[gi][last] = goal;
         }
         centers[gi] = prune_close_controls(&centers[gi], CLOSE_CTRL_PX);
-        // Tip hug can swing a previously clear chord through a sibling tile
-        // (Morphine fan diagonals). Prefer a tile-clear bow / AABB escape.
-        if centers[gi].len() >= 2
-            && !path_clears_obstacles(&centers[gi], tile_obstacles, &skip)
-        {
+        // prune_close_controls can drop a visible-port elbow and leave a tip
+        // through a sibling box — restore a port bow when that happens.
+        if centers[gi].len() == 2 && !place_ok(&centers[gi]) {
             let a = centers[gi][0];
-            let b = *centers[gi].last().unwrap();
-            if let Some(detour) =
-                tile_clear_detour(a, b, obstacles, tile_obstacles, &skip)
-            {
-                centers[gi] = detour;
+            let b = centers[gi][1];
+            let bow = fallback_bow(a, b, tile_obstacles, &skip, &[]);
+            if bow.len() >= 3 && place_ok(&bow) {
+                centers[gi] = bow;
+            } else if before.len() >= 3 && place_ok(&before) {
+                centers[gi] = before;
             }
         }
     }
@@ -1613,10 +1691,21 @@ fn build_obstacles(
                 (x0 - p, y1 + p),
             ]);
             if tile_hull.len() >= 3 {
-                tile_out.push(obstacle_with_hulls(id.clone(), tile_hull, tip_hull));
+                tile_out.push(obstacle_tile(
+                    id.clone(),
+                    tile_hull,
+                    tip_hull,
+                    (x0, y0, x1, y1),
+                ));
             }
         } else if tip_hull.len() >= 3 {
-            tile_out.push(obstacle_with_hulls(id.clone(), tip_hull.clone(), tip_hull));
+            let place = hull_aabb(&tip_hull);
+            tile_out.push(obstacle_tile(
+                id.clone(),
+                tip_hull.clone(),
+                tip_hull,
+                place,
+            ));
         }
     }
     (ink_out, tile_out)
@@ -2181,11 +2270,10 @@ fn visibility_route(
     // the shared adj each call; index into `vis.adj` with a +2 shift.
     let start_links = link_terminal_sparse(start, &vis.pts, &vis.owner, obstacles, skip);
     let goal_links = link_terminal_sparse(goal, &vis.pts, &vis.owner, obstacles, skip);
-    // Direct tip chord must clear foreign tiles as well as ink — otherwise A*
-    // takes the Morphine-fan skim that ink alone allows.
-    let direct = (segment_clears_obstacles(start, goal, obstacles, skip)
-        && segment_clears_obstacles(start, goal, tile_obstacles, skip))
-    .then(|| dist(start, goal));    // Reverse maps: vis-node → link length to start/goal.
+    // Direct tip when ink-clear. Tile whitespace is soft here — forced
+    // tile-avoid A* produced orthogonal wraps on otherwise-clear spokes.
+    let _ = tile_obstacles;
+    let direct = segment_clears_obstacles(start, goal, obstacles, skip).then(|| dist(start, goal));    // Reverse maps: vis-node → link length to start/goal.
     let mut to_start = vec![None; vis.pts.len()];
     let mut to_goal = vec![None; vis.pts.len()];
     for &(j, len) in &start_links {
@@ -2346,121 +2434,6 @@ fn link_terminal_sparse(
     out
 }
 
-/// Prefer a moderate tile-clear bow, else an AABB escape around blockers.
-fn tile_clear_detour(
-    start: Pt,
-    goal: Pt,
-    ink: &[Obstacle],
-    tiles: &[Obstacle],
-    skip: &HashSet<&str>,
-) -> Option<Vec<Pt>> {
-    let tip_len = dist(start, goal).max(1.0);
-    let ok = |p: &[Pt]| {
-        p.len() >= 3
-            && path_clears_obstacles(p, ink, skip)
-            && path_clears_tile_aabbs(p, tiles, skip)
-            && !detour_backs_up_past_start(start, goal, p)
-    };
-    let bow = fallback_bow(start, goal, tiles, skip, &[]);
-    if ok(&bow) && polyline_len(&bow) <= tip_len * 1.45 {
-        return Some(bow);
-    }
-    let escape = escape_around_blocking_tiles(start, goal, tiles, skip);
-    if ok(&escape) && polyline_len(&escape) <= tip_len * 2.2 {
-        return Some(escape);
-    }
-    if ok(&bow) && polyline_len(&bow) <= tip_len * 1.6 {
-        return Some(bow);
-    }
-    None
-}
-
-/// Route around the union AABB of foreign tiles the tip (or a candidate) hits.
-/// Expands the union when a candidate clips a new tile (dense Morphine rows).
-fn escape_around_blocking_tiles(
-    start: Pt,
-    goal: Pt,
-    tiles: &[Obstacle],
-    skip: &HashSet<&str>,
-) -> Vec<Pt> {
-    let tip_len = dist(start, goal).max(1.0);
-    let mut union_ids: HashSet<String> = HashSet::new();
-    for o in tiles {
-        if skip.contains(o.mol_id.as_str()) {
-            continue;
-        }
-        if !path_clears_tile_aabbs(&[start, goal], std::slice::from_ref(o), skip) {
-            union_ids.insert(o.mol_id.clone());
-        }
-    }
-    if union_ids.is_empty() {
-        return vec![start, goal];
-    }
-    let mut best: Option<(f64, Vec<Pt>)> = None;
-    for _ in 0..4 {
-        let mut x0 = f64::INFINITY;
-        let mut y0 = f64::INFINITY;
-        let mut x1 = f64::NEG_INFINITY;
-        let mut y1 = f64::NEG_INFINITY;
-        for o in tiles {
-            if !union_ids.contains(&o.mol_id) {
-                continue;
-            }
-            let (a, b, c, d) = o.aabb;
-            x0 = x0.min(a);
-            y0 = y0.min(b);
-            x1 = x1.max(c);
-            y1 = y1.max(d);
-        }
-        let pad = BOND_PX * 4.0;
-        let left = x0.min(start.0).min(goal.0) - pad;
-        let right = x1.max(start.0).max(goal.0) + pad;
-        let top = y0.min(start.1).min(goal.1) - pad;
-        let bot = y1.max(start.1).max(goal.1) + pad;
-        let candidates = [
-            vec![start, (left, start.1), (left, goal.1), goal],
-            vec![start, (right, start.1), (right, goal.1), goal],
-            vec![start, (start.0, top), (goal.0, top), goal],
-            vec![start, (start.0, bot), (goal.0, bot), goal],
-            vec![start, (left, top), (right, top), goal],
-            vec![start, (left, bot), (right, bot), goal],
-        ];
-        let mut grew = false;
-        for cand in candidates {
-            let pts = prune_close_controls(&cand, CLOSE_CTRL_PX);
-            if pts.len() < 3 {
-                continue;
-            }
-            let len = polyline_len(&pts);
-            if len > tip_len * 2.2 {
-                continue;
-            }
-            if path_clears_tile_aabbs(&pts, tiles, skip) {
-                let better = best.as_ref().map(|(bl, _)| len < *bl).unwrap_or(true);
-                if better {
-                    best = Some((len, pts));
-                }
-                continue;
-            }
-            // Candidate clipped new tiles — grow the union and retry.
-            for o in tiles {
-                if skip.contains(o.mol_id.as_str()) || union_ids.contains(&o.mol_id) {
-                    continue;
-                }
-                if !path_clears_tile_aabbs(&pts, std::slice::from_ref(o), skip)
-                    && union_ids.insert(o.mol_id.clone())
-                {
-                    grew = true;
-                }
-            }
-        }
-        if best.is_some() || !grew {
-            break;
-        }
-    }
-    best.map(|(_, p)| p).unwrap_or_else(|| vec![start, goal])
-}
-
 fn fallback_bow(
     start: Pt,
     goal: Pt,
@@ -2468,45 +2441,102 @@ fn fallback_bow(
     skip: &HashSet<&str>,
     committed: &[Committed],
 ) -> Vec<Pt> {
-    let mid = (0.5 * (start.0 + goal.0), 0.5 * (start.1 + goal.1));
     let dx = goal.0 - start.0;
     let dy = goal.1 - start.1;
     let (px, py) = unit((-dy, dx));
     let chord = dist(start, goal).max(1.0);
-    // Reach far enough to clear a full mol tile beside a long Morphine-style
-    // spoke (≈200px), but stay under the 1.45× tip budget prefer_tip accepts.
-    let max_off = (chord * 0.35).max(BOND_PX * 24.0).min(chord * 0.55);
-    let step = BOND_PX * 2.0;
-    let k_max = ((max_off / step).ceil() as usize).max(24).min(48);
-    let mut best: Option<(usize, f64, Vec<Pt>)> = None;
-    for sign in [1.0, -1.0] {
-        for k in 1..=k_max {
-            let off = (k as f64) * step * sign;
-            let bow = (mid.0 + px * off, mid.1 + py * off);
+    let mut best: Option<(usize, f64, f64, Vec<Pt>)> = None; // x, wrap_pen, len, pts
+    let consider = |best: &mut Option<(usize, f64, f64, Vec<Pt>)>, pts: Vec<Pt>| {
+        let x = path_crosses_committed(&pts, committed);
+        let len = polyline_len(&pts);
+        let wrap_pen = if detour_backs_up_past_start(start, goal, &pts) {
+            1.0e6
+        } else {
+            0.0
+        };
+        let better = match best {
+            None => true,
+            Some((bx, bw, bl, _)) => {
+                x < *bx
+                    || (x == *bx && wrap_pen < *bw)
+                    || (x == *bx && wrap_pen == *bw && len < *bl)
+            }
+        };
+        if better {
+            *best = Some((x, wrap_pen, len, pts));
+        }
+    };
+
+    // 1) Seed elbows at *visible* obstacle ports (hull verts + padded AABB
+    // corners). A control must see both tips — inventing a free perpendicular
+    // offset can fly off-page (Morphine sky-blue y≈−170).
+    let m = route().box_corner_margin.max(0.0);
+    for o in obstacles {
+        if skip.contains(o.mol_id.as_str()) {
+            continue;
+        }
+        let (x0, y0, x1, y1) = o.aabb;
+        let mut ports: Vec<Pt> = subsample_convex_ring(&o.hull, route().max_hull_verts);
+        ports.extend_from_slice(&[
+            (x0 - m, y0 - m),
+            (x1 + m, y0 - m),
+            (x1 + m, y1 + m),
+            (x0 - m, y1 + m),
+        ]);
+        // Also try unpadded placement corners (matches viewport clear checks).
+        let (px0, py0, px1, py1) = o.placement_aabb;
+        ports.extend_from_slice(&[
+            (px0, py0),
+            (px1, py0),
+            (px1, py1),
+            (px0, py1),
+        ]);
+        for &bow in &ports {
             if !segment_clears_obstacles(start, bow, obstacles, skip)
                 || !segment_clears_obstacles(bow, goal, obstacles, skip)
             {
                 continue;
             }
             let pts = prune_close_controls(&[start, bow, goal], CLOSE_CTRL_PX);
-            let x = path_crosses_committed(&pts, committed);
-            let len = polyline_len(&pts);
-            let better = match &best {
-                None => true,
-                Some((bx, bl, _)) => x < *bx || (x == *bx && len < *bl),
-            };
-            if better {
-                best = Some((x, len, pts));
-                if x == 0 {
-                    break;
-                }
+            if pts.len() < 3 {
+                continue;
             }
-        }
-        if best.as_ref().is_some_and(|(x, _, _)| *x == 0) {
-            break;
+            consider(&mut best, pts);
         }
     }
-    if let Some((_, _, pts)) = best {
+    if let Some((x, w, _, pts)) = best.as_ref() {
+        if *x == 0 && *w == 0.0 {
+            return pts.clone();
+        }
+    }
+
+    // 2) Perpendicular offset search — only if no visible port worked.
+    let max_off = (chord * 0.35).max(BOND_PX * 24.0).min(chord * 0.55);
+    let step = BOND_PX * 2.0;
+    let k_max = ((max_off / step).ceil() as usize).max(24).min(48);
+    let stations: [f64; 5] = [0.5, 0.65, 0.35, 0.8, 0.2];
+    for &t in &stations {
+        let mid = (start.0 + dx * t, start.1 + dy * t);
+        for sign in [1.0, -1.0] {
+            for k in 1..=k_max {
+                let off = (k as f64) * step * sign;
+                let bow = (mid.0 + px * off, mid.1 + py * off);
+                if !segment_clears_obstacles(start, bow, obstacles, skip)
+                    || !segment_clears_obstacles(bow, goal, obstacles, skip)
+                {
+                    continue;
+                }
+                let pts = prune_close_controls(&[start, bow, goal], CLOSE_CTRL_PX);
+                consider(&mut best, pts);
+            }
+        }
+    }
+    if let Some((_, w, _, pts)) = &best {
+        if *w == 0.0 {
+            return pts.clone();
+        }
+    }
+    if let Some((_, _, _, pts)) = best {
         return pts;
     }
     // Last resort: still prefer a long side-step over punching ink. Walk the
@@ -3219,6 +3249,7 @@ mod tests {
             &empty_obs,
             &empty_obs,
             &vis,
+            &vis,
         );
         assert_eq!(
             count_pathway_crossings_with_peers(0, &centers, &group_centroids),
@@ -3259,6 +3290,7 @@ mod tests {
             2.0,
             &obstacles,
             &obstacles,
+            &vis,
             &vis,
             &committed,
         );
@@ -3301,6 +3333,7 @@ mod tests {
             2.0,
             &obstacles,
             &obstacles,
+            &vis,
             &vis,
             &[],
         );
@@ -3386,6 +3419,7 @@ mod tests {
             2.0,
             &obstacles,
             &obstacles,
+            &vis,
             &vis,
             &committed,
         );
@@ -3605,27 +3639,130 @@ mod tests {
     }
 
     #[test]
+    #[test]
+    fn morphine_sky_tip_through_8306_prefers_bow() {
+        let a = (844.06, 139.03);
+        let b = (1782.20, 400.47);
+        let tile = obstacle_tile(
+            "xbm:0008306".into(),
+            convex_hull_pts(&[
+                (1548.55 - 8.0, 317.65 - 8.0),
+                (1548.55 + 218.6 + 8.0, 317.65 - 8.0),
+                (1548.55 + 218.6 + 8.0, 317.65 + 229.2 + 8.0),
+                (1548.55 - 8.0, 317.65 + 229.2 + 8.0),
+            ]),
+            convex_hull_pts(&[
+                (1548.55, 317.65),
+                (1548.55 + 218.6, 317.65),
+                (1548.55 + 218.6, 317.65 + 229.2),
+                (1548.55, 317.65 + 229.2),
+            ]),
+            (1548.55, 317.65, 1548.55 + 218.6, 317.65 + 229.2),
+        );
+        let skip: HashSet<&str> = ["xbm:0004961", "xbm:0006520"].into_iter().collect();
+        assert!(!path_clears_tile_aabbs(&[a, b], &[tile.clone()], &skip));
+        let bow = fallback_bow(a, b, &[tile.clone()], &skip, &[]);
+        assert!(bow.len() >= 3, "bow: {bow:?}");
+        assert!(
+            !detour_backs_up_past_start(a, b, &bow),
+            "visible-port bow must not hub-wrap: {bow:?}"
+        );
+        // Control should sit near the blocker (placement/box port), not a
+        // free-space invent at y≪0.
+        let ctrl = bow[1];
+        assert!(
+            ctrl.1 > 200.0 && ctrl.1 < 600.0 && ctrl.0 > 1500.0,
+            "bow elbow should be a visible port by 8306, got {ctrl:?}"
+        );
+        let out = prefer_tip_unless_detour_improves(
+            a, b, a, b, &bow, &[], &[tile], &skip, &[],
+        );
+        assert!(out.len() >= 3, "prefer_tip keep bow: {out:?}");
+    }
+
+    #[test]
+    fn morphine_pink_tip_through_4955_prefers_bow() {
+        let a = (839.99, 165.09);
+        let b = (1218.87, 372.44);
+        let tile = obstacle_tile(
+            "xbm:0004955".into(),
+            convex_hull_pts(&[
+                (987.5 - 8.0, 334.5 - 8.0),
+                (987.5 + 208.5 + 8.0, 334.5 - 8.0),
+                (987.5 + 208.5 + 8.0, 334.5 + 214.7 + 8.0),
+                (987.5 - 8.0, 334.5 + 214.7 + 8.0),
+            ]),
+            convex_hull_pts(&[
+                (987.5, 334.5),
+                (987.5 + 208.5, 334.5),
+                (987.5 + 208.5, 334.5 + 214.7),
+                (987.5, 334.5 + 214.7),
+            ]),
+            (987.5, 334.5, 987.5 + 208.5, 334.5 + 214.7),
+        );
+        let skip: HashSet<&str> = ["xbm:0004961", "xbm:0004960"].into_iter().collect();
+        assert!(
+            !path_clears_tile_aabbs(&[a, b], &[tile.clone()], &skip),
+            "placement AABB must flag pink tip"
+        );
+        assert!(
+            !segment_clears_obstacles(a, b, &[tile.clone()], &skip),
+            "padded tile must block pink tip"
+        );
+        let bow = fallback_bow(a, b, &[tile.clone()], &skip, &[]);
+        assert!(bow.len() >= 3, "bow: {bow:?}");
+        assert!(
+            path_clears_tile_aabbs(&bow, &[tile.clone()], &skip),
+            "bow must clear place: {bow:?}"
+        );
+        assert!(
+            !detour_backs_up_past_start(a, b, &bow),
+            "side bow must not count as hub wrap: {bow:?}"
+        );
+        let out = prefer_tip_unless_detour_improves(
+            a, b, a, b, &bow, &[], &[tile], &skip, &[],
+        );
+        assert!(
+            out.len() >= 3,
+            "prefer_tip must keep bow when tip cuts place: {out:?}"
+        );
+    }
+
+    #[test]
     fn aabb_sampler_flags_1684_tip() {
+        // Dashed i0→5110 tip cuts norcodeine (1684) placement box.
         let a = (723.66, 807.84);
         let b = (447.09, 1007.08);
-        let tile = obstacle_with_hull(
+        let tile = obstacle_tile(
             "xbm:0001684".into(),
+            convex_hull_pts(&[
+                (439.83 - 8.0, 641.43 - 8.0),
+                (439.83 + 210.62 + 8.0, 641.43 - 8.0),
+                (439.83 + 210.62 + 8.0, 641.43 + 239.78 + 8.0),
+                (439.83 - 8.0, 641.43 + 239.78 + 8.0),
+            ]),
             convex_hull_pts(&[
                 (439.83, 641.43),
                 (439.83 + 210.62, 641.43),
                 (439.83 + 210.62, 641.43 + 239.78),
                 (439.83, 641.43 + 239.78),
             ]),
+            (439.83, 641.43, 439.83 + 210.62, 641.43 + 239.78),
         );
         let skip: HashSet<&str> = ["i0", "xbm:0005110"].into_iter().collect();
         assert!(
             !path_clears_tile_aabbs(&[a, b], &[tile.clone()], &skip),
             "1684 tip must be flagged by AABB sampler"
         );
-        let detour = tile_clear_detour(a, b, &[], &[tile], &skip);
+        let bow = fallback_bow(a, b, &[tile.clone()], &skip, &[]);
+        assert!(bow.len() >= 3, "visible-port bow: {bow:?}");
         assert!(
-            detour.as_ref().is_some_and(|p| p.len() >= 3),
-            "tile_clear_detour must skirt 1684, got {detour:?}"
+            !detour_backs_up_past_start(a, b, &bow),
+            "1684 bow must not hub-wrap: {bow:?}"
         );
+        let out = prefer_tip_unless_detour_improves(
+            a, b, a, b, &bow, &[], &[tile], &skip, &[],
+        );
+        assert!(out.len() >= 3, "prefer_tip keep bow: {out:?}");
     }
 }
