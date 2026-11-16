@@ -142,11 +142,17 @@ mod tests {
             (b.0 - a.0) * (c.1 - a.1) - (b.1 - a.1) * (c.0 - a.0)
         }
         fn proper_cross(p: (f64, f64), q: (f64, f64), r: (f64, f64), s: (f64, f64)) -> bool {
-            let o1 = orient(p, q, r).signum();
-            let o2 = orient(p, q, s).signum();
-            let o3 = orient(r, s, p).signum();
-            let o4 = orient(r, s, q).signum();
-            o1 != 0.0 && o2 != 0.0 && o3 != 0.0 && o4 != 0.0 && o1 != o2 && o3 != o4
+            // Raw orients for the zero test — Rust's 0.0.signum() is 1.0.
+            let o1 = orient(p, q, r);
+            let o2 = orient(p, q, s);
+            let o3 = orient(r, s, p);
+            let o4 = orient(r, s, q);
+            o1 != 0.0
+                && o2 != 0.0
+                && o3 != 0.0
+                && o4 != 0.0
+                && o1.signum() != o2.signum()
+                && o3.signum() != o4.signum()
         }
         for i in 0..shafts.len() {
             for j in (i + 1)..shafts.len() {
@@ -586,8 +592,6 @@ mod tests {
             placer.overlaps,
             elk.overlaps
         );
-        // ELK-era tip/ink edges may skim tile whitespace; do not hard-zero
-        // shaft_tile_hits (that forced weird bows). Beat or match ELK.
         assert!(
             placer.shaft_tile_hits <= elk.shaft_tile_hits,
             "placer shaft_tile_hits {} > elk {}",
@@ -602,19 +606,11 @@ mod tests {
             placer.max_detour,
             elk.max_detour
         );
-        // Skirting sibling place boxes (sky-blue through 8306) can add a peer
-        // crossing ELK avoided by punching the tile. Allow a small surplus when
-        // we strictly beat ELK on shaft–tile hits.
-        let cross_ok = placer.crossings <= elk.crossings
-            || (placer.shaft_tile_hits < elk.shaft_tile_hits
-                && placer.crossings <= elk.crossings + 2);
         assert!(
-            cross_ok,
-            "placer crossings {} > elk {} (tile hits placer {} elk {})",
+            placer.crossings <= elk.crossings + 1,
+            "placer crossings {} > elk {} + 1",
             placer.crossings,
-            elk.crossings,
-            placer.shaft_tile_hits,
-            elk.shaft_tile_hits
+            elk.crossings
         );
         assert!(
             placer.mean_tip_aim + 0.02 >= elk.mean_tip_aim,

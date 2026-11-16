@@ -751,7 +751,22 @@ fn order_layers(nodes: &mut [PackNode], edges: &[PackEdge], budgets: &LayeredLay
             break;
         }
     }
+    // Polynomial only: sift nodes, then swap whole vertical legs (root + all
+    // deeper descendants move together). No joint factorial search.
+    for _ in 0..sweeps.min(8) {
+        let a = sift_layer_order(nodes, edges);
+        let b = improve_order_by_leg_swaps(nodes, edges);
+        if !a && !b {
+            break;
+        }
+    }
     exhaustive_order_small_layers(nodes, edges);
+    // Leg swaps again after small-layer polish — descendants may have moved.
+    for _ in 0..4 {
+        if !improve_order_by_leg_swaps(nodes, edges) && !sift_layer_order(nodes, edges) {
+            break;
+        }
+    }
     for layer in 0..=max_layer {
         let mut idx: Vec<usize> = nodes
             .iter()
@@ -791,24 +806,63 @@ fn deeper_neighbor_degree(
     deg
 }
 
-fn total_layer_crossings(nodes: &[PackNode], edges: &[PackEdge]) -> usize {
+/// Collapse dummy chains to real→real chords, then count proper crossings in
+/// (cross, layer) space. This is what `order_cost` minimizes: long spanning
+/// edges (Morphine→deep children) compete with short ones (norcodeine→child).
+/// Unit-dummy segment counts under-count those long-edge conflicts.
+fn real_real_chords(nodes: &[PackNode], edges: &[PackEdge]) -> Vec<(NodeKey, NodeKey)> {
+    let mut succ: HashMap<NodeKey, Vec<NodeKey>> = HashMap::new();
+    for e in edges {
+        succ.entry(e.src).or_default().push(e.tgt);
+    }
+    let is_real = |k: NodeKey| matches!(k, NodeKey::Real(_));
+    let mut out = Vec::new();
+    let mut seen: HashSet<(NodeKey, NodeKey)> = HashSet::new();
+    for n in nodes {
+        if !is_real(n.key) {
+            continue;
+        }
+        let mut stack: Vec<NodeKey> = succ.get(&n.key).cloned().unwrap_or_default();
+        while let Some(cur) = stack.pop() {
+            if is_real(cur) {
+                if cur != n.key && seen.insert((n.key, cur)) {
+                    out.push((n.key, cur));
+                }
+                continue;
+            }
+            if let Some(nexts) = succ.get(&cur) {
+                stack.extend(nexts.iter().copied());
+            }
+        }
+    }
+    out
+}
+
+fn total_chord_crossings(nodes: &[PackNode], edges: &[PackEdge]) -> usize {
     let pos: HashMap<NodeKey, (f64, f64)> = nodes
         .iter()
         .map(|n| (n.key, (n.cross, n.layer as f64)))
         .collect();
-    let mut segs: Vec<((f64, f64), (f64, f64))> = Vec::with_capacity(edges.len());
-    for e in edges {
-        let Some(&p) = pos.get(&e.src) else { continue; };
-        let Some(&q) = pos.get(&e.tgt) else { continue; };
-        if (p.0 - q.0).abs() < 1e-12 && (p.1 - q.1).abs() < 1e-12 {
-            continue;
-        }
-        segs.push((p, q));
-    }
+    let chords = real_real_chords(nodes, edges);
     let mut x = 0usize;
-    for i in 0..segs.len() {
-        for j in (i + 1)..segs.len() {
-            if rank_segments_cross(segs[i].0, segs[i].1, segs[j].0, segs[j].1) {
+    for i in 0..chords.len() {
+        for j in (i + 1)..chords.len() {
+            let (a, b) = chords[i];
+            let (c, d) = chords[j];
+            if a == c || a == d || b == c || b == d {
+                continue;
+            }
+            let Some(&pa) = pos.get(&a) else { continue; };
+            let Some(&pb) = pos.get(&b) else { continue; };
+            let Some(&pc) = pos.get(&c) else { continue; };
+            let Some(&pd) = pos.get(&d) else { continue; };
+            if (pa.0 - pb.0).abs() < 1e-12 && (pa.1 - pb.1).abs() < 1e-12 {
+                continue;
+            }
+            if (pc.0 - pd.0).abs() < 1e-12 && (pc.1 - pd.1).abs() < 1e-12 {
+                continue;
+            }
+            if rank_segments_cross(pa, pb, pc, pd) {
                 x += 1;
             }
         }
@@ -826,11 +880,241 @@ fn rank_segments_cross(
     r: (f64, f64),
     s: (f64, f64),
 ) -> bool {
-    let o1 = rank_orient(p, q, r).signum();
-    let o2 = rank_orient(p, q, s).signum();
-    let o3 = rank_orient(r, s, p).signum();
-    let o4 = rank_orient(r, s, q).signum();
-    o1 != 0.0 && o2 != 0.0 && o3 != 0.0 && o4 != 0.0 && o1 != o2 && o3 != o4
+    // Use raw orientations — do NOT use f64::signum for the zero test.
+    // Rust's 0.0.signum() is 1.0 (copysign), which falsely treats shared-endpoint
+    // / collinear cases as proper crossings and inflates order_cost.
+    let o1 = rank_orient(p, q, r);
+    let o2 = rank_orient(p, q, s);
+    let o3 = rank_orient(r, s, p);
+    let o4 = rank_orient(r, s, q);
+    o1 != 0.0
+        && o2 != 0.0
+        && o3 != 0.0
+        && o4 != 0.0
+        && o1.signum() != o2.signum()
+        && o3.signum() != o4.signum()
+}
+
+/// Try every insertion rank for each node in each layer (Sugiyama sifting).
+/// O(Σ n_ℓ² · cost) — fine for scheme-sized layers; no factorial search.
+fn sift_layer_order(nodes: &mut [PackNode], edges: &[PackEdge]) -> bool {
+    let max_layer = nodes.iter().map(|n| n.layer).max().unwrap_or(0);
+    let mut moved = false;
+    for layer in 0..=max_layer {
+        let mut idx: Vec<usize> = nodes
+            .iter()
+            .enumerate()
+            .filter(|(_, n)| n.layer == layer)
+            .map(|(i, _)| i)
+            .collect();
+        if idx.len() < 2 {
+            continue;
+        }
+        idx.sort_by(|&a, &b| {
+            nodes[a]
+                .cross
+                .partial_cmp(&nodes[b].cross)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| node_tie(nodes, a).cmp(&node_tie(nodes, b)))
+        });
+        let n = idx.len();
+        for which in 0..n {
+            let node = idx[which];
+            let mut best_pos = which;
+            let mut best_cost = order_cost(nodes, edges);
+            // Pull `node` out and try every slot.
+            let mut order = idx.clone();
+            order.remove(which);
+            for pos in 0..=order.len() {
+                let mut trial = order.clone();
+                trial.insert(pos, node);
+                for (rank, &i) in trial.iter().enumerate() {
+                    nodes[i].cross = rank as f64;
+                }
+                let cost = order_cost(nodes, edges);
+                if cost < best_cost {
+                    best_cost = cost;
+                    best_pos = pos;
+                }
+            }
+            let mut final_order = order;
+            final_order.insert(best_pos, node);
+            for (rank, &i) in final_order.iter().enumerate() {
+                nodes[i].cross = rank as f64;
+            }
+            if best_pos != which {
+                moved = true;
+            }
+            idx = final_order;
+        }
+    }
+    moved
+}
+
+/// Downward closure along forward (shallower→deeper) edges, including `root`.
+fn downward_leg(nodes: &[PackNode], edges: &[PackEdge], root: usize) -> HashSet<usize> {
+    let key_to_idx: HashMap<NodeKey, usize> = nodes
+        .iter()
+        .enumerate()
+        .map(|(i, n)| (n.key, i))
+        .collect();
+    let root_layer = nodes[root].layer;
+    let mut children: HashMap<NodeKey, Vec<NodeKey>> = HashMap::new();
+    for e in edges {
+        let Some(&si) = key_to_idx.get(&e.src) else { continue; };
+        let Some(&ti) = key_to_idx.get(&e.tgt) else { continue; };
+        let (from, to) = if nodes[si].layer < nodes[ti].layer {
+            (e.src, e.tgt)
+        } else if nodes[ti].layer < nodes[si].layer {
+            (e.tgt, e.src)
+        } else {
+            continue;
+        };
+        children.entry(from).or_default().push(to);
+    }
+    let mut out = HashSet::new();
+    let mut stack = vec![nodes[root].key];
+    out.insert(root);
+    while let Some(k) = stack.pop() {
+        let Some(ch) = children.get(&k) else { continue; };
+        for &c in ch {
+            let Some(&ci) = key_to_idx.get(&c) else { continue; };
+            if nodes[ci].layer <= root_layer {
+                continue;
+            }
+            if out.insert(ci) {
+                stack.push(c);
+            }
+        }
+    }
+    out
+}
+
+/// Swap two vertical legs (root + all deeper descendants) as blocks on every
+/// layer they occupy. Unequal block sizes share the combined cross slots.
+fn improve_order_by_leg_swaps(nodes: &mut [PackNode], edges: &[PackEdge]) -> bool {
+    let max_layer = nodes.iter().map(|n| n.layer).max().unwrap_or(0);
+    // Candidate roots: real nodes that own at least one deeper descendant.
+    let mut roots: Vec<usize> = Vec::new();
+    for i in 0..nodes.len() {
+        if nodes[i].real.is_none() {
+            continue;
+        }
+        let leg = downward_leg(nodes, edges, i);
+        if leg.iter().any(|&j| nodes[j].layer > nodes[i].layer) {
+            roots.push(i);
+        }
+    }
+    let mut moved = false;
+    for layer in 0..=max_layer {
+        let layer_roots: Vec<usize> = roots
+            .iter()
+            .copied()
+            .filter(|&i| nodes[i].layer == layer)
+            .collect();
+        if layer_roots.len() < 2 {
+            continue;
+        }
+        let mut improved = true;
+        while improved {
+            improved = false;
+            for a in 0..layer_roots.len() {
+                for b in (a + 1)..layer_roots.len() {
+                    if try_swap_legs(nodes, edges, layer_roots[a], layer_roots[b]) {
+                        improved = true;
+                        moved = true;
+                    }
+                }
+            }
+        }
+    }
+    moved
+}
+
+fn try_swap_legs(
+    nodes: &mut [PackNode],
+    edges: &[PackEdge],
+    root_a: usize,
+    root_b: usize,
+) -> bool {
+    let da = downward_leg(nodes, edges, root_a);
+    let db = downward_leg(nodes, edges, root_b);
+    if da.iter().any(|i| db.contains(i)) {
+        return false;
+    }
+    let before = order_cost(nodes, edges);
+    // Snapshot crosses for revert.
+    let snap: Vec<(usize, f64)> = da
+        .iter()
+        .chain(db.iter())
+        .map(|&i| (i, nodes[i].cross))
+        .collect();
+    let max_layer = nodes.iter().map(|n| n.layer).max().unwrap_or(0);
+    for layer in 0..=max_layer {
+        let mut a_list: Vec<usize> = da
+            .iter()
+            .copied()
+            .filter(|&i| nodes[i].layer == layer)
+            .collect();
+        let mut b_list: Vec<usize> = db
+            .iter()
+            .copied()
+            .filter(|&i| nodes[i].layer == layer)
+            .collect();
+        if a_list.is_empty() || b_list.is_empty() {
+            continue;
+        }
+        a_list.sort_by(|&i, &j| {
+            nodes[i]
+                .cross
+                .partial_cmp(&nodes[j].cross)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        b_list.sort_by(|&i, &j| {
+            nodes[i]
+                .cross
+                .partial_cmp(&nodes[j].cross)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        let a_mean: f64 =
+            a_list.iter().map(|&i| nodes[i].cross).sum::<f64>() / a_list.len() as f64;
+        let b_mean: f64 =
+            b_list.iter().map(|&i| nodes[i].cross).sum::<f64>() / b_list.len() as f64;
+        let mut slots: Vec<f64> = a_list
+            .iter()
+            .chain(b_list.iter())
+            .map(|&i| nodes[i].cross)
+            .collect();
+        slots.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        // Swap blocks: the side that was left becomes right and vice versa.
+        if a_mean <= b_mean {
+            // A left of B → B takes left slots, A right.
+            for (k, &i) in b_list.iter().enumerate() {
+                nodes[i].cross = slots[k];
+            }
+            for (k, &i) in a_list.iter().enumerate() {
+                nodes[i].cross = slots[b_list.len() + k];
+            }
+        } else {
+            for (k, &i) in a_list.iter().enumerate() {
+                nodes[i].cross = slots[k];
+            }
+            for (k, &i) in b_list.iter().enumerate() {
+                nodes[i].cross = slots[a_list.len() + k];
+            }
+        }
+    }
+    let after = order_cost(nodes, edges);
+    // Prefer fewer crossings even when bundle/span regress — Morphine
+    // norcodeine↔i0 is the motivating case.
+    if after.0 < before.0 || after < before {
+        true
+    } else {
+        for (i, c) in snap {
+            nodes[i].cross = c;
+        }
+        false
+    }
 }
 
 fn improve_order_by_swaps(nodes: &mut [PackNode], edges: &[PackEdge]) -> bool {
@@ -901,7 +1185,9 @@ fn try_swap_if_better(
 }
 
 fn order_cost(nodes: &[PackNode], edges: &[PackEdge]) -> (usize, i32, i64) {
-    let xings = total_layer_crossings(nodes, edges);
+    // Prefer real→real chord crossings over unit-dummy segments so long
+    // spanning edges (Morphine→L3) are scored against short ones.
+    let xings = total_chord_crossings(nodes, edges);
     let bundle = soft_same_side_penalty(nodes, edges);
     let span = (total_rank_span(nodes, edges) * 1000.0).round() as i64;
     (xings, bundle, span)
@@ -1828,6 +2114,7 @@ pub fn reachback_captions_for_centroid_grid(
     false
 }
 
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2343,4 +2630,95 @@ mod tests {
             full
         );
     }
+
+    #[test]
+    fn morphine_norcodeine_i0_leg_swap_cuts_abstract_crossings() {
+        use crate::doc::depict_doc::test_scheme_paints;
+        use crate::doc::spec::DepictSpec;
+        const MORPHINE: &str =
+            include_str!("../../tests/fixtures/xenobase/morphine-sulfate.json");
+        let spec: DepictSpec = serde_json::from_str(MORPHINE).unwrap();
+        let layout = match &spec {
+            DepictSpec::ReactionScheme { layout, .. } => layout.clone().unwrap_or_default(),
+            _ => LayoutOpts::default(),
+        };
+        let paints = test_scheme_paints(&spec).unwrap();
+        let sizes: Vec<(String, f64, f64)> = paints
+            .iter()
+            .map(|p| (p.id.clone(), p.scene.width, p.scene.height))
+            .collect();
+        let budgets = &layout.engine().layered;
+        let metrics = collect_metrics(&spec, &sizes, &paints);
+        let id_of: HashMap<String, usize> = metrics
+            .iter()
+            .enumerate()
+            .map(|(i, m)| (m.id.clone(), i))
+            .collect();
+        let packing = packing_edges(&spec, &id_of);
+        let (feedback, forward) = break_cycles(&packing, metrics.len(), budgets);
+        let mut layer_of = assign_layers(&forward, &metrics, metrics.len());
+        apply_layer_hints(&mut layer_of, &metrics);
+        let hinted: HashSet<usize> = metrics
+            .iter()
+            .enumerate()
+            .filter_map(|(i, m)| m.layer_hint.map(|_| i))
+            .collect();
+        promote_strict_layers(&mut layer_of, &forward, &hinted);
+        let soft = soft_order_edges(&spec, &id_of);
+        soft_promote_layers(&mut layer_of, &soft, &forward, &hinted);
+        promote_strict_layers(&mut layer_of, &forward, &hinted);
+        compact_layer_indices(&mut layer_of);
+        let (mut nodes, mut edges) = insert_dummies(&metrics, &layer_of, &forward, &feedback);
+        append_soft_edges_with_dummies(&mut nodes, &mut edges, &layer_of, &soft);
+        order_layers(&mut nodes, &edges, budgets);
+
+        let name_of = |key: NodeKey| -> String {
+            match key {
+                NodeKey::Real(ri) => metrics[ri].id.clone(),
+                NodeKey::Dummy(d) => format!("d{d}"),
+            }
+        };
+        let cross_of = |id: &str| -> f64 {
+            nodes
+                .iter()
+                .find(|n| matches!(n.key, NodeKey::Real(ri) if metrics[ri].id == id))
+                .map(|n| n.cross)
+                .unwrap_or_else(|| panic!("missing {id}"))
+        };
+
+        let chords = total_chord_crossings(&nodes, &edges);
+        for layer in 0..=nodes.iter().map(|n| n.layer).max().unwrap_or(0) {
+            let mut idx: Vec<usize> = nodes
+                .iter()
+                .enumerate()
+                .filter(|(_, n)| n.layer == layer)
+                .map(|(i, _)| i)
+                .collect();
+            idx.sort_by(|&a, &b| {
+                nodes[a]
+                    .cross
+                    .partial_cmp(&nodes[b].cross)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
+            let names: Vec<String> = idx.iter().map(|&i| name_of(nodes[i].key)).collect();
+            eprintln!("L{layer}: {names:?}");
+        }
+        eprintln!("chord_crossings={chords}");
+
+        // Pre-fix unit-segment scoring sat at 1 and refused the norcodeine↔i0
+        // swap; chord scoring sees the true 3→1 win and must land on it.
+        assert_eq!(
+            chords, 1,
+            "order_layers must reach 1 real→real chord crossing (Morphine)"
+        );
+        assert!(
+            cross_of("i0") < cross_of("xbm:0001684"),
+            "i0 must sit left of norcodeine after the improving leg swap"
+        );
+        assert!(
+            cross_of("xbm:0001696") > cross_of("xbm:0005110"),
+            "norcodeine's child must follow norcodeine to the right of i0's children"
+        );
+    }
+
 }

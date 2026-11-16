@@ -2,6 +2,14 @@
 
 ## 2026-11-15
 
+- **Morphine order 3→1 chord crossings**: Unit-dummy `total_layer_crossings`
+  sat at 1 and refused the norcodeine↔i0 leg swap. Real→real *chord*
+  crossings (collapse dummy chains) match the scheme: baseline 3, after
+  swap 1. `order_cost` now minimizes `total_chord_crossings`. Also fixed
+  `rank_segments_cross` / PackMetrics `segments_proper_cross`: Rust's
+  `0.0.signum()` is `1.0`, so shared-endpoint pairs were false positives.
+  Gate: `morphine_norcodeine_i0_leg_swap_cuts_abstract_crossings`. Dropped
+  unused post-coord geometric leg-swap experiments.
 - **Simplified hull + slight standoff**: Vis graph / ink obstacle = chem
   convex hull → ≤8 verts (no dense curve sampling) → `routing_clearance`
   standoff. Fallback bows use the same; when a tip punches a place box whose

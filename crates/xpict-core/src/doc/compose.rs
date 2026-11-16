@@ -584,11 +584,17 @@ fn segments_proper_cross(
     r: (f64, f64),
     s: (f64, f64),
 ) -> bool {
-    let o1 = orient(p, q, r).signum();
-    let o2 = orient(p, q, s).signum();
-    let o3 = orient(r, s, p).signum();
-    let o4 = orient(r, s, q).signum();
-    o1 != 0.0 && o2 != 0.0 && o3 != 0.0 && o4 != 0.0 && o1 != o2 && o3 != o4
+    // Raw orients for the zero test — Rust's 0.0.signum() is 1.0 (copysign).
+    let o1 = orient(p, q, r);
+    let o2 = orient(p, q, s);
+    let o3 = orient(r, s, p);
+    let o4 = orient(r, s, q);
+    o1 != 0.0
+        && o2 != 0.0
+        && o3 != 0.0
+        && o4 != 0.0
+        && o1.signum() != o2.signum()
+        && o3.signum() != o4.signum()
 }
 
 #[cfg(test)]
