@@ -2,6 +2,11 @@
 
 ## 2026-11-16
 
+- **Confirmed**: from-scratch per-arrow query graph fixes the xenobase routing
+  failures seen with shared-graph strip/remap. Bug is in **incremental**
+  construction (remove endpoint hulls / add centroids / rewire), not A* or
+  peer costs. Keep from-scratch until incremental matches that semantics
+  (slow on large nets is expected).
 - Router experiment: per-arrow **from-scratch** query graph (drop endpoint
   hulls, add start/goal centroids as nodes, link only to foreign verts). Avoids
   shared-graph strip/remap. WASM rebuilt for gallery review.
