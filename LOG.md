@@ -1,5 +1,18 @@
 # Lab log
 
+## 2026-11-16 (later)
+
+- Brought `fix/xenobase-issues` product work onto `bring/xenobase-exports`
+  (current main + lean router): PDF (`svg2pdf` + bundled Liberation via usvg),
+  PNG/RGBA (`resvg`), JS `xpict.svg` cache + `@xenosite/xpict/react`, pandas
+  `df.style` via `PictBase.__str__`, svg_coords in viewBox space, translucent
+  region fill/outline split, halo `pointer-events: none`, downstream A⇄B ELK
+  rep, outline thinning. Skipped obsolete pandas accessors and canonaut pin
+  (main already on crates.io 1.1.0).
+- Verify: Rust 622+18 ok; Python 162 passed / 15 xfailed; JS check + wasm +
+  api/cache/react/catalog smoke (179 cases). Region regress counts fills only
+  after split_translucent; halo on/off timing slack 1.5× for ~200ms noise.
+
 ## 2026-11-16
 
 - Deleted old libavoid-style `scheme_route.rs` (~3900 lines); lean hull-vis
