@@ -2,6 +2,9 @@
 
 ## 2026-11-16
 
+- Router experiment: per-arrow **from-scratch** query graph (drop endpoint
+  hulls, add start/goal centroids as nodes, link only to foreign verts). Avoids
+  shared-graph strip/remap. WASM rebuilt for gallery review.
 - Gallery: new `cases/xenobase/` group (14 networks — morphine, steroids,
   pesticides, drugs from fixtures + `networks.jsonl` sample). Review figures
   keep native SVG size with `overflow: auto` + `max-height` so large nets

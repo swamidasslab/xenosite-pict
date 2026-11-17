@@ -1,10 +1,9 @@
 //! Lean scheme router — parallel to [`super::scheme_route`] (delete later).
 //!
-//! One hull visibility graph. Per arrow: strip start/end hull verts; centroids
-//! link only to foreign hulls; A* minimizes length + crossings + shared length.
-//! Several Gauss–Seidel passes on **centroid pathways**, worst-detour first
-//! within each pass (tips posed only after pathways lock). Visibility verts
-//! are the full inflated hull ring (no subsample chords through the interior).
+//! Per arrow (from-scratch query graph): take foreign hulls only (endpoint
+//! owners removed), add start/goal centroids as nodes, link each centroid to
+//! visible foreign verts (never own hull), full inter-hull visibility, then
+//! A* (length + crossings + shared). Gauss–Seidel passes; tip-hug after lock.
 
 use std::collections::{HashMap, HashSet};
 
@@ -50,74 +49,6 @@ struct Obstacle {
     mol_id: String,
     hull: Vec<Pt>,
     aabb: (f64, f64, f64, f64),
-}
-
-struct VisGraph {
-    pts: Vec<Pt>,
-    /// Mol that owns each hull vertex (same length as `pts`).
-    owner: Vec<String>,
-    adj: Vec<Vec<(usize, f64)>>,
-    /// Undirected hull edges `(min_i, max_i)` for crossing updates.
-    edges: Vec<(usize, usize)>,
-}
-
-/// Extra path cost on hull–hull edges from already-routed shafts.
-/// Updated with [`EdgeExtras::note_pathway`] after each commit — O(path × E).
-#[derive(Default)]
-struct EdgeExtras {
-    /// Key = undirected `(min_i, max_i)` into [`VisGraph::pts`].
-    on_edge: HashMap<(usize, usize), f64>,
-}
-
-impl EdgeExtras {
-    fn get(&self, i: usize, j: usize) -> f64 {
-        self.on_edge
-            .get(&undirected_edge(i, j))
-            .copied()
-            .unwrap_or(0.0)
-    }
-
-    /// Accrue shared-segment costs for a committed **centroid pathway**.
-    /// Crossings are scored live against pathway polylines during A*.
-    fn note_pathway(&mut self, vis: &VisGraph, pathway: &[Pt]) {
-        if pathway.len() < 2 || vis.edges.is_empty() {
-            return;
-        }
-        let share_pen = route().shared_path_penalty;
-        if share_pen <= 0.0 {
-            return;
-        }
-        for w in pathway.windows(2) {
-            let a = w[0];
-            let b = w[1];
-            let (ax0, ax1) = (a.0.min(b.0), a.0.max(b.0));
-            let (ay0, ay1) = (a.1.min(b.1), a.1.max(b.1));
-            for &(i, j) in &vis.edges {
-                let p = vis.pts[i];
-                let q = vis.pts[j];
-                if p.0.max(q.0) < ax0 - 1.0
-                    || p.0.min(q.0) > ax1 + 1.0
-                    || p.1.max(q.1) < ay0 - 1.0
-                    || p.1.min(q.1) > ay1 + 1.0
-                {
-                    continue;
-                }
-                let overlap = collinear_overlap_len(a, b, p, q);
-                if overlap > 1.0 {
-                    *self.on_edge.entry(undirected_edge(i, j)).or_insert(0.0) +=
-                        share_pen * (overlap / BOND_PX);
-                }
-            }
-        }
-    }
-}
-
-fn undirected_edge(i: usize, j: usize) -> (usize, usize) {
-    if i < j {
-        (i, j)
-    } else {
-        (j, i)
-    }
 }
 
 pub struct RouteResult {
@@ -179,7 +110,6 @@ pub fn route_scheme_edges(
         .collect();
 
     let obstacles = build_obstacles(mol_ids, world, positions, &size_of, route().routing_clearance);
-    let vis = build_visibility_graph(&obstacles);
     if debug {
         for o in &obstacles {
             debug_prims.push(poly_closed(&o.hull, dbg::HULL, 2.5, 0.55, "debug-route-hull"));
@@ -266,21 +196,11 @@ pub fn route_scheme_edges(
                     .map(|(_, c)| c.clone())
                     .collect()
             };
-            let mut edge_extras = EdgeExtras::default();
-            for c in &committed {
-                edge_extras.note_pathway(&vis, c);
-            }
             let (src_c, tgt_c, _, _, _, _) = &group_meta[gi];
             let skip: HashSet<&str> = skips[gi].iter().map(String::as_str).collect();
-            group_pathways[gi] = visibility_route(
-                *src_c,
-                *tgt_c,
-                &vis,
-                &obstacles,
-                &skip,
-                &edge_extras,
-                &committed,
-            );
+            // Fresh graph per arrow (no shared-graph strip/remap).
+            group_pathways[gi] =
+                visibility_route(*src_c, *tgt_c, &obstacles, &skip, &committed);
         }
         if debug {
             let n_tip = group_pathways.iter().filter(|p| p.len() == 2).count();
@@ -454,131 +374,37 @@ fn lookup_waypoints(
     Vec::new()
 }
 
-/// A* on the shared hull graph with start/end owners stripped. Centroids link
-/// only to foreign hull verts. Hull–hull edges pay cached share extras;
-/// every candidate segment pays live crossing/share vs **pathway** `committed`.
+/// Build a fresh visibility graph for one arrow and A* on it.
+///
+/// Endpoint-owner hulls are omitted entirely; start/goal centroids are appended
+/// and linked only to those foreign verts (never to a stripped own hull).
 fn visibility_route(
     start: Pt,
     goal: Pt,
-    vis: &VisGraph,
     obstacles: &[Obstacle],
     skip: &HashSet<&str>,
-    edge_extras: &EdgeExtras,
     committed: &[Vec<Pt>],
 ) -> Vec<Pt> {
-    // Active Steiner set = hull verts whose owner is not an endpoint.
-    let mut local_of_global = vec![None; vis.pts.len()];
-    let mut global_of_local: Vec<usize> = Vec::new();
-    for (g, own) in vis.owner.iter().enumerate() {
-        if skip.contains(own.as_str()) {
-            continue;
-        }
-        local_of_global[g] = Some(global_of_local.len());
-        global_of_local.push(g);
-    }
-    let n_local = global_of_local.len();
-
-    let start_links = link_terminal_filtered(start, vis, &local_of_global, obstacles, skip);
-    let goal_links = link_terminal_filtered(goal, vis, &local_of_global, obstacles, skip);
-    // Temporary centroid↔centroid edge when the two hubs can see each other.
-    let direct = points_visible(start, goal, obstacles, skip).then(|| dist(start, goal));
-
-    let mut to_start = vec![None; n_local];
-    let mut to_goal = vec![None; n_local];
-    for &(j, len) in &start_links {
-        to_start[j] = Some(len);
-    }
-    for &(j, len) in &goal_links {
-        to_goal[j] = Some(len);
-    }
-
-    let node_pt = |i: usize| -> Pt {
-        match i {
-            0 => start,
-            1 => goal,
-            _ => vis.pts[global_of_local[i - 2]],
-        }
-    };
-    // Hull–hull: share from frozen extras; cross live vs pathed peers.
-    // Terminal/direct: both cross + share live (not graph edges).
+    let (pts, adj, start_i, goal_i) = build_query_graph(obstacles, skip, start, goal);
     let path = astar(
-        &0usize,
+        &start_i,
         |&u| {
-            let mut nbrs: Vec<(usize, f64)> = Vec::new();
-            match u {
-                0 => {
-                    for &(j, len) in &start_links {
-                        let pv = vis.pts[global_of_local[j]];
-                        nbrs.push((
-                            j + 2,
-                            len + segment_peer_cost(start, pv, committed, obstacles, skip),
-                        ));
-                    }
-                    if let Some(len) = direct {
-                        nbrs.push((
-                            1,
-                            len + segment_peer_cost(start, goal, committed, obstacles, skip),
-                        ));
-                    }
-                }
-                1 => {
-                    for &(j, len) in &goal_links {
-                        let pv = vis.pts[global_of_local[j]];
-                        nbrs.push((
-                            j + 2,
-                            len + segment_peer_cost(goal, pv, committed, obstacles, skip),
-                        ));
-                    }
-                    if let Some(len) = direct {
-                        nbrs.push((
-                            0,
-                            len + segment_peer_cost(start, goal, committed, obstacles, skip),
-                        ));
-                    }
-                }
-                _ => {
-                    let g = global_of_local[u - 2];
-                    for &(gj, len) in &vis.adj[g] {
-                        if let Some(lj) = local_of_global[gj] {
-                            nbrs.push((
-                                lj + 2,
-                                len + edge_extras.get(g, gj)
-                                    + segment_cross_cost(
-                                        vis.pts[g],
-                                        vis.pts[gj],
-                                        committed,
-                                        obstacles,
-                                        skip,
-                                    ),
-                            ));
-                        }
-                    }
-                    if let Some(len) = to_start[u - 2] {
-                        nbrs.push((
-                            0,
-                            len + segment_peer_cost(node_pt(u), start, committed, obstacles, skip),
-                        ));
-                    }
-                    if let Some(len) = to_goal[u - 2] {
-                        nbrs.push((
-                            1,
-                            len + segment_peer_cost(node_pt(u), goal, committed, obstacles, skip),
-                        ));
-                    }
-                }
-            }
-            nbrs.into_iter()
-                .map(|(v, cost)| (v, ordered_float(cost)))
+            adj[u]
+                .iter()
+                .map(|&(v, len)| {
+                    let cost =
+                        len + segment_peer_cost(pts[u], pts[v], committed, obstacles, skip);
+                    (v, ordered_float(cost))
+                })
                 .collect::<Vec<_>>()
         },
-        |&u| ordered_float(dist(node_pt(u), goal)),
-        |&g| g == 1,
+        |&u| ordered_float(dist(pts[u], goal)),
+        |&g| g == goal_i,
     );
     let astar_pts: Vec<Pt> = match path {
-        Some((idxs, _)) => idxs.into_iter().map(node_pt).collect(),
+        Some((idxs, _)) => idxs.into_iter().map(|i| pts[i]).collect(),
         None => vec![start, goal],
     };
-    // Prefer visible centroid↔centroid when its cost beats (or ties) A*.
     if points_visible(start, goal, obstacles, skip) {
         let tip = vec![start, goal];
         let tip_cost = pathway_cost(&tip, committed, obstacles, skip);
@@ -588,6 +414,87 @@ fn visibility_route(
         }
     }
     astar_pts
+}
+
+/// From-scratch query graph: foreign hull rings + inter-hull visibility +
+/// start/goal centroid nodes linked to visible foreign verts.
+fn build_query_graph(
+    obstacles: &[Obstacle],
+    skip: &HashSet<&str>,
+    start: Pt,
+    goal: Pt,
+) -> (Vec<Pt>, Vec<Vec<(usize, f64)>>, usize, usize) {
+    let mut pts: Vec<Pt> = Vec::new();
+    let mut ranges: Vec<(usize, usize)> = Vec::new();
+    for o in obstacles {
+        if skip.contains(o.mol_id.as_str()) {
+            continue;
+        }
+        let lo = pts.len();
+        pts.extend_from_slice(&o.hull);
+        ranges.push((lo, pts.len()));
+    }
+    let n_stein = pts.len();
+    let start_i = n_stein;
+    let goal_i = n_stein + 1;
+    pts.push(start);
+    pts.push(goal);
+    let n = pts.len();
+    let mut adj: Vec<Vec<(usize, f64)>> = vec![Vec::new(); n];
+    let mut linked = vec![HashSet::<usize>::new(); n];
+    let mut add = |i: usize, j: usize, len: f64, linked: &mut [HashSet<usize>], adj: &mut [Vec<(usize, f64)>]| {
+        if i == j || len < 1e-6 || !linked[i].insert(j) {
+            return;
+        }
+        linked[j].insert(i);
+        adj[i].push((j, len));
+        adj[j].push((i, len));
+    };
+
+    // Foreign hull boundary rings.
+    for &(lo, hi) in &ranges {
+        let m = hi - lo;
+        if m < 2 {
+            continue;
+        }
+        for k in 0..m {
+            let i = lo + k;
+            let j = lo + (k + 1) % m;
+            add(i, j, dist(pts[i], pts[j]), &mut linked, &mut adj);
+        }
+    }
+
+    // Full inter-hull visibility among foreign verts (endpoint hulls already out).
+    let empty = HashSet::new();
+    for i in 0..n_stein {
+        for j in (i + 1)..n_stein {
+            // Skip pairs on the same ring — already connected by boundary edges;
+            // chords through a foreign hull interior are blocked by clears.
+            let same_ring = ranges.iter().any(|&(lo, hi)| i >= lo && i < hi && j >= lo && j < hi);
+            if same_ring {
+                continue;
+            }
+            let len = dist(pts[i], pts[j]);
+            if segment_clears_obstacles(pts[i], pts[j], obstacles, &empty) {
+                add(i, j, len, &mut linked, &mut adj);
+            }
+        }
+    }
+
+    // Centroids → foreign Steiners only (own hull verts were never inserted).
+    for i in 0..n_stein {
+        if points_visible(start, pts[i], obstacles, skip) {
+            add(start_i, i, dist(start, pts[i]), &mut linked, &mut adj);
+        }
+        if points_visible(goal, pts[i], obstacles, skip) {
+            add(goal_i, i, dist(goal, pts[i]), &mut linked, &mut adj);
+        }
+    }
+    if points_visible(start, goal, obstacles, skip) {
+        add(start_i, goal_i, dist(start, goal), &mut linked, &mut adj);
+    }
+
+    (pts, adj, start_i, goal_i)
 }
 
 fn pathway_cost(
@@ -694,90 +601,9 @@ fn point_in_skip_hull(p: Pt, obstacles: &[Obstacle], skip: &HashSet<&str>) -> bo
     false
 }
 
-/// All visible foreign hull verts for a centroid terminal (local Steiner indices).
-fn link_terminal_filtered(
-    hub: Pt,
-    vis: &VisGraph,
-    local_of_global: &[Option<usize>],
-    obstacles: &[Obstacle],
-    skip: &HashSet<&str>,
-) -> Vec<(usize, f64)> {
-    let mut out = Vec::new();
-    for (g, &p) in vis.pts.iter().enumerate() {
-        let Some(local) = local_of_global[g] else {
-            continue;
-        };
-        if points_visible(hub, p, obstacles, skip) {
-            out.push((local, dist(hub, p)));
-        }
-    }
-    out
-}
-
 /// Hull visibility between two points, ignoring `skip` owners.
 fn points_visible(a: Pt, b: Pt, obstacles: &[Obstacle], skip: &HashSet<&str>) -> bool {
     segment_clears_obstacles(a, b, obstacles, skip)
-}
-
-fn build_visibility_graph(obstacles: &[Obstacle]) -> VisGraph {
-    let mut pts = Vec::new();
-    let mut owner: Vec<String> = Vec::new();
-    let mut ranges: Vec<(usize, usize)> = Vec::new();
-    for o in obstacles {
-        let start = pts.len();
-        for &p in &o.hull {
-            pts.push(p);
-            owner.push(o.mol_id.clone());
-        }
-        ranges.push((start, pts.len()));
-    }
-    let n = pts.len();
-    let mut adj: Vec<Vec<(usize, f64)>> = vec![Vec::new(); n];
-    let mut edges: Vec<(usize, usize)> = Vec::new();
-    let mut linked = vec![HashSet::<usize>::new(); n];
-    let mut add = |i: usize, j: usize, len: f64| {
-        if i == j || len < 1e-6 || !linked[i].insert(j) {
-            return;
-        }
-        linked[j].insert(i);
-        adj[i].push((j, len));
-        adj[j].push((i, len));
-        edges.push(undirected_edge(i, j));
-    };
-
-    // Hull boundary rings always — along the silhouette, never through it.
-    for &(lo, hi) in &ranges {
-        let m = hi - lo;
-        if m < 2 {
-            continue;
-        }
-        for k in 0..m {
-            let i = lo + k;
-            let j = lo + (k + 1) % m;
-            add(i, j, dist(pts[i], pts[j]));
-        }
-    }
-
-    // Full inter-hull visibility (no k-nearest cap).
-    let empty = HashSet::new();
-    for i in 0..n {
-        let oi = owner[i].as_str();
-        for j in (i + 1)..n {
-            if owner[j].as_str() == oi {
-                continue;
-            }
-            let len = dist(pts[i], pts[j]);
-            if segment_clears_obstacles(pts[i], pts[j], obstacles, &empty) {
-                add(i, j, len);
-            }
-        }
-    }
-    VisGraph {
-        pts,
-        owner,
-        adj,
-        edges,
-    }
 }
 
 /// Length of collinear overlap between segments AB and PQ (0 if not collinear).
@@ -1506,23 +1332,43 @@ mod tests {
         let a = square("A", 0.0, 0.0, 10.0);
         let b = square("B", 40.0, 0.0, 10.0);
         let obstacles = vec![a, b];
-        let vis = build_visibility_graph(&obstacles);
         let skip: HashSet<&str> = ["A", "B"].into_iter().collect();
-        let extras = EdgeExtras::default();
-        let path = visibility_route(
-            (5.0, 5.0),
-            (45.0, 5.0),
-            &vis,
-            &obstacles,
-            &skip,
-            &extras,
-            &[],
-        );
+        let path = visibility_route((5.0, 5.0), (45.0, 5.0), &obstacles, &skip, &[]);
         assert_eq!(
             path.len(),
             2,
             "clear centroid chord must be the temp direct edge: {path:?}"
         );
+    }
+
+    #[test]
+    fn query_graph_omits_endpoint_hulls_and_adds_centroids() {
+        let a = square("A", 0.0, 0.0, 10.0);
+        let b = square("B", 40.0, 0.0, 10.0);
+        let c = square("C", 20.0, 20.0, 10.0);
+        let obstacles = vec![a, b, c];
+        let skip: HashSet<&str> = ["A", "B"].into_iter().collect();
+        let start = (5.0, 5.0);
+        let goal = (45.0, 5.0);
+        let (pts, adj, start_i, goal_i) = build_query_graph(&obstacles, &skip, start, goal);
+        assert_eq!(pts[start_i], start);
+        assert_eq!(pts[goal_i], goal);
+        // Only C's 4 hull verts + 2 centroids.
+        assert_eq!(pts.len(), 6, "endpoint hulls must be absent: {pts:?}");
+        assert!(
+            !adj[start_i].is_empty() || points_visible(start, goal, &obstacles, &skip),
+            "start must link to foreign steiners or direct goal"
+        );
+        // No edge from start to a point inside A's hull ring (A was omitted).
+        for &(j, _) in &adj[start_i] {
+            if j == goal_i {
+                continue;
+            }
+            assert!(
+                !point_in_convex(pts[j], &obstacles[0].hull),
+                "start must not link to own-hull verts"
+            );
+        }
     }
 
     #[test]
