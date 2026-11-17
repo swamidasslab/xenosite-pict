@@ -1,6 +1,6 @@
 # TODO
 
-- Layered placer: pull nodes toward mean parent/child X within slack (ignore arrows; keep layer/order) — prior free-pull attempts blew the pack
+- Layered placer: fuller same-width slot assignment for hub fans (exclusive-pair desire + side-center both hurt Morphine tips; only lone pairs for now)
 - Delete dead `scheme_route.rs` once lean `scheme_route_simple` is the only path
 - Layered placer: caption reach-back for cleaner centroid grids; optional router use of layer/face metadata
 - Prefer `LayoutOpts.quality: fast` for huge schemes when pretty routing is too slow; keep coefficient tuning in `EngineConfig`

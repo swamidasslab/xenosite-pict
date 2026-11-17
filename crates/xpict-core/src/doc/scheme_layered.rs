@@ -118,20 +118,22 @@ pub fn place_layered(
     append_soft_edges_with_dummies(&mut nodes, &mut edges, &layer_of, &soft);
     order_layers(&mut nodes, &edges, budgets);
     assign_coordinates(&mut nodes, &edges, layout, &metrics, budgets);
-    // Star fans: park each parent on the cross-mid of its children so spokes
-    // stay tip chords instead of wrapping around an off-axis hub.
-    center_parents_over_children(&mut nodes, &edges);
     let dir = layout.direction_or_default();
     let vertical_flow = matches!(dir, LayoutDirection::Up | LayoutDirection::Down);
     let node_gap = layout.node_spacing_or_default();
-    // Long multi-layer edges need a clear cross-axis corridor — nudge real
-    // tiles that sit on the parent→child lerp off the shaft line.
+    // Seat children under parents (order-preserving desire pack; gaps are
+    // placeholders). Multi-child hubs recenter over their kids. Corridor /
+    // resolve run *after* so they do not undo seating.
     if vertical_flow {
+        equal_width_desire_pack(
+            &mut nodes,
+            &edges,
+            node_gap,
+            vertical_flow,
+            budgets.align_passes,
+        );
+        center_parents_over_children(&mut nodes, &edges);
         clear_long_edge_corridors(&mut nodes, &edges, node_gap, vertical_flow);
-    }
-    // Only re-separate / AABB on vertical packs — horizontal (Right/Left) already
-    // finished mark-align on the cross axis; a second resolve would reset Y.
-    if vertical_flow {
         let max_layer = nodes.iter().map(|n| n.layer).max().unwrap_or(0);
         for layer in 0..=max_layer {
             resolve_cross_overlaps(&mut nodes, layer, node_gap, vertical_flow);
@@ -1780,21 +1782,28 @@ fn resolve_cross_overlaps(
     }
 }
 
+fn cross_span_of(n: &PackNode, vertical_flow: bool) -> f64 {
+    if vertical_flow {
+        n.w
+    } else {
+        n.h
+    }
+}
+
+/// Shift cross so the real-tile bbox starts at 0 (non-negative document coords).
 fn normalize_cross_origin(nodes: &mut [PackNode], vertical_flow: bool) {
     let min_top = nodes
         .iter()
         .filter(|n| n.real.is_some())
-        .map(|n| {
-            let span = if vertical_flow { n.w } else { n.h };
-            n.cross - span * 0.5
-        })
+        .map(|n| n.cross - cross_span_of(n, vertical_flow) * 0.5)
         .fold(f64::INFINITY, f64::min);
-    if min_top.is_finite() && min_top < 0.0 {
+    if min_top.is_finite() && min_top.abs() > 1e-9 {
         for n in nodes.iter_mut() {
             n.cross -= min_top;
         }
     }
 }
+
 
 /// Within each down/up layer, share one horizontal mark line (baseline / core).
 fn assign_flow_by_marks(
@@ -2075,8 +2084,141 @@ fn separate_position_overlaps(
     }
 }
 
+/// Seat exclusive parent→child pairs under their parent (order-preserving).
+///
+/// Only when the parent has exactly one child and the child exactly one
+/// parent — hub fans stay on `center_parents_over_children`. Equal inter-node
+/// pads / per-layer side-centering spread Morphine and cut tip chords
+/// (17→15); gaps opened here for lone pairs are the placeholders.
+fn equal_width_desire_pack(
+    nodes: &mut [PackNode],
+    edges: &[PackEdge],
+    gap: f64,
+    vertical_flow: bool,
+    passes: usize,
+) {
+    let max_layer = nodes.iter().map(|n| n.layer).max().unwrap_or(0);
+    let paths = real_real_paths(nodes, edges);
+    let mut parents_of: HashMap<usize, Vec<usize>> = HashMap::new();
+    let mut child_count: HashMap<usize, usize> = HashMap::new();
+    for (src_i, tgt_i, _dummies) in &paths {
+        parents_of.entry(*tgt_i).or_default().push(*src_i);
+        *child_count.entry(*src_i).or_insert(0) += 1;
+    }
+
+    let desire_of = |nodes: &[PackNode], i: usize| -> Option<f64> {
+        let list = parents_of.get(&i)?;
+        if list.len() != 1 {
+            return None;
+        }
+        let p = list[0];
+        if child_count.get(&p).copied().unwrap_or(0) != 1 {
+            return None;
+        }
+        // Adjacent layers only — multi-layer exclusive pairs on Morphine
+        // shifted corridors and dropped a tip chord (17→16).
+        if nodes[p].layer + 1 != nodes[i].layer {
+            return None;
+        }
+        // Only slide when the parent sits clearly off the child's current
+        // cross (left-crowd case). Tiny barycenter noise is ignored so
+        // Morphine tip chords stay at the 17/2 checkpoint.
+        let desire = nodes[p].cross;
+        if (desire - nodes[i].cross).abs() < cross_span_of(&nodes[i], vertical_flow) {
+            return None;
+        }
+        Some(desire)
+    };
+
+    let passes = passes.max(1);
+    for _ in 0..passes {
+        let mut moved = false;
+        for layer in 0..=max_layer {
+            let idx = layer_indices_in_order(nodes, layer);
+            for (k, &i) in idx.iter().enumerate() {
+                let Some(desire) = desire_of(nodes, i) else {
+                    continue;
+                };
+                let span = cross_span_of(&nodes[i], vertical_flow);
+                let half = span * 0.5;
+                let mut top = desire - half;
+                if k > 0 {
+                    let j = idx[k - 1];
+                    let prev_bot = nodes[j].cross
+                        + cross_span_of(&nodes[j], vertical_flow) * 0.5;
+                    if top < prev_bot + gap {
+                        top = prev_bot + gap;
+                    }
+                }
+                let new_cross = top + half;
+                if (new_cross - nodes[i].cross).abs() > 0.5 {
+                    moved = true;
+                }
+                nodes[i].cross = new_cross;
+            }
+        }
+        if !moved {
+            break;
+        }
+    }
+}
+
+/// Each forward real→real path after contracting dummies: `(src, tgt, dummy idxs)`.
+fn real_real_paths(
+    nodes: &[PackNode],
+    edges: &[PackEdge],
+) -> Vec<(usize, usize, Vec<usize>)> {
+    let idx_of: HashMap<NodeKey, usize> = nodes
+        .iter()
+        .enumerate()
+        .map(|(i, n)| (n.key, i))
+        .collect();
+    let mut out_adj: HashMap<NodeKey, Vec<NodeKey>> = HashMap::new();
+    for e in edges {
+        out_adj.entry(e.src).or_default().push(e.tgt);
+    }
+    let mut paths = Vec::new();
+    let mut seen = HashSet::new();
+    for (i, n) in nodes.iter().enumerate() {
+        if n.real.is_none() {
+            continue;
+        }
+        let mut stack: Vec<(NodeKey, Vec<usize>)> = out_adj
+            .get(&n.key)
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|k| (k, Vec::new()))
+            .collect();
+        let mut visited = HashSet::new();
+        visited.insert(n.key);
+        while let Some((k, dummies)) = stack.pop() {
+            if !visited.insert(k) {
+                continue;
+            }
+            let Some(&j) = idx_of.get(&k) else {
+                continue;
+            };
+            if nodes[j].real.is_some() {
+                if nodes[j].layer > n.layer && seen.insert((i, j)) {
+                    paths.push((i, j, dummies));
+                }
+                continue;
+            }
+            let mut next_dummies = dummies;
+            next_dummies.push(j);
+            if let Some(nbrs) = out_adj.get(&k) {
+                for &nbr in nbrs {
+                    stack.push((nbr, next_dummies.clone()));
+                }
+            }
+        }
+    }
+    paths
+}
+
 /// Shift each parent’s cross so it sits on the mean cross of its children
-/// (same layer-delta). Leaves child packing intact.
+/// (2+ kids). Leaves child packing intact; pairs with children→parent desire.
 fn center_parents_over_children(nodes: &mut [PackNode], edges: &[PackEdge]) {
     let cross_of: HashMap<NodeKey, f64> = nodes.iter().map(|n| (n.key, n.cross)).collect();
     let layer_of: HashMap<NodeKey, usize> = nodes.iter().map(|n| (n.key, n.layer)).collect();
@@ -2407,6 +2549,55 @@ mod tests {
             scene,
             frame_json: String::new(),
         }
+    }
+
+    #[test]
+    fn equal_width_child_follows_right_parent_down() {
+        // Wide left filler + right parent on layer 0; exclusive-pair desire
+        // must seat C under R (same-width side room gives the child travel).
+        let sizes: Vec<(String, f64, f64)> = vec![
+            ("L".to_string(), 180.0, 40.0),
+            ("R".to_string(), 40.0, 40.0),
+            ("C".to_string(), 40.0, 40.0),
+        ];
+        let paints = vec![
+            paint_box("L", 180.0, 40.0, None, 20.0),
+            paint_box("R", 40.0, 40.0, None, 20.0),
+            paint_box("C", 40.0, 40.0, None, 20.0),
+        ];
+        let layout = LayoutOpts {
+            direction: Some(LayoutDirection::Down),
+            ..Default::default()
+        };
+        let p = place_layered(
+            &scheme(
+                vec![
+                    mol("L", None),
+                    mol("R", None),
+                    mol("C", None),
+                    edge("R", "C"),
+                ],
+                Some(layout.clone()),
+            ),
+            &layout,
+            &sizes,
+            &paints,
+        )
+        .unwrap();
+        assert_eq!(p.layers["L"], p.layers["R"]);
+        assert!(p.layers["C"] > p.layers["R"]);
+        let rx = p.positions["R"].0 + 20.0;
+        let cx = p.positions["C"].0 + 20.0;
+        let lx = p.positions["L"].0 + 90.0;
+        assert!(
+            (cx - rx).abs() < 50.0,
+            "child center should sit near right parent: R={rx} C={cx} L={lx} {:?}",
+            p.positions
+        );
+        assert!(
+            (cx - rx).abs() < (cx - lx).abs(),
+            "child closer to R than to L filler: R={rx} C={cx} L={lx}"
+        );
     }
 
     #[test]

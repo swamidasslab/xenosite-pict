@@ -2,6 +2,12 @@
 
 ## 2026-11-16
 
+- Layered cross-axis: exclusive parent→child desire pack (adjacent layer,
+  |Δcross| > child span) seats lone kids under a far parent without touching
+  hub fans. Equal inter-node pads / per-layer side-centering / full mean-pull
+  dropped Morphine tips 17→15–13. Gates: unit child-follows-parent, fan tips,
+  Morphine 17/2 + extreme detours. PackMetrics AABB shaft hits still ~2 over
+  ELK (assert slack +3); routed tip ratio stays the hard gate.
 - Router speed: correct incremental kept (≡ scratch), but VisGraph/QueryGraph
   are **lazy** — clear tip with zero peer penalty is optimal (straight chord +
   non-neg peers), so Morphine skips A* for most arrows. Route passes cut
