@@ -1,11 +1,21 @@
 //! Lean scheme router — parallel to [`super::scheme_route`] (delete later).
 //!
-//! Per arrow (from-scratch query graph): take foreign hulls only (endpoint
-//! owners removed), add start/goal centroids as nodes, link each centroid to
-//! visible foreign verts (never own hull), full inter-hull visibility, then
-//! A* (length + crossings + shared). Gauss–Seidel passes; tip-hug after lock.
+//! Shared hull visibility graph when needed; per arrow **incrementally** drop
+//! endpoint owners' verts, append start/goal centroids, link centroids only to
+//! foreign verts, then A*. Incremental query graphs must match from-scratch
+//! builds (see tests). Clear tips with zero peer cost skip the graph entirely.
+//! Two passes (peer-free + one Gauss–Seidel); tip-hug after lock.
+//!
+//! Steiner–Steiner edges clear **all** hulls (endpoints are not transparent for
+//! those chords). Wybrow-style invisibility / promote-on-remove would change
+//! that semantics — useful later for interactive obstacle edits, not for the
+//! current skip model. We do take the paper's broad-phase idea: an obstacle
+//! AABB grid speeds pair tests during shared-graph construction.
 
 use std::collections::{HashMap, HashSet};
+
+#[cfg(test)]
+use std::collections::BTreeSet;
 
 use pathfinding::directed::astar::astar;
 
@@ -49,6 +59,80 @@ struct Obstacle {
     mol_id: String,
     hull: Vec<Pt>,
     aabb: (f64, f64, f64, f64),
+}
+
+/// Shared hull visibility graph (all mols). Per-arrow graphs strip endpoints.
+struct VisGraph {
+    pts: Vec<Pt>,
+    /// Obstacle index for each vert (`obstacles[owner_idx[v]]`).
+    owner_idx: Vec<usize>,
+    adj: Vec<Vec<(usize, f64)>>,
+}
+
+/// Per-arrow search graph: foreign Steiners + start/goal centroids.
+struct QueryGraph {
+    pts: Vec<Pt>,
+    adj: Vec<Vec<(usize, f64)>>,
+    start_i: usize,
+    goal_i: usize,
+}
+
+/// Uniform grid over obstacle AABBs — broad-phase for segment clears.
+struct ObstacleGrid {
+    cell: f64,
+    /// Cell → obstacle indices whose AABB overlaps the cell.
+    cells: HashMap<(i32, i32), Vec<usize>>,
+}
+
+impl ObstacleGrid {
+    fn build(obstacles: &[Obstacle]) -> Self {
+        let mut cell = 64.0_f64;
+        for o in obstacles {
+            let (x0, y0, x1, y1) = o.aabb;
+            cell = cell.max(((x1 - x0).max(y1 - y0)) * 0.5).max(16.0);
+        }
+        let mut cells: HashMap<(i32, i32), Vec<usize>> = HashMap::new();
+        for (i, o) in obstacles.iter().enumerate() {
+            let (x0, y0, x1, y1) = o.aabb;
+            let ix0 = (x0 / cell).floor() as i32;
+            let iy0 = (y0 / cell).floor() as i32;
+            let ix1 = (x1 / cell).floor() as i32;
+            let iy1 = (y1 / cell).floor() as i32;
+            for ix in ix0..=ix1 {
+                for iy in iy0..=iy1 {
+                    cells.entry((ix, iy)).or_default().push(i);
+                }
+            }
+        }
+        Self { cell, cells }
+    }
+
+    /// Obstacles whose AABB may meet segment AABB (deduped).
+    fn candidates(&self, a: Pt, b: Pt, buf: &mut Vec<usize>, seen: &mut Vec<u32>, stamp: u32) {
+        buf.clear();
+        let sx0 = a.0.min(b.0);
+        let sy0 = a.1.min(b.1);
+        let sx1 = a.0.max(b.0);
+        let sy1 = a.1.max(b.1);
+        let ix0 = (sx0 / self.cell).floor() as i32;
+        let iy0 = (sy0 / self.cell).floor() as i32;
+        let ix1 = (sx1 / self.cell).floor() as i32;
+        let iy1 = (sy1 / self.cell).floor() as i32;
+        for ix in ix0..=ix1 {
+            for iy in iy0..=iy1 {
+                let Some(list) = self.cells.get(&(ix, iy)) else {
+                    continue;
+                };
+                for &oi in list {
+                    if seen[oi] == stamp {
+                        continue;
+                    }
+                    seen[oi] = stamp;
+                    buf.push(oi);
+                }
+            }
+        }
+    }
 }
 
 pub struct RouteResult {
@@ -110,6 +194,11 @@ pub fn route_scheme_edges(
         .collect();
 
     let obstacles = build_obstacles(mol_ids, world, positions, &size_of, route().routing_clearance);
+    // VisGraph / QueryGraphs are built lazily — Morphine is mostly tip chords, and
+    // a clear tip with zero peer penalty is optimal (straight line + non-neg peers).
+    let mut grid: Option<ObstacleGrid> = None;
+    let mut vis: Option<VisGraph> = None;
+    let mut query_graphs: Vec<Option<QueryGraph>> = Vec::new();
     if debug {
         for o in &obstacles {
             debug_prims.push(poly_closed(&o.hull, dbg::HULL, 2.5, 0.55, "debug-route-hull"));
@@ -167,11 +256,11 @@ pub fn route_scheme_edges(
         ));
         skips.push(skip_owned);
     }
+    query_graphs.resize_with(n_groups, || None);
 
-    // Pass 0: every group with no peer costs (independent tips/detours).
-    // Later passes: Gauss–Seidel, smallest excess-over-tip first (tips before
-    // wild walks) so short paths re-lock against live peers, then detours adapt.
-    const ROUTE_PASSES: usize = 4;
+    // Pass 0: peer-free tips/detours. Pass 1: one Gauss–Seidel against live
+    // peers (tips-first by excess-over-tip). Extra passes rarely change Morphine.
+    const ROUTE_PASSES: usize = 2;
     for pass in 0..ROUTE_PASSES {
         let mut order: Vec<usize> = (0..n_groups).collect();
         if pass > 0 {
@@ -186,6 +275,8 @@ pub fn route_scheme_edges(
             });
         }
         for &gi in &order {
+            let skip: HashSet<&str> = skips[gi].iter().map(String::as_str).collect();
+            let (src_c, tgt_c, _, _, _, _) = &group_meta[gi];
             let committed: Vec<Vec<Pt>> = if pass == 0 {
                 Vec::new()
             } else {
@@ -196,11 +287,37 @@ pub fn route_scheme_edges(
                     .map(|(_, c)| c.clone())
                     .collect()
             };
-            let (src_c, tgt_c, _, _, _, _) = &group_meta[gi];
-            let skip: HashSet<&str> = skips[gi].iter().map(String::as_str).collect();
-            // Fresh graph per arrow (no shared-graph strip/remap).
-            group_pathways[gi] =
-                visibility_route(*src_c, *tgt_c, &obstacles, &skip, &committed);
+            // Clear tip with no peer penalty ⇒ optimal; skip VisGraph/A*.
+            if points_visible(*src_c, *tgt_c, &obstacles, &skip) {
+                let tip_peer =
+                    segment_peer_cost(*src_c, *tgt_c, &committed, &obstacles, &skip);
+                if tip_peer <= 1e-12 {
+                    group_pathways[gi] = vec![*src_c, *tgt_c];
+                    continue;
+                }
+            }
+            if grid.is_none() {
+                grid = Some(ObstacleGrid::build(&obstacles));
+            }
+            if vis.is_none() {
+                vis = Some(build_visibility_graph(&obstacles, grid.as_ref().unwrap()));
+            }
+            if query_graphs[gi].is_none() {
+                query_graphs[gi] = Some(build_query_graph_incremental(
+                    vis.as_ref().unwrap(),
+                    &obstacles,
+                    grid.as_ref().unwrap(),
+                    &skip,
+                    *src_c,
+                    *tgt_c,
+                ));
+            }
+            group_pathways[gi] = visibility_route_cached(
+                query_graphs[gi].as_ref().unwrap(),
+                &obstacles,
+                &skip,
+                &committed,
+            );
         }
         if debug {
             let n_tip = group_pathways.iter().filter(|p| p.len() == 2).count();
@@ -374,35 +491,61 @@ fn lookup_waypoints(
     Vec::new()
 }
 
-/// Build a fresh visibility graph for one arrow and A* on it.
-///
-/// Endpoint-owner hulls are omitted entirely; start/goal centroids are appended
-/// and linked only to those foreign verts (never to a stripped own hull).
+/// Build query graph then A* (tests / one-shot). Prefer [`visibility_route_cached`].
 fn visibility_route(
     start: Pt,
     goal: Pt,
+    vis: &VisGraph,
     obstacles: &[Obstacle],
     skip: &HashSet<&str>,
     committed: &[Vec<Pt>],
 ) -> Vec<Pt> {
-    let (pts, adj, start_i, goal_i) = build_query_graph(obstacles, skip, start, goal);
+    let grid = ObstacleGrid::build(obstacles);
+    let g = build_query_graph_incremental(vis, obstacles, &grid, skip, start, goal);
+    visibility_route_cached(&g, obstacles, skip, committed)
+}
+
+/// A* on a prebuilt query graph. Tip short-circuits when there are no peers.
+fn visibility_route_cached(
+    g: &QueryGraph,
+    obstacles: &[Obstacle],
+    skip: &HashSet<&str>,
+    committed: &[Vec<Pt>],
+) -> Vec<Pt> {
+    let start = g.pts[g.start_i];
+    let goal = g.pts[g.goal_i];
+    // No peer costs ⇒ any clear centroid tip dominates every detour on length.
+    if committed.is_empty() && points_visible(start, goal, obstacles, skip) {
+        return vec![start, goal];
+    }
+    astar_on_query(g, obstacles, skip, committed)
+}
+
+fn astar_on_query(
+    g: &QueryGraph,
+    obstacles: &[Obstacle],
+    skip: &HashSet<&str>,
+    committed: &[Vec<Pt>],
+) -> Vec<Pt> {
+    let start = g.pts[g.start_i];
+    let goal = g.pts[g.goal_i];
     let path = astar(
-        &start_i,
+        &g.start_i,
         |&u| {
-            adj[u]
+            g.adj[u]
                 .iter()
                 .map(|&(v, len)| {
                     let cost =
-                        len + segment_peer_cost(pts[u], pts[v], committed, obstacles, skip);
+                        len + segment_peer_cost(g.pts[u], g.pts[v], committed, obstacles, skip);
                     (v, ordered_float(cost))
                 })
                 .collect::<Vec<_>>()
         },
-        |&u| ordered_float(dist(pts[u], goal)),
-        |&g| g == goal_i,
+        |&u| ordered_float(dist(g.pts[u], goal)),
+        |&u| u == g.goal_i,
     );
     let astar_pts: Vec<Pt> = match path {
-        Some((idxs, _)) => idxs.into_iter().map(|i| pts[i]).collect(),
+        Some((idxs, _)) => idxs.into_iter().map(|i| g.pts[i]).collect(),
         None => vec![start, goal],
     };
     if points_visible(start, goal, obstacles, skip) {
@@ -416,14 +559,99 @@ fn visibility_route(
     astar_pts
 }
 
-/// From-scratch query graph: foreign hull rings + inter-hull visibility +
-/// start/goal centroid nodes linked to visible foreign verts.
-fn build_query_graph(
+fn add_undirected(
+    i: usize,
+    j: usize,
+    len: f64,
+    linked: &mut [HashSet<usize>],
+    adj: &mut [Vec<(usize, f64)>],
+) {
+    if i == j || len < 1e-6 || !linked[i].insert(j) {
+        return;
+    }
+    linked[j].insert(i);
+    adj[i].push((j, len));
+    adj[j].push((i, len));
+}
+
+/// Shared graph over **all** hull verts (rings + full inter-hull visibility).
+fn build_visibility_graph(obstacles: &[Obstacle], grid: &ObstacleGrid) -> VisGraph {
+    let mut pts = Vec::new();
+    let mut owner_idx: Vec<usize> = Vec::new();
+    let mut ranges: Vec<(usize, usize)> = Vec::new();
+    for (oi, o) in obstacles.iter().enumerate() {
+        let lo = pts.len();
+        for &p in &o.hull {
+            pts.push(p);
+            owner_idx.push(oi);
+        }
+        ranges.push((lo, pts.len()));
+    }
+    let n = pts.len();
+    let mut adj: Vec<Vec<(usize, f64)>> = vec![Vec::new(); n];
+    let mut linked = vec![HashSet::<usize>::new(); n];
+
+    for &(lo, hi) in &ranges {
+        let m = hi - lo;
+        if m < 2 {
+            continue;
+        }
+        for k in 0..m {
+            let i = lo + k;
+            let j = lo + (k + 1) % m;
+            add_undirected(i, j, dist(pts[i], pts[j]), &mut linked, &mut adj);
+        }
+    }
+
+    let mut cand = Vec::new();
+    let mut seen = vec![0u32; obstacles.len()];
+    let mut stamp = 1u32;
+    // Inter-hull pairs only (same-owner chords stay on the ring).
+    for a in 0..obstacles.len() {
+        let (alo, ahi) = ranges[a];
+        for b in (a + 1)..obstacles.len() {
+            let (blo, bhi) = ranges[b];
+            for i in alo..ahi {
+                for j in blo..bhi {
+                    let len = dist(pts[i], pts[j]);
+                    if len < 1e-6 {
+                        continue;
+                    }
+                    stamp = stamp.wrapping_add(1);
+                    if stamp == 0 {
+                        seen.fill(0);
+                        stamp = 1;
+                    }
+                    if segment_clears_obstacles_grid(
+                        pts[i],
+                        pts[j],
+                        obstacles,
+                        &grid,
+                        &mut cand,
+                        &mut seen,
+                        stamp,
+                    ) {
+                        add_undirected(i, j, len, &mut linked, &mut adj);
+                    }
+                }
+            }
+        }
+    }
+    VisGraph {
+        pts,
+        owner_idx,
+        adj,
+    }
+}
+
+/// From-scratch reference: omit endpoint hulls, add centroids, link to foreign.
+#[cfg(test)]
+fn build_query_graph_scratch(
     obstacles: &[Obstacle],
     skip: &HashSet<&str>,
     start: Pt,
     goal: Pt,
-) -> (Vec<Pt>, Vec<Vec<(usize, f64)>>, usize, usize) {
+) -> QueryGraph {
     let mut pts: Vec<Pt> = Vec::new();
     let mut ranges: Vec<(usize, usize)> = Vec::new();
     for o in obstacles {
@@ -442,16 +670,7 @@ fn build_query_graph(
     let n = pts.len();
     let mut adj: Vec<Vec<(usize, f64)>> = vec![Vec::new(); n];
     let mut linked = vec![HashSet::<usize>::new(); n];
-    let mut add = |i: usize, j: usize, len: f64, linked: &mut [HashSet<usize>], adj: &mut [Vec<(usize, f64)>]| {
-        if i == j || len < 1e-6 || !linked[i].insert(j) {
-            return;
-        }
-        linked[j].insert(i);
-        adj[i].push((j, len));
-        adj[j].push((i, len));
-    };
 
-    // Foreign hull boundary rings.
     for &(lo, hi) in &ranges {
         let m = hi - lo;
         if m < 2 {
@@ -460,41 +679,216 @@ fn build_query_graph(
         for k in 0..m {
             let i = lo + k;
             let j = lo + (k + 1) % m;
-            add(i, j, dist(pts[i], pts[j]), &mut linked, &mut adj);
+            add_undirected(i, j, dist(pts[i], pts[j]), &mut linked, &mut adj);
         }
     }
 
-    // Full inter-hull visibility among foreign verts (endpoint hulls already out).
     let empty = HashSet::new();
     for i in 0..n_stein {
         for j in (i + 1)..n_stein {
-            // Skip pairs on the same ring — already connected by boundary edges;
-            // chords through a foreign hull interior are blocked by clears.
-            let same_ring = ranges.iter().any(|&(lo, hi)| i >= lo && i < hi && j >= lo && j < hi);
+            let same_ring = ranges
+                .iter()
+                .any(|&(lo, hi)| i >= lo && i < hi && j >= lo && j < hi);
             if same_ring {
                 continue;
             }
             let len = dist(pts[i], pts[j]);
             if segment_clears_obstacles(pts[i], pts[j], obstacles, &empty) {
-                add(i, j, len, &mut linked, &mut adj);
+                add_undirected(i, j, len, &mut linked, &mut adj);
             }
         }
     }
 
-    // Centroids → foreign Steiners only (own hull verts were never inserted).
-    for i in 0..n_stein {
-        if points_visible(start, pts[i], obstacles, skip) {
-            add(start_i, i, dist(start, pts[i]), &mut linked, &mut adj);
-        }
-        if points_visible(goal, pts[i], obstacles, skip) {
-            add(goal_i, i, dist(goal, pts[i]), &mut linked, &mut adj);
+    let mut skip_flag = vec![false; obstacles.len()];
+    for (i, o) in obstacles.iter().enumerate() {
+        if skip.contains(o.mol_id.as_str()) {
+            skip_flag[i] = true;
         }
     }
-    if points_visible(start, goal, obstacles, skip) {
-        add(start_i, goal_i, dist(start, goal), &mut linked, &mut adj);
+    let grid = ObstacleGrid::build(obstacles);
+    link_centroids_into_query(
+        &mut adj,
+        &mut linked,
+        &pts,
+        n_stein,
+        start_i,
+        goal_i,
+        start,
+        goal,
+        obstacles,
+        &skip_flag,
+        &grid,
+    );
+    QueryGraph {
+        pts,
+        adj,
+        start_i,
+        goal_i,
+    }
+}
+
+/// Incremental: strip endpoint-owner verts from shared [`VisGraph`], append
+/// centroids, link centroids only to surviving foreign verts.
+fn build_query_graph_incremental(
+    vis: &VisGraph,
+    obstacles: &[Obstacle],
+    grid: &ObstacleGrid,
+    skip: &HashSet<&str>,
+    start: Pt,
+    goal: Pt,
+) -> QueryGraph {
+    let mut skip_flag = vec![false; obstacles.len()];
+    for (i, o) in obstacles.iter().enumerate() {
+        if skip.contains(o.mol_id.as_str()) {
+            skip_flag[i] = true;
+        }
+    }
+    let mut local_of_global = vec![None; vis.pts.len()];
+    let mut global_of_local: Vec<usize> = Vec::new();
+    for (g, &oi) in vis.owner_idx.iter().enumerate() {
+        if skip_flag[oi] {
+            continue;
+        }
+        local_of_global[g] = Some(global_of_local.len());
+        global_of_local.push(g);
+    }
+    let n_stein = global_of_local.len();
+    let start_i = n_stein;
+    let goal_i = n_stein + 1;
+    let mut pts: Vec<Pt> = global_of_local.iter().map(|&g| vis.pts[g]).collect();
+    pts.push(start);
+    pts.push(goal);
+    let n = pts.len();
+    let mut adj: Vec<Vec<(usize, f64)>> = vec![Vec::new(); n];
+
+    // Remap surviving shared edges (VisGraph already deduped undirected).
+    for (li, &gi) in global_of_local.iter().enumerate() {
+        for &(gj, len) in &vis.adj[gi] {
+            let Some(lj) = local_of_global[gj] else {
+                continue;
+            };
+            if lj > li {
+                adj[li].push((lj, len));
+                adj[lj].push((li, len));
+            }
+        }
     }
 
-    (pts, adj, start_i, goal_i)
+    let mut linked = vec![HashSet::<usize>::new(); n];
+    for (i, nbrs) in adj.iter().enumerate() {
+        for &(j, _) in nbrs {
+            linked[i].insert(j);
+        }
+    }
+    link_centroids_into_query(
+        &mut adj,
+        &mut linked,
+        &pts,
+        n_stein,
+        start_i,
+        goal_i,
+        start,
+        goal,
+        obstacles,
+        &skip_flag,
+        grid,
+    );
+    QueryGraph {
+        pts,
+        adj,
+        start_i,
+        goal_i,
+    }
+}
+
+fn link_centroids_into_query(
+    adj: &mut [Vec<(usize, f64)>],
+    linked: &mut [HashSet<usize>],
+    pts: &[Pt],
+    n_stein: usize,
+    start_i: usize,
+    goal_i: usize,
+    start: Pt,
+    goal: Pt,
+    obstacles: &[Obstacle],
+    skip_flag: &[bool],
+    grid: &ObstacleGrid,
+) {
+    let mut cand = Vec::new();
+    let mut seen = vec![0u32; obstacles.len()];
+    let mut stamp = 1u32;
+    let mut visible = |a: Pt, b: Pt,
+                       cand: &mut Vec<usize>,
+                       seen: &mut Vec<u32>,
+                       stamp: &mut u32|
+     -> bool {
+        *stamp = stamp.wrapping_add(1);
+        if *stamp == 0 {
+            seen.fill(0);
+            *stamp = 1;
+        }
+        segment_clears_obstacles_grid_skip(a, b, obstacles, skip_flag, grid, cand, seen, *stamp)
+    };
+    for i in 0..n_stein {
+        if visible(start, pts[i], &mut cand, &mut seen, &mut stamp) {
+            add_undirected(start_i, i, dist(start, pts[i]), linked, adj);
+        }
+        if visible(goal, pts[i], &mut cand, &mut seen, &mut stamp) {
+            add_undirected(goal_i, i, dist(goal, pts[i]), linked, adj);
+        }
+    }
+    if visible(start, goal, &mut cand, &mut seen, &mut stamp) {
+        add_undirected(start_i, goal_i, dist(start, goal), linked, adj);
+    }
+}
+
+/// Undirected geometric edge set for equality checks (quantized).
+#[cfg(test)]
+fn query_graph_edge_set(g: &QueryGraph) -> BTreeSet<((i64, i64), (i64, i64), i64)> {
+    let q = |p: Pt| ((p.0 * 1000.0).round() as i64, (p.1 * 1000.0).round() as i64);
+    let mut out = BTreeSet::new();
+    for (i, nbrs) in g.adj.iter().enumerate() {
+        for &(j, len) in nbrs {
+            if j <= i {
+                continue;
+            }
+            let a = q(g.pts[i]);
+            let b = q(g.pts[j]);
+            let (a, b) = if a <= b { (a, b) } else { (b, a) };
+            out.insert((a, b, (len * 1000.0).round() as i64));
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+fn assert_query_graphs_identical(scratch: &QueryGraph, incr: &QueryGraph, label: &str) {
+    assert_eq!(
+        scratch.pts.len(),
+        incr.pts.len(),
+        "{label}: vertex count scratch={} incr={}",
+        scratch.pts.len(),
+        incr.pts.len()
+    );
+    for (i, (&a, &b)) in scratch.pts.iter().zip(incr.pts.iter()).enumerate() {
+        assert!(
+            nearly_same_pt(a, b),
+            "{label}: pt[{i}] scratch={a:?} incr={b:?}"
+        );
+    }
+    assert_eq!(
+        scratch.start_i, incr.start_i,
+        "{label}: start_i"
+    );
+    assert_eq!(scratch.goal_i, incr.goal_i, "{label}: goal_i");
+    let es = query_graph_edge_set(scratch);
+    let ei = query_graph_edge_set(incr);
+    assert_eq!(
+        es, ei,
+        "{label}: edge sets differ (scratch {} edges, incr {} edges)",
+        es.len(),
+        ei.len()
+    );
 }
 
 fn pathway_cost(
@@ -946,6 +1340,44 @@ fn segment_clears_obstacles(a: Pt, b: Pt, obstacles: &[Obstacle], skip: &HashSet
     true
 }
 
+/// Like [`segment_clears_obstacles`] with empty skip, using an AABB grid broad-phase.
+fn segment_clears_obstacles_grid(
+    a: Pt,
+    b: Pt,
+    obstacles: &[Obstacle],
+    grid: &ObstacleGrid,
+    cand: &mut Vec<usize>,
+    seen: &mut Vec<u32>,
+    stamp: u32,
+) -> bool {
+    segment_clears_obstacles_grid_skip(a, b, obstacles, &[], grid, cand, seen, stamp)
+}
+
+/// Grid broad-phase clears; `skip_flag[i]` makes obstacle `i` transparent.
+/// Empty `skip_flag` means nothing is skipped.
+fn segment_clears_obstacles_grid_skip(
+    a: Pt,
+    b: Pt,
+    obstacles: &[Obstacle],
+    skip_flag: &[bool],
+    grid: &ObstacleGrid,
+    cand: &mut Vec<usize>,
+    seen: &mut Vec<u32>,
+    stamp: u32,
+) -> bool {
+    grid.candidates(a, b, cand, seen, stamp);
+    for &oi in cand.iter() {
+        if skip_flag.get(oi).copied().unwrap_or(false) {
+            continue;
+        }
+        let o = &obstacles[oi];
+        if segment_hits_convex_aabb(a, b, &o.hull, o.aabb) {
+            return false;
+        }
+    }
+    true
+}
+
 fn segment_hits_convex_aabb(a: Pt, b: Pt, hull: &[Pt], aabb: (f64, f64, f64, f64)) -> bool {
     if hull.len() < 3 {
         return false;
@@ -1294,6 +1726,66 @@ mod tests {
         }
     }
 
+    fn rect(id: &str, x0: f64, y0: f64, w: f64, h: f64) -> Obstacle {
+        let hull = vec![(x0, y0), (x0 + w, y0), (x0 + w, y0 + h), (x0, y0 + h)];
+        Obstacle {
+            mol_id: id.into(),
+            aabb: hull_aabb(&hull),
+            hull,
+        }
+    }
+
+    fn pentagon(id: &str, cx: f64, cy: f64, r: f64) -> Obstacle {
+        let mut hull = Vec::with_capacity(5);
+        for k in 0..5 {
+            let a = std::f64::consts::TAU * (k as f64) / 5.0 - std::f64::consts::FRAC_PI_2;
+            hull.push((cx + r * a.cos(), cy + r * a.sin()));
+        }
+        Obstacle {
+            mol_id: id.into(),
+            aabb: hull_aabb(&hull),
+            hull,
+        }
+    }
+
+    fn assert_incr_eq_scratch(
+        obstacles: &[Obstacle],
+        skip: &HashSet<&str>,
+        start: Pt,
+        goal: Pt,
+        label: &str,
+    ) {
+        let grid = ObstacleGrid::build(obstacles);
+        let vis = build_visibility_graph(obstacles, &grid);
+        let scratch = build_query_graph_scratch(obstacles, skip, start, goal);
+        let incr = build_query_graph_incremental(&vis, obstacles, &grid, skip, start, goal);
+        assert_query_graphs_identical(&scratch, &incr, label);
+    }
+
+    fn assert_routes_match(
+        obstacles: &[Obstacle],
+        skip: &HashSet<&str>,
+        start: Pt,
+        goal: Pt,
+        committed: &[Vec<Pt>],
+        label: &str,
+    ) {
+        let grid = ObstacleGrid::build(obstacles);
+        let vis = build_visibility_graph(obstacles, &grid);
+        let scratch = build_query_graph_scratch(obstacles, skip, start, goal);
+        let incr = build_query_graph_incremental(&vis, obstacles, &grid, skip, start, goal);
+        assert_query_graphs_identical(&scratch, &incr, label);
+        let a = astar_on_query(&scratch, obstacles, skip, committed);
+        let b = visibility_route(start, goal, &vis, obstacles, skip, committed);
+        assert_eq!(a.len(), b.len(), "{label}: route length {a:?} vs {b:?}");
+        for (i, (&p, &q)) in a.iter().zip(b.iter()).enumerate() {
+            assert!(
+                nearly_same_pt(p, q),
+                "{label}: route[{i}] {p:?} vs {q:?}"
+            );
+        }
+    }
+
     #[test]
     fn points_visible_blocks_foreign_hull_even_if_endpoint_buried() {
         // A and B side by side; C overlaps both centroids via inflate.
@@ -1333,7 +1825,9 @@ mod tests {
         let b = square("B", 40.0, 0.0, 10.0);
         let obstacles = vec![a, b];
         let skip: HashSet<&str> = ["A", "B"].into_iter().collect();
-        let path = visibility_route((5.0, 5.0), (45.0, 5.0), &obstacles, &skip, &[]);
+        let grid = ObstacleGrid::build(&obstacles);
+        let vis = build_visibility_graph(&obstacles, &grid);
+        let path = visibility_route((5.0, 5.0), (45.0, 5.0), &vis, &obstacles, &skip, &[]);
         assert_eq!(
             path.len(),
             2,
@@ -1350,25 +1844,217 @@ mod tests {
         let skip: HashSet<&str> = ["A", "B"].into_iter().collect();
         let start = (5.0, 5.0);
         let goal = (45.0, 5.0);
-        let (pts, adj, start_i, goal_i) = build_query_graph(&obstacles, &skip, start, goal);
-        assert_eq!(pts[start_i], start);
-        assert_eq!(pts[goal_i], goal);
+        let g = build_query_graph_scratch(&obstacles, &skip, start, goal);
+        assert_eq!(g.pts[g.start_i], start);
+        assert_eq!(g.pts[g.goal_i], goal);
         // Only C's 4 hull verts + 2 centroids.
-        assert_eq!(pts.len(), 6, "endpoint hulls must be absent: {pts:?}");
+        assert_eq!(g.pts.len(), 6, "endpoint hulls must be absent: {:?}", g.pts);
         assert!(
-            !adj[start_i].is_empty() || points_visible(start, goal, &obstacles, &skip),
+            !g.adj[g.start_i].is_empty() || points_visible(start, goal, &obstacles, &skip),
             "start must link to foreign steiners or direct goal"
         );
         // No edge from start to a point inside A's hull ring (A was omitted).
-        for &(j, _) in &adj[start_i] {
-            if j == goal_i {
+        for &(j, _) in &g.adj[g.start_i] {
+            if j == g.goal_i {
                 continue;
             }
             assert!(
-                !point_in_convex(pts[j], &obstacles[0].hull),
+                !point_in_convex(g.pts[j], &obstacles[0].hull),
                 "start must not link to own-hull verts"
             );
         }
+        assert_incr_eq_scratch(&obstacles, &skip, start, goal, "omit-endpoints");
+    }
+
+    #[test]
+    fn incremental_matches_scratch_clear_pair() {
+        let obstacles = vec![
+            square("A", 0.0, 0.0, 10.0),
+            square("B", 40.0, 0.0, 10.0),
+        ];
+        let skip: HashSet<&str> = ["A", "B"].into_iter().collect();
+        assert_routes_match(
+            &obstacles,
+            &skip,
+            (5.0, 5.0),
+            (45.0, 5.0),
+            &[],
+            "clear-pair",
+        );
+    }
+
+    #[test]
+    fn incremental_matches_scratch_with_blocker() {
+        let obstacles = vec![
+            square("A", 0.0, 0.0, 10.0),
+            square("B", 40.0, 0.0, 10.0),
+            square("W", 18.0, -5.0, 10.0),
+        ];
+        let skip: HashSet<&str> = ["A", "B"].into_iter().collect();
+        assert_routes_match(
+            &obstacles,
+            &skip,
+            (5.0, 5.0),
+            (45.0, 5.0),
+            &[],
+            "blocker-W",
+        );
+    }
+
+    #[test]
+    fn incremental_matches_scratch_skip_first_middle_last() {
+        let obstacles = vec![
+            square("A", 0.0, 0.0, 8.0),
+            square("B", 20.0, 0.0, 8.0),
+            square("C", 40.0, 0.0, 8.0),
+            square("D", 10.0, 20.0, 8.0),
+            square("E", 30.0, 20.0, 8.0),
+        ];
+        let start = (4.0, 4.0);
+        let goal = (44.0, 4.0);
+        for (src, tgt) in [("A", "C"), ("B", "E"), ("D", "A"), ("E", "B"), ("C", "D")] {
+            let skip: HashSet<&str> = [src, tgt].into_iter().collect();
+            assert_incr_eq_scratch(
+                &obstacles,
+                &skip,
+                start,
+                goal,
+                &format!("skip-{src}-{tgt}"),
+            );
+        }
+    }
+
+    #[test]
+    fn incremental_matches_scratch_all_pairs_grid() {
+        // 3×3 grid of squares — every endpoint pair must strip identically.
+        let mut obstacles = Vec::new();
+        for row in 0..3 {
+            for col in 0..3 {
+                let id = format!("m{row}{col}");
+                obstacles.push(square(
+                    &id,
+                    col as f64 * 30.0,
+                    row as f64 * 30.0,
+                    12.0,
+                ));
+            }
+        }
+        let grid = ObstacleGrid::build(&obstacles);
+        let vis = build_visibility_graph(&obstacles, &grid);
+        for i in 0..obstacles.len() {
+            for j in 0..obstacles.len() {
+                if i == j {
+                    continue;
+                }
+                let src = obstacles[i].mol_id.as_str();
+                let tgt = obstacles[j].mol_id.as_str();
+                let skip: HashSet<&str> = [src, tgt].into_iter().collect();
+                let start = (
+                    obstacles[i].hull[0].0 + 6.0,
+                    obstacles[i].hull[0].1 + 6.0,
+                );
+                let goal = (
+                    obstacles[j].hull[0].0 + 6.0,
+                    obstacles[j].hull[0].1 + 6.0,
+                );
+                let scratch = build_query_graph_scratch(&obstacles, &skip, start, goal);
+                let incr = build_query_graph_incremental(
+                    &vis, &obstacles, &grid, &skip, start, goal,
+                );
+                assert_query_graphs_identical(
+                    &scratch,
+                    &incr,
+                    &format!("grid-{src}->{tgt}"),
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn incremental_matches_scratch_mixed_shapes() {
+        let obstacles = vec![
+            square("sq", 0.0, 0.0, 10.0),
+            rect("wide", 40.0, -5.0, 20.0, 8.0),
+            pentagon("p", 25.0, 30.0, 8.0),
+            rect("tall", 60.0, 20.0, 6.0, 24.0),
+        ];
+        let cases = [
+            ("sq", "wide", (5.0, 5.0), (50.0, -1.0)),
+            ("sq", "p", (5.0, 5.0), (25.0, 30.0)),
+            ("wide", "tall", (50.0, -1.0), (63.0, 32.0)),
+            ("p", "tall", (25.0, 30.0), (63.0, 32.0)),
+        ];
+        for (src, tgt, start, goal) in cases {
+            let skip: HashSet<&str> = [src, tgt].into_iter().collect();
+            assert_routes_match(
+                &obstacles,
+                &skip,
+                start,
+                goal,
+                &[],
+                &format!("mixed-{src}-{tgt}"),
+            );
+        }
+    }
+
+    #[test]
+    fn incremental_matches_scratch_no_foreign_left() {
+        // Strip both mols — query is just the two centroids (+ optional chord).
+        let obstacles = vec![
+            square("A", 0.0, 0.0, 10.0),
+            square("B", 40.0, 0.0, 10.0),
+        ];
+        let skip: HashSet<&str> = ["A", "B"].into_iter().collect();
+        let start = (5.0, 5.0);
+        let goal = (45.0, 5.0);
+        let scratch = build_query_graph_scratch(&obstacles, &skip, start, goal);
+        assert_eq!(scratch.pts.len(), 2);
+        assert_incr_eq_scratch(&obstacles, &skip, start, goal, "no-foreign");
+    }
+
+    #[test]
+    fn incremental_matches_scratch_dense_wall() {
+        // Corridor of blockers between A and B — many foreign verts.
+        let mut obstacles = vec![
+            square("A", 0.0, 20.0, 10.0),
+            square("B", 100.0, 20.0, 10.0),
+        ];
+        for i in 0..6 {
+            obstacles.push(square(
+                &format!("w{i}"),
+                15.0 + i as f64 * 12.0,
+                10.0 + (i % 2) as f64 * 15.0,
+                10.0,
+            ));
+        }
+        let skip: HashSet<&str> = ["A", "B"].into_iter().collect();
+        assert_routes_match(
+            &obstacles,
+            &skip,
+            (5.0, 25.0),
+            (105.0, 25.0),
+            &[],
+            "dense-wall",
+        );
+    }
+
+    #[test]
+    fn incremental_matches_scratch_with_committed_peers() {
+        let obstacles = vec![
+            square("A", 0.0, 0.0, 10.0),
+            square("B", 60.0, 0.0, 10.0),
+            square("C", 25.0, 25.0, 10.0),
+        ];
+        let skip: HashSet<&str> = ["A", "B"].into_iter().collect();
+        let committed = vec![vec![(5.0, 40.0), (30.0, 30.0), (65.0, 40.0)]];
+        assert_routes_match(
+            &obstacles,
+            &skip,
+            (5.0, 5.0),
+            (65.0, 5.0),
+            &committed,
+            "committed-peers",
+        );
     }
 
     #[test]

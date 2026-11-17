@@ -2,6 +2,19 @@
 
 ## 2026-11-16
 
+- Router speed: correct incremental kept (≡ scratch), but VisGraph/QueryGraph
+  are **lazy** — clear tip with zero peer penalty is optimal (straight chord +
+  non-neg peers), so Morphine skips A* for most arrows. Route passes cut
+  **4 → 2** (peer-free + one Gauss–Seidel). Obstacle AABB grid broad-phases
+  pair tests when a graph is needed. Old fast incremental was still wrong;
+  this keeps scratch semantics without paying from-scratch every arrow.
+- **Fixed incremental** query graph to match from-scratch: strip endpoint-owner
+  verts from shared `VisGraph`, remap surviving edges, append centroids, link
+  centroids only via shared `link_centroids_into_query`. Production uses
+  incremental again. Equivalence locked by synthetic suites (3×3 grid all
+  pairs, mixed shapes, dense wall, committed peers, skip first/middle/last).
+  A live per-route scratch check was too heavy on ranolazine (OOM/SIGSEGV under
+  parallel tests) — kept out of the hot path.
 - **Confirmed**: from-scratch per-arrow query graph fixes the xenobase routing
   failures seen with shared-graph strip/remap. Bug is in **incremental**
   construction (remove endpoint hulls / add centroids / rewire), not A* or
