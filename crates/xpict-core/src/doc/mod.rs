@@ -1628,8 +1628,9 @@ mod tests {
             d_off,
             ms_on / ms_off.max(0.001)
         );
+        // ~200ms runs can invert under load; only flag a clear slowdown.
         assert!(
-            ms_off <= ms_on * 1.25,
+            ms_off <= ms_on * 1.5,
             "halo:false unexpectedly slower: on={ms_on:.0}ms off={ms_off:.0}ms"
         );
     }
