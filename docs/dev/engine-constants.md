@@ -30,7 +30,7 @@ Not published (`exclude_docs: dev/**`).
 | `TextNode.margin` | `spec.rs` | **promoted** | Caption refs via `label` id (parity with `name`) |
 | `LayoutOpts.quality` (`pretty` \| `fast`) | `spec.rs` | **promoted** | Maps to `EngineConfig` presets; not coefficients |
 | `svg` (`web` \| `print`) | `spec.rs` / `SvgTarget` | **promoted** | Medium for halo contrast: web=feMorphology, print=path geom; PNG/PDF hosts default print when unset |
-| Route penalties, vis caps, reopt | `scheme_route.rs` → `EngineConfig::route` | **internal** | |
+| Route penalties, vis caps | `scheme_route.rs` → `EngineConfig::route` | **internal** | Lean hull-vis router |
 | `SolveOpts` defaults + AL knobs | `layout_constraints.rs` → `EngineConfig::solve` | **internal** | |
 | Arrow kink / turn / head / dash | `arrows.rs` → `EngineConfig::arrow` | **internal** | Pub house consts remain aliases of defaults |
 | Scheme ink standoff, coterminal, network caps, label font | `scheme_layout.rs` → `EngineConfig::scheme` | **internal** | Standoff stays a pub const for tests |

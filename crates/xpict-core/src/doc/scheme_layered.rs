@@ -121,9 +121,8 @@ pub fn place_layered(
     let dir = layout.direction_or_default();
     let vertical_flow = matches!(dir, LayoutDirection::Up | LayoutDirection::Down);
     let node_gap = layout.node_spacing_or_default();
-    // Seat children under parents (order-preserving desire pack; gaps are
-    // placeholders). Multi-child hubs recenter over their kids. Corridor /
-    // resolve run *after* so they do not undo seating.
+    // Vertical: exclusive-pair desire, then hub recenter (all directions —
+    // horizontal fans need hub-over-kids on the cross axis too).
     if vertical_flow {
         equal_width_desire_pack(
             &mut nodes,
@@ -132,7 +131,9 @@ pub fn place_layered(
             vertical_flow,
             budgets.align_passes,
         );
-        center_parents_over_children(&mut nodes, &edges);
+    }
+    center_parents_over_children(&mut nodes, &edges);
+    if vertical_flow {
         clear_long_edge_corridors(&mut nodes, &edges, node_gap, vertical_flow);
         let max_layer = nodes.iter().map(|n| n.layer).max().unwrap_or(0);
         for layer in 0..=max_layer {
@@ -2809,11 +2810,13 @@ mod tests {
             &paints,
         )
         .unwrap();
+        // Packing marks use tile-local paint.center() space (scale + frame),
+        // not raw atom y inside the fixture box.
         let a_baseline = p.positions["A"].1 + 70.0;
-        let b_centroid = p.positions["B"].1 + 25.0;
+        let b_mark = p.positions["B"].1 + local_chem_centroid(Some(&paints[1]), 40.0, 50.0).1;
         assert!(
-            (a_baseline - b_centroid).abs() < 2.0,
-            "unnamed centroid mark on named baseline: {a_baseline} vs {b_centroid} {:?}",
+            (a_baseline - b_mark).abs() < 2.0,
+            "unnamed centroid mark on named baseline: {a_baseline} vs {b_mark} {:?}",
             p.positions
         );
     }
@@ -2895,8 +2898,8 @@ mod tests {
             &paints,
         )
         .unwrap();
-        let ya = p.positions["A"].1 + 25.0;
-        let yb = p.positions["B"].1 + 55.0;
+        let ya = p.positions["A"].1 + local_chem_centroid(Some(&paints[1]), 50.0, 80.0).1;
+        let yb = p.positions["B"].1 + local_chem_centroid(Some(&paints[2]), 50.0, 110.0).1;
         assert!(
             (ya - yb).abs() < 1.0,
             "down-layer centroids should align: {ya} vs {yb} {:?}",
@@ -3013,18 +3016,32 @@ mod tests {
             frame_json: String::new(),
         };
         let c = local_chem_centroid(Some(&paint), 100.0, 80.0);
-        // Core mean of atoms 0,1 at y=20 — not dragged by substituent at y=70.
+        // Tagged core (atoms 0,1) through the same tile-local transform as
+        // `DocPaint::center` — not dragged by substituent atom 2 at y=70.
+        let s = paint.molecule.diagram_scale();
+        let (fx, fy) = crate::depict::frame_offset(&paint.molecule);
+        let core = (s * (fx + 20.0), s * (fy + 20.0));
         assert!(
-            (c.1 - 20.0).abs() < 1e-6,
-            "common-core y should be 20, got {:?}",
-            c
+            (c.0 - core.0).abs() < 1e-6 && (c.1 - core.1).abs() < 1e-6,
+            "common-core mark should be tagged mean in paint space: got {:?} want {:?}",
+            c,
+            core
         );
         paint.molecule.align_debug = None;
         let full = local_chem_centroid(Some(&paint), 100.0, 80.0);
+        let all = (
+            s * (fx + (10.0 + 30.0 + 90.0) / 3.0),
+            s * (fy + (20.0 + 20.0 + 70.0) / 3.0),
+        );
         assert!(
-            (full.1 - (20.0 + 20.0 + 70.0) / 3.0).abs() < 1e-6,
-            "without tags, mean of all atoms: {:?}",
-            full
+            (full.0 - all.0).abs() < 1e-6 && (full.1 - all.1).abs() < 1e-6,
+            "without tags, mean of all atoms: got {:?} want {:?}",
+            full,
+            all
+        );
+        assert!(
+            (c.1 - full.1).abs() > 1.0,
+            "substituent must move the untagged mark off the core"
         );
     }
 

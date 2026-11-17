@@ -2,6 +2,9 @@
 
 ## 2026-11-16
 
+- Deleted old libavoid-style `scheme_route.rs` (~3900 lines); lean hull-vis
+  router is now `scheme_route.rs` (was `scheme_route_simple`). Production already
+  called only the lean path.
 - Layered cross-axis: exclusive parent→child desire pack (adjacent layer,
   |Δcross| > child span) seats lone kids under a far parent without touching
   hub fans. Equal inter-node pads / per-layer side-centering / full mean-pull

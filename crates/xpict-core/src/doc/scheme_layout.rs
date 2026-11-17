@@ -1,5 +1,5 @@
 //! Scheme edge refine: layered placer (or non-layered ELK) positions molecules;
-//! shafts are routed in [`super::scheme_route`]. This module installs mol ink,
+//! shafts are routed in [`super::scheme_route`] (lean hull-vis). This module installs mol ink,
 //! applies those polylines, and refines edge labels against the painted shafts.
 
 use std::collections::HashMap;
@@ -373,7 +373,7 @@ pub fn refine_scheme_edges_with_waypoints(
 
     let debug_route = layout.debug_route.unwrap_or(false)
         || std::env::var_os("XPICT_DEBUG_ROUTE").is_some();
-    let routed = super::scheme_route_simple::route_scheme_edges(
+    let routed = super::scheme_route::route_scheme_edges(
         spec,
         &positions,
         paints,

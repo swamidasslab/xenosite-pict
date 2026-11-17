@@ -23,7 +23,6 @@ mod scheme_layout;
 mod scheme_layered;
 mod scheme_nudge;
 mod scheme_route;
-mod scheme_route_simple;
 #[cfg(test)]
 mod scheme_xenobase;
 mod spec;
