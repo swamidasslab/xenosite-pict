@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import html
 import json
+import os
 import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Sequence
 from urllib.parse import quote
 
@@ -15,6 +17,7 @@ from xpict.contracts.edge import MoleculeIn
 from xpict.contracts.scene import Scene
 from xpict.contracts.scene_dict import SceneDict
 from xpict.native_bridge import scene_to_svg as _native_scene_to_svg
+from xpict.native_bridge import svg_to_pdf, svg_to_png, svg_to_rgba
 
 if TYPE_CHECKING:
     from xpict.spec import Mol
@@ -115,6 +118,51 @@ def to_svg(scene: Scene | SceneDict) -> str:
     if isinstance(scene, dict):
         scene = Scene.model_validate(scene)
     return scene_to_svg(scene)
+
+
+def to_pdf(scene: Scene | SceneDict) -> bytes:
+    """Scene → single-page vector PDF bytes (same ink as :func:`to_svg`)."""
+    return svg_to_pdf(to_svg(scene))
+
+
+def to_png(scene: Scene | SceneDict, scale: float = 2.0) -> bytes:
+    """Scene → PNG bytes at ``scale`` × the SVG size (same ink as :func:`to_svg`)."""
+    return svg_to_png(to_svg(scene), scale)
+
+
+def to_rgba(scene: Scene | SceneDict, scale: float = 2.0) -> memoryview:
+    """Scene → raw RGBA8 pixels, no PNG encode, as a ``(height, width, 4)``
+    uint8 buffer (straight alpha, transparent background).
+
+    Any buffer-protocol consumer reads it without a copy, e.g.
+    ``np.asarray(...)`` or ``PIL.Image.frombuffer("RGBA", (w, h), ...)``.
+    """
+    data, w, h = svg_to_rgba(to_svg(scene), scale)
+    return memoryview(data).cast("B", (h, w, 4))
+
+
+def to_array(scene: Scene | SceneDict, scale: float = 2.0):
+    """:func:`to_rgba` as a numpy array (zero-copy; numpy imported lazily)."""
+    import numpy as np
+
+    return np.asarray(to_rgba(scene, scale))
+
+
+def save(
+    scene: Scene | SceneDict, path: str | os.PathLike[str], *, scale: float = 2.0
+) -> None:
+    """Write ``.svg``, ``.pdf`` or ``.png`` by extension (``scale`` is PNG only).
+    For EPS, convert the PDF (e.g. ``pdftops -eps``); PDF keeps the vectors."""
+    out = Path(path)
+    suffix = out.suffix.lower()
+    if suffix == ".svg":
+        out.write_text(to_svg(scene), encoding="utf-8")
+    elif suffix == ".pdf":
+        out.write_bytes(to_pdf(scene))
+    elif suffix == ".png":
+        out.write_bytes(to_png(scene, scale))
+    else:
+        raise ValueError(f"save: expected .svg, .pdf or .png, got {out.name!r}")
 
 
 @dataclass
@@ -234,6 +282,22 @@ class Rendered(PictBase):
 
     def to_svg(self) -> str:
         return scene_to_svg(self.scene)
+
+    def to_pdf(self) -> bytes:
+        return to_pdf(self.scene)
+
+    def to_png(self, scale: float = 2.0) -> bytes:
+        return to_png(self.scene, scale)
+
+    def to_rgba(self, scale: float = 2.0) -> memoryview:
+        return to_rgba(self.scene, scale)
+
+    def to_array(self, scale: float = 2.0):
+        return to_array(self.scene, scale)
+
+    def save(self, path: str | os.PathLike[str], *, scale: float = 2.0) -> None:
+        """Write ``.svg``, ``.pdf`` or ``.png`` by extension."""
+        save(self.scene, path, scale=scale)
 
     def frame(self) -> str:
         return self.frame_molblock

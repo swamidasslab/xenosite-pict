@@ -15,7 +15,7 @@ atoms: Array<number>,
 /**
  * Atom indices that must stay outside.
  */
-exclude: Array<number>, fill?: FillSpec, stroke?: StrokeSpec, text?: MolText, 
+exclude?: Array<number>, fill?: FillSpec, stroke?: StrokeSpec, text?: MolText, 
 /**
  * Pad (chem-space px) around the included-atom cover. Omit → house contain
  * margin (~0.1 bond). Applies to box / circle / bezier alike.

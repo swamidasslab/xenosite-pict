@@ -3,4 +3,4 @@
 /**
  * Lane bag: `{ "above": [...], "below": [...], "left": [...], "right": [...] }`.
  */
-export type LabelLanes = { above: Array<string>, below: Array<string>, left: Array<string>, right: Array<string>, };
+export type LabelLanes = { above?: Array<string>, below?: Array<string>, left?: Array<string>, right?: Array<string>, };

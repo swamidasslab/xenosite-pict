@@ -83,6 +83,7 @@ fn pack_rendered(row: DocPaint, source: String) -> Rendered {
             stereo: b.stereo.clone(),
         })
         .collect();
+    let svg_coords = scene_coords(&row.molecule, &row.scene, &coords);
     Rendered {
         id: row.id,
         width: row.scene.width,
@@ -91,10 +92,30 @@ fn pack_rendered(row: DocPaint, source: String) -> Rendered {
         molecule: row.molecule,
         source,
         frame_molblock: row.frame_json,
-        svg_coords: coords.clone(),
+        svg_coords,
         coords,
         bonds,
     }
+}
+
+/// Atom positions in the painted scene's user space (the SVG viewBox): the
+/// same frame offset, mol scale, and viewport translate that paint applies.
+fn scene_coords(mol: &MoleculeIn, scene: &Scene, coords: &[SvgAtom]) -> Vec<SvgAtom> {
+    let (dx, dy) = crate::depict::frame_offset(mol);
+    let s = mol.diagram_scale();
+    let (ox, oy) = scene
+        .viewports
+        .first()
+        .map(|vp| vp.local_origin())
+        .unwrap_or((0.0, 0.0));
+    coords
+        .iter()
+        .map(|a| SvgAtom {
+            x: (a.x + dx) * s + ox,
+            y: (a.y + dy) * s + oy,
+            ..a.clone()
+        })
+        .collect()
 }
 
 /// Layout every mol (CoordGen), paint the mol spec, return one row per mol.

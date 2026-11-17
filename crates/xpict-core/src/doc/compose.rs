@@ -4,7 +4,7 @@
 //! mols with the in-house layered placer (elkrs only for radial/force/stress),
 //! then strokes edges via [`crate::arrows`] after visibility routing.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use serde_json::{json, Value};
 
@@ -785,32 +785,83 @@ fn edge_src_tgt(e: &EdgeNode) -> (&str, &str) {
 
 /// Representative edge index for each unordered mol pair.
 ///
-/// Prefers the first `layout: true` member so a document-first reverse with
-/// `layout: false` cannot orient ELK layers. Paint-only edges that share a
-/// pair still point at that layout rep (for path copy/reverse). A pair with
-/// only paint-only edges keeps the first member as a no-op self-rep.
+/// Prefers a `layout: true` member, then the member that runs downstream from
+/// the roots. A reverse-first A⇄B listing must not hide B's parent from ELK
+/// (or the layered placer) and lift B onto the root layer. Paint-only edges
+/// that share a pair still point at that layout rep.
 fn coterminal_elk_rep(spec: &DepictSpec) -> Vec<usize> {
     let edges = spec.edges();
-    let n = edges.len();
-    let mut layout_first: HashMap<(String, String), usize> = HashMap::new();
-    let mut any_first: HashMap<(String, String), usize> = HashMap::new();
+    let depth = mol_depths(&edges);
+    let downstream = |e: &EdgeNode| {
+        let (s, t) = edge_src_tgt(e);
+        depth
+            .get(s)
+            .zip(depth.get(t))
+            .is_some_and(|(ds, dt)| ds < dt)
+    };
+    let better = |cur: usize, new: usize| -> bool {
+        let a = edges[cur];
+        let b = edges[new];
+        match (a.participates_in_layout(), b.participates_in_layout()) {
+            (false, true) => true,
+            (true, false) => false,
+            _ => !downstream(a) && downstream(b),
+        }
+    };
+    let mut first: HashMap<(String, String), usize> = HashMap::new();
     for (i, e) in edges.iter().enumerate() {
-        let key = unordered_mol_pair(e);
-        any_first.entry(key.clone()).or_insert(i);
-        if e.participates_in_layout() {
-            layout_first.entry(key).or_insert(i);
+        first
+            .entry(unordered_mol_pair(e))
+            .and_modify(|r| {
+                if better(*r, i) {
+                    *r = i;
+                }
+            })
+            .or_insert(i);
+    }
+    edges
+        .iter()
+        .map(|e| first[&unordered_mol_pair(e)])
+        .collect()
+}
+
+/// BFS depth of each mol from the roots (mols nothing leads to). A graph that
+/// is all cycle starts from the first edge's source.
+fn mol_depths(edges: &[&EdgeNode]) -> HashMap<String, usize> {
+    let mut out: HashMap<&str, Vec<&str>> = HashMap::new();
+    let mut has_parent: HashSet<&str> = HashSet::new();
+    let mut order: Vec<&str> = Vec::new();
+    for e in edges {
+        let (s, t) = edge_src_tgt(e);
+        out.entry(s).or_default().push(t);
+        if s != t {
+            has_parent.insert(t);
+        }
+        for m in [s, t] {
+            if !order.contains(&m) {
+                order.push(m);
+            }
         }
     }
-    let mut rep = vec![0; n];
-    for (i, e) in edges.iter().enumerate() {
-        let key = unordered_mol_pair(e);
-        rep[i] = layout_first
-            .get(&key)
-            .or_else(|| any_first.get(&key))
-            .copied()
-            .unwrap_or(i);
+    let mut queue: VecDeque<&str> = order
+        .iter()
+        .copied()
+        .filter(|m| !has_parent.contains(m))
+        .collect();
+    if queue.is_empty() {
+        queue.extend(order.first().copied());
     }
-    rep
+    let mut depth: HashMap<String, usize> = queue.iter().map(|m| (m.to_string(), 0)).collect();
+    while let Some(m) = queue.pop_front() {
+        let d = depth[m];
+        for &t in out.get(m).into_iter().flatten() {
+            if !depth.contains_key(t) {
+                depth.insert(t.to_string(), d + 1);
+                queue.push_back(t);
+            }
+        }
+    }
+    depth
 }
 
 fn parse_elk_positions(
@@ -1868,6 +1919,40 @@ mod tests {
             (xa - xb).abs() > 1.0,
             "mols should keep distinct ELK x: {xa} vs {xb}"
         );
+    }
+
+    /// A⇄B listed backward first (B→A, then A→B): ELK still gets A→B, so B
+    /// keeps its parent and does not jump onto the root layer.
+    #[test]
+    fn reverse_member_listed_first_does_not_lift_cycle_onto_roots() {
+        let spec: DepictSpec = serde_json::from_value(json!({
+            "type": "reaction_scheme",
+            "children": [
+                {"type": "mol", "id": "R", "smiles": "C"},
+                {"type": "mol", "id": "A", "smiles": "O"},
+                {"type": "mol", "id": "B", "smiles": "N"},
+                {"type": "mol", "id": "C", "smiles": "S"},
+                {"type": "edge", "sources": "B", "targets": "A"},
+                {"type": "edge", "sources": "R", "targets": "A"},
+                {"type": "edge", "sources": "A", "targets": "B"},
+                {"type": "edge", "sources": "B", "targets": "C"}
+            ]
+        }))
+        .expect("spec");
+        assert_eq!(coterminal_elk_rep(&spec), vec![2, 1, 2, 3]);
+        let sizes: Vec<(String, f64, f64)> = ["R", "A", "B", "C"]
+            .iter()
+            .map(|id| (id.to_string(), 60.0, 40.0))
+            .collect();
+        let graph = build_elk_graph(&spec, &LayoutOpts::default(), &sizes);
+        let ab = graph["edges"]
+            .as_array()
+            .expect("edges")
+            .iter()
+            .find(|e| e["id"] == "e2")
+            .expect("A→B goes to ELK");
+        assert_eq!(ab["sources"][0], "A");
+        assert_eq!(ab["targets"][0], "B");
     }
 
     #[test]

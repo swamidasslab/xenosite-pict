@@ -24,6 +24,7 @@ import { initNative, isNativeReady, renderJson } from "./native.js";
 import type { SvgAtom, SvgBond } from "./frame.js";
 import { sceneToSvg, type Scene } from "./draw/scene-svg.js";
 import { applyOutputSvgDefault } from "./svg-target.js";
+import { SvgCache } from "./cache.js";
 import type { MoleculeIn } from "./generated/edge.js";
 import type { AtomLabelSpec } from "./generated/AtomLabelSpec.js";
 import type { AtomNumberSpec } from "./generated/AtomNumberSpec.js";
@@ -511,6 +512,28 @@ async function depict(
 
 export { applyOutputSvgDefault, PRINT_SVG_FORMATS } from "./svg-target.js";
 
+/** Shared cache behind {@link svg}. Set `svgCache.max` or `clear()` as needed. */
+const svgCache = new SvgCache();
+
+/** Spec for a mol or document, as `svg` keys and renders it. */
+function specOf(input: DepictSpec | Mol | string, opts: MolRenderOptions): DepictSpec {
+  return isDepictSpec(input) ? input : specFromMol(typeof input === "string" ? mol(input) : input, opts);
+}
+
+/**
+ * SVG for a mol or document, cached on the spec JSON. The same spec returns
+ * the same promise (safe for React `use()`), so a page that shows one
+ * molecule many times renders it once. A document with several mols joins
+ * their SVGs with newlines, like Python `depict_svg`.
+ */
+function svg(input: DepictSpec | Mol | string, opts: MolRenderOptions = {}): Promise<string> {
+  const spec = specOf(input, opts);
+  return svgCache.get(JSON.stringify(spec), async () => {
+    const rows = await runSpec(spec);
+    return rows.map((row) => sceneToSvg(row.scene)).join("\n");
+  });
+}
+
 /** Public lib namespace. */
 export const xpict = {
   mol,
@@ -528,4 +551,8 @@ export const xpict = {
    * ``svg``. Call before ``depict`` / ``render`` for portable export.
    */
   applyOutputSvgDefault,
+  /** Cached SVG for a mol or document (same spec → same promise). */
+  svg,
+  /** The cache behind ``svg``: ``max``, ``size``, ``clear()``. */
+  svgCache,
 } as const;

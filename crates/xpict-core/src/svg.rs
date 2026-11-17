@@ -212,7 +212,13 @@ fn render_halo_filter_def(radius_px: f64) -> String {
 fn render_layer_group(layer: &crate::scene::Layer) -> String {
     let name = layer_name(layer.name);
     let body: String = layer.primitives.iter().map(render_primitive).collect();
-    format!("<g class=\"xpict-layer xpict-{name}\">{body}</g>")
+    // Halos are knockouts, not ink: clicks pass through to the chem below.
+    let events = if layer.name == LayerName::Halo {
+        " pointer-events=\"none\""
+    } else {
+        ""
+    };
+    format!("<g class=\"xpict-layer xpict-{name}\"{events}>{body}</g>")
 }
 
 fn render_viewport_layers(vp: &Viewport) -> String {
@@ -309,7 +315,9 @@ pub fn scene_to_svg(scene: &Scene) -> String {
     }
     if !scene.halo.is_empty() {
         let body: String = scene.halo.iter().map(render_primitive).collect();
-        parts.push_str(&format!("<g class=\"xpict-halo\" id=\"halo\">{body}</g>"));
+        parts.push_str(&format!(
+            "<g class=\"xpict-halo\" id=\"halo\" pointer-events=\"none\">{body}</g>"
+        ));
     }
     for vp in &scene.viewports {
         parts.push_str(&render_viewport(vp));
@@ -510,6 +518,29 @@ mod tests {
         let u = scene_to_svg(&upright);
         assert!(u.contains(r#"dominant-baseline="alphabetic""#), "{u}");
         assert!(!u.contains("rotate("), "{u}");
+    }
+
+    #[test]
+    fn halos_let_clicks_through() {
+        let mut scene = scene_with_id(Some("m"), 0.0, 0.0);
+        scene.halo = vec![circle()];
+        scene.viewports[0].layers.push(Layer {
+            name: LayerName::Halo,
+            primitives: vec![circle()],
+        });
+        let svg = scene_to_svg(&scene);
+        assert!(
+            svg.contains(r#"<g class="xpict-halo" id="halo" pointer-events="none">"#),
+            "{svg}"
+        );
+        assert!(
+            svg.contains(r#"<g class="xpict-layer xpict-halo" pointer-events="none">"#),
+            "{svg}"
+        );
+        assert!(
+            svg.contains(r#"<g class="xpict-layer xpict-bonds">"#),
+            "{svg}"
+        );
     }
 
     #[test]

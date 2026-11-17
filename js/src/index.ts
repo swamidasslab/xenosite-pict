@@ -6,6 +6,7 @@
  */
 
 export { xpict } from "./api.js";
+export { SvgCache } from "./cache.js";
 export type {
   Mol,
   Rendered,
@@ -53,3 +54,16 @@ export type {
   LayerName,
   TextAnchor,
 } from "./api.js";
+// Annotation fields (`circle`, `region`, `callout`, …) and their parts.
+export type {
+  AtomLabelSpec,
+  AtomNumberSpec,
+  CalloutField,
+  CircleField,
+  RegionField,
+  MolText,
+} from "./api.js";
+export type { CircleSpec } from "./generated/CircleSpec.js";
+export type { RegionSpec } from "./generated/RegionSpec.js";
+export type { FillSpec } from "./generated/FillSpec.js";
+export type { StrokeSpec } from "./generated/StrokeSpec.js";

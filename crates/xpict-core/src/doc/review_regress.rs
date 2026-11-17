@@ -317,7 +317,9 @@ fn region_box_aabbs(scene: &Scene) -> Vec<(f64, f64, f64, f64)> {
             d, class: Some(c), ..
         } = p
         {
-            if c.contains("region") && c.contains("box") {
+            // Translucent regions emit fill + full-opacity outline; count the
+            // fill only so containment checks stay one AABB per region.
+            if c.contains("region") && c.contains("box") && !c.contains("outline") {
                 if let Some((x0, y0, x1, y1)) = path_aabb(d) {
                     out.push((x0 + ox, y0 + oy, x1 + ox, y1 + oy));
                 }

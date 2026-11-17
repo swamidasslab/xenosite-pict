@@ -1264,7 +1264,7 @@ fn region_primitives(
         }
     }
 
-    let mut out = vec![region_shape_primitive(
+    let mut out = split_translucent(region_shape_primitive(
         spec.style,
         region_box,
         circ_cx,
@@ -1277,7 +1277,7 @@ fn region_primitives(
         stroke,
         opacity,
         dash_array(spec.stroke.as_ref()),
-    )];
+    ));
     if let Some(p) = label_prim {
         out.push(p);
     }
@@ -1936,6 +1936,81 @@ fn bezier_region_d(
     }
 }
 
+/// A translucent fill must not fade its outline: SVG `opacity` applies to the
+/// whole element, so a faint fill with a stroke becomes a faded fill (no
+/// stroke) under a full-opacity outline (no fill).
+fn split_translucent(p: Primitive) -> Vec<Primitive> {
+    let filled = |f: &Option<String>| f.as_deref().is_some_and(|c| c != "none");
+    match p {
+        Primitive::Path {
+            d,
+            stroke: Some(stroke),
+            fill,
+            stroke_width,
+            opacity,
+            stroke_dasharray,
+            stroke_linecap,
+            class,
+            data_text,
+        } if opacity < 1.0 && filled(&fill) => vec![
+            Primitive::Path {
+                d: d.clone(),
+                stroke: None,
+                fill,
+                stroke_width: 0.0,
+                opacity,
+                stroke_dasharray: None,
+                stroke_linecap: None,
+                class: class.clone(),
+                data_text,
+            },
+            Primitive::Path {
+                d,
+                stroke: Some(stroke),
+                fill: Some("none".into()),
+                stroke_width,
+                opacity: 1.0,
+                stroke_dasharray,
+                stroke_linecap,
+                class: class.map(|c| format!("{c} outline")),
+                data_text: None,
+            },
+        ],
+        Primitive::Circle {
+            cx,
+            cy,
+            r,
+            fill,
+            stroke: Some(stroke),
+            stroke_width,
+            opacity,
+            class,
+        } if opacity < 1.0 && filled(&fill) => vec![
+            Primitive::Circle {
+                cx,
+                cy,
+                r,
+                fill,
+                stroke: None,
+                stroke_width: 0.0,
+                opacity,
+                class: class.clone(),
+            },
+            Primitive::Circle {
+                cx,
+                cy,
+                r,
+                fill: None,
+                stroke: Some(stroke),
+                stroke_width,
+                opacity: 1.0,
+                class: class.map(|c| format!("{c} outline")),
+            },
+        ],
+        p => vec![p],
+    }
+}
+
 fn region_shape_primitive(
     style: RegionStyle,
     region_box: Aabb,
@@ -2569,7 +2644,7 @@ fn circle_primitives(
                     }
                 }
             }
-            out.push(Primitive::Circle {
+            out.extend(split_translucent(Primitive::Circle {
                 cx,
                 cy,
                 r,
@@ -2578,7 +2653,7 @@ fn circle_primitives(
                 stroke_width: stroke.1,
                 opacity: fill_opacity(spec.fill.as_ref()),
                 class: Some("atom-circle".into()),
-            });
+            }));
         }
     }
 
@@ -2606,7 +2681,7 @@ fn circle_primitives(
             .collect();
         let (cx, cy, r) =
             circle_clear_bonds(mx, my, r0, mx, my, &foreign, floor_r, CLASH_MARGIN_PX);
-        out.push(Primitive::Circle {
+        out.extend(split_translucent(Primitive::Circle {
             cx,
             cy,
             r,
@@ -2615,7 +2690,7 @@ fn circle_primitives(
             stroke_width: stroke.1,
             opacity,
             class: Some(format!("bond-circle atom-{a} atom-{b}")),
-        });
+        }));
     }
 
     if let Some(ref ring) = spec.ring {
@@ -2655,7 +2730,7 @@ fn circle_primitives(
                     floor_r,
                     CLASH_MARGIN_PX,
                 );
-                out.push(Primitive::Circle {
+                out.extend(split_translucent(Primitive::Circle {
                     cx,
                     cy,
                     r: rr,
@@ -2664,7 +2739,7 @@ fn circle_primitives(
                     stroke_width: stroke.1,
                     opacity: fill_opacity(spec.fill.as_ref()),
                     class: Some("ring-circle".into()),
-                });
+                }));
             }
         }
     }
@@ -3537,6 +3612,45 @@ mod tests {
         }
     }
 
+    /// A faint fill must not fade the outline: the fill and the stroke are
+    /// separate primitives, the outline at full opacity.
+    #[test]
+    fn translucent_region_keeps_full_opacity_outline() {
+        let p = Primitive::Path {
+            d: "M 0 0 L 1 1 Z".into(),
+            stroke: Some("#00f".into()),
+            fill: Some("#f00".into()),
+            stroke_width: 1.2,
+            opacity: 0.1,
+            stroke_dasharray: Some("4 3".into()),
+            stroke_linecap: None,
+            class: Some("region bezier".into()),
+            data_text: None,
+        };
+        let out = split_translucent(p);
+        assert_eq!(out.len(), 2);
+        match (&out[0], &out[1]) {
+            (
+                Primitive::Path {
+                    stroke: None,
+                    opacity: o0,
+                    ..
+                },
+                Primitive::Path {
+                    fill: Some(f),
+                    opacity: o1,
+                    stroke_dasharray: Some(_),
+                    ..
+                },
+            ) => {
+                assert!((o0 - 0.1).abs() < 1e-12);
+                assert_eq!(f, "none");
+                assert!((o1 - 1.0).abs() < 1e-12);
+            }
+            other => panic!("unexpected split: {other:?}"),
+        }
+    }
+
     #[test]
     fn atom_circle_encloses_index_on_same_atom() {
         let mol = ethanol();
@@ -3613,7 +3727,7 @@ mod tests {
                     stroke,
                     fill,
                     ..
-                } if c.contains("bond-circle") => {
+                } if c.contains("bond-circle") && !c.contains("outline") => {
                     Some((c.as_str(), *cx, *cy, *r, stroke.clone(), fill.clone()))
                 }
                 _ => None,
@@ -3644,8 +3758,14 @@ mod tests {
             .iter()
             .find(|(c, ..)| c.contains("atom-1") && c.contains("atom-2"))
             .expect("C–O circle (reversed pair)");
-        assert_eq!(teal.4.as_deref(), Some("#2a9d8f"));
+        // Translucent fill: the stroke is its own full-opacity outline circle.
+        assert_eq!(teal.4, None);
         assert_eq!(teal.5.as_deref(), Some("#2a9d8f"));
+        let outline = layer_prims(&out).into_iter().any(|p| {
+            matches!(p, Primitive::Circle { class: Some(c), stroke: Some(s), opacity, .. }
+                if c.contains("atom-1") && c.contains("atom-2") && c.ends_with("outline") && s == "#2a9d8f" && (*opacity - 1.0).abs() < 1e-12)
+        });
+        assert!(outline, "C–O circle should have a full-opacity outline");
         assert!(
             teal.3 > red.3 + 0.5,
             "scale 1.3 should enlarge the C–O circle ({} vs {})",

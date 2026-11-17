@@ -9,11 +9,11 @@ export type CircleSpec = {
 /**
  * One circle centered on each atom index.
  */
-atoms: Array<number>, 
+atoms?: Array<number>, 
 /**
  * Bond endpoint pairs — one circle at each bond midpoint (`[begin, end]`, order-insensitive).
  */
-bonds: Array<[number, number]>, 
+bonds?: Array<[number, number]>, 
 /**
  * Ordered ring atoms — one circle at the ring centroid (aromatic-style).
  */

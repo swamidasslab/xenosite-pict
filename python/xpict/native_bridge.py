@@ -57,6 +57,22 @@ def scene_to_svg(scene: Scene | SceneDict | str) -> str:
     return _rust.scene_to_svg(payload)
 
 
+def svg_to_pdf(svg: str) -> bytes:
+    """SVG → single-page vector PDF (Rust ``svg2pdf``)."""
+    return bytes(_rust.svg_to_pdf(svg))
+
+
+def svg_to_png(svg: str, scale: float = 2.0) -> bytes:
+    """SVG → PNG at ``scale`` × the SVG size (Rust ``resvg``, bundled font)."""
+    return bytes(_rust.svg_to_png(svg, scale))
+
+
+def svg_to_rgba(svg: str, scale: float = 2.0) -> tuple[bytes, int, int]:
+    """SVG → raw straight-alpha RGBA8 bytes plus ``(width, height)``."""
+    data, w, h = _rust.svg_to_rgba(svg, scale)
+    return bytes(data), w, h
+
+
 def compose_scheme(
     spec: DepictSpecLike, paints: list[DocPaintDict] | str
 ) -> SceneDict:

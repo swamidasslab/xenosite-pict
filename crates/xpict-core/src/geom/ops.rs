@@ -30,6 +30,71 @@ pub struct Shape {
     shapes: Shapes,
 }
 
+/// Output outline tolerance: points closer than this to the drawn outline
+/// are below the 0.01 path precision after a 2× zoom, so they only cost bytes.
+const SVG_THIN_PX: f64 = 0.02;
+
+/// Halo outline tolerance: well under a hairline on a half-opacity knockout.
+const HALO_THIN_PX: f64 = 0.2;
+
+/// Douglas–Peucker on a closed ring: split at the point farthest from the
+/// first, thin each half, and rejoin.
+fn thin_ring(c: &Contour, tol: f64) -> Contour {
+    if c.len() <= 4 {
+        return c.clone();
+    }
+    let d2 = |a: [f64; 2], b: [f64; 2]| (a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2);
+    let far = (1..c.len())
+        .max_by(|&i, &j| d2(c[0], c[i]).total_cmp(&d2(c[0], c[j])))
+        .unwrap_or(c.len() / 2);
+    let mut a: Contour = c[..=far].to_vec();
+    let mut b: Contour = c[far..].to_vec();
+    b.push(c[0]);
+    a = thin_open(&a, tol);
+    b = thin_open(&b, tol);
+    a.pop();
+    b.pop();
+    a.extend(b);
+    a
+}
+
+fn thin_open(pts: &[[f64; 2]], tol: f64) -> Contour {
+    let n = pts.len();
+    if n <= 2 {
+        return pts.to_vec();
+    }
+    let mut keep = vec![false; n];
+    keep[0] = true;
+    keep[n - 1] = true;
+    let mut stack = vec![(0usize, n - 1)];
+    while let Some((i, j)) = stack.pop() {
+        let (a, b) = (pts[i], pts[j]);
+        let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
+        let len = dx.hypot(dy);
+        let mut best = (0.0, i);
+        for (k, p) in pts.iter().enumerate().take(j).skip(i + 1) {
+            let d = if len < 1e-12 {
+                (p[0] - a[0]).hypot(p[1] - a[1])
+            } else {
+                (dx * (a[1] - p[1]) - dy * (a[0] - p[0])).abs() / len
+            };
+            if d > best.0 {
+                best = (d, k);
+            }
+        }
+        if best.0 > tol {
+            keep[best.1] = true;
+            stack.push((i, best.1));
+            stack.push((best.1, j));
+        }
+    }
+    pts.iter()
+        .zip(keep)
+        .filter(|(_, k)| *k)
+        .map(|(p, _)| *p)
+        .collect()
+}
+
 fn pt(p: (f64, f64)) -> [f64; 2] {
     [p.0, p.1]
 }
@@ -204,13 +269,29 @@ impl Shape {
             .sum()
     }
 
-    /// White knockout: simplify, outline offset, then decimate for SVG size.
+    /// White knockout: simplify, then outline offset, then thin the round
+    /// joins (they come back with sub-0.1px steps that only cost bytes).
     pub fn halo(&self, dist: f64) -> Self {
         if self.is_empty() || dist <= 0.0 {
             return Self::empty();
         }
-        // buffer() already simplify+decimate; keep an extra pass for unions.
-        self.simplify().buffer(dist).decimate(SVG_PATH_EPS_PX)
+        self.simplify().buffer(dist).thin(HALO_THIN_PX)
+    }
+
+    /// Drop contour points within `tol` of the outline (Douglas–Peucker).
+    pub fn thin(&self, tol: f64) -> Self {
+        Self::wrap(
+            self.shapes
+                .iter()
+                .map(|s| {
+                    s.iter()
+                        .map(|c| thin_ring(c, tol))
+                        .filter(|c| c.len() >= 3)
+                        .collect::<OverlayShape>()
+                })
+                .filter(|s: &OverlayShape| !s.is_empty())
+                .collect(),
+        )
     }
 
     pub fn has_holes(&self) -> bool {
@@ -277,7 +358,7 @@ impl Shape {
             .flatten()
             .filter(|c| c.len() >= 3)
             .map(|c| {
-                let ring: Vec<(f64, f64)> = c.iter().copied().map(xy).collect();
+                let ring: Vec<(f64, f64)> = thin_ring(c, SVG_THIN_PX).into_iter().map(xy).collect();
                 polygon_to_svg_d(&ring)
             })
             .filter(|d| !d.is_empty())
@@ -344,4 +425,23 @@ fn point_in_ring(x: f64, y: f64, ring: &Contour) -> bool {
         j = i;
     }
     inside
+}
+
+#[cfg(test)]
+mod thin_tests {
+    use super::*;
+
+    #[test]
+    fn thin_ring_drops_near_collinear_points_keeps_corners() {
+        // A square with a dense, slightly wobbly top edge.
+        let mut c: Contour = (0..=100)
+            .map(|i| [i as f64 * 0.1, (i % 2) as f64 * 0.01])
+            .collect();
+        c.extend([[10.0, 10.0], [0.0, 10.0]]);
+        let t = thin_ring(&c, 0.02);
+        assert_eq!(t.len(), 4, "{t:?}");
+        for corner in [[0.0, 0.0], [10.0, 10.0], [0.0, 10.0]] {
+            assert!(t.contains(&corner), "lost {corner:?}: {t:?}");
+        }
+    }
 }

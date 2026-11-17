@@ -26,10 +26,10 @@ const BEZIER_STEPS: usize = 12;
 /// Douglas–Peucker in em units after curve sampling (~0.15% of em).
 const CONTOUR_RDP_EM: f64 = 0.0015;
 
-const FONT_REGULAR: &[u8] = include_bytes!("../fonts/LiberationSans-Regular.ttf");
-const FONT_BOLD: &[u8] = include_bytes!("../fonts/LiberationSans-Bold.ttf");
-const FONT_ITALIC: &[u8] = include_bytes!("../fonts/LiberationSans-Italic.ttf");
-const FONT_BOLD_ITALIC: &[u8] = include_bytes!("../fonts/LiberationSans-BoldItalic.ttf");
+pub(crate) const FONT_REGULAR: &[u8] = include_bytes!("../fonts/LiberationSans-Regular.ttf");
+pub(crate) const FONT_BOLD: &[u8] = include_bytes!("../fonts/LiberationSans-Bold.ttf");
+pub(crate) const FONT_ITALIC: &[u8] = include_bytes!("../fonts/LiberationSans-Italic.ttf");
+pub(crate) const FONT_BOLD_ITALIC: &[u8] = include_bytes!("../fonts/LiberationSans-BoldItalic.ttf");
 
 /// Liberation Sans face variant.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
